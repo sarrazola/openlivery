@@ -44,7 +44,12 @@ h1, h2, h3, .brand { font-family: var(--font-manrope), sans-serif; }
 .sidebar nav a:hover { color: white; background: rgba(255,255,255,.05); }
 .sidebar nav a.active { color: white; background: linear-gradient(90deg, rgba(108,92,231,.3), rgba(108,92,231,.13)); box-shadow: inset 3px 0 #8173ff; }
 .sidebar nav a.active svg { color: #a99fff; }
-.sidebar-foot { margin-top: auto; padding: 17px 4px 0; border-top: 1px solid rgba(255,255,255,.08); display: flex; gap: 9px; align-items: center; }
+.sidebar-foot { padding: 17px 4px 0; border-top: 1px solid rgba(255,255,255,.08); display: flex; gap: 9px; align-items: center; }
+.sidebar-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+.sidebar-community { min-height: 43px; padding: 0 12px; display: flex; align-items: center; gap: 12px; color: #aeb6cc; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; background: rgba(255,255,255,.04); font-weight: 540; transition: .18s ease; }
+.sidebar-community:hover { color: white; background: rgba(88, 101, 242, .22); border-color: rgba(88, 101, 242, .35); }
+.sidebar-community svg { flex: 0 0 auto; color: #7289da; }
+.sidebar-community:hover svg { color: #99aeff; }
 .user-avatar { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #392da7; background: #dcd7ff; font-weight: 800; }
 .user-meta { min-width: 0; display: flex; flex-direction: column; gap: 2px; flex: 1; }
 .user-meta strong { color: white; font-size: 12px; }
@@ -211,6 +216,10 @@ h1, h2, h3, .brand { font-family: inherit; }
 .sidebar nav a.active { color: #242a38; background: #eef1f4; box-shadow: none; font-weight: 600; }
 .sidebar nav a.active svg { color: #635bff; }
 .sidebar-foot { border-top-color: #edf0f3; }
+.sidebar-community { color: #4f566b; border-color: #dfe3ea; background: #fafbfc; font-size: 14px; font-weight: 500; }
+.sidebar-community:hover { color: #202532; background: #eef2ff; border-color: #c7d2fe; }
+.sidebar-community svg { color: #5865f2; }
+.sidebar-community:hover svg { color: #4752c4; }
 .user-avatar { color: #4f46c7; background: #eeecff; }
 .user-meta strong { color: #303646; font-size: 13px; }
 .user-meta span { color: #7b8391; font-size: 11px; }
