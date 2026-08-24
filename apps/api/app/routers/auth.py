@@ -28,6 +28,23 @@ def _set_session_cookie(response: Response, user: User) -> None:
     )
 
 
+def _registration_open(db: Session) -> bool:
+    if get_settings().allow_multi_agency:
+        return True
+    return db.scalar(select(Agency.id).limit(1)) is None
+
+
+@router.get("/status", dependencies=[Depends(login_rate_limit)])
+def auth_status(db: Session = Depends(get_db)):
+    # Public: lets the login page decide between first-run setup (no agency
+    # yet) and sign-in only (single-agency instance already configured).
+    has_agency = db.scalar(select(Agency.id).limit(1)) is not None
+    return {
+        "needs_setup": not has_agency,
+        "registration_open": get_settings().allow_multi_agency or not has_agency,
+    }
+
+
 @router.post(
     "/register",
     response_model=UserOut,
@@ -35,6 +52,11 @@ def _set_session_cookie(response: Response, user: User) -> None:
     dependencies=[Depends(login_rate_limit)],
 )
 def register(payload: RegisterRequest, response: Response, db: Session = Depends(get_db)):
+    if not _registration_open(db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Registration is closed on this instance",
+        )
     email = payload.email.lower()
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(status_code=409, detail="A user with that email already exists")

@@ -9,6 +9,21 @@ and are released together.
 
 ## [Unreleased]
 
+### Added
+
+- Public `GET /api/auth/status` endpoint reporting whether the instance still
+  needs its first agency and whether registration is open. The login page uses
+  it to open straight into first-run setup on an empty database and to hide
+  the register tab afterwards.
+
+### Changed
+
+- Self-hosted instances are single-agency by default: the first registration
+  creates the owner agency and closes public sign-up (further attempts return
+  403). Upgrading: instances that already have an agency stop accepting new
+  public registrations; set `ALLOW_MULTI_AGENCY=true` to keep the previous
+  multi-agency behavior.
+
 ## [0.3.0] - 2026-08-20
 
 Upgrading: this release adds a database migration (applied automatically by the

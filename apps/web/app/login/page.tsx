@@ -1,11 +1,13 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, Building2, LoaderCircle, MessageSquareText, ShieldCheck } from "lucide-react";
 import { api, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { Alert } from "@/components/ui";
+
+type AuthStatus = { needs_setup: boolean; registration_open: boolean };
 
 export default function LoginPage() {
   const t = useT();
@@ -13,6 +15,20 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
+
+  useEffect(() => {
+    api<AuthStatus>("/auth/status")
+      .then((status) => {
+        setAuthStatus(status);
+        if (status.needs_setup) setMode("register");
+      })
+      .catch(() => setAuthStatus({ needs_setup: false, registration_open: true }));
+  }, []);
+
+  // First run (no agency yet) goes straight to setup; afterwards the register
+  // tab only exists on multi-agency instances.
+  const showTabs = Boolean(authStatus && !authStatus.needs_setup && authStatus.registration_open);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -56,10 +72,10 @@ export default function LoginPage() {
             <span className="access-card-label"><ShieldCheck size={15} /> {t("auth.cardLabel")}</span>
             <h2>{mode === "register" ? t("auth.cardTitleRegister") : t("auth.cardTitleLogin")}</h2>
             <p>{mode === "register" ? t("auth.cardSubtitleRegister") : t("auth.cardSubtitleLogin")}</p>
-            <div className="auth-tabs">
+            {showTabs && <div className="auth-tabs">
               <button type="button" className={mode === "login" ? "active" : ""} onClick={() => { setMode("login"); setError(""); }}>{t("auth.tabLogin")}</button>
               <button type="button" className={mode === "register" ? "active" : ""} onClick={() => { setMode("register"); setError(""); }}>{t("auth.tabRegister2")}</button>
-            </div>
+            </div>}
             <form onSubmit={submit} className="access-form">
               {mode === "register" && <>
                 <label>{t("auth.agencyName")}<input name="agency_name" required minLength={2} placeholder={t("auth.agencyNamePlaceholder")} /></label>
