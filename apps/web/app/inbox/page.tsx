@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { BadgeCheck, FlaskConical, Globe, Inbox as InboxIcon, LoaderCircle, MessageCircle, Search, UserRound } from "lucide-react";
 import { PageHead } from "@/components/ui";
+import { ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { api, messageFrom } from "@/lib/api";
 import { formatWhen, isNearBottom, isSameOpenThread } from "@/lib/datetime";
@@ -178,7 +179,7 @@ export default function InboxPage() {
           <button className={tab === "human" ? "active" : ""} onClick={() => setTab("human")}>{t("inbox.statusHuman")}</button>
           <button className={tab === "ai" ? "active" : ""} onClick={() => setTab("ai")}>{t("inbox.statusAi")}</button>
         </div>
-        {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /> {t("inbox.loading")}</div>
+        {loading ? <ListRowsSkeleton rows={7} />
           : items.length ? <>
             {items.map((item) => (
               <button key={item.id} className={`inbox-row ${selected?.id === item.id ? "active" : ""} ${item.unread ? "unread" : ""}`} onClick={() => choose(item.id)}>

@@ -1,12 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, FileText, ImageIcon, LoaderCircle, MessageSquarePlus, Send, Sparkles, TriangleAlert, UserRound, Wrench } from "lucide-react";
 import { api, messageFrom } from "@/lib/api";
 import { Alert, EmptyState } from "@/components/ui";
+import { ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { useT } from "@/lib/i18n";
-import type { Agent, Client, Conversation } from "@/types";
+import type { Agent, Client, Conversation, Provider } from "@/types";
 
 export function ChatPlayground({ lockedAgentId }: { lockedAgentId?: string }) {
   const t = useT();
@@ -17,18 +19,20 @@ export function ChatPlayground({ lockedAgentId }: { lockedAgentId?: string }) {
   const [agentId, setAgentId] = useState(lockedAgentId || "");
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    Promise.all([api<Client[]>("/clients"), api<Agent[]>("/agents")]).then(([c, a]) => {
-      setClients(c); setAgents(a);
+    Promise.all([api<Client[]>("/clients"), api<Agent[]>("/agents"), api<Provider[]>("/providers")]).then(([c, a, p]) => {
+      setClients(c); setAgents(a); setProviders(p);
       const initial = lockedAgentId ? a.find((item) => item.id === lockedAgentId) : a[0];
       if (initial) { setAgentId(initial.id); setClientId(initial.client_id); }
       else if (c[0]) setClientId(c[0].id);
-    });
+    }).catch(() => {}).finally(() => setLoaded(true));
   }, [lockedAgentId]);
 
   useEffect(() => {
@@ -43,6 +47,9 @@ export function ChatPlayground({ lockedAgentId }: { lockedAgentId?: string }) {
 
   const availableAgents = useMemo(() => agents.filter((agent) => agent.client_id === clientId), [agents, clientId]);
   const selectedAgent = agents.find((agent) => agent.id === agentId);
+  const needsKey = Boolean(selectedAgent) && !providers.find((item) => item.provider === selectedAgent!.provider)?.configured;
+  const needsModel = Boolean(selectedAgent) && !selectedAgent!.model.trim();
+  const agentReady = Boolean(selectedAgent) && !needsKey && !needsModel;
 
   async function newConversation() {
     if (!agentId) return;
@@ -57,7 +64,7 @@ export function ChatPlayground({ lockedAgentId }: { lockedAgentId?: string }) {
     const form = event.currentTarget;
     const input = form.elements.namedItem("message") as HTMLTextAreaElement;
     const content = input.value.trim();
-    if (!content || busy || !agentId) return;
+    if (!content || busy || !agentId || !agentReady) return;
     setBusy(true); input.value = "";
     try {
       let current = conversation;
@@ -72,7 +79,7 @@ export function ChatPlayground({ lockedAgentId }: { lockedAgentId?: string }) {
     } catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); composerRef.current?.focus(); }
   }
   async function sendImage(file?: File) {
-    if (!file || busy || !agentId) return;
+    if (!file || busy || !agentId || !agentReady) return;
     setBusy(true);
     const caption = (composerRef.current?.value || "").trim();
     try {
@@ -99,11 +106,11 @@ export function ChatPlayground({ lockedAgentId }: { lockedAgentId?: string }) {
     <section className="chat-panel">
       <header className="chat-head">{selectedAgent ? <><span className="agent-avatar"><Bot size={18} /></span><div><strong>{selectedAgent.name}</strong><small><i className={selectedAgent.model ? "online" : "offline"} />{selectedAgent.model ? t("playground.chat.modelConfigured") : t("playground.chat.noModelConfigured")}</small></div></> : <div><strong>{t("playground.chat.fallbackTitle")}</strong><small>{t("playground.chat.fallbackSubtitle")}</small></div>}{conversation && <span className={`mode-label ${conversation.mode}`}>{conversation.mode === "human" ? t("playground.chat.modeHuman") : t("playground.chat.modeAi")}</span>}</header>
       <div className="messages">
-        {!agentId ? <EmptyState icon={<Bot />} title={t("playground.empty.title")} description={t("playground.empty.description")} /> : !conversation?.messages?.length ? <div className="chat-welcome"><span><Sparkles size={24} /></span><h3>{t("playground.welcome.title", { name: selectedAgent?.name || "" })}</h3><p>{t("playground.welcome.description")}</p>{!selectedAgent?.model && <Alert type="info">{t("playground.welcome.noModelAlert")}</Alert>}</div> : conversation.messages.map((message) => <div className={`message-row ${message.role}`} key={message.id}><span className="message-avatar">{message.role === "assistant" ? <Bot size={17} /> : <UserRound size={17} />}</span><div className="message-body"><small>{message.sender_name || (message.role === "assistant" ? selectedAgent?.name : t("playground.message.you"))}</small><div className="bubble">{message.content}</div>{message.sources?.length > 0 && <div className="sources"><strong><FileText size={13} /> {t("playground.message.sourcesUsed")}</strong>{message.sources.map((source) => <span key={source.id} title={source.excerpt}>{source.filename}</span>)}</div>}{(message.tool_calls?.length ?? 0) > 0 && <div className="sources"><strong><Wrench size={13} /> {t("tools.usedInReply")}</strong>{message.tool_calls!.map((call, index) => <span key={index} className={call.is_error ? "tool-error" : ""} title={call.result_preview}>{call.name}</span>)}</div>}{message.tool_calls?.some((call) => call.is_error) && <div className="tool-error-details">{message.tool_calls!.filter((call) => call.is_error).map((call, index) => <small key={index}><TriangleAlert size={12} /> <strong>{call.name}</strong> {call.result_preview}</small>)}</div>}</div></div>)}
+        {!loaded ? <ListRowsSkeleton rows={4} /> : !agentId ? <EmptyState icon={<Bot />} title={t("playground.empty.title")} description={t("playground.empty.description")} /> : !conversation?.messages?.length ? <div className="chat-welcome"><span><Sparkles size={24} /></span><h3>{t("playground.welcome.title", { name: selectedAgent?.name || "" })}</h3><p>{t("playground.welcome.description")}</p></div> : conversation.messages.map((message) => <div className={`message-row ${message.role}`} key={message.id}><span className="message-avatar">{message.role === "assistant" ? <Bot size={17} /> : <UserRound size={17} />}</span><div className="message-body"><small>{message.sender_name || (message.role === "assistant" ? selectedAgent?.name : t("playground.message.you"))}</small><div className="bubble">{message.content}</div>{message.sources?.length > 0 && <div className="sources"><strong><FileText size={13} /> {t("playground.message.sourcesUsed")}</strong>{message.sources.map((source) => <span key={source.id} title={source.excerpt}>{source.filename}</span>)}</div>}{(message.tool_calls?.length ?? 0) > 0 && <div className="sources"><strong><Wrench size={13} /> {t("tools.usedInReply")}</strong>{message.tool_calls!.map((call, index) => <span key={index} className={call.is_error ? "tool-error" : ""} title={call.result_preview}>{call.name}</span>)}</div>}{message.tool_calls?.some((call) => call.is_error) && <div className="tool-error-details">{message.tool_calls!.filter((call) => call.is_error).map((call, index) => <small key={index}><TriangleAlert size={12} /> <strong>{call.name}</strong> {call.result_preview}</small>)}</div>}</div></div>)}
         {busy && <div className="message-row assistant"><span className="message-avatar"><Bot size={17} /></span><div className="thinking"><i /><i /><i /></div></div>}
         <div ref={endRef} />
       </div>
-      <div className="composer-wrap"><form className="composer" onSubmit={send}>{selectedAgent?.image_enabled && <><button type="button" className="composer-attach" disabled={!agentId || busy} title={t("playground.composer.attachImage")} aria-label={t("playground.composer.attachImage")} onClick={() => imageRef.current?.click()}><ImageIcon size={18} /></button><input ref={imageRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => sendImage(e.target.files?.[0])} /></>}<textarea ref={composerRef} name="message" rows={1} placeholder={agentId ? t("playground.composer.placeholder") : t("playground.composer.placeholderNoAgent")} disabled={!agentId} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /><button disabled={!agentId || busy} aria-label={t("playground.composer.send")}>{busy ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}</button></form><small>{t("playground.composer.disclaimer")}</small></div>
+      <div className="composer-wrap">{needsKey ? <Alert type="info">{t("playground.notReady.keyPrefix")}<Link href="/settings">{t("playground.notReady.settingsLink")}</Link>.</Alert> : needsModel ? <Alert type="info">{t("playground.notReady.modelPrefix")}<Link href={`/agents/${agentId}`}>{t("playground.notReady.modelLink")}</Link>.</Alert> : null}<form className="composer" onSubmit={send}>{selectedAgent?.image_enabled && <><button type="button" className="composer-attach" disabled={!agentId || busy || !agentReady} title={t("playground.composer.attachImage")} aria-label={t("playground.composer.attachImage")} onClick={() => imageRef.current?.click()}><ImageIcon size={18} /></button><input ref={imageRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => sendImage(e.target.files?.[0])} /></>}<textarea ref={composerRef} name="message" rows={1} placeholder={agentId ? t("playground.composer.placeholder") : t("playground.composer.placeholderNoAgent")} disabled={!agentId || !agentReady} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /><button disabled={!agentId || busy || !agentReady} aria-label={t("playground.composer.send")}>{busy ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}</button></form><small>{t("playground.composer.disclaimer")}</small></div>
     </section>
   </div>;
 }

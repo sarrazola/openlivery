@@ -81,7 +81,7 @@ The bridge (`apps/whatsapp/src/manager.ts`) holds live Baileys sessions and is s
 
 ### Frontend
 
-`apps/web/lib/api.ts` is the single fetch wrapper (cookie auth, `NEXT_PUBLIC_API_URL`); `apps/web/lib/model-catalog.ts` holds per-provider model presets. `apps/web/CLAUDE.md` → `AGENTS.md` warns that Next.js 16 has breaking changes vs. training data — check `node_modules/next/dist/docs/` before writing non-trivial Next.js code.
+`apps/web/lib/api.ts` is the single fetch wrapper (cookie auth, `NEXT_PUBLIC_API_URL`); `apps/web/lib/providers.ts` holds per-provider model presets. `apps/web/CLAUDE.md` → `AGENTS.md` warns that Next.js 16 has breaking changes vs. training data — check `node_modules/next/dist/docs/` before writing non-trivial Next.js code.
 
 ## Environment gotchas
 

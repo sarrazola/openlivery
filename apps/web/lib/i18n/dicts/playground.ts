@@ -33,6 +33,12 @@ const en = {
     noModelAlert:
       "This agent does not have a model configured yet. Assign a connection in its details before sending messages.",
   },
+  notReady: {
+    keyPrefix: "This agent can't reply yet because it is missing your API key. Add it in ",
+    settingsLink: "Settings",
+    modelPrefix: "This agent can't reply yet because it has no model. Choose one in ",
+    modelLink: "the agent's setup",
+  },
   message: {
     you: "You",
     sourcesUsed: "Sources used",
@@ -79,6 +85,12 @@ const es: typeof en = {
     description: "Haz una pregunta para comprobar sus instrucciones, tono y conocimiento.",
     noModelAlert:
       "Este agente todavía no tiene un modelo configurado. Asígnale una conexión en sus detalles antes de enviar mensajes.",
+  },
+  notReady: {
+    keyPrefix: "Este agente todavía no puede responder porque le falta tu API key. Agrégala en ",
+    settingsLink: "Configuración",
+    modelPrefix: "Este agente todavía no puede responder porque no tiene modelo. Elige uno en ",
+    modelLink: "la configuración del agente",
   },
   message: {
     you: "Tú",
