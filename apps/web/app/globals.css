@@ -1252,3 +1252,17 @@ button.composer-attach.record.recording svg { animation: record-pulse 1.2s ease-
    the time row floats underneath like WhatsApp */
 .audio-bubble { position: relative; padding: 8px 10px 22px; }
 .audio-meta { position: absolute; left: 54px; right: 56px; bottom: 5px; }
+
+/* Bubbles hug their content instead of stretching to the max width (WhatsApp-like) */
+.portal-messages article { align-self: flex-start; }
+.portal-messages article.user { align-self: flex-end; }
+.portal-messages p { width: fit-content; max-width: 100%; }
+.portal-messages article.user p { margin-left: auto; }
+.inbox-message { align-self: flex-start; }
+.inbox-message.user { align-self: flex-end; }
+.inbox-message p { width: fit-content; max-width: 100%; }
+.inbox-message.user p { margin-left: auto; }
+.message-row { align-self: flex-start; }
+.message-row.user { align-self: flex-end; }
+.message-body .bubble { width: fit-content; max-width: 100%; }
+.message-row.user .message-body .bubble { margin-left: auto; }
