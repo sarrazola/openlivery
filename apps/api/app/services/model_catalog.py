@@ -5,7 +5,7 @@ per 1k tokens. This metadata powers:
 - the model picker and token counter in the agent creation wizard,
 - cost estimation and per-model markup (billing).
 
-IDs are kept in sync with `frontend/lib/model-catalog.ts` (same identifiers per
+IDs are kept in sync with `apps/web/lib/providers.ts` (same identifiers per
 provider). Keep both in sync when adding models.
 """
 
@@ -35,16 +35,16 @@ CHARS_PER_TOKEN = 4
 
 _MODELS: tuple[ModelInfo, ...] = (
     # OpenAI
-    ModelInfo("gpt-5.6-luna", "openai", "GPT-5.6 Luna", "gpt-5.6", 400_000, 16_384, True, True,
-              0.0004, 0.0016, "Most affordable", "High volume, chat and cost-sensitive automations."),
-    ModelInfo("gpt-5.6-terra", "openai", "GPT-5.6 Terra", "gpt-5.6", 400_000, 32_768, True, True,
-              0.0015, 0.006, "Balanced", "A good balance of capability, speed and price."),
-    ModelInfo("gpt-5.6-sol", "openai", "GPT-5.6 Sol", "gpt-5.6", 400_000, 65_536, True, True,
-              0.005, 0.02, "Top capability", "Complex work and more demanding responses."),
-    ModelInfo("gpt-5.6", "openai", "GPT-5.6", "gpt-5.6", 400_000, 65_536, True, True,
-              0.005, 0.02, "Alias of Sol", "Official alias pointing to the GPT-5.6 Sol model."),
-    ModelInfo("gpt-5.5", "openai", "GPT-5.5", "gpt-5.5", 256_000, 32_768, True, True,
-              0.004, 0.016, "Previous generation", "Available for compatibility and gradual migrations."),
+    ModelInfo("gpt-5.6-luna", "openai", "GPT-5.6 Luna", "gpt-5.6", 1_050_000, 128_000, True, True,
+              0.0002, 0.0012, "Most affordable", "High volume, chat and cost-sensitive automations."),
+    ModelInfo("gpt-5.6-terra", "openai", "GPT-5.6 Terra", "gpt-5.6", 1_050_000, 128_000, True, True,
+              0.002, 0.012, "Balanced", "A good balance of capability, speed and price."),
+    ModelInfo("gpt-5.6-sol", "openai", "GPT-5.6 Sol", "gpt-5.6", 1_050_000, 128_000, True, True,
+              0.004, 0.02, "Top capability", "Complex work and more demanding responses."),
+    ModelInfo("gpt-5.6", "openai", "GPT-5.6", "gpt-5.6", 1_050_000, 128_000, True, True,
+              0.004, 0.02, "Alias of Sol", "Official alias pointing to the GPT-5.6 Sol model."),
+    ModelInfo("gpt-5.5", "openai", "GPT-5.5", "gpt-5.5", 1_050_000, 128_000, True, True,
+              0.005, 0.03, "Previous generation", "Available for compatibility and gradual migrations."),
     # Google Gemini
     ModelInfo("gemini-3.6-flash", "google", "Gemini 3.6 Flash", "gemini-3", 1_000_000, 65_536, True, True,
               0.0003, 0.0025, "Current", "Fast, balanced model for agents and applications."),
@@ -55,12 +55,18 @@ _MODELS: tuple[ModelInfo, ...] = (
     ModelInfo("gemini-3.1-pro-preview", "google", "Gemini 3.1 Pro Preview", "gemini-3", 1_000_000, 65_536, True, True,
               0.00125, 0.01, "Preview", "Advanced reasoning; try it first in controlled tests."),
     # Anthropic
-    ModelInfo("claude-opus-4-7", "anthropic", "Claude Opus 4.7", "claude", 200_000, 32_768, True, True,
+    ModelInfo("claude-sonnet-5", "anthropic", "Claude Sonnet 5", "claude", 1_000_000, 128_000, True, True,
+              0.002, 0.01, "Balanced", "A mix of speed and intelligence for production."),
+    ModelInfo("claude-opus-5", "anthropic", "Claude Opus 5", "claude", 1_000_000, 128_000, True, True,
               0.005, 0.025, "Top capability", "Complex tasks, reasoning and demanding agent flows."),
-    ModelInfo("claude-sonnet-4-6", "anthropic", "Claude Sonnet 4.6", "claude", 200_000, 16_384, True, True,
-              0.003, 0.015, "Balanced", "A mix of speed and intelligence for production."),
+    ModelInfo("claude-fable-5", "anthropic", "Claude Fable 5", "claude", 1_000_000, 128_000, True, True,
+              0.01, 0.05, "Maximum capability", "Deep research and long autonomous runs."),
     ModelInfo("claude-haiku-4-5", "anthropic", "Claude Haiku 4.5", "claude", 200_000, 8_192, True, True,
-              0.0008, 0.004, "Fast", "Quick responses and simpler workloads."),
+              0.001, 0.005, "Fast", "Quick responses and simpler workloads."),
+    ModelInfo("claude-sonnet-4-6", "anthropic", "Claude Sonnet 4.6", "claude", 1_000_000, 16_384, True, True,
+              0.003, 0.015, "Previous generation", "Superseded by Sonnet 5, which costs less."),
+    ModelInfo("claude-opus-4-8", "anthropic", "Claude Opus 4.8", "claude", 1_000_000, 32_768, True, True,
+              0.005, 0.025, "Previous generation", "Superseded by Opus 5 at the same price."),
     # DeepSeek
     ModelInfo("deepseek-v4-flash", "deepseek", "DeepSeek V4 Flash", "deepseek-v4", 1_000_000, 16_384, True, False,
               0.0002, 0.0009, "Economical", "High-volume chat and agents with up to 1M context."),
@@ -79,10 +85,10 @@ _MODELS: tuple[ModelInfo, ...] = (
     ModelInfo("qwen/qwen3.6-27b", "groq", "Qwen 3.6 27B", "qwen3", 131_072, 16_384, True, False,
               0.0002, 0.0008, "Current", "A recent option for reasoning and general generation."),
     # OpenRouter (routes to models already listed)
-    ModelInfo("openai/gpt-5.6-luna", "openrouter", "GPT-5.6 Luna", "gpt-5.6", 400_000, 16_384, True, True,
-              0.0004, 0.0016, "Economical", "OpenRouter route to OpenAI's efficient model."),
-    ModelInfo("anthropic/claude-sonnet-4.6", "openrouter", "Claude Sonnet 4.6", "claude", 200_000, 16_384, True, True,
-              0.003, 0.015, "Balanced", "OpenRouter route to the current Sonnet model."),
+    ModelInfo("openai/gpt-5.6-luna", "openrouter", "GPT-5.6 Luna", "gpt-5.6", 1_050_000, 128_000, True, True,
+              0.0002, 0.0012, "Economical", "OpenRouter route to OpenAI's efficient model."),
+    ModelInfo("anthropic/claude-sonnet-5", "openrouter", "Claude Sonnet 5", "claude", 1_000_000, 128_000, True, True,
+              0.002, 0.01, "Balanced", "OpenRouter route to the current Sonnet model."),
     ModelInfo("google/gemini-3.6-flash", "openrouter", "Gemini 3.6 Flash", "gemini-3", 1_000_000, 65_536, True, True,
               0.0003, 0.0025, "Fast", "OpenRouter route to Google's current Flash model."),
     ModelInfo("deepseek/deepseek-v4-flash", "openrouter", "DeepSeek V4 Flash", "deepseek-v4", 1_000_000, 16_384, True, False,
