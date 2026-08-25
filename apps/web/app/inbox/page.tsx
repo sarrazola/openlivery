@@ -9,7 +9,7 @@ import { RichText } from "@/components/rich-text";
 import { ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { api, apiUrl, messageFrom } from "@/lib/api";
-import { formatWhen, isNearBottom, isSameOpenThread } from "@/lib/datetime";
+import { formatTime, formatWhen, isNearBottom, isSameOpenThread } from "@/lib/datetime";
 import { useLanguage, useT } from "@/lib/i18n";
 import type { Agent, Attachment, Conversation, ConversationInbox } from "@/types";
 
@@ -249,13 +249,20 @@ export default function InboxPage() {
               </div>
             </header>
             <div className="inbox-messages" ref={messagesRef}>
-              {selected.messages?.map((message) => (
-                <div key={message.id} className={`inbox-message ${message.role}`}>
-                  <small>{message.sender_name || (message.role === "assistant" ? t("inbox.senderAgent") : t("inbox.senderVisitor"))} · {formatWhen(message.created_at, lang)}</small>
-                  <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} />
-                  {message.content && <p><RichText text={message.content} /></p>}
-                </div>
-              ))}
+              {selected.messages?.map((message, index) => {
+                const prev = index > 0 ? selected.messages![index - 1] : null;
+                const grouped = Boolean(prev && prev.role === message.role && prev.sender_name === message.sender_name);
+                const stamp = formatTime(message.created_at, lang);
+                const hasAudio = message.attachments?.some((a) => a.kind === "audio");
+                return (
+                  <div key={message.id} className={`inbox-message ${message.role}${grouped ? " grouped" : ""}`}>
+                    {!grouped && <small>{message.sender_name || (message.role === "assistant" ? t("inbox.senderAgent") : t("inbox.senderVisitor"))}</small>}
+                    <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={stamp} />
+                    {message.content ? <p><RichText text={message.content} /><time className="msg-time">{stamp}</time></p>
+                      : !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}
+                  </div>
+                );
+              })}
             </div>
             {pendingFile && <PendingAttachment file={pendingFile} onCancel={() => setPendingFile(null)} />}
             <form className="inbox-composer" onSubmit={reply}>

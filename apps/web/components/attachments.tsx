@@ -33,7 +33,7 @@ function fallbackWave(seed: string): number[] {
 
 /** Custom voice-note player, WhatsApp-style: real waveform bars that fill
  * smoothly as the audio plays, click-to-seek, and a 1x/1.5x/2x speed toggle. */
-export function AudioBubble({ src }: { src: string }) {
+export function AudioBubble({ src, stamp }: { src: string; stamp?: string }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
@@ -144,7 +144,7 @@ export function AudioBubble({ src }: { src: string }) {
         </div>
         <div className="audio-meta">
           <span>{formatClock(playing || time > 0 ? time : duration)}</span>
-          <span>{formatClock(duration)}</span>
+          <span>{stamp ?? formatClock(duration)}</span>
         </div>
       </div>
       <button type="button" className="audio-rate" onClick={cycleRate} aria-label={`Playback speed ${rate}x`}>
@@ -212,10 +212,12 @@ export function Lightbox({ items, index, onIndex, onClose }: {
  * collapse into a WhatsApp-style grid; clicking opens the lightbox, navigable
  * across every image in the chat when `gallery` is provided), a voice-note
  * player, inline video, and a download chip for files. */
-export function MessageAttachments({ attachments, urlFor, gallery }: {
+export function MessageAttachments({ attachments, urlFor, gallery, stamp }: {
   attachments?: Attachment[];
   urlFor: (attachment: Attachment) => string;
   gallery?: GalleryImage[];
+  /** Clock time of the message, shown inside the voice-note player (WhatsApp-style). */
+  stamp?: string;
 }) {
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   if (!attachments?.length) return null;
@@ -254,7 +256,7 @@ export function MessageAttachments({ attachments, urlFor, gallery }: {
       {others.map((attachment) => {
         const url = urlFor(attachment);
         if (attachment.kind === "audio") {
-          return <AudioBubble key={attachment.id} src={url} />;
+          return <AudioBubble key={attachment.id} src={url} stamp={stamp} />;
         }
         // Also match older rows stored before "video" was a first-class kind.
         if (attachment.kind === "video" || attachment.mime.startsWith("video/")) {

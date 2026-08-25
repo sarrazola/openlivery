@@ -10,6 +10,11 @@ export function formatWhen(iso: string, locale: string = "en"): string {
   return `${day} · ${time}`;
 }
 
+/** Clock time only (e.g. "4:16 PM"), for the WhatsApp-style stamp inside bubbles. */
+export function formatTime(iso: string, locale: string = "en"): string {
+  return new Date(iso).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+}
+
 /** True when a poll result should not replace the open thread (avoids scroll jumps). */
 export function isSameOpenThread(prev: Conversation | null, next: Conversation): boolean {
   if (!prev || prev.id !== next.id || prev.mode !== next.mode) return false;
