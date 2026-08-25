@@ -8,7 +8,7 @@ import { Alert } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { api, messageFrom } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
-import { PROVIDERS, modelsFor, estimateTokens, modelContextWindow } from "@/lib/providers";
+import { PROVIDERS, modelsFor, modelOptionsFor, defaultModelFor, estimateTokens, modelContextWindow } from "@/lib/providers";
 import { Combobox } from "@/components/combobox";
 import { TIMEZONES } from "@/lib/timezones";
 import { agentTemplates, localize } from "@/lib/agent-templates";
@@ -35,7 +35,7 @@ export default function NewAgentPage() {
   const [instructions, setInstructions] = useState("");
   const [personality, setPersonality] = useState("");
   const [provider, setProvider] = useState("openai");
-  const [model, setModel] = useState("");
+  const [model, setModel] = useState(defaultModelFor("openai"));
   const [timezone, setTimezone] = useState(BROWSER_TZ);
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
@@ -64,7 +64,7 @@ export default function NewAgentPage() {
     setStep(1);
   }
 
-  const canNext = step !== 1 || (name.trim().length > 0 && Boolean(clientId));
+  const canNext = step === 1 ? name.trim().length > 0 && Boolean(clientId) : step === 3 ? model.trim().length > 0 : true;
 
   async function create() {
     setBusy(true);
@@ -130,20 +130,25 @@ export default function NewAgentPage() {
         <div className="wizard-copy"><h2>{t("agents.wizard.promptTitle")}</h2><p>{t("agents.wizard.promptSubtitle")}</p></div>
         <label>{t("agents.new.instructionsLabel")}<textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={10} placeholder={t("agents.new.instructionsPlaceholder")} /></label>
         <label>{t("agents.new.personalityLabel")}<textarea value={personality} onChange={(e) => setPersonality(e.target.value)} rows={3} placeholder={t("agents.new.personalityPlaceholder")} /></label>
-        <div className="token-meter"><span><Sparkles size={13} /> {t("agents.wizard.tokens", { count: promptTokens.toLocaleString(lang) })}</span></div>
+        <div className="token-meter"><span><Sparkles size={13} /> {t("agents.wizard.tokens", { count: promptTokens.toLocaleString(lang) })}</span><small className="field-help">{t("agents.wizard.tokensHint")}</small></div>
       </div>}
 
       {step === 3 && <div className="wizard-fields">
         <div className="wizard-copy"><h2>{t("agents.wizard.modelTitle")}</h2><p>{t("agents.wizard.modelSubtitle")}</p></div>
         <label>{t("agents.detail.timezoneLabel")}<Combobox value={timezone} onChange={setTimezone} options={TIMEZONES} placeholder={t("agents.detail.timezoneLabel")} /></label>
-        <div className="form-grid">
-          <label>{t("agents.new.providerLabel")}<select value={provider} onChange={(e) => setProvider(e.target.value)}>{PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
-          <label>{t("agents.new.modelLabel")}<Combobox value={model} onChange={setModel} options={modelsFor(provider)} placeholder={t("agents.new.modelPlaceholder")} allowCustom /></label>
+        <label>{t("agents.new.providerLabel")}<select value={provider} onChange={(e) => { setProvider(e.target.value); setModel(defaultModelFor(e.target.value)); }}>{PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
+        <div className="field-block">
+          <span className="field-label">{t("agents.new.modelLabel")}</span>
+          {(["fast", "balanced", "capable"] as const).map((group) => { const options = modelOptionsFor(provider).filter((item) => item.group === group); if (!options.length) return null; return <div className="model-group" key={group}><div className="model-group-head"><span className="field-label">{t(`agents.wizard.modelGroup${group === "fast" ? "Fast" : group === "balanced" ? "Balanced" : "Capable"}`)}</span><small>{t(`agents.wizard.modelNote${group === "fast" ? "Fast" : group === "balanced" ? "Balanced" : "Capable"}`)}</small></div><div className="model-recommendations">{options.map((option) => <button type="button" key={option.id} className={option.id === model ? "active" : ""} onClick={() => setModel(option.id)}><span><strong>{option.label}</strong>{option.recommended && <em>{t("agents.wizard.modelBadgeRecommended")}</em>}</span><code>{option.id}</code></button>)}</div></div>; })}
+          <details className="advanced-options wizard-advanced"><summary>{t("agents.wizard.modelShowAll")}</summary><Combobox value={model} onChange={setModel} options={modelsFor(provider)} placeholder={t("agents.new.modelPlaceholder")} allowCustom /></details>
+          <span className="field-help">{t("agents.wizard.modelHelp")}</span>
         </div>
         <div className="context-bar"><div style={{ width: `${contextPct}%` }} /><small><Sparkles size={12} /> {t("agents.detail.contextUsage", { count: promptTokens.toLocaleString(lang), total: contextWindow.toLocaleString(lang) })}</small></div>
-        <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.temperatureLabel")}</span><strong>{temperature.toFixed(1)}/2</strong></div><input type="range" min="0" max="2" step="0.1" value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} /></div>
-        <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.maxTokensLabel")}</span><strong>{maxTokens}/8192</strong></div><input type="range" min="256" max="8192" step="256" value={maxTokens} onChange={(e) => setMaxTokens(Number(e.target.value))} /></div>
-        <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.memoryLimitLabel")}</span><strong>{memoryLimit}/100</strong></div><input type="range" min="0" max="100" step="1" value={memoryLimit} onChange={(e) => setMemoryLimit(Number(e.target.value))} /></div>
+        <details className="advanced-options wizard-advanced"><summary>{t("agents.detail.advancedHeading")}</summary><p className="field-help">{t("agents.detail.advancedCopy")}</p>
+        <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.temperatureLabel")}</span><strong>{temperature.toFixed(1)}/2</strong></div><input type="range" min="0" max="2" step="0.1" value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} /><span className="field-help">{t("agents.detail.temperatureHint")}</span></div>
+        <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.maxTokensLabel")}</span><strong>{maxTokens}/8192</strong></div><input type="range" min="256" max="8192" step="256" value={maxTokens} onChange={(e) => setMaxTokens(Number(e.target.value))} /><span className="field-help">{t("agents.detail.maxTokensHint")}</span></div>
+        <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.memoryLimitLabel")}</span><strong>{memoryLimit}/100</strong></div><input type="range" min="0" max="100" step="1" value={memoryLimit} onChange={(e) => setMemoryLimit(Number(e.target.value))} /><span className="field-help">{t("agents.detail.memoryLimitHint")}</span></div>
+        </details>
       </div>}
 
       {step === 4 && <div className="wizard-fields">
@@ -153,7 +158,7 @@ export default function NewAgentPage() {
           <div><dt>{t("agents.new.clientLabel")}</dt><dd>{clients.find((c) => c.id === clientId)?.name || "—"}</dd></div>
           <div><dt>{t("agents.wizard.reviewTemplate")}</dt><dd>{templateId ? localize(agentTemplates.find((x) => x.id === templateId)!.name, lang) : t("agents.wizard.blankName")}</dd></div>
           <div><dt>{t("agents.new.providerLabel")}</dt><dd>{PROVIDERS.find((p) => p.id === provider)?.label || provider}</dd></div>
-          <div><dt>{t("agents.new.modelLabel")}</dt><dd>{model || <span className="muted">{t("agents.new.modelPlaceholder")}</span>}</dd></div>
+          <div><dt>{t("agents.new.modelLabel")}</dt><dd>{model || <span className="muted">{t("agents.wizard.modelRequired")}</span>}</dd></div>
         </dl>
       </div>}
     </section>

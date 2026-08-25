@@ -1054,3 +1054,9 @@ input:focus, textarea:focus, select:focus { border-color: #3b8ca0; box-shadow: 0
 .sk-panel.slim { min-height: 92px; }
 @keyframes sk-shimmer { from { background-position: 100% 50%; } to { background-position: 0 50%; } }
 @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+.field-block { display: flex; flex-direction: column; gap: 12px; }
+.model-group { display: flex; flex-direction: column; gap: 8px; }
+.wizard-advanced { padding: 14px 16px; border: 1px solid var(--line); border-radius: 9px; background: #fafbfc; gap: 14px; }
+.wizard-advanced summary { font-size: 13px; font-weight: 650; }
+.model-group-head { display: flex; flex-direction: column; gap: 3px; }
+.model-group-head small { color: #687082; font-size: 12px; line-height: 1.4; }
