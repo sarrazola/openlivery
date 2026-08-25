@@ -1284,3 +1284,5 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .portal-nav .lang-switcher { margin-top: 8px; }
 .portal-nav .lang-switcher button { width: auto; min-height: 26px; padding: 0 9px; display: inline-flex; }
 .portal-nav .lang-switcher button.active { color: var(--portal-color, #635bff); background: #eef1f4; border-color: transparent; }
+.portal-nav .lang-switcher { margin-top: auto; }
+.portal-nav .lang-switcher + button { margin-top: 6px; }
