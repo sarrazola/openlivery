@@ -6,6 +6,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 
+# ffmpeg transcodes operator voice notes to ogg/opus, the only format WhatsApp
+# plays as a voice message (browsers record webm/mp4).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --gid 10001 openlivery \
     && useradd --uid 10001 --gid openlivery --create-home openlivery
 

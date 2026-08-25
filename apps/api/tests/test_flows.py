@@ -463,7 +463,7 @@ def test_media_message_uses_image_capability(authenticated_client: TestClient, m
     assert agent["image_enabled"] is True
     conversation = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()
 
-    monkeypatch.setattr(conversations_router, "describe_image", AsyncMock(return_value="a red pepperoni pizza"))
+    monkeypatch.setattr(whatsapp_inbound_service, "describe_image", AsyncMock(return_value="a red pepperoni pizza"))
     fake_completion = AsyncMock(return_value=ai_service.Completion(text="Looks delicious!"))
     monkeypatch.setattr(conversations_router, "run_completion", fake_completion)
     sent = client.post(
@@ -474,12 +474,20 @@ def test_media_message_uses_image_capability(authenticated_client: TestClient, m
     assert sent.status_code == 200, sent.text
     messages = sent.json()["messages"]
     assert [message["role"] for message in messages] == ["user", "assistant"]
-    assert "a red pepperoni pizza" in messages[0]["content"]
+    # The chat shows the caption plus the original file; the description only goes to the LLM.
+    assert messages[0]["content"] == "What is this?"
+    attachments = messages[0]["attachments"]
+    assert len(attachments) == 1 and attachments[0]["kind"] == "image" and attachments[0]["mime"] == "image/jpeg"
     prompt_messages = fake_completion.await_args.args[4]
     assert any("a red pepperoni pizza" in message["content"] for message in prompt_messages)
 
+    served = client.get(f"/api/conversations/{conversation['id']}/attachments/{attachments[0]['id']}")
+    assert served.status_code == 200
+    assert served.content == b"\xff\xd8fakejpeg"
+    assert served.headers["content-type"].startswith("image/jpeg")
 
-def test_media_message_rejected_when_capability_disabled(authenticated_client: TestClient):
+
+def test_media_message_without_capability_uses_placeholder(authenticated_client: TestClient, monkeypatch):
     client = authenticated_client
     customer = client.post(
         "/api/clients",
@@ -491,12 +499,19 @@ def test_media_message_rejected_when_capability_disabled(authenticated_client: T
         json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Bot", "description": "", "instructions": "", "personality": "", "is_active": True},
     ).json()
     conversation = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()
-    rejected = client.post(
+    fake_completion = AsyncMock(return_value=ai_service.Completion(text="Got it"))
+    monkeypatch.setattr(conversations_router, "run_completion", fake_completion)
+    sent = client.post(
         f"/api/conversations/{conversation['id']}/media",
         files={"file": ("photo.jpg", b"\xff\xd8fakejpeg", "image/jpeg")},
     )
-    assert rejected.status_code == 400
-    assert "Image recognition is disabled" in rejected.json()["detail"]
+    # The attachment is stored and shown either way; the LLM just gets a placeholder.
+    assert sent.status_code == 200, sent.text
+    messages = sent.json()["messages"]
+    assert messages[0]["content"] == ""
+    assert messages[0]["attachments"][0]["kind"] == "image"
+    prompt_messages = fake_completion.await_args.args[4]
+    assert any("[El cliente envió una imagen]" in message["content"] for message in prompt_messages)
 
 
 def test_agent_without_model_explains_configuration(authenticated_client: TestClient):
@@ -627,7 +642,12 @@ def test_whatsapp_inbound_image_uses_capability(authenticated_client: TestClient
     assert inbound.json()["reply"] == "Here are the dishes!"
     conversation_id = inbound.json()["conversation_id"]
     stored = client.get(f"/api/conversations/{conversation_id}").json()
-    assert "a photo of the menu" in stored["messages"][0]["content"]
+    # No caption: the visible message is just the attachment; the description feeds the LLM.
+    assert stored["messages"][0]["content"] == ""
+    attachments = stored["messages"][0]["attachments"]
+    assert len(attachments) == 1 and attachments[0]["kind"] == "image"
+    served = client.get(f"/api/conversations/{conversation_id}/attachments/{attachments[0]['id']}")
+    assert served.status_code == 200 and served.content == b"fake-image-bytes"
     prompt_messages = fake_completion.await_args.args[4]
     assert any("a photo of the menu" in message["content"] for message in prompt_messages)
 

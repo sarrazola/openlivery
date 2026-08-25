@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from ..models import Agent, Conversation, Message, now_utc
+from .attachments import llm_text, store_attachment
 from .knowledge import build_system_prompt, retrieve_knowledge
 from .media import describe_image, transcribe_audio
 from .providers import resolve_agent_credentials, resolve_provider_credentials
@@ -42,23 +43,31 @@ class InboundResult:
 
 
 def _media_placeholder(kind: str) -> str:
-    return "[El cliente envió una imagen]" if kind == "image" else "[El cliente envió una nota de voz]"
+    if kind == "image":
+        return "[El cliente envió una imagen]"
+    if kind == "audio":
+        return "[El cliente envió una nota de voz]"
+    if kind == "video":
+        return "[El cliente envió un video]"
+    return "[El cliente envió un archivo]"
 
 
-async def _inbound_content(db: Session, agent: Agent, inbound: InboundMessage) -> str:
-    """Resolve the effective user text, transcribing/describing media when the
-    agent's capabilities allow it. Best-effort: falls back to a placeholder."""
+async def resolve_inbound_content(db: Session, agent: Agent, inbound: InboundMessage) -> tuple[str, str]:
+    """Resolve what to store for the message as ``(display, llm)``: the visible
+    chat text (the caption — the media file itself is kept as an attachment)
+    and the text the LLM sees, transcribing/describing media when the agent's
+    capabilities allow it. Best-effort: the LLM text falls back to a placeholder."""
     text = (inbound.text or "").strip()
     if not inbound.media_kind:
-        return text
+        return text, text
     if not inbound.media_bytes:
-        return text or _media_placeholder(inbound.media_kind)
+        return text, text or _media_placeholder(inbound.media_kind)
     enabled = (inbound.media_kind == "image" and agent.image_enabled) or (
         inbound.media_kind == "audio" and agent.audio_enabled
     )
     credentials = resolve_provider_credentials(db, agent.agency_id, "openai")
     if not enabled or not credentials:
-        return text or _media_placeholder(inbound.media_kind)
+        return text, text or _media_placeholder(inbound.media_kind)
     try:
         data = inbound.media_bytes
         base_url, api_key = credentials
@@ -69,12 +78,12 @@ async def _inbound_content(db: Session, agent: Agent, inbound: InboundMessage) -
                 + (f" El cliente escribió: {text}" if text else "")
             )
             description = await describe_image(base_url, api_key, model, data, inbound.media_mime or "image/jpeg", instruction)
-            return (f"{text}\n\n" if text else "") + f"[Imagen recibida] {description}"
+            return text, (f"{text}\n\n" if text else "") + f"[Imagen recibida] {description}"
         model = agent.audio_model.strip() or "whisper-1"
         transcript = await transcribe_audio(base_url, api_key, model, data, "audio.ogg", inbound.media_mime or "audio/ogg")
-        return (f"{text}\n\n" if text else "") + (transcript or _media_placeholder("audio"))
+        return text, (f"{text}\n\n" if text else "") + (transcript or _media_placeholder("audio"))
     except (HTTPException, ValueError):
-        return text or _media_placeholder(inbound.media_kind)
+        return text, text or _media_placeholder(inbound.media_kind)
 
 
 async def process_inbound(
@@ -129,17 +138,27 @@ async def process_inbound(
     elif inbound.sender_name:
         conversation.contact_name = inbound.sender_name
 
-    content = await _inbound_content(db, channel.agent, inbound)
+    display_content, llm_content = await resolve_inbound_content(db, channel.agent, inbound)
     visitor_message = Message(
         conversation_id=conversation.id,
         role="user",
-        content=content,
+        content=display_content,
+        llm_content=llm_content if llm_content != display_content else None,
         sender_type="visitor",
         sender_name=inbound.sender_name or "WhatsApp contact",
         external_message_id=inbound.external_message_id,
     )
     conversation.updated_at = now_utc()
     db.add(visitor_message)
+    if inbound.media_kind and inbound.media_bytes:
+        db.flush()
+        store_attachment(
+            db,
+            visitor_message,
+            data=inbound.media_bytes,
+            mime=inbound.media_mime or ("image/jpeg" if inbound.media_kind == "image" else "audio/ogg"),
+            kind=inbound.media_kind,
+        )
     db.commit()
     if conversation.mode == "human":
         return InboundResult(accepted=True, conversation_id=conversation.id, mode="human")
@@ -152,7 +171,7 @@ async def process_inbound(
         db.commit()
         return InboundResult(accepted=True, conversation_id=conversation.id, mode="ai")
 
-    knowledge = await retrieve_knowledge(db, agent, content)
+    knowledge = await retrieve_knowledge(db, agent, llm_content)
     db.refresh(conversation)
     history = db.scalars(
         select(Message)
@@ -163,7 +182,7 @@ async def process_inbound(
     history = list(reversed(history))
     messages = [
         {"role": "system", "content": build_system_prompt(agent, knowledge.text)},
-        *[{"role": item.role, "content": item.content} for item in history],
+        *[{"role": item.role, "content": llm_text(item)} for item in history],
     ]
     base_url, api_key = credentials
     try:

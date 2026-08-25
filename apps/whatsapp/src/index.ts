@@ -18,18 +18,21 @@ function json(response: ServerResponse, status: number, body?: unknown): void {
   response.end(body === undefined ? undefined : JSON.stringify(body));
 }
 
-async function body(request: IncomingMessage): Promise<Record<string, unknown>> {
+async function body(request: IncomingMessage, maxBytes = 100_000): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let length = 0;
   for await (const chunk of request) {
     const part = Buffer.from(chunk);
     length += part.length;
-    if (length > 100_000) throw new Error("Solicitud demasiado grande");
+    if (length > maxBytes) throw new Error("Request too large");
     chunks.push(part);
   }
   if (!chunks.length) return {};
   return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
 }
+
+// Outbound media arrives base64-encoded; the backend caps files at 20 MB.
+const MAX_SEND_BYTES = 30_000_000;
 
 const server = createServer(async (request, response) => {
   try {
@@ -49,11 +52,22 @@ const server = createServer(async (request, response) => {
       await manager.disconnectChannel(channelId);
       return json(response, 200, { ok: true });
     }
-    const payload = await body(request);
-    if (typeof payload.remote_jid !== "string" || typeof payload.text !== "string" || !payload.text.trim()) {
+    const payload = await body(request, MAX_SEND_BYTES);
+    const text = typeof payload.text === "string" ? payload.text.trim() : "";
+    const hasMedia = typeof payload.media_base64 === "string" && payload.media_base64.length > 0;
+    if (typeof payload.remote_jid !== "string" || (!text && !hasMedia)) {
       return json(response, 400, { error: "Invalid destination or message" });
     }
-    const externalMessageId = await manager.sendMessage(channelId, payload.remote_jid, payload.text.trim());
+    const media = hasMedia
+      ? {
+          kind: (payload.media_kind === "image" || payload.media_kind === "audio" || payload.media_kind === "video" ? payload.media_kind : "file") as "image" | "audio" | "video" | "file",
+          base64: payload.media_base64 as string,
+          mime: typeof payload.media_mime === "string" && payload.media_mime ? payload.media_mime : "application/octet-stream",
+          filename: typeof payload.filename === "string" ? payload.filename : null,
+          seconds: typeof payload.media_seconds === "number" && payload.media_seconds > 0 ? Math.round(payload.media_seconds) : null,
+        }
+      : undefined;
+    const externalMessageId = await manager.sendMessage(channelId, payload.remote_jid, text, media);
     return json(response, 200, { external_message_id: externalMessageId });
   } catch (error) {
     console.error("[WhatsApp] Operation error:", (error as Error).message);

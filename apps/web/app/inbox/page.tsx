@@ -1,14 +1,17 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { BadgeCheck, FlaskConical, Globe, Inbox as InboxIcon, LoaderCircle, MessageCircle, Search, UserRound } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BadgeCheck, FlaskConical, Globe, Images, Inbox as InboxIcon, LoaderCircle, MessageCircle, Search, UserRound } from "lucide-react";
 import { PageHead } from "@/components/ui";
+import { AttachButton, MessageAttachments, PendingAttachment, RecordButton, useFileDrop, type GalleryImage } from "@/components/attachments";
+import { MediaPanel } from "@/components/media-panel";
+import { RichText } from "@/components/rich-text";
 import { ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
-import { api, messageFrom } from "@/lib/api";
+import { api, apiUrl, messageFrom } from "@/lib/api";
 import { formatWhen, isNearBottom, isSameOpenThread } from "@/lib/datetime";
 import { useLanguage, useT } from "@/lib/i18n";
-import type { Agent, Conversation, ConversationInbox } from "@/types";
+import type { Agent, Attachment, Conversation, ConversationInbox } from "@/types";
 
 const LIMIT = 30;
 const POLL_MS = 8000;
@@ -30,6 +33,8 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [mediaOpen, setMediaOpen] = useState(false);
 
   useEffect(() => { api<Agent[]>("/agents").then(setAgents).catch(() => {}); }, []);
   useEffect(() => { const id = setTimeout(() => setSearch(searchInput), 300); return () => clearTimeout(id); }, [searchInput]);
@@ -152,6 +157,12 @@ export default function InboxPage() {
   async function reply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected) return;
+    if (pendingFile) {
+      const file = pendingFile;
+      setPendingFile(null);
+      await sendAttachment(file);
+      return;
+    }
     const form = event.currentTarget;
     const data = new FormData(form);
     setBusy(true);
@@ -161,6 +172,33 @@ export default function InboxPage() {
       loadFirst({ silent: true });
     } catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); composerRef.current?.focus(); }
   }
+
+  async function sendAttachment(file?: File) {
+    if (!file || !selected || selected.mode !== "human" || busy) return;
+    setBusy(true);
+    const caption = (composerRef.current?.value || "").trim();
+    try {
+      const data = new FormData();
+      data.append("file", file);
+      if (caption) data.append("caption", caption);
+      setSelected(await api<Conversation>(`/conversations/${selected.id}/reply-media`, { method: "POST", body: data }));
+      if (composerRef.current) composerRef.current.value = "";
+      loadFirst({ silent: true });
+    } catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); composerRef.current?.focus(); }
+  }
+  const { dropProps, overlay } = useFileDrop(setPendingFile, { enabled: Boolean(selected) && selected?.mode === "human" && !busy, label: t("chat.dropToSend") });
+
+  const selectedId = selected?.id;
+  const attachmentUrl = useCallback(
+    (attachment: Attachment) => apiUrl(`/conversations/${selectedId}/attachments/${attachment.id}`),
+    [selectedId],
+  );
+  const gallery: GalleryImage[] = useMemo(
+    () => (selected?.messages ?? []).flatMap((message) =>
+      (message.attachments ?? []).filter((a) => a.kind === "image").map((a) => ({ id: a.id, url: attachmentUrl(a), name: a.filename }))
+    ),
+    [selected, attachmentUrl],
+  );
 
   return <div className="page">
     <PageHead eyebrow={t("inbox.eyebrow")} title={t("inbox.title")} description={t("inbox.description")} />
@@ -199,25 +237,34 @@ export default function InboxPage() {
           </> : <div className="no-conversations">{t("inbox.empty")}</div>}
       </aside>
 
-      <section className="inbox-thread">
+      <section className="inbox-thread drop-target" {...dropProps}>
+        {overlay}
         {!selected ? <div className="empty-state"><div className="empty-icon"><InboxIcon /></div><h3>{t("inbox.empty")}</h3><p>{t("inbox.selectPrompt")}</p></div>
           : <>
             <header>
               <div><strong>{selected.contact_name || selected.title}</strong><small>{channelLabel(selected.channel)}</small></div>
-              <button className={`mode-toggle ${selected.mode}`} onClick={() => toggleMode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("inbox.takeControl") : t("inbox.returnToAi")}</button>
+              <div className="thread-actions">
+                <button className="icon-button" onClick={() => setMediaOpen(true)} title={t("chat.sharedContent")} aria-label={t("chat.sharedContent")}><Images size={16} /></button>
+                <button className={`mode-toggle ${selected.mode}`} onClick={() => toggleMode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("inbox.takeControl") : t("inbox.returnToAi")}</button>
+              </div>
             </header>
             <div className="inbox-messages" ref={messagesRef}>
               {selected.messages?.map((message) => (
                 <div key={message.id} className={`inbox-message ${message.role}`}>
                   <small>{message.sender_name || (message.role === "assistant" ? t("inbox.senderAgent") : t("inbox.senderVisitor"))} · {formatWhen(message.created_at, lang)}</small>
-                  <p>{message.content}</p>
+                  <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} />
+                  {message.content && <p><RichText text={message.content} /></p>}
                 </div>
               ))}
             </div>
+            {pendingFile && <PendingAttachment file={pendingFile} onCancel={() => setPendingFile(null)} />}
             <form className="inbox-composer" onSubmit={reply}>
-              <input ref={composerRef} name="content" placeholder={selected.mode === "human" ? t("inbox.composerHuman") : t("inbox.composerLocked")} disabled={selected.mode !== "human"} required />
+              <AttachButton onFile={setPendingFile} disabled={selected.mode !== "human" || busy} title={t("chat.attachFile")} />
+              <RecordButton onRecorded={sendAttachment} onError={() => toast.error(t("chat.micDenied"))} disabled={selected.mode !== "human" || busy} title={t("chat.recordAudio")} titleStop={t("chat.stopRecording")} />
+              <input ref={composerRef} name="content" placeholder={selected.mode === "human" ? t("inbox.composerHuman") : t("inbox.composerLocked")} disabled={selected.mode !== "human"} required={!pendingFile} />
               <button disabled={selected.mode !== "human" || busy}>{t("inbox.send")}</button>
             </form>
+            <MediaPanel open={mediaOpen} onClose={() => setMediaOpen(false)} messages={selected.messages ?? []} urlFor={attachmentUrl} />
           </>}
       </section>
     </div>

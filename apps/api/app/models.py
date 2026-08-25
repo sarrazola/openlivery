@@ -357,6 +357,10 @@ class Message(Base):
     conversation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(30))
     content: Mapped[str] = mapped_column(Text)
+    # What the LLM sees for this message when it differs from the displayed
+    # content (e.g. an image description or audio transcript for a media
+    # message whose visible content is just the caption).
+    llm_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     sources: Mapped[list] = mapped_column(JSON, default=list)
     # Tool usage behind an assistant reply: [{name, arguments, result_preview, is_error}].
     tool_calls: Mapped[list | None] = mapped_column(JSON, nullable=True)
@@ -366,3 +370,27 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+    attachments: Mapped[list["MessageAttachment"]] = relationship(
+        back_populates="message", cascade="all, delete-orphan", order_by="MessageAttachment.created_at"
+    )
+
+
+class MessageAttachment(Base):
+    """Original media file behind a chat message (image, voice note, document).
+
+    Bytes live in Postgres like KnowledgeDocument/Agency.logo_data; the LLM
+    never reads this table — it gets the text resolved into Message.llm_content.
+    """
+
+    __tablename__ = "message_attachments"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # image | audio | file
+    mime: Mapped[str] = mapped_column(String(100))
+    filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+    message: Mapped[Message] = relationship(back_populates="attachments")

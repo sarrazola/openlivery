@@ -183,11 +183,77 @@ export async function disconnectChannel(channelId: string): Promise<void> {
   await backend(`/channels/${channelId}/auth`, { method: "DELETE" });
 }
 
-export async function sendMessage(channelId: string, remoteJid: string, text: string): Promise<string> {
+export type OutboundMedia = {
+  kind: "image" | "audio" | "video" | "file";
+  base64: string;
+  mime: string;
+  filename?: string | null;
+  seconds?: number | null;
+};
+
+// Flat placeholder waveform: iOS WhatsApp may not render a voice note without one.
+const VOICE_WAVEFORM = new Uint8Array(64).fill(24);
+
+export async function sendMessage(
+  channelId: string,
+  remoteJid: string,
+  text: string,
+  media?: OutboundMedia,
+): Promise<string> {
   const runtime = runtimes.get(channelId);
   if (!runtime || runtime.stopRequested) throw new Error("WhatsApp is not connected")
-  const sent = await runtime.socket.sendMessage(remoteJid, { text });
+  let content: Parameters<WASocket["sendMessage"]>[1] = { text };
+  if (media) {
+    const buffer = Buffer.from(media.base64, "base64");
+    if (media.kind === "image") {
+      content = { image: buffer, mimetype: media.mime, ...(text ? { caption: text } : {}) };
+    } else if (media.kind === "video") {
+      content = { video: buffer, mimetype: media.mime, ...(text ? { caption: text } : {}) };
+    } else if (media.kind === "audio") {
+      const isVoice = media.mime.includes("ogg");
+      content = {
+        audio: buffer,
+        // iOS requires this exact mimetype to play a voice note.
+        mimetype: isVoice ? "audio/ogg; codecs=opus" : media.mime,
+        ptt: isVoice,
+        ...(media.seconds ? { seconds: media.seconds } : {}),
+        ...(isVoice ? { waveform: VOICE_WAVEFORM } : {}),
+      };
+    } else {
+      content = {
+        document: buffer,
+        mimetype: media.mime,
+        fileName: media.filename || "file",
+        ...(text ? { caption: text } : {}),
+      };
+    }
+  }
+  if (media) {
+    console.log(
+      `[WhatsApp ${channelId}] sending ${media.kind}: mime=${media.mime} bytes=${Buffer.from(media.base64, "base64").length} seconds=${media.seconds ?? "-"}`,
+    );
+  }
+  const sent = await runtime.socket.sendMessage(remoteJid, content);
   if (!sent?.key.id) throw new Error("WhatsApp did not confirm the send")
+  // Self-check for voice notes: fetch our own upload back from the WhatsApp CDN
+  // the same way a recipient would, so delivery problems show up in the logs.
+  if (media?.kind === "audio" && sent.message) {
+    try {
+      const roundTrip = (await downloadMediaMessage(
+        sent,
+        "buffer",
+        {},
+        { logger, reuploadRequest: runtime.socket.updateMediaMessage },
+      )) as Buffer;
+      console.log(`[WhatsApp ${channelId}] voice self-check OK: ${roundTrip.length} bytes downloadable`);
+    } catch (error) {
+      console.error(`[WhatsApp ${channelId}] voice self-check FAILED:`, (error as Error).message);
+    }
+  }
+  // Audio messages have no caption on WhatsApp; deliver it as a follow-up text.
+  if (media?.kind === "audio" && text) {
+    await runtime.socket.sendMessage(remoteJid, { text }).catch(() => undefined);
+  }
   return sent.key.id;
 }
 

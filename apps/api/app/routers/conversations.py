@@ -15,24 +15,33 @@ from ..schemas import (
     ConversationOut,
     SendMessageRequest,
 )
+from ..services.attachments import (
+    MAX_ATTACHMENT_BYTES,
+    attachment_kind,
+    attachment_response,
+    conversation_attachment,
+    llm_text,
+    store_attachment,
+)
 from ..services.tools import run_completion
 from ..services.knowledge import build_system_prompt, retrieve_knowledge
-from ..services.media import describe_image, transcribe_audio
-from ..services.providers import resolve_agent_credentials, resolve_provider_credentials
+from ..services.operator_media import store_operator_media_reply
+from ..services.providers import resolve_agent_credentials
 from ..services.usage import record_usage
 from ..services.whatsapp import send_channel_message
+from ..services.whatsapp_inbound import InboundMessage, resolve_inbound_content
 
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
 
-MAX_MEDIA_BYTES = 20 * 1024 * 1024
+MAX_MEDIA_BYTES = MAX_ATTACHMENT_BYTES
 
 
 def _conversation(db: Session, user: User, conversation_id: uuid.UUID) -> Conversation:
     conversation = db.scalar(
         select(Conversation)
         .options(
-            selectinload(Conversation.messages),
+            selectinload(Conversation.messages).selectinload(Message.attachments),
             joinedload(Conversation.agent).joinedload(Agent.client),
         )
         .execution_options(populate_existing=True)
@@ -191,7 +200,7 @@ async def _generate_reply(
     knowledge = await retrieve_knowledge(db, agent, query)
     refreshed = _conversation(db, user, conversation.id)
     recent = refreshed.messages[-agent.memory_limit:] if agent.memory_limit else []
-    history = [{"role": item.role, "content": item.content} for item in recent]
+    history = [{"role": item.role, "content": llm_text(item)} for item in recent]
     messages = [{"role": "system", "content": build_system_prompt(agent, knowledge.text)}, *history]
     base_url, api_key = credentials
     completion = await run_completion(
@@ -244,46 +253,58 @@ async def send_media_message(
     conversation = _conversation(db, user, conversation_id)
     agent, credentials = _ready_agent(db, conversation)
 
-    content_type = (file.content_type or "").lower()
-    is_image = content_type.startswith("image/")
-    is_audio = content_type.startswith("audio/") or content_type.startswith("video/ogg")
-    if not is_image and not is_audio:
-        raise HTTPException(status_code=400, detail="Only image or audio files are supported")
-    if is_image and not agent.image_enabled:
-        raise HTTPException(status_code=400, detail="Image recognition is disabled for this agent")
-    if is_audio and not agent.audio_enabled:
-        raise HTTPException(status_code=400, detail="Audio recognition is disabled for this agent")
-
-    # Transcription and vision run on the agency's OpenAI key.
-    media_credentials = resolve_provider_credentials(db, agent.agency_id, "openai")
-    if not media_credentials:
-        raise HTTPException(status_code=400, detail="Add an OpenAI API key in Settings to process media")
-
+    content_type = (file.content_type or "").lower() or "application/octet-stream"
+    kind = attachment_kind(content_type)
     data = await file.read(MAX_MEDIA_BYTES + 1)
     if len(data) > MAX_MEDIA_BYTES:
         raise HTTPException(status_code=413, detail="The file is too large (20 MB max)")
-    base_url, api_key = media_credentials
+    if not data:
+        raise HTTPException(status_code=400, detail="The file is empty")
     caption = caption.strip()
 
-    if is_image:
-        model = agent.image_model.strip() or agent.model.strip()
-        instruction = (
-            "Describe con detalle el contenido de esta imagen para que un asistente pueda responder al usuario."
-            + (f" El usuario escribió: {caption}" if caption else "")
-        )
-        description = await describe_image(base_url, api_key, model, data, content_type, instruction)
-        content = (f"{caption}\n\n" if caption else "") + f"[Imagen recibida] {description}"
-    else:
-        model = agent.audio_model.strip() or "whisper-1"
-        transcript = await transcribe_audio(base_url, api_key, model, data, file.filename or "audio.ogg", content_type)
-        content = (f"{caption}\n\n" if caption else "") + (transcript or "[Audio sin contenido reconocible]")
+    # Same orchestration as the WhatsApp channels: the chat keeps the original
+    # file as an attachment, the LLM gets a description/transcript (or a
+    # placeholder when the capability is off or no OpenAI key is configured).
+    display_content, llm_content = await resolve_inbound_content(
+        db,
+        agent,
+        InboundMessage(
+            external_message_id="",
+            external_chat_id="",
+            text=caption,
+            media_kind=kind,
+            media_bytes=data,
+            media_mime=content_type,
+        ),
+    )
 
-    if not conversation.messages:
-        conversation.title = (caption or content)[:80]
+    if not conversation.messages and caption:
+        conversation.title = caption[:80]
     conversation.updated_at = now_utc()
-    db.add(Message(conversation_id=conversation.id, role="user", content=content, sender_type="visitor", sender_name="You"))
+    message = Message(
+        conversation_id=conversation.id,
+        role="user",
+        content=display_content,
+        llm_content=llm_content if llm_content != display_content else None,
+        sender_type="visitor",
+        sender_name="You",
+    )
+    db.add(message)
+    db.flush()
+    store_attachment(db, message, data=data, mime=content_type, filename=file.filename, kind=kind)
     db.commit()
-    return await _generate_reply(db, user, conversation, agent, credentials, content)
+    return await _generate_reply(db, user, conversation, agent, credentials, llm_content)
+
+
+@router.get("/{conversation_id}/attachments/{attachment_id}")
+def get_attachment(
+    conversation_id: uuid.UUID,
+    attachment_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    conversation = _conversation(db, user, conversation_id)
+    return attachment_response(conversation_attachment(db, conversation, attachment_id))
 
 
 @router.patch("/{conversation_id}/mode", response_model=ConversationDetail)
@@ -323,4 +344,19 @@ async def reply_as_human(
     )
     conversation.updated_at = now_utc()
     db.commit()
+    return _conversation(db, user, conversation_id)
+
+
+@router.post("/{conversation_id}/reply-media", response_model=ConversationDetail)
+async def reply_media_as_human(
+    conversation_id: uuid.UUID,
+    file: UploadFile = File(...),
+    caption: str = Form(default=""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    conversation = _conversation(db, user, conversation_id)
+    if conversation.mode != "human":
+        raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
+    await store_operator_media_reply(db, conversation, file=file, caption=caption, sender_name=user.name)
     return _conversation(db, user, conversation_id)

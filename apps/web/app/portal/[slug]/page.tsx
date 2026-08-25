@@ -1,13 +1,16 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { Bot, Building2, Inbox, LoaderCircle, LogOut, MessageSquareText, Send, ShieldCheck, UserRound } from "lucide-react";
+import { BadgeCheck, Bot, Building2, FlaskConical, Globe, Images, Inbox, LoaderCircle, LogOut, MessageCircle, MessageSquareText, Search, Send, ShieldCheck, UserRound } from "lucide-react";
+import { AttachButton, MessageAttachments, PendingAttachment, RecordButton, useFileDrop, type GalleryImage } from "@/components/attachments";
+import { MediaPanel } from "@/components/media-panel";
+import { RichText } from "@/components/rich-text";
 import { Alert, EmptyState } from "@/components/ui";
-import { api, ApiError, messageFrom } from "@/lib/api";
+import { api, ApiError, apiUrl, messageFrom } from "@/lib/api";
 import { formatWhen, isNearBottom, isSameOpenThread } from "@/lib/datetime";
 import { useLanguage, useT } from "@/lib/i18n";
-import type { Conversation, PortalPublic } from "@/types";
+import type { Attachment, Conversation, PortalPublic } from "@/types";
 
 const POLL_MS = 8000;
 
@@ -36,7 +39,30 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [tab, setTab] = useState<"all" | "human" | "ai">("all");
+  const [search, setSearch] = useState("");
+  const [mediaOpen, setMediaOpen] = useState(false);
   const selectedIdRef = useRef<string | null>(null);
+
+  const channelLabel = (value: string) => {
+    if (value === "playground") return t("inbox.channelPlayground");
+    if (value === "whatsapp") return t("inbox.channelWhatsapp");
+    if (value === "whatsapp_cloud") return t("inbox.channelWhatsappCloud");
+    if (value === "widget") return t("inbox.channelWidget");
+    return value;
+  };
+  const channelIcon = (value: string) => {
+    if (value === "whatsapp") return <MessageCircle size={10} />;
+    if (value === "whatsapp_cloud") return <BadgeCheck size={10} />;
+    if (value === "widget") return <Globe size={10} />;
+    if (value === "playground") return <FlaskConical size={10} />;
+    return <MessageCircle size={10} />;
+  };
+  const visible = items.filter((item) =>
+    (tab === "all" || item.mode === tab)
+    && (!search.trim() || `${item.title} ${item.preview || ""}`.toLowerCase().includes(search.trim().toLowerCase()))
+  );
   const messagesRef = useRef<HTMLDivElement>(null);
   useEffect(() => { selectedIdRef.current = selected?.id ?? null; }, [selected]);
   const wasNearBottomRef = useRef(true);
@@ -74,6 +100,42 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
     setSelected(await api<Conversation>(`/portal/${slug}/conversations/${item.id}`));
   }
   async function setMode(mode: "ai" | "human") { if (!selected) return; setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/mode`, { method: "PATCH", body: JSON.stringify({ mode }) })); await refresh(); }
-  async function reply(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected) return; const form = event.currentTarget; const data = new FormData(form); setBusy(true); setError(""); try { setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply`, { method: "POST", body: JSON.stringify({ content: data.get("content") }) })); form.reset(); await refresh(); } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); } }
-  return <main className="portal-app" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><aside className="portal-nav"><div className="portal-brand">{portal.agency_logo_url ? <img src={`${portal.agency_logo_url}`} alt="Logo" /> : <span>{portal.agency_name.slice(0, 1)}</span>}<strong>{portal.client_name}</strong></div><nav><a className="active"><Inbox size={18} /> {t("portal.inbox.nav.inbox")}</a><a className="disabled"><Bot size={18} /> {t("portal.inbox.nav.agents")}</a></nav><button onClick={logout}><LogOut size={17} /> {t("portal.inbox.nav.logout")}</button></aside><section className="portal-main"><header><div><small>{t("portal.inbox.header.eyebrow")}</small><h1>{portal.portal_title}</h1></div><span>{t("portal.inbox.header.conversationsCount", { count: items.length })}</span></header>{items.length ? <div className="portal-inbox"><aside>{items.map((item) => <button key={item.id} onClick={() => choose(item)} className={selected?.id === item.id ? "active" : ""}><span className="entity-avatar tiny"><UserRound size={15} /></span><span><span className="portal-inbox-row-top"><strong>{item.title}</strong><time>{formatWhen(item.updated_at, lang)}</time></span><small className="portal-inbox-preview">{item.preview || t("portal.inbox.list.noMessages")}</small><small>{item.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</small></span></button>)}</aside><section>{selected && <><header><div><strong>{selected.title}</strong><small>{t("portal.inbox.conversation.channel", { channel: selected.channel })}</small></div><button className={`mode-toggle ${selected.mode}`} onClick={() => setMode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("portal.inbox.conversation.takeControl") : t("portal.inbox.conversation.returnToAi")}</button></header><div className="portal-messages" ref={messagesRef}>{selected.messages?.map((message) => <article key={message.id} className={message.role}><small>{message.sender_name || (message.role === "assistant" ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor"))} · {formatWhen(message.created_at, lang)}</small><p>{message.content}</p></article>)}</div>{error && <Alert>{error}</Alert>}<form onSubmit={reply} className="portal-composer"><input name="content" required disabled={selected.mode !== "human" || busy} placeholder={selected.mode === "human" ? t("portal.inbox.conversation.replyPlaceholder") : t("portal.inbox.conversation.takeControlToReply")} /><button disabled={selected.mode !== "human" || busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}</button></form></>}</section></div> : <EmptyState icon={<Inbox />} title={t("portal.inbox.empty.title")} description={t("portal.inbox.empty.description")} />}</section></main>;
+  async function reply(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected) return; if (pendingFile) { const file = pendingFile; setPendingFile(null); await sendAttachment(file); return; } const form = event.currentTarget; const data = new FormData(form); setBusy(true); setError(""); try { setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply`, { method: "POST", body: JSON.stringify({ content: data.get("content") }) })); form.reset(); await refresh(); } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); } }
+  const replyInputRef = useRef<HTMLInputElement>(null);
+  async function sendAttachment(file?: File) {
+    if (!file || !selected || selected.mode !== "human" || busy) return;
+    setBusy(true); setError("");
+    const caption = (replyInputRef.current?.value || "").trim();
+    try {
+      const data = new FormData();
+      data.append("file", file);
+      if (caption) data.append("caption", caption);
+      setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply-media`, { method: "POST", body: data }));
+      if (replyInputRef.current) replyInputRef.current.value = "";
+      await refresh();
+    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+  }
+  const { dropProps, overlay } = useFileDrop(setPendingFile, { enabled: Boolean(selected) && selected?.mode === "human" && !busy, label: t("chat.dropToSend") });
+
+  const selectedId = selected?.id;
+  const attachmentUrl = useCallback(
+    (attachment: Attachment) => apiUrl(`/portal/${slug}/conversations/${selectedId}/attachments/${attachment.id}`),
+    [slug, selectedId],
+  );
+  const gallery: GalleryImage[] = useMemo(
+    () => (selected?.messages ?? []).flatMap((message) =>
+      (message.attachments ?? []).filter((a) => a.kind === "image").map((a) => ({ id: a.id, url: attachmentUrl(a), name: a.filename }))
+    ),
+    [selected, attachmentUrl],
+  );
+  return <main className="portal-app" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><aside className="portal-nav"><div className="portal-brand">{portal.agency_logo_url ? <img src={`${portal.agency_logo_url}`} alt="Logo" /> : <span>{portal.agency_name.slice(0, 1)}</span>}<strong>{portal.client_name}</strong></div><nav><a className="active"><Inbox size={18} /> {t("portal.inbox.nav.inbox")}</a><a className="disabled"><Bot size={18} /> {t("portal.inbox.nav.agents")}</a></nav><button onClick={logout}><LogOut size={17} /> {t("portal.inbox.nav.logout")}</button></aside><section className="portal-main"><header><div><small>{t("portal.inbox.header.eyebrow")}</small><h1>{portal.portal_title}</h1></div><span>{t("portal.inbox.header.conversationsCount", { count: items.length })}</span></header>{items.length ? <div className="portal-inbox"><aside>
+      <div className="inbox-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("inbox.searchPlaceholder")} /></div>
+      <div className="inbox-tabs">
+        <button className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>{t("inbox.tabAll")}</button>
+        <button className={tab === "human" ? "active" : ""} onClick={() => setTab("human")}>{t("inbox.statusHuman")}</button>
+        <button className={tab === "ai" ? "active" : ""} onClick={() => setTab("ai")}>{t("inbox.statusAi")}</button>
+      </div>
+      {visible.map((item) => <button key={item.id} onClick={() => choose(item)} className={selected?.id === item.id ? "active" : ""}><span className="entity-avatar tiny"><UserRound size={15} /></span><span><span className="portal-inbox-row-top"><strong>{item.title}</strong><time>{formatWhen(item.updated_at, lang)}</time></span><small className="portal-inbox-preview">{item.preview || t("portal.inbox.list.noMessages")}</small><small className="inbox-row-meta"><span className={`channel-dot ${item.channel}`}>{channelIcon(item.channel)}</span> {channelLabel(item.channel)} <span className={`mini-badge ${item.mode}`}>{item.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span></small></span></button>)}
+      {!visible.length && <div className="no-conversations">{t("inbox.empty")}</div>}
+    </aside><section className="drop-target" {...dropProps}>{overlay}{selected && <><header><div><strong>{selected.title}</strong><small className="portal-channel-line">{channelIcon(selected.channel)} {channelLabel(selected.channel)} <span className={`mini-badge ${selected.mode}`}>{selected.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span></small></div><div className="thread-actions"><button className="icon-button" onClick={() => setMediaOpen(true)} title={t("chat.sharedContent")} aria-label={t("chat.sharedContent")}><Images size={16} /></button><button className={`mode-toggle ${selected.mode}`} onClick={() => setMode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("portal.inbox.conversation.takeControl") : t("portal.inbox.conversation.returnToAi")}</button></div></header><div className="portal-messages" ref={messagesRef}>{selected.messages?.map((message) => <article key={message.id} className={message.role}><small>{message.sender_name || (message.role === "assistant" ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor"))} · {formatWhen(message.created_at, lang)}</small><MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} />{message.content && <p><RichText text={message.content} /></p>}</article>)}</div>{error && <Alert>{error}</Alert>}{pendingFile && <PendingAttachment file={pendingFile} onCancel={() => setPendingFile(null)} />}<form onSubmit={reply} className="portal-composer"><AttachButton onFile={setPendingFile} disabled={selected.mode !== "human" || busy} title={t("chat.attachFile")} /><RecordButton onRecorded={sendAttachment} onError={() => setError(t("chat.micDenied"))} disabled={selected.mode !== "human" || busy} title={t("chat.recordAudio")} titleStop={t("chat.stopRecording")} /><input ref={replyInputRef} name="content" required={!pendingFile} disabled={selected.mode !== "human" || busy} placeholder={selected.mode === "human" ? t("portal.inbox.conversation.replyPlaceholder") : t("portal.inbox.conversation.takeControlToReply")} /><button disabled={selected.mode !== "human" || busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}</button></form><MediaPanel open={mediaOpen} onClose={() => setMediaOpen(false)} messages={selected.messages ?? []} urlFor={attachmentUrl} /></>}</section></div> : <EmptyState icon={<Inbox />} title={t("portal.inbox.empty.title")} description={t("portal.inbox.empty.description")} />}</section></main>;
 }

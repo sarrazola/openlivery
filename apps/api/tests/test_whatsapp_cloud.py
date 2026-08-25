@@ -279,5 +279,8 @@ def test_webhook_image_uses_capability(authenticated_client: TestClient, monkeyp
     assert _post_signed(client, channel["id"], payload).status_code == 200
     conversation = client.get("/api/conversations").json()[0]
     detail = client.get(f"/api/conversations/{conversation['id']}").json()
-    assert "a photo of the menu" in detail["messages"][0]["content"]
-    assert "What is this?" in detail["messages"][0]["content"]
+    # The chat shows the caption plus the stored file; the description only feeds the LLM.
+    assert detail["messages"][0]["content"] == "What is this?"
+    assert detail["messages"][0]["attachments"][0]["kind"] == "image"
+    prompt_messages = fake_completion.await_args.args[4]
+    assert any("a photo of the menu" in message["content"] for message in prompt_messages)
