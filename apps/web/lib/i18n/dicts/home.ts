@@ -2,7 +2,7 @@
 const en = {
   head: {
     eyebrow: "Agency overview",
-    title: "Good morning 👋",
+    title: "Hello 👋",
     description: "Everything happening with your clients and agents, in one place.",
   },
   nextSteps: {
@@ -58,7 +58,7 @@ const en = {
 const es: typeof en = {
   head: {
     eyebrow: "Resumen de agencia",
-    title: "Buenos días 👋",
+    title: "Hola 👋",
     description: "Todo lo que ocurre con tus clientes y agentes, en un solo lugar.",
   },
   nextSteps: {
