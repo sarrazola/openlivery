@@ -60,14 +60,25 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
   const isBare = isLogin || isPortal || isWidget || isExtraPublic;
 
+  const userId = user?.id;
+
+  // First authenticated render. This is the only moment the shell is allowed to
+  // replace itself with the full-screen loader.
   useEffect(() => {
     if (isBare) { setLoading(false); return; }
-    setLoading(true);
     api<User>("/auth/me")
       .then(setUser)
       .catch(() => router.replace("/login"))
       .finally(() => setLoading(false));
-  }, [isBare, pathname, router]);
+  }, [isBare, router]);
+
+  // Revalidate the session on every navigation, but keep the shell on screen while
+  // doing it: an expired cookie still redirects to the login page, a valid one costs
+  // nothing visible. Depend on the id rather than the object, which is new each time.
+  useEffect(() => {
+    if (isBare || !userId) return;
+    api<User>("/auth/me").then(setUser).catch(() => router.replace("/login"));
+  }, [isBare, pathname, router, userId]);
 
   async function logout() {
     await api("/auth/logout", { method: "POST" });

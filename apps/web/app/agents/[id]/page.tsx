@@ -7,6 +7,7 @@ import { ArrowLeft, AudioLines, Bot, CheckCircle2, Code, Copy, ExternalLink, Fil
 import { api, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { Alert } from "@/components/ui";
+import { FormSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { ChatPlayground } from "@/components/chat-playground";
 import { AgentToolsTab } from "@/components/agent-tools/agent-tools-tab";
@@ -130,7 +131,7 @@ export default function AgentDetailPage() {
     setQaPairs((items) => items.filter((item) => item.id !== pair.id));
   }
 
-  if (!agent) return <div className="page-loading"><LoaderCircle className="spin" /> {t("agents.detail.loading")}</div>;
+  if (!agent) return <div className="page"><FormSkeleton sections={2} /></div>;
   return <div className="page agent-detail-page">
     <Link href="/agents" className="back-link"><ArrowLeft size={16} /> {t("agents.detail.back")}</Link>
     <header className="agent-detail-head"><div className="agent-title-wrap"><span className="agent-avatar xl"><Bot size={29} /></span><div><div className="title-line"><h1>{agent.name}</h1><span className={agent.is_active ? "pill purple" : "pill"}>{agent.is_active ? t("agents.detail.published") : t("agents.detail.unpublished")}</span></div><p>{agent.client.name} · {agent.description || t("agents.detail.noDescription")}</p></div></div><div className="header-actions"><button className={agent.is_active ? "button ghost" : "button primary"} onClick={togglePublish} disabled={busy}>{agent.is_active ? <><PowerOff size={16} /> {t("agents.detail.unpublish")}</> : <><Power size={16} /> {t("agents.detail.publish")}</>}</button><Link href={`/playground`} className="button secondary"><MessageSquareText size={17} /> {t("agents.detail.openPlayground")}</Link></div></header>

@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Eye, EyeOff, ImagePlus, LoaderCircle, Save, ShieldCheck, Trash2 } from "lucide-react";
 import { PageHead } from "@/components/ui";
+import { FormSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { api, messageFrom } from "@/lib/api";
 import { useT, type TranslateFn } from "@/lib/i18n";
@@ -55,7 +56,7 @@ export default function SettingsPage() {
   }
   async function removeKey(provider: string) { await api(`/providers/${provider}`, { method: "DELETE" }); await load(); }
 
-  if (!agency) return <div className="page-loading"><LoaderCircle className="spin" /> {t("settings.index.loading")}</div>;
+  if (!agency) return <div className="page"><PageHead eyebrow={t("settings.index.eyebrow")} title={t("settings.index.title")} description={t("settings.index.description")} /><FormSkeleton sections={2} /></div>;
   return <div className="page"><PageHead eyebrow={t("settings.index.eyebrow")} title={t("settings.index.title")} description={t("settings.index.description")} />
 
     <form className="page-form" onSubmit={saveIdentity}><section className="form-section"><div className="section-copy"><h2>{t("settings.index.identityHeading")}</h2><p>{t("settings.index.identityCopy")}</p></div><div className="form-fields"><div className="logo-editor"><button type="button" className="logo-preview" onClick={() => fileRef.current?.click()}>{agency.logo_url ? <img src={`${agency.logo_url}?v=${logoVersion}`} alt={t("settings.index.logoAlt")} /> : <ImagePlus size={24} />}</button><div><strong>{t("settings.index.logoLabel")}</strong><small>{t("settings.index.logoHint")}</small><div><button type="button" className="text-button" onClick={() => fileRef.current?.click()}>{t("settings.index.change")}</button>{agency.logo_url && <button type="button" className="text-button danger-text" onClick={deleteLogo}><Trash2 size={14} /> {t("settings.index.remove")}</button>}</div></div><input ref={fileRef} hidden type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(e) => uploadLogo(e.target.files?.[0])} /></div><div className="form-grid"><label>{t("settings.index.agencyName")}<input name="name" required defaultValue={agency.name} /></label><label>{t("settings.index.identifier")}<input name="slug" required defaultValue={agency.slug} /></label></div><label>{t("settings.index.brandColor")}<div className="color-input"><input type="color" name="brand_color" defaultValue={agency.brand_color} /><input defaultValue={agency.brand_color} readOnly /></div></label><button className="button primary align-start" disabled={busy}>{busy ? <LoaderCircle size={17} className="spin" /> : <Save size={17} />} {t("settings.index.saveIdentity")}</button></div></section></form>

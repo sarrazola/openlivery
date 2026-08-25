@@ -1037,3 +1037,20 @@ input:focus, textarea:focus, select:focus { border-color: #3b8ca0; box-shadow: 0
 .tool-error-details { margin-top: 4px; display: flex; flex-direction: column; gap: 3px; }
 .tool-error-details small { display: inline-flex; align-items: baseline; gap: 5px; padding: 6px 9px; color: #9b2c2c; background: var(--red-soft); border: 1px solid #f0c3c3; border-radius: 7px; font-size: 11px; line-height: 1.5; word-break: break-word; }
 .tool-error-details small svg { flex: 0 0 auto; align-self: center; }
+
+/* Skeletons. Shown while a section has not loaded yet, so a genuine empty state
+   never flashes before its data arrives. Sized against the real markup above so
+   swapping in the content causes no layout shift. */
+.sk { display: block; border-radius: 6px; background: linear-gradient(90deg, #eef0f5 25%, #f6f7fb 37%, #eef0f5 63%); background-size: 400% 100%; animation: sk-shimmer 1.4s ease infinite; }
+.sk-line { height: 12px; }.sk-line.sm { height: 10px; }.sk-line.lg { height: 18px; }
+.sk-pill { width: 74px; height: 25px; border-radius: 999px; }
+.sk-avatar { width: 34px; height: 34px; flex: 0 0 auto; border-radius: 10px; }
+.sk-stack { display: flex; flex-direction: column; gap: 7px; }
+.sk-row { display: flex; align-items: center; gap: 12px; }
+.sk-rows { display: flex; flex-direction: column; }
+.sk-rows > .sk-row { min-height: 69px; padding: 12px 22px; border-bottom: 1px solid #f0f2f6; }
+.sk-rows > .sk-row:last-child { border: 0; }
+.sk-panel { min-height: 120px; padding: 24px; display: flex; flex-direction: column; justify-content: center; gap: 12px; border-top: 1px solid #eef0f5; }
+.sk-panel.slim { min-height: 92px; }
+@keyframes sk-shimmer { from { background-position: 100% 50%; } to { background-position: 0 50%; } }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }

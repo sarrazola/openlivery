@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Bot, Copy, ExternalLink, Globe2, Inbox, LoaderCircle, MessageCircle, QrCode, Radio, Save, Settings2, ShieldAlert, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { EmptyState, StatusBadge } from "@/components/ui";
+import { FormSkeleton, ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { api, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
@@ -44,7 +45,7 @@ export default function ClientDetailPage() {
     await api(`/clients/${id}`, { method: "DELETE" }); router.push("/clients");
   }
 
-  if (!client) return <div className="page-loading"><LoaderCircle className="spin" /> {t("clients.detail.loading")}</div>;
+  if (!client) return <div className="page"><FormSkeleton sections={2} /></div>;
   const portalUrl = `${typeof window === "undefined" ? "http://localhost:3000" : window.location.origin}/portal/${client.portal_slug}`;
   return <div className="page">
     <Link href="/clients" className="back-link"><ArrowLeft size={17} /> {t("clients.detail.back")}</Link>
@@ -111,10 +112,12 @@ function ClientInbox({ clientId }: { clientId: string }) {
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [busy, setBusy] = useState(false);
   const load = async () => { const rows = await api<Conversation[]>(`/conversations?client_id=${clientId}`); setItems(rows); if (rows[0] && !selected) setSelected(await api<Conversation>(`/conversations/${rows[0].id}`)); };
-  useEffect(() => { load(); }, [clientId]);
+  const [loadedInbox, setLoadedInbox] = useState(false);
+  useEffect(() => { load().catch(() => {}).finally(() => setLoadedInbox(true)); }, [clientId]);
   async function choose(item: Conversation) { setSelected(await api<Conversation>(`/conversations/${item.id}`)); }
   async function mode(next: "ai" | "human") { if (!selected) return; setSelected(await api<Conversation>(`/conversations/${selected.id}/mode`, { method: "PATCH", body: JSON.stringify({ mode: next }) })); await load(); }
   async function reply(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected) return; const form = event.currentTarget; const data = new FormData(form); setBusy(true); try { setSelected(await api<Conversation>(`/conversations/${selected.id}/reply`, { method: "POST", body: JSON.stringify({ content: data.get("content") }) })); form.reset(); await load(); } catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); } }
+  if (!loadedInbox) return <ListRowsSkeleton rows={5} />;
   if (!items.length) return <EmptyState icon={<Inbox />} title={t("clients.detail.inboxEmptyTitle")} description={t("clients.detail.inboxEmptyDescription")} />;
   return <div className="inbox-layout"><aside className="inbox-list"><header><strong>{t("clients.detail.conversations")}</strong><span>{items.length}</span></header>{items.map((item) => <button key={item.id} className={selected?.id === item.id ? "active" : ""} onClick={() => choose(item)}><span className="entity-avatar tiny"><UserRound size={15} /></span><span><strong>{item.title}</strong><small>{item.channel} · {item.mode === "human" ? t("clients.detail.modeHuman") : t("clients.detail.modeAi")}</small></span></button>)}</aside><section className="inbox-thread">{selected && <><header><div><strong>{selected.title}</strong><small>{selected.channel}</small></div><button className={`mode-toggle ${selected.mode}`} onClick={() => mode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("clients.detail.takeControl") : t("clients.detail.returnToAi")}</button></header><div className="inbox-messages">{selected.messages?.map((message) => <div key={message.id} className={`inbox-message ${message.role}`}><small>{message.sender_name || (message.role === "assistant" ? t("clients.detail.senderAgent") : t("clients.detail.senderVisitor"))}</small><p>{message.content}</p></div>)}</div><form className="inbox-composer" onSubmit={reply}><input name="content" placeholder={selected.mode === "human" ? t("clients.detail.composerHuman") : t("clients.detail.composerLocked")} disabled={selected.mode !== "human" || busy} required /><button disabled={selected.mode !== "human" || busy}>{t("clients.detail.send")}</button></form></>}</section></div>;
 }
