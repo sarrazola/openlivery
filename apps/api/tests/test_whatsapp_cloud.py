@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from app.config import get_settings
 from app.routers import whatsapp_cloud as whatsapp_cloud_router
 from app.routers import whatsapp_cloud_webhook as webhook_router
 from app.services import ai as ai_service
@@ -84,7 +85,7 @@ def _setup_channel(client: TestClient, *, image_enabled: bool = False) -> tuple[
     return customer, agent, channel
 
 
-def test_configure_channel_hides_secrets(authenticated_client: TestClient):
+def test_configure_channel_hides_secrets(authenticated_client: TestClient, monkeypatch):
     client = authenticated_client
     customer, agent, channel = _setup_channel(client)
     assert channel["has_access_token"] is True
@@ -107,11 +108,14 @@ def test_configure_channel_hides_secrets(authenticated_client: TestClient):
     assert resaved["phone_number_id"] == "222"
     assert resaved["webhook_verify_token"] == channel["webhook_verify_token"]
 
-    # Another agency cannot see the channel.
-    client.post(
+    # Another agency cannot see the channel. Registration closes after the
+    # first agency, so allow a second one just for this check.
+    monkeypatch.setattr(get_settings(), "allow_multi_agency", True)
+    other = client.post(
         "/api/auth/register",
         json={"agency_name": "Other", "name": "Eve", "email": "eve@other.com", "password": "another-password"},
     )
+    assert other.status_code == 201
     assert client.get(f"/api/whatsapp-cloud/channels/{customer['id']}").status_code == 404
 
 

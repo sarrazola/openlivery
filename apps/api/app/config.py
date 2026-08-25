@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # Rate limiting on public/unauthenticated endpoints (per client IP). Disable
     # only for tests or when a proxy in front already enforces limits.
     rate_limit_enabled: bool = True
+    # A self-hosted instance is single-agency by default: the first registration
+    # creates the owner agency and closes public sign-up (like n8n's owner
+    # setup). Enable only when one deployment must host many agencies.
+    allow_multi_agency: bool = False
     # SSRF guard for agent HTTP tools: URLs resolving to private/loopback
     # addresses are rejected. Enable only on self-hosted deployments that need
     # tools to reach internal services.

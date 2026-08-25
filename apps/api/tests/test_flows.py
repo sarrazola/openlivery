@@ -88,6 +88,48 @@ def test_register_login_logout_and_me(client: TestClient):
     assert client.post("/api/auth/login", json={"email": payload["email"], "password": payload["password"]}).status_code == 200
 
 
+def test_single_agency_instance_closes_registration(client: TestClient):
+    status = client.get("/api/auth/status").json()
+    assert status == {"needs_setup": True, "registration_open": True}
+
+    first = client.post(
+        "/api/auth/register",
+        json={"agency_name": "North Studio", "name": "Laura", "email": "laura@norte.com", "password": "very-secure-key"},
+    )
+    assert first.status_code == 201
+
+    status = client.get("/api/auth/status").json()
+    assert status == {"needs_setup": False, "registration_open": False}
+
+    second = client.post(
+        "/api/auth/register",
+        json={"agency_name": "South Studio", "name": "Mario", "email": "mario@sur.com", "password": "very-secure-key"},
+    )
+    assert second.status_code == 403
+
+    # Existing users still sign in normally.
+    assert client.post("/api/auth/login", json={"email": "laura@norte.com", "password": "very-secure-key"}).status_code == 200
+
+
+def test_multi_agency_flag_keeps_registration_open(client: TestClient, monkeypatch):
+    monkeypatch.setattr(get_settings(), "allow_multi_agency", True)
+
+    first = client.post(
+        "/api/auth/register",
+        json={"agency_name": "North Studio", "name": "Laura", "email": "laura@norte.com", "password": "very-secure-key"},
+    )
+    assert first.status_code == 201
+
+    status = client.get("/api/auth/status").json()
+    assert status == {"needs_setup": False, "registration_open": True}
+
+    second = client.post(
+        "/api/auth/register",
+        json={"agency_name": "South Studio", "name": "Mario", "email": "mario@sur.com", "password": "very-secure-key"},
+    )
+    assert second.status_code == 201
+
+
 def test_provider_key_is_stored_masked(authenticated_client: TestClient):
     saved = authenticated_client.put("/api/providers/openai", json={"api_key": "sk-super-secret-key"})
     assert saved.status_code == 200
