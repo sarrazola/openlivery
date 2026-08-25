@@ -7,6 +7,8 @@ import { Bot, Building2, CreditCard, Inbox, LayoutDashboard, LogOut, Menu, Messa
 import { api } from "@/lib/api";
 import { useT, type I18nKey } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { DiscordIcon } from "@/components/discord-icon";
+import { DISCORD_INVITE_URL } from "@/lib/community";
 import type { User } from "@/types";
 
 const navigation: { href: string; labelKey: I18nKey; icon: typeof LayoutDashboard }[] = [
@@ -110,12 +112,24 @@ export function AppShell({ children }: { children: ReactNode }) {
             return <Link key={item.href} href={item.href} className={active ? "active" : ""} onClick={() => setMobileOpen(false)}><Icon size={18} /><span>{item.label}</span></Link>;
           })}
         </nav>
-        <div className="sidebar-foot">
-          <div className="user-avatar">{user.name.slice(0, 1).toUpperCase()}</div>
-          <div className="user-meta"><strong>{user.name}</strong><span>{user.email}</span></div>
-          <button className="icon-button inverse" onClick={logout} title={t("shell.logout")}><LogOut size={17} /></button>
+        <div className="sidebar-bottom">
+          <a
+            href={DISCORD_INVITE_URL}
+            className="sidebar-community"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setMobileOpen(false)}
+          >
+            <DiscordIcon size={18} />
+            <span>{t("shell.joinCommunity")}</span>
+          </a>
+          <div className="sidebar-foot">
+            <div className="user-avatar">{user.name.slice(0, 1).toUpperCase()}</div>
+            <div className="user-meta"><strong>{user.name}</strong><span>{user.email}</span></div>
+            <button className="icon-button inverse" onClick={logout} title={t("shell.logout")}><LogOut size={17} /></button>
+          </div>
+          <LanguageSwitcher />
         </div>
-        <LanguageSwitcher />
       </aside>
       <main className="main-content">{children}</main>
     </div>

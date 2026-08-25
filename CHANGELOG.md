@@ -11,6 +11,8 @@ and are released together.
 
 ### Added
 
+- Discord community link in the agency sidebar ("Join the community" /
+  "Unirse a la comunidad"), opening the project Discord server in a new tab.
 - Public `GET /api/auth/status` endpoint reporting whether the instance still
   needs its first agency and whether registration is open. The login page uses
   it to open straight into first-run setup on an empty database and to hide

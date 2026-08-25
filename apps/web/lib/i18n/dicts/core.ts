@@ -38,6 +38,7 @@ const en = {
     closeMenu: "Close menu",
     logout: "Log out",
     language: "Language",
+    joinCommunity: "Join the community",
   },
   auth: {
     signInTitle: "Sign in to OpenLivery",
@@ -127,6 +128,7 @@ const es: typeof en = {
     closeMenu: "Cerrar menú",
     logout: "Cerrar sesión",
     language: "Idioma",
+    joinCommunity: "Unirse a la comunidad",
   },
   auth: {
     signInTitle: "Entra a OpenLivery",
