@@ -288,6 +288,14 @@ class SourceOut(BaseModel):
     excerpt: str = ""
 
 
+class AttachmentOut(ORMModel):
+    id: uuid.UUID
+    kind: str
+    mime: str
+    filename: str | None = None
+    size_bytes: int = 0
+
+
 class MessageOut(ORMModel):
     id: uuid.UUID
     role: str
@@ -298,6 +306,7 @@ class MessageOut(ORMModel):
     sender_name: str | None
     external_message_id: str | None = None
     created_at: datetime
+    attachments: list[AttachmentOut] = []
 
 
 class ConversationDetail(ConversationOut):
@@ -436,6 +445,7 @@ class WidgetMessageIn(BaseModel):
 class WidgetMessageOut(BaseModel):
     role: str
     content: str
+    attachments: list[AttachmentOut] = []
 
 
 class WidgetReply(BaseModel):
@@ -451,7 +461,7 @@ class WhatsAppInbound(BaseModel):
     text: str = Field(default="", max_length=50000)
     # Optional media (base64) for voice notes / images, processed by the agent's
     # audio/image capabilities before reaching the model.
-    media_kind: str | None = Field(default=None, pattern=r"^(image|audio)$")
+    media_kind: str | None = Field(default=None, pattern=r"^(image|audio|video)$")
     media_base64: str | None = None
     media_mime: str | None = Field(default=None, max_length=100)
 

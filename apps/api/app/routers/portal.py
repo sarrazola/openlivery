@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, Response, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -19,6 +19,8 @@ from ..schemas import (
     SendMessageRequest,
 )
 from ..security import create_portal_token, decode_portal_token, verify_password
+from ..services.attachments import attachment_response, conversation_attachment
+from ..services.operator_media import store_operator_media_reply
 from ..services.whatsapp import send_channel_message
 
 
@@ -55,7 +57,7 @@ def _portal_client(
 def _detail(db: Session, client: Client, conversation_id: uuid.UUID) -> Conversation:
     conversation = db.scalar(
         select(Conversation)
-        .options(selectinload(Conversation.messages), joinedload(Conversation.agent))
+        .options(selectinload(Conversation.messages).selectinload(Message.attachments), joinedload(Conversation.agent))
         .execution_options(populate_existing=True)
         .where(Conversation.id == conversation_id, Conversation.client_id == client.id)
     )
@@ -164,6 +166,34 @@ def portal_mode(
     conversation.mode = payload.mode
     conversation.updated_at = now_utc()
     db.commit()
+    return _detail(db, client, conversation_id)
+
+
+@router.get("/{slug}/conversations/{conversation_id}/attachments/{attachment_id}")
+def portal_attachment(
+    slug: str,
+    conversation_id: uuid.UUID,
+    attachment_id: uuid.UUID,
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    conversation = _detail(db, client, conversation_id)
+    return attachment_response(conversation_attachment(db, conversation, attachment_id))
+
+
+@router.post("/{slug}/conversations/{conversation_id}/reply-media", response_model=ConversationDetail)
+async def portal_reply_media(
+    slug: str,
+    conversation_id: uuid.UUID,
+    file: UploadFile = File(...),
+    caption: str = Form(default=""),
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    conversation = _detail(db, client, conversation_id)
+    if conversation.mode != "human":
+        raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
+    await store_operator_media_reply(db, conversation, file=file, caption=caption, sender_name=client.name)
     return _detail(db, client, conversation_id)
 
 

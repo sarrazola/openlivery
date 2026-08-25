@@ -70,6 +70,53 @@ async def send_text(access_token: str, phone_number_id: str, to: str, body: str)
         return None
 
 
+async def upload_media(access_token: str, phone_number_id: str, data: bytes, mime: str, filename: str) -> str:
+    """Upload a media file to Meta and return its media id (required before
+    sending any outbound media message)."""
+    response = await _graph_request(
+        "POST",
+        _graph_url(f"{phone_number_id}/media"),
+        access_token,
+        data={"messaging_product": "whatsapp", "type": mime},
+        files={"file": (filename, data, mime)},
+    )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"WhatsApp could not upload the file: {_graph_error(response)}")
+    try:
+        media_id = response.json().get("id")
+    except ValueError:
+        media_id = None
+    if not media_id:
+        raise HTTPException(status_code=502, detail="Invalid media upload response from the Meta API.")
+    return media_id
+
+
+async def send_media(
+    access_token: str,
+    phone_number_id: str,
+    to: str,
+    kind: str,
+    media_id: str,
+    caption: str = "",
+    filename: str | None = None,
+) -> str | None:
+    """Send an image/audio/document message; returns the outbound message id."""
+    media_object: dict = {"id": media_id}
+    if caption and kind in {"image", "video", "document"}:
+        media_object["caption"] = caption[:1024]
+    if filename and kind == "document":
+        media_object["filename"] = filename
+    payload = {"messaging_product": "whatsapp", "to": to, "type": kind, kind: media_object}
+    response = await _graph_request("POST", _graph_url(f"{phone_number_id}/messages"), access_token, json=payload)
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"WhatsApp could not send the file: {_graph_error(response)}")
+    try:
+        messages = response.json().get("messages") or []
+        return messages[0].get("id") if messages else None
+    except ValueError:
+        return None
+
+
 async def fetch_media(access_token: str, media_id: str) -> tuple[bytes, str]:
     """Download an inbound media file: resolve the short-lived URL, then fetch
     it with the same token. Returns (data, mime_type)."""

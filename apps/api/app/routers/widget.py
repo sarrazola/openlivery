@@ -1,20 +1,42 @@
-from fastapi import APIRouter, Depends, HTTPException
+import uuid
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..database import get_db
 from ..models import Agency, Agent, Conversation, Message, now_utc
 from ..ratelimit import widget_rate_limit
 from ..schemas import WidgetConfigOut, WidgetMessageIn, WidgetReply
+from ..services.attachments import (
+    MAX_ATTACHMENT_BYTES,
+    attachment_kind,
+    attachment_response,
+    conversation_attachment,
+    llm_text,
+    store_attachment,
+)
 from ..services.tools import run_completion
 from ..services.knowledge import build_system_prompt, retrieve_knowledge
 from ..services.providers import resolve_agent_credentials
 from ..services.usage import record_usage
+from ..services.whatsapp_inbound import InboundMessage, resolve_inbound_content
 
 
 router = APIRouter(prefix="/widget", tags=["Widget"])
 
 HISTORY_LIMIT = 50
+
+
+def _message_out(item: Message) -> dict:
+    return {
+        "role": item.role,
+        "content": item.content,
+        "attachments": [
+            {"id": a.id, "kind": a.kind, "mime": a.mime, "filename": a.filename, "size_bytes": a.size_bytes}
+            for a in item.attachments
+        ],
+    }
 
 
 def _agent(db: Session, public_id: str) -> Agent:
@@ -79,6 +101,7 @@ def widget_history(public_id: str, session_id: str, db: Session = Depends(get_db
         return {"mode": "ai", "reply": None, "messages": []}
     messages = db.scalars(
         select(Message)
+        .options(selectinload(Message.attachments))
         .where(Message.conversation_id == conversation.id)
         .order_by(Message.created_at)
         .limit(HISTORY_LIMIT)
@@ -86,8 +109,61 @@ def widget_history(public_id: str, session_id: str, db: Session = Depends(get_db
     return {
         "mode": conversation.mode,
         "reply": None,
-        "messages": [{"role": item.role, "content": item.content} for item in messages],
+        "messages": [_message_out(item) for item in messages],
     }
+
+
+@router.get("/{public_id}/attachments/{attachment_id}", dependencies=[Depends(widget_rate_limit)])
+def widget_attachment(public_id: str, attachment_id: uuid.UUID, session_id: str, db: Session = Depends(get_db)):
+    agent = _agent(db, public_id)
+    conversation = db.scalar(
+        select(Conversation).where(
+            Conversation.agent_id == agent.id,
+            Conversation.channel == "widget",
+            Conversation.external_chat_id == f"widget:{session_id}",
+        )
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return attachment_response(conversation_attachment(db, conversation, attachment_id))
+
+
+async def _widget_ai_reply(db: Session, agent: Agent, conversation: Conversation, query: str) -> str | None:
+    """Generate and store the AI reply for a widget conversation; None when the
+    agent is not ready or the completion fails."""
+    if conversation.mode == "human":
+        return None
+    credentials = resolve_agent_credentials(db, agent)
+    if not agent.is_active or not credentials or not agent.model.strip():
+        return None
+
+    knowledge = await retrieve_knowledge(db, agent, query)
+    db.refresh(conversation)
+    history = db.scalars(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.created_at.desc())
+        .limit(agent.memory_limit or HISTORY_LIMIT)
+    ).all()
+    history = list(reversed(history))
+    messages = [
+        {"role": "system", "content": build_system_prompt(agent, knowledge.text)},
+        *[{"role": item.role, "content": llm_text(item)} for item in history],
+    ]
+    base_url, api_key = credentials
+    try:
+        completion = await run_completion(
+            db, agent, base_url, api_key, messages,
+            temperature=agent.temperature, max_tokens=agent.max_tokens,
+        )
+    except HTTPException:
+        return None
+
+    conversation.updated_at = now_utc()
+    db.add(Message(conversation_id=conversation.id, role="assistant", content=completion.text, sources=knowledge.sources, tool_calls=completion.tool_calls, sender_type="ai", sender_name=agent.name))
+    record_usage(db, agent.agency_id, agent.id, agent.provider, agent.model.strip(), completion)
+    db.commit()
+    return completion.text
 
 
 @router.post("/{public_id}/messages", response_model=WidgetReply, dependencies=[Depends(widget_rate_limit)])
@@ -104,35 +180,66 @@ async def widget_message(public_id: str, payload: WidgetMessageIn, db: Session =
 
     if conversation.mode == "human":
         return {"mode": "human", "reply": None, "messages": []}
+    reply = await _widget_ai_reply(db, agent, conversation, content)
+    return {"mode": "ai", "reply": reply, "messages": []}
 
-    credentials = resolve_agent_credentials(db, agent)
-    if not agent.is_active or not credentials or not agent.model.strip():
-        return {"mode": "ai", "reply": None, "messages": []}
 
-    knowledge = await retrieve_knowledge(db, agent, content)
-    db.refresh(conversation)
+@router.post("/{public_id}/media", response_model=WidgetReply, dependencies=[Depends(widget_rate_limit)])
+async def widget_media(
+    public_id: str,
+    session_id: str = Form(...),
+    file: UploadFile = File(...),
+    caption: str = Form(default=""),
+    db: Session = Depends(get_db),
+):
+    agent = _agent(db, public_id)
+    conversation = _conversation(db, agent, session_id)
+
+    content_type = (file.content_type or "").lower() or "application/octet-stream"
+    kind = attachment_kind(content_type)
+    data = await file.read(MAX_ATTACHMENT_BYTES + 1)
+    if len(data) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(status_code=413, detail="The file is too large (20 MB max)")
+    if not data:
+        raise HTTPException(status_code=400, detail="The file is empty")
+    caption = caption.strip()[:8000]
+
+    display_content, llm_content = await resolve_inbound_content(
+        db,
+        agent,
+        InboundMessage(
+            external_message_id="",
+            external_chat_id="",
+            text=caption,
+            media_kind=kind,
+            media_bytes=data,
+            media_mime=content_type,
+        ),
+    )
+    if conversation.title == "Web chat" and caption:
+        conversation.title = caption[:80]
+    conversation.updated_at = now_utc()
+    message = Message(
+        conversation_id=conversation.id,
+        role="user",
+        content=display_content,
+        llm_content=llm_content if llm_content != display_content else None,
+        sender_type="visitor",
+        sender_name="Visitor",
+    )
+    db.add(message)
+    db.flush()
+    store_attachment(db, message, data=data, mime=content_type, filename=file.filename, kind=kind)
+    db.commit()
+
+    mode = "human" if conversation.mode == "human" else "ai"
+    reply = None if mode == "human" else await _widget_ai_reply(db, agent, conversation, llm_content)
+    # Return the refreshed history so the client can render the new attachment.
     history = db.scalars(
         select(Message)
+        .options(selectinload(Message.attachments))
         .where(Message.conversation_id == conversation.id)
-        .order_by(Message.created_at.desc())
-        .limit(agent.memory_limit or HISTORY_LIMIT)
+        .order_by(Message.created_at)
+        .limit(HISTORY_LIMIT)
     ).all()
-    history = list(reversed(history))
-    messages = [
-        {"role": "system", "content": build_system_prompt(agent, knowledge.text)},
-        *[{"role": item.role, "content": item.content} for item in history],
-    ]
-    base_url, api_key = credentials
-    try:
-        completion = await run_completion(
-            db, agent, base_url, api_key, messages,
-            temperature=agent.temperature, max_tokens=agent.max_tokens,
-        )
-    except HTTPException:
-        return {"mode": "ai", "reply": None, "messages": []}
-
-    conversation.updated_at = now_utc()
-    db.add(Message(conversation_id=conversation.id, role="assistant", content=completion.text, sources=knowledge.sources, tool_calls=completion.tool_calls, sender_type="ai", sender_name=agent.name))
-    record_usage(db, agent.agency_id, agent.id, agent.provider, agent.model.strip(), completion)
-    db.commit()
-    return {"mode": "ai", "reply": completion.text, "messages": []}
+    return {"mode": mode, "reply": reply, "messages": [_message_out(item) for item in history]}

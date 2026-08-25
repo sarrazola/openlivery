@@ -1089,3 +1089,200 @@ input:focus, textarea:focus, select:focus { border-color: #3b8ca0; box-shadow: 0
 .model-group-head { display: flex; flex-direction: column; gap: 3px; }
 .model-group-head small { color: #687082; font-size: 12px; line-height: 1.4; }
 .sk-form { display: flex; flex-direction: column; gap: 22px; }
+
+/* Chat attachments (playground, inbox, portal, widget) */
+.drop-target { position: relative; }
+.drop-overlay { position: absolute; inset: 8px; z-index: 6; display: grid; place-items: center; border: 2px dashed var(--purple); border-radius: 12px; background: rgba(108,92,231,.08); color: var(--purple); font-weight: 600; font-size: 14px; pointer-events: none; }
+.attachments { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+.message-row.user .attachments, .inbox-message.user .attachments, .portal-messages article.user .attachments { align-items: flex-end; }
+.attachment-image { display: block; line-height: 0; }
+.attachment-image img { max-width: min(280px, 100%); max-height: 280px; border-radius: 12px; border: 1px solid var(--line); }
+.attachment-audio { width: min(320px, 100%); height: 54px; }
+.attachment-file { display: inline-flex; align-items: center; gap: 7px; max-width: min(280px, 100%); padding: 9px 12px; color: var(--ink); background: #f1f0fa; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; text-decoration: none; }
+.attachment-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-message .attachments { margin-top: 4px; }
+.portal-messages article .attachments { margin-top: 4px; }
+button.composer-attach { flex: 0 0 auto; width: 38px; height: 38px; min-width: 0; display: grid; place-items: center; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; }
+button.composer-attach:hover:not(:disabled) { background: #f1f2f5; color: var(--ink); }
+button.composer-attach:disabled { opacity: .45; }
+.widget-msg-body { display: flex; flex-direction: column; gap: 6px; max-width: 82%; }
+.widget-msg-body .widget-bubble { max-width: 100%; }
+.widget-msg.user .widget-msg-body { align-items: flex-end; }
+
+/* Image lightbox (in-app preview) */
+.attachment-image { padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.lightbox { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 28px; background: rgba(15, 18, 34, .82); cursor: zoom-out; }
+.lightbox figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: default; }
+.lightbox img { max-width: min(92vw, 1100px); max-height: 84vh; border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.45); }
+.lightbox figcaption { color: rgba(255,255,255,.85); font-size: 13px; }
+.lightbox-close { position: absolute; top: 16px; right: 16px; width: 40px; height: 40px; display: grid; place-items: center; color: white; border: 0; border-radius: 50%; background: rgba(255,255,255,.14); cursor: pointer; }
+.lightbox-close:hover { background: rgba(255,255,255,.28); }
+
+/* Voice note recorder */
+button.composer-attach.record.recording { width: auto; min-width: 0; padding: 0 12px; gap: 6px; display: inline-flex; align-items: center; color: #dc2626; background: #fee2e2; }
+button.composer-attach.record.recording .record-time { font-size: 12px; font-variant-numeric: tabular-nums; }
+button.composer-attach.record.recording svg { animation: record-pulse 1.2s ease-in-out infinite; }
+@keyframes record-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+/* Rich text (lightweight markdown) inside chat bubbles */
+.rich-text { display: block; white-space: normal; }
+.rich-text .rt-line { display: block; }
+.rich-text .rt-gap { display: block; height: 8px; }
+.rich-text .rt-li { display: block; position: relative; padding-left: 18px; margin: 2px 0; }
+.rich-text .rt-li::before { content: attr(data-marker); position: absolute; left: 2px; opacity: .75; }
+.rich-text code { padding: 1px 5px; border-radius: 5px; background: rgba(20, 24, 46, .09); font-size: .92em; }
+.message-row.user .rich-text code, .portal-messages article.user .rich-text code, .widget-msg.user .rich-text code { background: rgba(255,255,255,.22); }
+.rich-text a { color: inherit; text-decoration: underline; }
+
+/* WhatsApp-style media bubbles: fixed footprint, rounded, aligned to the sender */
+.attachments { align-items: flex-start; }
+.message-row.user .attachments, .inbox-message.user .attachments, .portal-messages article.user .attachments, .widget-msg.user .attachments { align-items: flex-end; }
+.attachments .attachment-image { width: fit-content; max-width: min(300px, 100%); border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(20, 24, 46, .12); }
+/* Keep the natural aspect ratio (no crop/squash); just cap the footprint. */
+.attachments .attachment-image img { display: block; width: auto; height: auto; max-width: min(300px, 100%); max-height: 360px; object-fit: initial; border: 0; border-radius: 14px; }
+.attachments .attachment-image:hover img { filter: brightness(.96); }
+.attachment-video { display: block; width: min(300px, 100%); max-height: 340px; border-radius: 14px; background: #000; box-shadow: 0 1px 3px rgba(20, 24, 46, .12); }
+.attachment-audio { width: min(320px, 100%); height: 54px; }
+
+/* Staged attachment preview in composers (WhatsApp-style: confirm before send) */
+.pending-attachment { display: flex; align-items: center; gap: 10px; margin: 8px 13px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: #f8f9fc; }
+.composer-wrap .pending-attachment { margin: 0 0 8px; }
+.pending-attachment img, .pending-attachment video { width: 46px; height: 46px; object-fit: cover; border-radius: 9px; flex: 0 0 auto; }
+.pending-icon { width: 46px; height: 46px; flex: 0 0 auto; display: grid; place-items: center; color: var(--purple); background: #efedff; border-radius: 9px; }
+.pending-meta { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pending-meta strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pending-meta small { color: var(--muted); font-size: 12px; }
+.pending-attachment > button { width: 30px; height: 30px; margin-left: auto; flex: 0 0 auto; display: grid; place-items: center; color: var(--muted); border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
+.pending-attachment > button:hover { background: #eceef3; color: var(--ink); }
+
+/* Portal inbox: search, mode tabs and channel badges (mirrors the agency inbox) */
+.portal-inbox > aside .inbox-search { padding: 12px 14px; }
+.portal-inbox > aside .inbox-search input { border: 0; background: transparent; box-shadow: none; padding: 0; }
+.portal-inbox > aside .inbox-tabs button { width: auto; padding: 5px 11px; border-bottom: 0; border-radius: 20px; }
+.portal-inbox > aside .inbox-tabs button.active { color: white; background: var(--ink); }
+.portal-channel-line { display: inline-flex; align-items: center; gap: 5px; }
+.portal-channel-line svg { color: #8a93a3; }
+
+/* Custom voice-note player (consistent WhatsApp-style bubble in every chat) */
+.audio-bubble { display: flex; align-items: center; gap: 10px; width: min(300px, 100%); padding: 9px 12px; border: 1px solid var(--line); border-radius: 16px; background: #f1f0fa; }
+.audio-bubble > button { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; color: white; border: 0; border-radius: 50%; background: var(--purple); cursor: pointer; }
+.audio-bubble > button svg { margin-left: 1px; }
+.audio-track { position: relative; flex: 1 1 auto; height: 4px; border-radius: 3px; background: rgba(20, 24, 46, .15); cursor: pointer; }
+.audio-track i { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: 3px; background: var(--purple); transition: width .1s linear; }
+.audio-bubble > span { flex: 0 0 auto; min-width: 34px; text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* Voice-note player v2: waveform bars + speed toggle (WhatsApp-style) */
+.audio-bubble { width: min(340px, 100%); padding: 8px 10px; gap: 9px; }
+.audio-bubble .audio-play { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; color: white; border: 0; border-radius: 50%; background: var(--purple); cursor: pointer; }
+.audio-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.audio-wave { display: flex; align-items: center; gap: 2px; height: 28px; cursor: pointer; }
+.audio-wave i { flex: 1 1 auto; min-width: 2px; max-width: 4px; border-radius: 2px; background: #c6c3de; }
+.audio-wave i.filled { background: var(--purple); }
+.audio-meta { display: flex; justify-content: space-between; color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.audio-bubble button.audio-rate { width: auto; min-width: 36px; height: 24px; padding: 0 8px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: var(--ink); border: 0; border-radius: 12px; background: rgba(20, 24, 46, .10); font-size: var(--text-xs); font-weight: 700; cursor: pointer; }
+.audio-bubble button.audio-rate:hover { background: rgba(20, 24, 46, .16); }
+
+/* Multi-image grid (WhatsApp-style, up to 4 tiles with a +N overlay) */
+.attachment-grid { display: grid; gap: 3px; width: min(300px, 100%); border-radius: 14px; overflow: hidden; }
+.attachment-grid.count-2 { grid-template-columns: 1fr 1fr; }
+.attachment-grid.count-3 { grid-template-columns: 1fr 1fr; }
+.attachment-grid.count-3 .attachment-tile:first-child { grid-column: span 2; }
+.attachment-grid.count-4 { grid-template-columns: 1fr 1fr; }
+.attachment-tile { position: relative; padding: 0; border: 0; background: #e8e8f2; cursor: zoom-in; aspect-ratio: 1; }
+.attachment-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.attachment-more { position: absolute; inset: 0; display: grid; place-items: center; color: white; background: rgba(15, 18, 34, .55); font-size: var(--text-xl); font-weight: 700; }
+
+/* Lightbox navigation arrows */
+.lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 46px; height: 46px; display: grid; place-items: center; color: white; border: 0; border-radius: 50%; background: rgba(255,255,255,.14); cursor: pointer; z-index: 1; }
+.lightbox-nav:hover { background: rgba(255,255,255,.28); }
+.lightbox-nav.prev { left: 18px; }
+.lightbox-nav.next { right: 18px; }
+
+/* Shared content drawer (Media / Links / Docs) */
+.thread-actions { display: flex; align-items: center; gap: 8px; }
+.media-panel-backdrop { position: fixed; inset: 0; z-index: 150; background: rgba(15, 18, 34, .35); }
+.media-panel { position: absolute; top: 0; right: 0; bottom: 0; width: min(360px, 92vw); display: flex; flex-direction: column; background: white; box-shadow: -12px 0 40px rgba(15,18,34,.18); }
+.media-panel > header { min-height: 58px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+.media-panel > header button { width: 32px; height: 32px; display: grid; place-items: center; color: var(--muted); border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
+.media-panel > header button:hover { background: #f1f2f5; color: var(--ink); }
+.media-panel .inbox-tabs { flex: 0 0 auto; }
+.media-panel-body { flex: 1 1 auto; overflow: auto; padding: 14px; }
+.media-panel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.media-panel-grid button { padding: 0; border: 0; background: #e8e8f2; border-radius: 8px; overflow: hidden; aspect-ratio: 1; cursor: zoom-in; }
+.media-panel-grid img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.media-panel-grid video { width: 100%; border-radius: 8px; grid-column: span 3; background: #000; }
+.media-panel-links { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.media-panel-links a { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); text-decoration: none; }
+.media-panel-links a:hover { background: #f8f9fc; }
+.media-panel-link-icon { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; color: var(--purple); background: #efedff; border-radius: 9px; }
+.media-panel-links a > span:last-child { min-width: 0; display: flex; flex-direction: column; }
+.media-panel-links strong { font-size: 12px; }
+.media-panel-links small { color: var(--muted); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-panel-empty { color: var(--muted); font-size: 12px; text-align: center; padding: 30px 0; }
+
+/* Waveform: keep the bars visually centered in the bubble */
+.audio-wave { height: 30px; }
+.audio-wave i { min-height: 6px; align-self: center; }
+
+/* Alignment polish for channel badges and mode chips across every chat list */
+.mini-badge { padding: 1px 8px; font-size: var(--text-xs); line-height: 1.5; display: inline-flex; align-items: center; }
+.inbox-row-meta { align-items: center; flex-wrap: wrap; row-gap: 2px; }
+.channel-badge svg { display: block; }
+.inbox-avatar { display: inline-flex; }
+.inbox-avatar .entity-avatar { display: grid; place-items: center; }
+.portal-channel-line { gap: 6px; }
+.portal-channel-line svg { flex: 0 0 auto; }
+.portal-inbox > aside .inbox-row-meta { margin-top: 2px; display: flex; gap: 6px; }
+
+/* The generic header-div rules force columns; thread action buttons stay in a row */
+.inbox-thread > header div.thread-actions, .portal-inbox > section > header div.thread-actions { flex-direction: row; align-items: center; gap: 8px; }
+.media-panel-links li .audio-bubble { width: 100%; }
+.media-panel-audio { grid-column: span 3; }
+.media-panel-audio .audio-bubble { width: 100%; }
+
+/* Channel dot inline with the channel name + mode chip (one straight line) */
+.channel-dot { width: 16px; height: 16px; flex: 0 0 auto; display: inline-grid; place-items: center; color: white; border-radius: 50%; }
+.channel-dot.whatsapp { background: #25a56a; }
+.channel-dot.whatsapp_cloud { background: #0f8b76; }
+.channel-dot.widget { background: #2f6df0; }
+.channel-dot.playground { background: #7c5cff; }
+.channel-dot svg { display: block; }
+
+/* Voice note: waveform truly centered between play and the speed pill;
+   the time row floats underneath like WhatsApp */
+.audio-bubble { position: relative; padding: 8px 10px 22px; }
+.audio-meta { position: absolute; left: 54px; right: 56px; bottom: 5px; }
+
+/* Bubbles hug their content instead of stretching to the max width (WhatsApp-like) */
+.portal-messages article { align-self: flex-start; }
+.portal-messages article.user { align-self: flex-end; }
+.portal-messages p { width: fit-content; max-width: 100%; }
+.portal-messages article.user p { margin-left: auto; }
+.inbox-message { align-self: flex-start; }
+.inbox-message.user { align-self: flex-end; }
+.inbox-message p { width: fit-content; max-width: 100%; }
+.inbox-message.user p { margin-left: auto; }
+.message-row { align-self: flex-start; }
+.message-row.user { align-self: flex-end; }
+.message-body .bubble { width: fit-content; max-width: 100%; }
+.message-row.user .message-body .bubble { margin-left: auto; }
+
+/* WhatsApp-style timestamps inside bubbles + grouped consecutive messages */
+p .msg-time, .bubble .msg-time { float: right; margin: 9px -2px -2px 10px; font-size: 10.5px; line-height: 1; color: inherit; opacity: .55; font-variant-numeric: tabular-nums; }
+.msg-time.bare { display: block; width: fit-content; margin-top: 3px; color: #98a0b1; font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.portal-messages article.user .msg-time.bare, .inbox-message.user .msg-time.bare, .message-row.user .msg-time.bare { margin-left: auto; }
+.portal-messages article.grouped { margin-top: -10px; }
+.inbox-message.grouped { margin-top: -9px; }
+.portal-messages article > small, .inbox-message > small { display: block; margin-bottom: 3px; }
+
+/* Contain the in-bubble stamp: reserve space for it and pin it bottom-right
+   (the previous float escaped short single-line bubbles) */
+.portal-messages p:has(> .msg-time), .inbox-message p:has(> .msg-time), .bubble:has(> .msg-time) { position: relative; padding-right: 66px; }
+p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; bottom: 8px; margin: 0; }
+
+/* Language switcher in the client portal sidebar */
+.portal-nav .lang-switcher { margin-top: 8px; }
+.portal-nav .lang-switcher button { width: auto; min-height: 26px; padding: 0 9px; display: inline-flex; }
+.portal-nav .lang-switcher button.active { color: var(--portal-color, #635bff); background: #eef1f4; border-color: transparent; }
+.portal-nav .lang-switcher { margin-top: auto; }
+.portal-nav .lang-switcher + button { margin-top: 6px; }

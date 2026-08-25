@@ -64,7 +64,7 @@ def _parse_message(message: dict, contacts: dict[str, str]) -> InboundMessage | 
         return None
     if kind == "text":
         return InboundMessage(**base, text=message.get("text", {}).get("body") or "")
-    if kind in {"image", "audio"}:
+    if kind in {"image", "audio", "video"}:
         media = message.get(kind) or {}
         return InboundMessage(
             **base,

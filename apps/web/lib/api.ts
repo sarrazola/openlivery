@@ -48,3 +48,9 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 export function messageFrom(error: unknown): string {
   return error instanceof Error ? error.message : "An unexpected error occurred";
 }
+
+// Absolute URL for API resources referenced outside fetch() (e.g. <img>/<audio>
+// attachment sources); cookies flow because attachments are same-origin.
+export function apiUrl(path: string): string {
+  return `${API_URL}/api${path}`;
+}
