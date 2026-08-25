@@ -8,7 +8,7 @@ import { Alert } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { api, messageFrom } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
-import { PROVIDERS, modelsFor, modelOptionsFor, defaultModelFor, estimateTokens, modelContextWindow } from "@/lib/providers";
+import { PROVIDERS, modelsFor, modelOptionsFor, defaultModelFor, estimateTokens } from "@/lib/providers";
 import { Combobox } from "@/components/combobox";
 import { TIMEZONES } from "@/lib/timezones";
 import { agentTemplates, localize } from "@/lib/agent-templates";
@@ -50,8 +50,6 @@ export default function NewAgentPage() {
   }, []);
 
   const promptTokens = useMemo(() => estimateTokens([description, instructions, personality].join("\n")), [description, instructions, personality]);
-  const contextWindow = modelContextWindow(model);
-  const contextPct = Math.min(100, Math.round((promptTokens / contextWindow) * 100));
 
   function applyTemplate(id: string) {
     setTemplateId(id);
@@ -143,7 +141,6 @@ export default function NewAgentPage() {
           <details className="advanced-options wizard-advanced"><summary>{t("agents.wizard.modelShowAll")}</summary><Combobox value={model} onChange={setModel} options={modelsFor(provider)} placeholder={t("agents.new.modelPlaceholder")} allowCustom /></details>
           <span className="field-help">{t("agents.wizard.modelHelp")}</span>
         </div>
-        <div className="context-bar"><div style={{ width: `${contextPct}%` }} /><small><Sparkles size={12} /> {t("agents.detail.contextUsage", { count: promptTokens.toLocaleString(lang), total: contextWindow.toLocaleString(lang) })}</small></div>
         <details className="advanced-options wizard-advanced"><summary>{t("agents.detail.advancedHeading")}</summary><p className="field-help">{t("agents.detail.advancedCopy")}</p>
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.temperatureLabel")}</span><strong>{temperature.toFixed(1)}/2</strong></div><input type="range" min="0" max="2" step="0.1" value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} /><span className="field-help">{t("agents.detail.temperatureHint")}</span></div>
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.maxTokensLabel")}</span><strong>{maxTokens}/8192</strong></div><input type="range" min="256" max="8192" step="256" value={maxTokens} onChange={(e) => setMaxTokens(Number(e.target.value))} /><span className="field-help">{t("agents.detail.maxTokensHint")}</span></div>

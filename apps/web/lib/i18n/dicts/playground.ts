@@ -38,7 +38,6 @@ const en = {
     settingsLink: "Settings",
     modelPrefix: "This agent can't reply yet because it has no model. Choose one in ",
     modelLink: "the agent's setup",
-    toast: "This agent can't reply yet. Add your API key in Settings.",
   },
   message: {
     you: "You",
@@ -92,7 +91,6 @@ const es: typeof en = {
     settingsLink: "Configuración",
     modelPrefix: "Este agente todavía no puede responder porque no tiene modelo. Elige uno en ",
     modelLink: "la configuración del agente",
-    toast: "Este agente todavía no puede responder. Agrega tu API key en Configuración.",
   },
   message: {
     you: "Tú",

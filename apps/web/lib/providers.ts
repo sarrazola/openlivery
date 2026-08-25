@@ -57,9 +57,11 @@ export type ProviderId = (typeof PROVIDERS)[number]["id"];
 // current Claude model accepts audio input.
 export const AUDIO_MODELS = ["gpt-transcribe", "whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "gpt-4o-transcribe-diarize"] as const;
 
-// Vision-capable models for the image-recognition capability. Every current
-// model of both providers accepts image input.
-export const IMAGE_MODELS = ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-4.1", "gpt-4.1-mini", "gpt-5.5", "gpt-5.4", "claude-sonnet-5", "claude-haiku-4-5", "claude-opus-5"] as const;
+// Vision models for the image-recognition capability. OpenAI only: incoming
+// images are described through the agency's OpenAI credentials regardless of
+// which provider answers the conversation, so a non-OpenAI id here would be
+// sent to the OpenAI endpoint and rejected.
+export const IMAGE_MODELS = ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.5", "gpt-5.4", "gpt-4.1", "gpt-4.1-mini"] as const;
 
 export function providerLabel(id: string): string {
   return PROVIDERS.find((p) => p.id === id)?.label ?? id;
@@ -78,14 +80,6 @@ export function defaultModelFor(id: string): string {
   return (options.find((model) => model.recommended) ?? options[0])?.id ?? "";
 }
 
-export function modelLabel(id: string): string {
-  for (const provider of PROVIDERS) {
-    const found = provider.models.find((model) => model.id === id);
-    if (found) return found.label;
-  }
-  return id;
-}
-
 // ~4 characters per token: same approximation as the backend, for the token
 // counter in the agent creation wizard.
 export function estimateTokens(text: string): number {
@@ -97,7 +91,7 @@ export function estimateTokens(text: string): number {
 export function modelContextWindow(id: string): number {
   // Haiku is the one current Claude model still on a 200k window; the rest of
   // the line-up is 1M, so the generic "claude" case must not assume 200k.
-  if (id === "claude-haiku-4-5" || id.startsWith("claude-haiku")) return 200_000;
+  if (id.startsWith("claude-haiku")) return 200_000;
   if (id.startsWith("claude")) return 1_000_000;
   if (id.startsWith("gpt-4.1")) return 1_000_000;
   if (id.startsWith("gpt-5.6") || id.startsWith("gpt-5.5")) return 1_000_000;
