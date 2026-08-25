@@ -9,8 +9,37 @@ and are released together.
 
 ## [Unreleased]
 
+Upgrading: this release adds a database migration (applied automatically by the
+Docker stack; run `alembic upgrade head` on local setups). The api image now
+bundles ffmpeg for voice-note transcoding.
+
 ### Added
 
+- Chat attachments across every channel (playground, agency inbox, client
+  portal, widget, WhatsApp QR and WhatsApp Cloud API): images, voice notes,
+  videos and files are persisted and rendered as real chat media instead of
+  being flattened into text. The LLM keeps receiving text — transcripts and
+  image descriptions are stored separately (`messages.llm_content`) so agents
+  keep full context after a human takeover, including media sent by the
+  operator.
+- Operator media replies from the Inbox and the client portal: attach files,
+  drag & drop with a pending-attachment preview, and record voice notes with a
+  microphone button. Outbound audio is transcoded to ogg/opus (ffmpeg) with
+  its duration so WhatsApp delivers it as a playable voice note; images,
+  videos and documents are delivered through both WhatsApp channels.
+- WhatsApp-style chat media UI: image lightbox with prev/next navigation over
+  the whole conversation, multi-image grid with a "+N" overlay, inline video
+  player, and a custom voice-note player (real waveform, click-to-seek,
+  1x/1.5x/2x speed).
+- "Shared content" drawer (Media / Links / Docs) in the Inbox and the client
+  portal conversation headers.
+- Lightweight markdown rendering in chat bubbles (bold, italics, code, lists,
+  links) and clickable bare URLs.
+- Client portal inbox parity with the agency inbox: search, Human/AI filter
+  tabs, channel badges and readable channel labels.
+- Widget file uploads (rate limited) and attachment rendering.
+- Inbound WhatsApp videos (QR and Cloud API) are now stored and shown; they
+  previously only contributed their caption.
 - Discord community link in the agency sidebar ("Join the community" /
   "Unirse a la comunidad"), opening the project Discord server in a new tab.
 - Public `GET /api/auth/status` endpoint reporting whether the instance still
@@ -25,6 +54,12 @@ and are released together.
   403). Upgrading: instances that already have an agency stop accepting new
   public registrations; set `ALLOW_MULTI_AGENCY=true` to keep the previous
   multi-agency behavior.
+
+### Known issues
+
+- Voice notes sent through the WhatsApp QR channel may not be downloadable by
+  recipients due to a media upload issue in the pinned Baileys release
+  (7.0.0-rc14). The WhatsApp Cloud API channel is unaffected.
 
 ## [0.3.0] - 2026-08-20
 
