@@ -18,8 +18,8 @@ const en = {
     identifier: "Identifier",
     brandColor: "Primary color",
     saveIdentity: "Save identity",
-    privateCredentials: "Private credentials",
-    privateCredentialsCopy: "Keys stay in the backend and never return in full to the browser.",
+    privateCredentials: "Your keys are safe",
+    privateCredentialsCopy: "We store them encrypted and never show them again. Only your agents use them.",
   },
   providers: {
     heading: "AI provider keys",
@@ -55,8 +55,8 @@ const es: typeof en = {
     identifier: "Identificador",
     brandColor: "Color principal",
     saveIdentity: "Guardar identidad",
-    privateCredentials: "Credenciales privadas",
-    privateCredentialsCopy: "Las claves permanecen en el backend y nunca vuelven completas al navegador.",
+    privateCredentials: "Tus claves están seguras",
+    privateCredentialsCopy: "Las guardamos cifradas y no volvemos a mostrarlas. Solo las usan tus agentes.",
   },
   providers: {
     heading: "Claves de proveedores de IA",
