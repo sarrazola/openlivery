@@ -1061,3 +1061,4 @@ input:focus, textarea:focus, select:focus { border-color: #3b8ca0; box-shadow: 0
 .wizard-advanced summary { font-size: 13px; font-weight: 650; }
 .model-group-head { display: flex; flex-direction: column; gap: 3px; }
 .model-group-head small { color: #687082; font-size: 12px; line-height: 1.4; }
+.sk-form { display: flex; flex-direction: column; gap: 22px; }

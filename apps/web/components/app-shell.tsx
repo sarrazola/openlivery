@@ -60,28 +60,27 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
   const isBare = isLogin || isPortal || isWidget || isExtraPublic;
 
-  const userId = user?.id;
-
-  // First authenticated render. This is the only moment the shell is allowed to
-  // replace itself with the full-screen loader.
+  // Check the session on entry and revalidate it on every navigation, without
+  // taking the shell off screen to do it: `loading` starts true and is only ever
+  // cleared, so the full-screen loader covers the first render and nothing more.
+  // Once a user is known, navigating keeps the sidebar and the page mounted while
+  // the check runs in the background. Losing the session clears the user, which
+  // puts the loader back up until the redirect lands.
   useEffect(() => {
-    if (isBare) { setLoading(false); return; }
+    if (isBare) { setLoading(false); setUser(null); return; }
+    let cancelled = false;
     api<User>("/auth/me")
-      .then(setUser)
-      .catch(() => router.replace("/login"))
-      .finally(() => setLoading(false));
-  }, [isBare, router]);
-
-  // Revalidate the session on every navigation, but keep the shell on screen while
-  // doing it: an expired cookie still redirects to the login page, a valid one costs
-  // nothing visible. Depend on the id rather than the object, which is new each time.
-  useEffect(() => {
-    if (isBare || !userId) return;
-    api<User>("/auth/me").then(setUser).catch(() => router.replace("/login"));
-  }, [isBare, pathname, router, userId]);
+      .then((current) => { if (!cancelled) setUser(current); })
+      .catch(() => { if (!cancelled) { setUser(null); router.replace("/login"); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [isBare, pathname, router]);
 
   async function logout() {
     await api("/auth/logout", { method: "POST" });
+    // The shell lives in the root layout and survives client-side navigation, so
+    // the signed-out identity has to be dropped explicitly.
+    setUser(null);
     router.push("/login");
     router.refresh();
   }

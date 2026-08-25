@@ -28,9 +28,9 @@ export function ListRowsSkeleton({ rows = 6, className = "" }: { rows?: number; 
 }
 
 export function PanelSkeleton({ rows = 3, slim = false }: { rows?: number; slim?: boolean }) {
-  return <Busy className={`sk-panel ${slim ? "slim" : ""}`}>{Array.from({ length: rows }).map((_, i) => <span className="sk sk-line" key={i} style={{ width: `${88 - i * 18}%` }} />)}</Busy>;
+  return <Busy className={`sk-panel ${slim ? "slim" : ""}`}>{Array.from({ length: rows }).map((_, i) => <span className="sk sk-line" key={i} style={{ width: `${Math.max(30, 88 - i * 18)}%` }} />)}</Busy>;
 }
 
 export function FormSkeleton({ sections = 2, fields = 3 }: { sections?: number; fields?: number }) {
-  return <Busy>{Array.from({ length: sections }).map((_, s) => <section className="form-section" key={s}><div className="section-copy"><span className="sk sk-line lg" style={{ width: 150 }} /><span className="sk sk-line sm" style={{ width: 220, marginTop: 10 }} /></div><div className="form-fields sk-stack" style={{ gap: 16 }}>{Array.from({ length: fields }).map((_, f) => <span className="sk" key={f} style={{ height: 40, borderRadius: 9 }} />)}</div></section>)}</Busy>;
+  return <Busy className="sk-form">{Array.from({ length: sections }).map((_, s) => <section className="form-section" key={s}><div className="section-copy"><span className="sk sk-line lg" style={{ width: 150 }} /><span className="sk sk-line sm" style={{ width: 220, marginTop: 10 }} /></div><div className="form-fields sk-stack" style={{ gap: 16 }}>{Array.from({ length: fields }).map((_, f) => <span className="sk" key={f} style={{ height: 40, borderRadius: 9 }} />)}</div></section>)}</Busy>;
 }
