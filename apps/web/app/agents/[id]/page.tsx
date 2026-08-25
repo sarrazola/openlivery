@@ -62,6 +62,8 @@ export default function AgentDetailPage() {
   );
   const contextPct = Math.min(100, Math.round((promptTokens / contextWindow) * 100));
   useEffect(() => { load(); }, [id]);
+  // Let other areas deep-link straight to a tab, e.g. the Channels page pointing at "?tab=widget".
+  useEffect(() => { const q = new URLSearchParams(window.location.search).get("tab"); if (q === "knowledge" || q === "tools" || q === "widget" || q === "playground") setTab(q); }, []);
 
   async function saveConfig(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true);
