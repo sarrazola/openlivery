@@ -390,7 +390,7 @@ class MessageAttachment(Base):
     mime: Mapped[str] = mapped_column(String(100))
     filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
-    data: Mapped[bytes] = mapped_column(LargeBinary)
+    data: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     message: Mapped[Message] = relationship(back_populates="attachments")

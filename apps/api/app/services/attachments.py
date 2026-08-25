@@ -68,11 +68,32 @@ def conversation_attachment(db: Session, conversation: Conversation, attachment_
     return attachment
 
 
+# Types the chat UI renders in place. Everything else is sent as a download with
+# a neutral content type: the uploader chooses the mime, and attachments are
+# served from the application's own origin, so a document that the browser is
+# willing to execute must never be rendered there.
+INLINE_PREFIXES = ("image/", "audio/", "video/")
+# SVG is an image the browser will happily run scripts from.
+NEVER_INLINE = {"image/svg+xml", "image/svg"}
+
+
+def is_inline_safe(mime: str) -> bool:
+    mime = (mime or "").lower()
+    return mime.startswith(INLINE_PREFIXES) and mime not in NEVER_INLINE
+
+
 def attachment_response(attachment: MessageAttachment) -> Response:
-    headers = {"Cache-Control": "private, max-age=3600"}
-    if attachment.filename:
-        headers["Content-Disposition"] = f'inline; filename="{attachment.filename}"'
-    return Response(content=attachment.data, media_type=attachment.mime, headers=headers)
+    inline = is_inline_safe(attachment.mime)
+    headers = {
+        "Cache-Control": "private, max-age=3600",
+        # Stop the browser from second-guessing the type we send.
+        "X-Content-Type-Options": "nosniff",
+    }
+    disposition = "inline" if inline else "attachment"
+    filename = attachment.filename or "attachment"
+    headers["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+    media_type = attachment.mime if inline else "application/octet-stream"
+    return Response(content=attachment.data, media_type=media_type, headers=headers)
 
 
 def llm_text(message: Message) -> str:

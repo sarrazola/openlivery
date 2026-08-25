@@ -190,7 +190,7 @@ export function Lightbox({ items, index, onIndex, onClose }: {
     <div className="lightbox" role="dialog" aria-modal="true" onClick={onClose}>
       <button type="button" className="lightbox-close" aria-label={t("chat.closePreview")} onClick={onClose}><X size={22} /></button>
       {count > 1 && (
-        <button type="button" className="lightbox-nav prev" aria-label="Previous" onClick={(event) => { event.stopPropagation(); onIndex((index - 1 + count) % count); }}>
+        <button type="button" className="lightbox-nav prev" aria-label={t("chat.previousImage")} onClick={(event) => { event.stopPropagation(); onIndex((index - 1 + count) % count); }}>
           <ChevronLeft size={26} />
         </button>
       )}
@@ -199,7 +199,7 @@ export function Lightbox({ items, index, onIndex, onClose }: {
         <figcaption>{item.name || ""}{count > 1 ? `${item.name ? " · " : ""}${index + 1}/${count}` : ""}</figcaption>
       </figure>
       {count > 1 && (
-        <button type="button" className="lightbox-nav next" aria-label="Next" onClick={(event) => { event.stopPropagation(); onIndex((index + 1) % count); }}>
+        <button type="button" className="lightbox-nav next" aria-label={t("chat.nextImage")} onClick={(event) => { event.stopPropagation(); onIndex((index + 1) % count); }}>
           <ChevronRight size={26} />
         </button>
       )}

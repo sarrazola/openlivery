@@ -113,7 +113,7 @@ def widget_history(public_id: str, session_id: str, db: Session = Depends(get_db
     }
 
 
-@router.get("/{public_id}/attachments/{attachment_id}")
+@router.get("/{public_id}/attachments/{attachment_id}", dependencies=[Depends(widget_rate_limit)])
 def widget_attachment(public_id: str, attachment_id: uuid.UUID, session_id: str, db: Session = Depends(get_db)):
     agent = _agent(db, public_id)
     conversation = db.scalar(

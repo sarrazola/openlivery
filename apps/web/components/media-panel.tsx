@@ -7,6 +7,10 @@ import { AudioBubble, Lightbox, type GalleryImage } from "@/components/attachmen
 import { useT } from "@/lib/i18n";
 import type { Attachment, Message } from "@/types";
 
+function linkHost(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+}
+
 const URL_PATTERN = /https?:\/\/[^\s<>")\]]+/g;
 
 /** WhatsApp-style "shared content" drawer for a conversation: everything sent
@@ -90,7 +94,7 @@ export function MediaPanel({ open, onClose, messages, urlFor }: {
                 <li key={url}>
                   <a href={url} target="_blank" rel="noreferrer">
                     <span className="media-panel-link-icon"><Link2 size={15} /></span>
-                    <span><strong>{new URL(url).hostname.replace(/^www\./, "")}</strong><small>{url}</small></span>
+                    <span><strong>{linkHost(url)}</strong><small>{url}</small></span>
                   </a>
                 </li>
               ))}
