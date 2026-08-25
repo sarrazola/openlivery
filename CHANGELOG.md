@@ -9,6 +9,11 @@ and are released together.
 
 ## [Unreleased]
 
+### Added
+
+- Discord community link in the agency sidebar ("Join the community" /
+  "Unirse a la comunidad"), opening the project Discord server in a new tab.
+
 ## [0.3.0] - 2026-08-20
 
 Upgrading: this release adds a database migration (applied automatically by the
