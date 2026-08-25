@@ -23,7 +23,7 @@ const en = {
     status: "Great for testing",
     title: "WhatsApp QR",
     description:
-      "Scan a QR with the WhatsApp app on your phone and reply with an agent in minutes. Free and instant to set up, so it is ideal for demos and testing — for production, use WhatsApp API instead.",
+      "Scan a QR with the WhatsApp app on your phone and reply with an agent in minutes. Free and instant to set up, so it is ideal for demos and testing. For production, use WhatsApp API instead.",
     ownerPlaceholder: "Choose a client to configure its number",
     configure: "Configure WhatsApp QR",
     selectClient: "Select a client",
@@ -77,7 +77,7 @@ const es: typeof en = {
     status: "Ideal para pruebas",
     title: "WhatsApp QR",
     description:
-      "Escanea un QR con la app de WhatsApp de tu teléfono y responde con un agente en minutos. Es gratis e instantáneo de configurar, así que es ideal para demos y pruebas — para producción usa mejor WhatsApp API.",
+      "Escanea un QR con la app de WhatsApp de tu teléfono y responde con un agente en minutos. Es gratis e instantáneo de configurar, así que es ideal para demos y pruebas. Para producción usa mejor WhatsApp API.",
     ownerPlaceholder: "Elige un cliente para configurar su número",
     configure: "Configurar WhatsApp QR",
     selectClient: "Selecciona un cliente",
