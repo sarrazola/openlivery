@@ -1274,3 +1274,13 @@ p .msg-time, .bubble .msg-time { float: right; margin: 9px -2px -2px 10px; font-
 .portal-messages article.grouped { margin-top: -10px; }
 .inbox-message.grouped { margin-top: -9px; }
 .portal-messages article > small, .inbox-message > small { display: block; margin-bottom: 3px; }
+
+/* Contain the in-bubble stamp: reserve space for it and pin it bottom-right
+   (the previous float escaped short single-line bubbles) */
+.portal-messages p:has(> .msg-time), .inbox-message p:has(> .msg-time), .bubble:has(> .msg-time) { position: relative; padding-right: 66px; }
+p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; bottom: 8px; margin: 0; }
+
+/* Language switcher in the client portal sidebar */
+.portal-nav .lang-switcher { margin-top: 8px; }
+.portal-nav .lang-switcher button { width: auto; min-height: 26px; padding: 0 9px; display: inline-flex; }
+.portal-nav .lang-switcher button.active { color: var(--portal-color, #635bff); background: #eef1f4; border-color: transparent; }
