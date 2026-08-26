@@ -97,6 +97,32 @@ class ClientOut(ORMModel):
     agents: list[AgentSummary] = []
 
 
+class PortalUserCreate(BaseModel):
+    """A person at the client's business who can answer from the portal or app."""
+
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    name: str = Field(default="", max_length=160)
+
+
+class PortalUserUpdate(BaseModel):
+    email: EmailStr | None = None
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    name: str | None = Field(default=None, max_length=160)
+    is_active: bool | None = None
+
+
+class PortalUserOut(BaseModel):
+    id: uuid.UUID
+    email: EmailStr
+    name: str
+    is_active: bool
+    devices: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ClientDomainSet(BaseModel):
     # A DNS hostname, e.g. "chat.brand.com". Lowercased and validated as a host.
     # No look-around: pydantic v2's regex engine does not support it.

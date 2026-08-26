@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import Agency, Agent, Client, Conversation, Message, now_utc
+from ..models import Agency, Agent, Client, Conversation, Message, PortalUser, now_utc
 from ..ratelimit import login_rate_limit, public_asset_rate_limit
 from ..schemas import (
     AgentSummary,
@@ -110,17 +110,33 @@ def public_client_logo(slug: str, db: Session = Depends(get_db)):
 @router.post("/{slug}/login", response_model=PortalSessionOut, dependencies=[Depends(login_rate_limit)])
 def portal_login(slug: str, payload: PortalLoginRequest, response: Response, db: Session = Depends(get_db)):
     client = _public_client(db, slug)
-    if (
-        not client.portal_email
-        or payload.email.lower() != client.portal_email.lower()
-        or not client.portal_password_hash
-        or not verify_password(payload.password, client.portal_password_hash)
+    email = payload.email.lower()
+    # Whoever the business added, or - for a portal that predates portal users -
+    # the single login the client itself still carries.
+    portal_user = db.scalar(
+        select(PortalUser).where(
+            PortalUser.client_id == client.id,
+            PortalUser.email == email,
+            PortalUser.is_active.is_(True),
+        )
+    )
+    if portal_user and verify_password(payload.password, portal_user.password_hash):
+        pass
+    elif (
+        client.portal_email
+        and email == client.portal_email.lower()
+        and client.portal_password_hash
+        and verify_password(payload.password, client.portal_password_hash)
     ):
+        portal_user = None
+    else:
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     settings = get_settings()
     response.set_cookie(
         key="portal_access_token",
-        value=create_portal_token(str(client.id), client.portal_slug),
+        value=create_portal_token(
+            str(client.id), client.portal_slug, str(portal_user.id) if portal_user else None
+        ),
         httponly=True,
         secure=settings.cookie_secure,
         samesite=settings.cookie_samesite,

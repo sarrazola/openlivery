@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     # point at a mock server in tests.
     meta_graph_base_url: str = "https://graph.facebook.com/v23.0"
 
+    # Push notifications for the mobile app. "none" (the default) sends nothing
+    # and needs no account with anyone; "webhook" POSTs each event to
+    # push_webhook_url so you can route it through whatever you already use.
+    # Deployments may register further providers at startup — see
+    # app/services/notifications.py and docs/push-notifications.md.
+    push_provider: str = "none"
+    push_webhook_url: str = ""
+    push_webhook_secret: str = ""
+
     model_config = SettingsConfigDict(
         env_file=(REPO_ROOT / ".env", APP_DIR / ".env"),
         env_file_encoding="utf-8",

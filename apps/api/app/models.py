@@ -90,6 +90,9 @@ class Client(Base):
     whatsapp_cloud_channel: Mapped["WhatsAppCloudChannel | None"] = relationship(
         back_populates="client", cascade="all, delete-orphan", uselist=False
     )
+    portal_users: Mapped[list["PortalUser"]] = relationship(
+        back_populates="client", cascade="all, delete-orphan"
+    )
 
     @property
     def portal_password_configured(self) -> bool:
@@ -402,3 +405,58 @@ class MessageAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     message: Mapped[Message] = relationship(back_populates="attachments")
+
+class PortalUser(Base):
+    """A person at the client's business who can answer from the portal.
+
+    Before this table a portal had a single e-mail and password shared by
+    everyone at the business. That is workable in a browser and breaks down with
+    push: you cannot tell which phone to notify, who replied, or revoke one
+    employee. The legacy ``Client.portal_email`` still authenticates, so an
+    install that never creates a user keeps working exactly as before.
+    """
+
+    __tablename__ = "portal_users"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(160), default="")
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+    client: Mapped["Client"] = relationship(back_populates="portal_users")
+    devices: Mapped[list["PushDevice"]] = relationship(back_populates="portal_user", cascade="all, delete-orphan")
+
+    __table_args__ = (UniqueConstraint("client_id", "email", name="uq_portal_users_client_email"),)
+
+
+class PushDevice(Base):
+    """A phone that asked to be told when a conversation needs a person.
+
+    The registry is deliberately provider-agnostic: ``token`` is whatever the
+    configured notification provider needs to reach this install (a device
+    token, a subscription id, a topic), and ``provider`` records which one
+    issued it so a server that changes providers ignores stale rows instead of
+    sending them somewhere meaningless.
+
+    The token is unique, so re-registering the same install updates the row
+    rather than accumulating duplicates. Rows die with their user or client.
+    """
+
+    __tablename__ = "push_devices"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    portal_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("portal_users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    token: Mapped[str] = mapped_column(String(400), unique=True, index=True)
+    provider: Mapped[str] = mapped_column(String(40), default="")
+    platform: Mapped[str] = mapped_column(String(20), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+    portal_user: Mapped["PortalUser | None"] = relationship(back_populates="devices")

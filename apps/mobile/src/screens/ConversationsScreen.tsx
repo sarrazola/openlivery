@@ -40,20 +40,17 @@ export function ConversationsScreen({
   session,
   onOpen,
   onSignOut,
-  autoOpenFirst = false,
 }: {
   server: string;
   session: Session;
   onOpen: (conversation: Conversation) => void;
   onSignOut: () => void;
-  autoOpenFirst?: boolean;
 }) {
   const [items, setItems] = useState<Conversation[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
-  const autoOpened = useRef(false);
 
   const brand = session.branding.brand_color;
   const logo = assetUrl(server, session.branding.client_logo_url || session.branding.agency_logo_url);
@@ -71,12 +68,6 @@ export function ConversationsScreen({
       if (mounted.current) setLoaded(true);
     }
   }, [server, session]);
-
-  useEffect(() => {
-    if (!autoOpenFirst || autoOpened.current || !items.length) return;
-    autoOpened.current = true;
-    onOpen(items[0]);
-  }, [autoOpenFirst, items, onOpen]);
 
   useEffect(() => {
     mounted.current = true;

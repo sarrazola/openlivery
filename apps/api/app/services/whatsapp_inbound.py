@@ -17,6 +17,7 @@ from ..models import Agent, Conversation, Message, now_utc
 from .attachments import llm_text, store_attachment
 from .knowledge import build_system_prompt, retrieve_knowledge
 from .media import describe_image, transcribe_audio
+from .notifications import notify_needs_human
 from .providers import resolve_agent_credentials, resolve_provider_credentials
 from .tools import run_completion
 from .usage import record_usage
@@ -161,6 +162,9 @@ async def process_inbound(
         )
     db.commit()
     if conversation.mode == "human":
+        # An operator took this conversation over, so nothing will answer unless
+        # a person sees it. This is the moment a phone should ring.
+        await notify_needs_human(db, conversation, display_content or llm_content)
         return InboundResult(accepted=True, conversation_id=conversation.id, mode="human")
 
     agent = channel.agent

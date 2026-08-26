@@ -10,9 +10,6 @@ import { DEFAULT_BRAND, palette } from "./src/theme";
 
 type Screen = { name: "loading" } | { name: "signIn" } | { name: "list" } | { name: "chat"; conversation: Conversation };
 
-// Opens the newest conversation straight away, so working on the chat screen
-// does not mean tapping through the list on every reload. Development only.
-const DEV_OPEN_FIRST = process.env.EXPO_PUBLIC_DEV_OPEN_FIRST === "1";
 
 /**
  * Three screens and no navigation library: sign in, the list, one conversation.
@@ -91,7 +88,6 @@ export default function App() {
           server={server}
           session={session}
           onOpen={(conversation) => setScreen({ name: "chat", conversation })}
-          autoOpenFirst={DEV_OPEN_FIRST}
           onSignOut={handleSignOut}
         />
       )}

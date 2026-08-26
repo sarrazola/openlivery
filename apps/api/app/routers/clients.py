@@ -1,13 +1,23 @@
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import Client, User, new_domain_token
-from ..schemas import ClientCreate, ClientDomainOut, ClientDomainSet, ClientOut, ClientPortalUpdate, ClientUpdate
+from ..models import Client, PortalUser, PushDevice, User, new_domain_token
+from ..schemas import (
+    ClientCreate,
+    ClientDomainOut,
+    ClientDomainSet,
+    ClientOut,
+    ClientPortalUpdate,
+    ClientUpdate,
+    PortalUserCreate,
+    PortalUserOut,
+    PortalUserUpdate,
+)
 from ..security import hash_password
 from ..services.attachments import logo_response
 from ..services import dns as dns_service
@@ -135,8 +145,14 @@ def update_client_portal(
         values["portal_slug"] = candidate
     for key, value in values.items():
         setattr(client, key, value)
-    if client.portal_enabled and (not client.portal_email or not client.portal_password_hash):
-        raise HTTPException(status_code=400, detail="Set an email and a password before enabling the portal")
+    has_users = db.scalar(
+        select(func.count(PortalUser.id)).where(
+            PortalUser.client_id == client.id, PortalUser.is_active.is_(True)
+        )
+    )
+    has_legacy_login = bool(client.portal_email and client.portal_password_hash)
+    if client.portal_enabled and not has_legacy_login and not has_users:
+        raise HTTPException(status_code=400, detail="Add someone who can sign in before enabling the portal")
     db.commit()
     return _client(db, user, client_id)
 
@@ -193,5 +209,122 @@ def delete_client_domain(client_id: uuid.UUID, db: Session = Depends(get_db), us
 def delete_client(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     client = _client(db, user, client_id)
     db.delete(client)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _portal_user(db: Session, user: User, client_id: uuid.UUID, portal_user_id: uuid.UUID) -> PortalUser:
+    # Resolving the client first keeps this inside the caller's agency.
+    client = _client(db, user, client_id)
+    portal_user = db.scalar(
+        select(PortalUser).where(PortalUser.id == portal_user_id, PortalUser.client_id == client.id)
+    )
+    if not portal_user:
+        raise HTTPException(status_code=404, detail="That person is not on this portal")
+    return portal_user
+
+
+def _portal_user_out(db: Session, portal_user: PortalUser) -> PortalUserOut:
+    devices = db.scalar(
+        select(func.count(PushDevice.id)).where(PushDevice.portal_user_id == portal_user.id)
+    )
+    return PortalUserOut(
+        id=portal_user.id,
+        email=portal_user.email,
+        name=portal_user.name,
+        is_active=portal_user.is_active,
+        devices=devices or 0,
+        created_at=portal_user.created_at,
+    )
+
+
+@router.get("/{client_id}/portal-users", response_model=list[PortalUserOut])
+def list_portal_users(
+    client_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Everyone who can answer for this client."""
+    client = _client(db, user, client_id)
+    rows = db.scalars(
+        select(PortalUser).where(PortalUser.client_id == client.id).order_by(PortalUser.created_at)
+    ).all()
+    return [_portal_user_out(db, row) for row in rows]
+
+
+@router.post("/{client_id}/portal-users", response_model=PortalUserOut, status_code=status.HTTP_201_CREATED)
+def create_portal_user(
+    client_id: uuid.UUID,
+    payload: PortalUserCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    client = _client(db, user, client_id)
+    email = payload.email.lower()
+    existing = db.scalar(
+        select(PortalUser).where(PortalUser.client_id == client.id, PortalUser.email == email)
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="That e-mail is already on this portal")
+    portal_user = PortalUser(
+        client_id=client.id,
+        email=email,
+        name=payload.name.strip(),
+        password_hash=hash_password(payload.password),
+    )
+    db.add(portal_user)
+    db.commit()
+    db.refresh(portal_user)
+    return _portal_user_out(db, portal_user)
+
+
+@router.patch("/{client_id}/portal-users/{portal_user_id}", response_model=PortalUserOut)
+def update_portal_user(
+    client_id: uuid.UUID,
+    portal_user_id: uuid.UUID,
+    payload: PortalUserUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    portal_user = _portal_user(db, user, client_id, portal_user_id)
+    values = payload.model_dump(exclude_unset=True)
+    password = values.pop("password", None)
+    if password:
+        portal_user.password_hash = hash_password(password)
+    if values.get("email"):
+        email = str(values["email"]).lower()
+        clash = db.scalar(
+            select(PortalUser).where(
+                PortalUser.client_id == portal_user.client_id,
+                PortalUser.email == email,
+                PortalUser.id != portal_user.id,
+            )
+        )
+        if clash:
+            raise HTTPException(status_code=409, detail="That e-mail is already on this portal")
+        values["email"] = email
+    if values.get("name") is not None:
+        values["name"] = str(values["name"]).strip()
+    for key, value in values.items():
+        setattr(portal_user, key, value)
+    db.commit()
+    db.refresh(portal_user)
+    return _portal_user_out(db, portal_user)
+
+
+@router.delete("/{client_id}/portal-users/{portal_user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_portal_user(
+    client_id: uuid.UUID,
+    portal_user_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Remove someone's access.
+
+    Their registered devices go with them, so a phone that left the business
+    stops ringing straight away.
+    """
+    portal_user = _portal_user(db, user, client_id, portal_user_id)
+    db.delete(portal_user)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

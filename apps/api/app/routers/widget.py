@@ -23,6 +23,7 @@ from ..services.tools import run_completion
 from ..services.knowledge import build_system_prompt, retrieve_knowledge
 from ..services.providers import resolve_agent_credentials
 from ..services.usage import record_usage
+from ..services.notifications import notify_needs_human
 from ..services.whatsapp_inbound import InboundMessage, resolve_inbound_content
 
 
@@ -199,6 +200,7 @@ async def widget_message(public_id: str, payload: WidgetMessageIn, db: Session =
     db.commit()
 
     if conversation.mode == "human":
+        await notify_needs_human(db, conversation, content)
         return {"mode": "human", "reply": None, "messages": []}
     reply = await _widget_ai_reply(db, agent, conversation, content)
     return {"mode": "ai", "reply": reply, "reply_at": now_utc() if reply else None, "messages": []}
@@ -261,6 +263,8 @@ async def widget_media(
     db.commit()
 
     mode = "human" if conversation.mode == "human" else "ai"
+    if mode == "human":
+        await notify_needs_human(db, conversation, display_content or llm_content)
     reply = None if mode == "human" else await _widget_ai_reply(db, agent, conversation, llm_content)
     # Return the refreshed history so the client can render the new attachment.
     history = db.scalars(

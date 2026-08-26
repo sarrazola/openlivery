@@ -3,7 +3,7 @@
   "name": "My Agency Inbox",
   "slug": "my-agency-inbox",
   "scheme": "myagencyinbox",
-  "iosBundleIdentifier": "com.myagency.inbox",
+  "iosBundleIdentifier": "com.youragency.inbox",
   "androidPackage": "com.myagency.inbox",
   "primaryColor": "#1f6feb",
   "defaultServer": "https://chat.myagency.com"
