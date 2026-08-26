@@ -337,6 +337,20 @@ textarea { line-height: 1.55; }
 .url-preview { padding: 12px; display: flex; align-items: center; gap: 8px; border: 1px solid #e1e5eb; border-radius: 7px; background: #fafbfc; }
 .url-preview code { flex: 1; overflow: hidden; color: #586174; font-size: 12px; text-overflow: ellipsis; }
 .url-preview button, .url-preview a { display: inline-flex; align-items: center; gap: 5px; color: #5149d1; border: 0; background: transparent; font-size: 12px; }
+.domain-input { display: flex; align-items: center; gap: 10px; }
+.domain-input > svg { color: #747d8c; flex-shrink: 0; }
+.domain-input input { flex: 1; min-width: 0; }
+.domain-input .button { flex-shrink: 0; white-space: nowrap; }
+.domain-status { display: inline-flex; align-items: center; gap: 6px; width: fit-content; padding: 5px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
+.domain-status.ok { color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; }
+.domain-status.pending { color: #92400e; background: #fffbeb; border: 1px solid #fde68a; }
+.dns-instructions { display: grid; gap: 10px; padding: 14px; border: 1px solid #e1e5eb; border-radius: 7px; background: #fafbfc; }
+.dns-instructions p { margin: 0; color: #586174; font-size: 13px; }
+.dns-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.dns-table th { text-align: left; padding: 4px 10px 4px 0; color: #747d8c; font-weight: 600; }
+.dns-table td { padding: 4px 10px 4px 0; word-break: break-all; }
+.dns-table code { padding: 2px 6px; border-radius: 5px; background: #eef1f5; }
+.domain-actions { display: flex; gap: 8px; }
 
 .section-block { margin-top: 38px; }
 .section-block .form-section + .form-section { margin-top: 16px; }

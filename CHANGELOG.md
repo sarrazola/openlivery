@@ -85,6 +85,9 @@ bundles ffmpeg for voice-note transcoding.
 - The database engine now sends TCP keepalives and recycles pooled connections
   after 4 minutes, so a NAT or pooler between the API and a remote Postgres can
   no longer leave silently dropped connections hanging until the kernel timeout.
+- The custom domain section on the client portal tab renders as a proper form
+  row with styled status and DNS instructions; its CSS classes were never
+  defined, so the icon, input and buttons stacked unstyled.
 
 ### Known issues
 
