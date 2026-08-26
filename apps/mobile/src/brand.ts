@@ -28,6 +28,28 @@ type Extra = {
 
 const extra = (Constants.expoConfig?.extra || {}) as Extra;
 
+/**
+ * A preset is only usable if it carries every field the screen needs.
+ *
+ * Checking the shape rather than the presence matters: the native project
+ * stores this config in a property list, which has no null, so a brand file
+ * without a preset arrives as an empty object. Trusting that would put an empty
+ * switcher and an unlabelled field on the sign-in screen of every build that
+ * has no hosted service - which is every build from this repository.
+ */
+function usablePreset(value: HostedPreset | null | undefined): HostedPreset | null {
+  if (!value) return null;
+  const required: (keyof HostedPreset)[] = [
+    "label",
+    "workspaceLabel",
+    "workspacePlaceholder",
+    "serverTemplate",
+    "otherLabel",
+  ];
+  const complete = required.every((key) => typeof value[key] === "string" && value[key].length > 0);
+  return complete && value.serverTemplate.includes("{workspace}") ? value : null;
+}
+
 export const DEFAULT_SERVER = extra.defaultServer || "";
 export const BRAND_COLOR = extra.primaryColor || "#2f3a4a";
 
@@ -39,7 +61,7 @@ export const BRAND_COLOR = extra.primaryColor || "#2f3a4a";
  * choice alongside typing an address; a build that does not just asks for the
  * address, which is what a self-hosted install wants anyway.
  */
-export const HOSTED: HostedPreset | null = extra.hosted || null;
+export const HOSTED: HostedPreset | null = usablePreset(extra.hosted);
 
 /** Turn what someone typed into the address their workspace lives at. */
 export function hostedServerFor(workspace: string): string {
