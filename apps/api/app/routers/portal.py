@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from ..config import get_settings
 from ..database import get_db
 from ..models import Agency, Agent, Client, Conversation, Message, now_utc
-from ..ratelimit import login_rate_limit
+from ..ratelimit import login_rate_limit, public_asset_rate_limit
 from ..schemas import (
     AgentSummary,
     ConversationDetail,
@@ -83,7 +83,7 @@ def public_portal(slug: str, db: Session = Depends(get_db)):
     }
 
 
-@router.get("/{slug}/logo")
+@router.get("/{slug}/logo", dependencies=[Depends(public_asset_rate_limit)])
 def public_logo(slug: str, db: Session = Depends(get_db)):
     client = _public_client(db, slug)
     agency = db.get(Agency, client.agency_id)
@@ -92,7 +92,7 @@ def public_logo(slug: str, db: Session = Depends(get_db)):
     return logo_response(agency.logo_data, agency.logo_mime)
 
 
-@router.get("/{slug}/client-logo")
+@router.get("/{slug}/client-logo", dependencies=[Depends(public_asset_rate_limit)])
 def public_client_logo(slug: str, db: Session = Depends(get_db)):
     client = _public_client(db, slug)
     if not client.logo_data or not client.logo_mime:

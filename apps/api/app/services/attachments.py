@@ -92,7 +92,8 @@ def logo_response(data: bytes, mime: str) -> Response:
         content=data,
         media_type=mime,
         headers={
-            "Cache-Control": "no-store",
+            "Cache-Control": "private, max-age=300",
+            "Vary": "Origin",
             "X-Content-Type-Options": "nosniff",
             "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
         },

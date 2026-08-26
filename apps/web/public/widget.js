@@ -58,7 +58,8 @@
   teaser.appendChild(teaserText);
 
   function post(action) {
-    try { frame.contentWindow && frame.contentWindow.postMessage({ type: "ol-widget-host", action: action }, origin); } catch (e) {}
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the frame may not be ready; nothing to do
+    try { if (frame.contentWindow) frame.contentWindow.postMessage({ type: "ol-widget-host", action: action }, origin); } catch (err) {}
   }
   function hideTeaser() { teaser.style.display = "none"; }
   function setOpen(next) {

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..database import get_db
 from ..models import Agency, Agent, Client, Conversation, Message, now_utc
-from ..ratelimit import widget_rate_limit
+from ..ratelimit import public_asset_rate_limit, widget_rate_limit
 from ..schemas import WidgetConfigOut, WidgetMessageIn, WidgetReply
 from ..services.attachments import (
     MAX_ATTACHMENT_BYTES,
@@ -91,7 +91,7 @@ def widget_config(public_id: str, db: Session = Depends(get_db)):
     }
 
 
-@router.get("/{public_id}/logo")
+@router.get("/{public_id}/logo", dependencies=[Depends(public_asset_rate_limit)])
 def widget_logo(public_id: str, db: Session = Depends(get_db)):
     """Public logo for the widget header: the client's own logo when set,
     otherwise the agency logo."""

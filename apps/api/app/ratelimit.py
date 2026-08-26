@@ -66,6 +66,7 @@ class RateLimiter:
 # widget message endpoint is throttled because each call spends LLM tokens.
 login_rate_limit = RateLimiter(10, 60, name="login")
 widget_rate_limit = RateLimiter(30, 60, name="widget")
+public_asset_rate_limit = RateLimiter(60, 60, name="public-asset")
 # The Meta webhook is authenticated by its HMAC signature; this generous limit
 # only guards against floods of unsigned traffic.
 whatsapp_cloud_webhook_rate_limit = RateLimiter(300, 60, name="whatsapp-cloud-webhook")
