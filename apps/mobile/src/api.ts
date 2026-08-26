@@ -67,6 +67,8 @@ export type Conversation = {
   title: string;
   mode: "ai" | "human";
   channel: string;
+  /** For WhatsApp, the address the message came from - a phone number. */
+  external_chat_id: string | null;
   contact_name: string | null;
   preview: string | null;
   updated_at: string;

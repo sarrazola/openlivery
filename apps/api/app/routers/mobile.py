@@ -104,7 +104,10 @@ def _session_for(client: Client, agency: Agency, user: PortalUser | None) -> Mob
         portal_slug=client.portal_slug,
         client_id=client.id,
         user_id=user.id if user else None,
-        user_name=(user.name or user.email) if user else "",
+        # The name only. An e-mail is a credential, and this is shown on screen
+        # next to the business - a session that has no name for the person
+        # falls back to the agency, which the app decides.
+        user_name=(user.name or "").strip() if user else "",
         branding=_branding(client, agency),
         push=PushConfig(enabled=push_enabled(), provider=configured_provider()),
     )

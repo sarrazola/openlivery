@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   getConversation,
@@ -20,6 +21,7 @@ import {
   type Session,
 } from "../api";
 import { AttachmentView } from "../components/Attachments";
+import { channelLabel, conversationName, initialFor } from "../conversations";
 import { Composer, type OutgoingFile } from "../components/Composer";
 import { useStrings, type Strings } from "../i18n";
 import { renderRichText } from "../rich";
@@ -69,6 +71,7 @@ export function ChatScreen({
   const insets = useSafeAreaInsets();
 
   const brand = readableBrand(session.branding.brand_color, isDark);
+  const who = conversationName(conversation, s);
 
   const load = useCallback(async () => {
     try {
@@ -160,13 +163,17 @@ export function ChatScreen({
           accessibilityRole="button"
           accessibilityLabel={s.chat.back}
         >
-          <Text style={[styles.backGlyph, { color: brand }]}>‹</Text>
+          <Ionicons name="chevron-back" size={28} color={brand} />
         </Pressable>
+        <View style={[styles.headerAvatar, { backgroundColor: tint(brand, 0.16) }]}>
+          <Text style={[styles.headerAvatarText, { color: brand }]}>{initialFor(who)}</Text>
+        </View>
         <View style={styles.headerText}>
           <Text style={[styles.headerTitle, { color: colors.ink }]} numberOfLines={1}>
-            {conversation.contact_name || conversation.title || s.list.untitled}
+            {who}
           </Text>
           <Text style={[styles.headerSub, { color: colors.muted }]} numberOfLines={1}>
+            {channelLabel(conversation.channel, s)} ·{" "}
             {mode === "human" ? s.chat.youAreReplying : s.chat.assistantIsReplying}
           </Text>
         </View>
@@ -228,6 +235,7 @@ export function ChatScreen({
                     style={[
                       styles.bubble,
                       { backgroundColor: bubbleColor },
+                      !outgoing && styles.bubbleIn,
                       onlyMedia && styles.bubbleMedia,
                     ]}
                   >
@@ -309,8 +317,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   back: { width: 28, alignItems: "flex-start" },
-  backGlyph: { fontSize: 32, lineHeight: 34, fontWeight: "300" },
   pressed: { opacity: 0.5 },
+  headerAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  headerAvatarText: { fontSize: 14, fontWeight: "600" },
   headerText: { flex: 1, minWidth: 0 },
   headerTitle: { fontSize: 17, fontWeight: "600", letterSpacing: -0.2 },
   headerSub: { fontSize: 13, marginTop: 1 },
@@ -331,6 +340,13 @@ const styles = StyleSheet.create({
   rowLeft: { justifyContent: "flex-start" },
   rowRight: { justifyContent: "flex-end" },
   bubble: { maxWidth: "82%", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
+  // A received bubble sits on the conversation background rather than being
+  // painted, so it is lifted the way a card is instead of outlined.
+  bubbleIn: Platform.select({
+    ios: { shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 1.5, shadowOffset: { width: 0, height: 1 } },
+    android: { elevation: 1 },
+    default: {},
+  }),
   bubbleMedia: { padding: 4 },
   attachmentSlot: { marginBottom: 4 },
   sender: { fontSize: 12, fontWeight: "600", opacity: 0.85, marginBottom: 2 },

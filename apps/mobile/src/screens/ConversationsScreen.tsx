@@ -12,15 +12,9 @@ import {
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { assetUrl, listConversations, type Conversation, type Session } from "../api";
+import { channelLabel, conversationName, initialFor } from "../conversations";
 import { useStrings, type Strings } from "../i18n";
 import { contrastOn, readableBrand, tint, useColors, useIsDark } from "../theme";
-
-function channelLabel(channel: string, s: Strings): string {
-  if (channel === "whatsapp" || channel === "whatsapp_cloud") return s.channels.whatsapp;
-  if (channel === "widget") return s.channels.widget;
-  if (channel === "playground") return s.channels.playground;
-  return channel;
-}
 
 function whenLabel(iso: string, s: Strings): string {
   const date = new Date(iso);
@@ -115,7 +109,7 @@ export function ConversationsScreen({
         )}
         <View style={styles.headerText}>
           <Text style={[styles.headerTitle, { color: colors.ink }]} numberOfLines={1}>
-            {session.branding.portal_title}
+            {session.branding.client_name || session.branding.portal_title}
           </Text>
           <Text style={[styles.headerSub, { color: colors.muted }]} numberOfLines={1}>
             {session.user_name || session.branding.agency_name}
@@ -177,13 +171,13 @@ export function ConversationsScreen({
             >
               <View style={[styles.avatar, { backgroundColor: tint(brand, 0.16) }]}>
                 <Text style={[styles.avatarText, { color: brand }]}>
-                  {(item.contact_name || item.title || "?").slice(0, 1).toUpperCase()}
+                  {initialFor(conversationName(item, s))}
                 </Text>
               </View>
               <View style={styles.rowBody}>
                 <View style={styles.rowTop}>
                   <Text style={[styles.rowTitle, { color: colors.ink }]} numberOfLines={1}>
-                    {item.contact_name || item.title || s.list.untitled}
+                    {conversationName(item, s)}
                   </Text>
                   <Text style={[styles.rowWhen, { color: colors.subtle }]}>{whenLabel(item.updated_at, s)}</Text>
                 </View>

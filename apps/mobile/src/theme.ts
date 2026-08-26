@@ -33,12 +33,16 @@ const light: Colors = {
   ink: "#17213b",
   muted: "#68718a",
   subtle: "#929ab0",
-  line: "#e4e8f0",
+  line: "#e2e6ee",
   surface: "#ffffff",
-  canvas: "#f2f3f7",
+  // The conversation sits on `canvas` and incoming bubbles are `bubbleIn`, so
+  // those two carry the whole readability of a chat. They are pulled apart
+  // deliberately: a received message has to be obvious at a glance, the way it
+  // is in every messaging app.
+  canvas: "#e7eaf0",
   raised: "#ffffff",
   danger: "#d95757",
-  bubbleIn: "#eef1f7",
+  bubbleIn: "#ffffff",
   pressed: "rgba(0,0,0,0.05)",
 };
 
@@ -48,10 +52,10 @@ const dark: Colors = {
   subtle: "#7b8399",
   line: "#2a2f3a",
   surface: "#161a21",
-  canvas: "#0d0f14",
+  canvas: "#0b0d11",
   raised: "#1c212a",
   danger: "#ff6b6b",
-  bubbleIn: "#232935",
+  bubbleIn: "#262d3a",
   pressed: "rgba(255,255,255,0.07)",
 };
 
