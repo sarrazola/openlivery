@@ -19,7 +19,7 @@ from ..schemas import (
     SendMessageRequest,
 )
 from ..security import create_portal_token, decode_portal_token, verify_password
-from ..services.attachments import attachment_response, conversation_attachment
+from ..services.attachments import attachment_response, conversation_attachment, logo_response
 from ..services.operator_media import store_operator_media_reply
 from ..services.whatsapp import send_channel_message
 
@@ -76,7 +76,10 @@ def public_portal(slug: str, db: Session = Depends(get_db)):
         "portal_slug": client.portal_slug,
         "agency_name": agency.name,
         "agency_brand_color": agency.brand_color,
+        # Login page uses the agency logo; the client's own space (inbox) uses
+        # the client logo when set.
         "agency_logo_url": f"/api/portal/{slug}/logo" if agency.logo_data else None,
+        "client_logo_url": f"/api/portal/{slug}/client-logo" if client.logo_mime else None,
     }
 
 
@@ -86,7 +89,15 @@ def public_logo(slug: str, db: Session = Depends(get_db)):
     agency = db.get(Agency, client.agency_id)
     if not agency.logo_data or not agency.logo_mime:
         raise HTTPException(status_code=404, detail="Logo not found")
-    return Response(content=agency.logo_data, media_type=agency.logo_mime, headers={"Cache-Control": "no-store"})
+    return logo_response(agency.logo_data, agency.logo_mime)
+
+
+@router.get("/{slug}/client-logo")
+def public_client_logo(slug: str, db: Session = Depends(get_db)):
+    client = _public_client(db, slug)
+    if not client.logo_data or not client.logo_mime:
+        raise HTTPException(status_code=404, detail="Logo not found")
+    return logo_response(client.logo_data, client.logo_mime)
 
 
 @router.post("/{slug}/login", response_model=PortalSessionOut, dependencies=[Depends(login_rate_limit)])

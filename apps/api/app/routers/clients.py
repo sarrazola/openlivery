@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -9,11 +9,14 @@ from ..deps import get_current_user
 from ..models import Client, User, new_domain_token
 from ..schemas import ClientCreate, ClientDomainOut, ClientDomainSet, ClientOut, ClientPortalUpdate, ClientUpdate
 from ..security import hash_password
+from ..services.attachments import logo_response
 from ..services import dns as dns_service
 from ..slugs import slugify, unique_slug
 
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
+MAX_LOGO_BYTES = 2 * 1024 * 1024
+ALLOWED_LOGO_TYPES = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
 
 
 def _domain_out(client: Client) -> ClientDomainOut:
@@ -72,6 +75,42 @@ def update_client(client_id: uuid.UUID, payload: ClientUpdate, db: Session = Dep
         setattr(client, key, value)
     db.commit()
     return _client(db, user, client_id)
+
+
+@router.post("/{client_id}/logo", response_model=ClientOut)
+async def upload_client_logo(
+    client_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    client = _client(db, user, client_id)
+    if file.content_type not in ALLOWED_LOGO_TYPES:
+        raise HTTPException(status_code=400, detail="Use a PNG, JPG, WebP or SVG logo")
+    data = await file.read(MAX_LOGO_BYTES + 1)
+    if len(data) > MAX_LOGO_BYTES:
+        raise HTTPException(status_code=413, detail="The logo exceeds the 2 MB limit")
+    client.logo_data = data
+    client.logo_mime = file.content_type
+    db.commit()
+    return _client(db, user, client_id)
+
+
+@router.get("/{client_id}/logo")
+def get_client_logo(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    client = _client(db, user, client_id)
+    if not client.logo_data or not client.logo_mime:
+        raise HTTPException(status_code=404, detail="This client does not have a logo yet")
+    return logo_response(client.logo_data, client.logo_mime)
+
+
+@router.delete("/{client_id}/logo", status_code=status.HTTP_204_NO_CONTENT)
+def delete_client_logo(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    client = _client(db, user, client_id)
+    client.logo_data = None
+    client.logo_mime = None
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch("/{client_id}/portal", response_model=ClientOut)

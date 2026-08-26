@@ -82,6 +82,23 @@ def is_inline_safe(mime: str) -> bool:
     return mime.startswith(INLINE_PREFIXES) and mime not in NEVER_INLINE
 
 
+def logo_response(data: bytes, mime: str) -> Response:
+    """Serve an agency/client logo. Logos are shown via ``<img>`` (where SVG
+    never runs scripts), but they are served from the app's own origin, so a
+    logo opened directly by URL must not execute: nosniff stops type
+    second-guessing and the CSP neutralizes any script an SVG logo carries
+    while still letting it render as an image."""
+    return Response(
+        content=data,
+        media_type=mime,
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+        },
+    )
+
+
 def attachment_response(attachment: MessageAttachment) -> Response:
     inline = is_inline_safe(attachment.mime)
     headers = {

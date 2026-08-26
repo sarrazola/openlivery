@@ -41,6 +41,7 @@ const en = {
     tabLinks: "Links",
     tabDocs: "Docs",
     emptyShared: "Nothing shared here yet.",
+    exportChat: "Export conversation",
   },
   nav: {
     section: "Platform",
@@ -151,6 +152,7 @@ const es: typeof en = {
     tabLinks: "Enlaces",
     tabDocs: "Documentos",
     emptyShared: "Todavía no hay nada compartido aquí.",
+    exportChat: "Exportar conversación",
   },
   nav: {
     section: "Plataforma",

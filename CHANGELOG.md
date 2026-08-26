@@ -40,6 +40,15 @@ bundles ffmpeg for voice-note transcoding.
 - Widget file uploads (rate limited) and attachment rendering.
 - Inbound WhatsApp videos (QR and Cloud API) are now stored and shown; they
   previously only contributed their caption.
+- Chat widget polish: a greeting teaser bubble (using the agent's configured
+  greeting) and an unread-count badge on the launcher, message timestamps in
+  the bubbles, and a button for the visitor to download their own conversation
+  as a text transcript. The embed's iframe now also allows the microphone.
+- Per-client logo: upload a logo on the client's details page (PNG, JPG, WebP
+  or SVG, up to 2 MB); it is shown in that client's chat widget and portal
+  inbox, falling back to the agency logo. Logos are served with
+  `X-Content-Type-Options: nosniff` and a locked-down `Content-Security-Policy`
+  so an SVG logo cannot execute script when its URL is opened directly.
 - Discord community link in the agency sidebar ("Join the community" /
   "Unirse a la comunidad"), opening the project Discord server in a new tab.
 - Public `GET /api/auth/status` endpoint reporting whether the instance still
