@@ -5,8 +5,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..database import get_db
-from ..models import Agency, Agent, Conversation, Message, MessageAttachment, now_utc
-from ..ratelimit import widget_rate_limit
+from ..models import Agency, Agent, Client, Conversation, Message, MessageAttachment, now_utc
+from ..ratelimit import public_asset_rate_limit, widget_rate_limit
 from ..schemas import WidgetConfigOut, WidgetMessageIn, WidgetReply
 from ..services.attachments import (
     MAX_ATTACHMENT_BYTES,
@@ -16,6 +16,7 @@ from ..services.attachments import (
     conversation_attachment,
     ensure_uploadable,
     llm_text,
+    logo_response,
     store_attachment,
 )
 from ..services.tools import run_completion
@@ -34,6 +35,7 @@ def _message_out(item: Message) -> dict:
     return {
         "role": item.role,
         "content": item.content,
+        "created_at": item.created_at,
         "attachments": [
             {"id": a.id, "kind": a.kind, "mime": a.mime, "filename": a.filename, "size_bytes": a.size_bytes}
             for a in item.attachments
@@ -79,14 +81,30 @@ def _conversation(db: Session, agent: Agent, session_id: str) -> Conversation:
 def widget_config(public_id: str, db: Session = Depends(get_db)):
     agent = _agent(db, public_id)
     agency = db.get(Agency, agent.agency_id)
+    client = db.get(Client, agent.client_id)
+    has_logo = (client and client.logo_mime) or (agency and agency.logo_data)
     return {
         "title": agent.name,
         "greeting": agent.widget_greeting,
         "color": agent.widget_color or (agency.brand_color if agency else ""),
         "position": agent.widget_position,
         "agency_name": agency.name if agency else "",
-        "agency_logo_url": agency.logo_url if agency else None,
+        "logo_url": f"/api/widget/{public_id}/logo" if has_logo else None,
     }
+
+
+@router.get("/{public_id}/logo", dependencies=[Depends(public_asset_rate_limit)])
+def widget_logo(public_id: str, db: Session = Depends(get_db)):
+    """Public logo for the widget header: the client's own logo when set,
+    otherwise the agency logo."""
+    agent = _agent(db, public_id)
+    client = db.get(Client, agent.client_id)
+    if client and client.logo_data and client.logo_mime:
+        return logo_response(client.logo_data, client.logo_mime)
+    agency = db.get(Agency, agent.agency_id)
+    if agency and agency.logo_data and agency.logo_mime:
+        return logo_response(agency.logo_data, agency.logo_mime)
+    raise HTTPException(status_code=404, detail="No logo")
 
 
 @router.get("/{public_id}/history", response_model=WidgetReply, dependencies=[Depends(widget_rate_limit)])
@@ -183,7 +201,7 @@ async def widget_message(public_id: str, payload: WidgetMessageIn, db: Session =
     if conversation.mode == "human":
         return {"mode": "human", "reply": None, "messages": []}
     reply = await _widget_ai_reply(db, agent, conversation, content)
-    return {"mode": "ai", "reply": reply, "messages": []}
+    return {"mode": "ai", "reply": reply, "reply_at": now_utc() if reply else None, "messages": []}
 
 
 @router.post("/{public_id}/media", response_model=WidgetReply, dependencies=[Depends(widget_rate_limit)])

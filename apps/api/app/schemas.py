@@ -91,6 +91,7 @@ class ClientOut(ORMModel):
     portal_password_configured: bool
     portal_domain: str | None
     portal_domain_verified: bool
+    logo_url: str | None = None
     created_at: datetime
     updated_at: datetime
     agents: list[AgentSummary] = []
@@ -348,6 +349,7 @@ class PortalPublicOut(BaseModel):
     agency_name: str
     agency_brand_color: str
     agency_logo_url: str | None
+    client_logo_url: str | None = None
 
 
 class PortalSessionOut(BaseModel):
@@ -434,7 +436,9 @@ class WidgetConfigOut(BaseModel):
     color: str
     position: str
     agency_name: str
-    agency_logo_url: str | None = None
+    # Public logo shown in the widget header: the client's own logo when set,
+    # otherwise the agency logo.
+    logo_url: str | None = None
 
 
 class WidgetMessageIn(BaseModel):
@@ -445,12 +449,14 @@ class WidgetMessageIn(BaseModel):
 class WidgetMessageOut(BaseModel):
     role: str
     content: str
+    created_at: datetime | None = None
     attachments: list[AttachmentOut] = []
 
 
 class WidgetReply(BaseModel):
     mode: str
     reply: str | None = None
+    reply_at: datetime | None = None
     messages: list[WidgetMessageOut] = []
 
 

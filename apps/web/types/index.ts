@@ -24,6 +24,7 @@ export type Client = {
   portal_password_configured: boolean;
   portal_domain: string | null;
   portal_domain_verified: boolean;
+  logo_url: string | null;
   agents: AgentSummary[];
   created_at: string;
   updated_at: string;
@@ -192,4 +193,5 @@ export type PortalPublic = {
   agency_name: string;
   agency_brand_color: string;
   agency_logo_url: string | null;
+  client_logo_url: string | null;
 };

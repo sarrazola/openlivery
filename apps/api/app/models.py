@@ -66,6 +66,10 @@ class Client(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     general_context: Mapped[str] = mapped_column(Text, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Optional per-client logo, shown in the widget and portal (falls back to
+    # the agency logo). Bytes stored in Postgres like the agency logo.
+    logo_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
+    logo_mime: Mapped[str | None] = mapped_column(String(100), nullable=True)
     portal_slug: Mapped[str] = mapped_column(String(180), unique=True, index=True)
     portal_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     portal_title: Mapped[str] = mapped_column(String(180), default="")
@@ -90,6 +94,10 @@ class Client(Base):
     @property
     def portal_password_configured(self) -> bool:
         return bool(self.portal_password_hash)
+
+    @property
+    def logo_url(self) -> str | None:
+        return f"/api/clients/{self.id}/logo?v={int(self.updated_at.timestamp())}" if self.logo_mime else None
 
 
 class ProviderCredential(Base):
