@@ -107,7 +107,9 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
           ) : null}
 
           {useHosted && HOSTED ? (
-            <>
+            // A View rather than a fragment: React treats a fragment's children
+            // here as an unkeyed list and warns about it.
+            <View>
               <Text style={[styles.label, { color: colors.ink }]}>{HOSTED.workspaceLabel}</Text>
               <TextInput
                 style={[styles.input, { borderColor: colors.line, color: colors.ink, backgroundColor: colors.surface }]}
@@ -120,9 +122,9 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
                 returnKeyType="next"
               />
               {workspace.trim() ? <Text style={[styles.hint, { color: colors.subtle }]}>{hostedServerFor(workspace)}</Text> : null}
-            </>
+            </View>
           ) : (
-            <>
+            <View>
               <Text style={[styles.label, { color: colors.ink }]}>Server address</Text>
               <TextInput
                 style={[styles.input, { borderColor: colors.line, color: colors.ink, backgroundColor: colors.surface }]}
@@ -136,7 +138,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
                 returnKeyType="next"
               />
               <Text style={[styles.hint, { color: colors.subtle }]}>The address of the instance your agency runs.</Text>
-            </>
+            </View>
           )}
 
           <Text style={[styles.label, { color: colors.ink }]}>E-mail</Text>
