@@ -11,8 +11,6 @@
  * `s.chat.takeOver` - which means there is no lookup that can miss at runtime.
  */
 
-import { useLocales } from "expo-localization";
-
 const en = {
   signIn: {
     title: "Your inbox",
@@ -190,15 +188,17 @@ function pick(languageCode: string | null | undefined): Strings {
 }
 
 /**
- * The dictionary for the phone's language, outside a component.
+ * The dictionary for the phone's language.
  *
- * Read at call time rather than cached, so a language changed in Settings takes
- * effect without the module having to be reloaded.
+ * Read at call time rather than cached. Both platforms restart the app when the
+ * language changes in Settings, so this is really only read once per run - but
+ * reading it fresh costs nothing and means nothing can go stale.
+ *
+ * The localization module is required lazily because this file is also loaded
+ * by scripts that run in plain Node, where no native module exists.
  */
 export function strings(): Strings {
   try {
-    // Imported lazily: this module is also loaded by scripts that run in plain
-    // Node, where the native localization module does not exist.
     const { getLocales } = require("expo-localization") as typeof import("expo-localization");
     return pick(getLocales()[0]?.languageCode);
   } catch {
@@ -206,8 +206,11 @@ export function strings(): Strings {
   }
 }
 
-/** The dictionary for the phone's language, re-rendering if it changes. */
+/**
+ * The same thing, named as a hook so screens read as they would with any other
+ * i18n library - and so making it reactive later changes one function, not
+ * every call site.
+ */
 export function useStrings(): Strings {
-  const locales = useLocales();
-  return pick(locales[0]?.languageCode);
+  return strings();
 }
