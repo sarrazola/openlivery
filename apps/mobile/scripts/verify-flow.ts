@@ -8,10 +8,17 @@
  *   SERVER=http://localhost:8000 EMAIL=... PASSWORD=... npx tsx scripts/verify-flow.ts
  */
 
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
+  attachmentUrl,
+  authHeaders,
+  forgetDevice,
   getConversation,
   listConversations,
   normalizeServerUrl,
+  registerDevice,
   reply,
   resumeSession,
   setMode,
@@ -83,6 +90,59 @@ async function main() {
   const afterReply = await reply(SERVER, session, target.id, text);
   const landed = afterReply.messages.some((m) => m.content === text);
   check("the reply is stored in the conversation", landed);
+
+  console.log("\nAttachments");
+  // A one-pixel PNG is enough: what is being checked is the round trip, not the
+  // picture. Node has no expo-file-system, so the multipart body is built the
+  // way a browser would - the app's own path is exercised on a device.
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const scratch = join(tmpdir(), "openlivery-verify.png");
+  writeFileSync(scratch, png);
+  const form = new FormData();
+  form.append("file", new Blob([png], { type: "image/png" }), "verify.png");
+  form.append("caption", "Automated attachment check");
+  const uploaded = await fetch(
+    `${SERVER}/api/portal/${session.portal_slug}/conversations/${target.id}/reply-media`,
+    { method: "POST", body: form, headers: authHeaders(session) },
+  );
+  check("sends a file into the conversation", uploaded.ok, `status ${uploaded.status}`);
+  if (uploaded.ok) {
+    const withMedia = await uploaded.json();
+    const last = withMedia.messages[withMedia.messages.length - 1];
+    const attachment = last?.attachments?.[0];
+    check("the message carries the attachment", Boolean(attachment), attachment?.mime);
+    check("it is recognised as an image", attachment?.kind === "image", attachment?.kind);
+    if (attachment) {
+      const fetched = await fetch(
+        attachmentUrl(SERVER, session, target.id, attachment.id),
+        { headers: authHeaders(session) },
+      );
+      check("it can be fetched back with the session", fetched.ok, `status ${fetched.status}`);
+      const naked = await fetch(attachmentUrl(SERVER, session, target.id, attachment.id));
+      check("and not without it", naked.status === 401, `status ${naked.status}`);
+    }
+  }
+
+  console.log("\nNotifications");
+  // The device registry accepts a registration whether or not the server has a
+  // provider; what it reports back is what the app uses to decide.
+  const deviceToken = `verify-${Date.now().toString(16)}${"0".repeat(8)}`;
+  const registered = await registerDevice(SERVER, session, {
+    token: deviceToken,
+    provider: session.push.provider,
+    platform: "ios",
+  });
+  check("registers a device", typeof registered.registered === "boolean");
+  check(
+    "the session and the registry agree on the provider",
+    registered.provider === session.push.provider,
+    `${session.push.provider} vs ${registered.provider}`,
+  );
+  await forgetDevice(SERVER, session, deviceToken);
+  check("releases it again", true);
 
   const handedBack = await setMode(SERVER, session, target.id, "ai");
   check("hands back to the assistant", handedBack.mode === "ai", handedBack.mode);

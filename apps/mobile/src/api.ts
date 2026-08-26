@@ -8,8 +8,6 @@
  * cannot rely on cookies surviving a restart.
  */
 
-import { File } from "expo-file-system";
-
 export type Branding = {
   agency_name: string;
   client_name: string;
@@ -183,6 +181,10 @@ export async function replyWithFile(
   file: { uri: string; name: string; type: string },
   caption = "",
 ): Promise<ConversationDetail> {
+  // Imported here rather than at the top so this module stays loadable outside
+  // a React Native runtime - scripts/verify-flow.ts exercises the rest of it
+  // from plain Node.
+  const { File } = await import("expo-file-system");
   const body = new FormData();
   body.append("file", new File(file.uri), file.name);
   body.append("caption", caption);

@@ -123,11 +123,26 @@ apps/
   api/         FastAPI backend (app/, migrations/, tests/)
   web/         Next.js frontend (app/, components/, lib/, types/)
   whatsapp/    Baileys WhatsApp bridge (src/)
+  mobile/      Optional Expo app for the businesses you serve (unbranded)
 docs/          Self-hosting and operations guide
 scripts/       Helper scripts (generate-docker-env.sh)
 Makefile       Common commands (make help)
 docker-compose.yml
 ```
+
+## The mobile app
+
+`apps/mobile` is an optional Expo app: the inbox a business you serve carries in
+their pocket, with conversations, takeover, replies, photos and voice notes. It
+is not installed with the platform and the server does not need it — nobody
+running OpenLivery has to build or deploy it to have everything working.
+
+It deliberately carries **no brand**: no name, no logo, no bundle identifier, no
+preset pointing at any hosted service. What ships is a working app and the
+machinery to make it yours — put your identity in a brand file, build, and
+publish it under your own name from your own developer account. The whole
+checklist, including why you publish it rather than us, is in
+[apps/mobile/WHITELABEL.md](apps/mobile/WHITELABEL.md).
 
 ## Contributing
 
