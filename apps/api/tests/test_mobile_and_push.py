@@ -226,7 +226,7 @@ def test_unknown_provider_falls_back_to_silence(authenticated_client: TestClient
     """A typo in the environment turns notifications off rather than erroring."""
     from app.config import get_settings
 
-    monkeypatch.setattr(get_settings(), "push_provider", "onesignal-typo", raising=False)
+    monkeypatch.setattr(get_settings(), "push_provider", "not-a-real-provider", raising=False)
     assert notifications.configured_provider() == "none"
     assert notifications.push_enabled() is False
 
