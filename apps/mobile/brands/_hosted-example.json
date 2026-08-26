@@ -1,5 +1,5 @@
 {
-  "_comment": "Same as example.json, plus a preset for a service you run. Use this shape when your build should offer a hosted option instead of only asking for a server address. Nothing in this repository ships a preset; the app asks for an address unless a brand file adds one.",
+  "_comment": "Same as example.json, plus a preset for a service you run. Use this shape when your build should offer a hosted option instead of only asking for a server address. The wording around it is translated by the app; only the service's own name and its address template belong here. Nothing in this repository ships a preset.",
   "name": "Inbox",
   "slug": "inbox-app",
   "scheme": "inboxapp",
@@ -9,9 +9,6 @@
   "defaultServer": "",
   "hosted": {
     "label": "Example Cloud",
-    "workspaceLabel": "Workspace name",
-    "workspacePlaceholder": "your-workspace",
-    "serverTemplate": "https://{workspace}.example.com",
-    "otherLabel": "Another server"
+    "serverTemplate": "https://{workspace}.example.com"
   }
 }

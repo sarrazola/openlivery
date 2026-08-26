@@ -21,6 +21,7 @@ import { Image } from "expo-image";
 import { Directory, File, Paths } from "expo-file-system";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { attachmentUrl, authHeaders, type Attachment, type Session } from "../api";
+import { useStrings, type Strings } from "../i18n";
 import { contrastOn, useColors, type Colors } from "../theme";
 
 function clock(seconds: number): string {
@@ -46,12 +47,12 @@ type Props = {
   brand: string;
 };
 
-function ImageAttachment({ url, headers, colors }: { url: string; headers: Record<string, string>; colors: Colors }) {
+function ImageAttachment({ url, headers, colors, s }: { url: string; headers: Record<string, string>; colors: Colors; s: Strings }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
       <View style={[styles.broken, { backgroundColor: colors.bubbleIn }]}>
-        <Text style={[styles.brokenText, { color: colors.muted }]}>Image unavailable</Text>
+        <Text style={[styles.brokenText, { color: colors.muted }]}>{s.attachment.imageUnavailable}</Text>
       </View>
     );
   }
@@ -62,7 +63,7 @@ function ImageAttachment({ url, headers, colors }: { url: string; headers: Recor
       contentFit="cover"
       transition={120}
       onError={() => setFailed(true)}
-      accessibilityLabel="Attached image"
+      accessibilityLabel={s.attachment.image}
     />
   );
 }
@@ -109,6 +110,7 @@ function AudioAttachment({
   control,
   onControl,
   colors,
+  s,
 }: {
   url: string;
   headers: Record<string, string>;
@@ -119,6 +121,7 @@ function AudioAttachment({
   /** The glyph drawn on top of `control`. */
   onControl: string;
   colors: Colors;
+  s: Strings;
 }) {
   const localPath = useCachedAudio(url, headers, id);
   const player = useAudioPlayer(localPath ? { uri: localPath } : null);
@@ -145,7 +148,7 @@ function AudioAttachment({
         hitSlop={8}
         style={({ pressed }) => [styles.playButton, { backgroundColor: control }, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={playing ? "Pause voice note" : "Play voice note"}
+        accessibilityLabel={playing ? s.attachment.pause : s.attachment.play}
       >
         {loading || (status.isBuffering && !playing) ? (
           <ActivityIndicator size="small" color={onControl} />
@@ -165,6 +168,7 @@ function AudioAttachment({
 
 export function AttachmentView({ attachment, server, session, conversationId, outgoing, brand }: Props) {
   const colors = useColors();
+  const s = useStrings();
   const url = attachmentUrl(server, session, conversationId, attachment.id);
   const headers = authHeaders(session);
   // An outgoing bubble is painted the brand colour and an incoming one is not,
@@ -175,7 +179,7 @@ export function AttachmentView({ attachment, server, session, conversationId, ou
   const onControl = outgoing ? brand : colors.surface;
 
   if (attachment.kind === "image") {
-    return <ImageAttachment url={url} headers={headers} colors={colors} />;
+    return <ImageAttachment url={url} headers={headers} colors={colors} s={s} />;
   }
   if (attachment.kind === "audio") {
     return (
@@ -187,6 +191,7 @@ export function AttachmentView({ attachment, server, session, conversationId, ou
         control={control}
         onControl={onControl}
         colors={colors}
+        s={s}
       />
     );
   }
@@ -203,7 +208,7 @@ export function AttachmentView({ attachment, server, session, conversationId, ou
       </View>
       <View style={styles.fileBody}>
         <Text style={[styles.fileName, { color: control }]} numberOfLines={1}>
-          {attachment.filename || "Attachment"}
+          {attachment.filename || s.attachment.generic}
         </Text>
         {attachment.size_bytes ? (
           <Text style={[styles.fileSize, { color: control }]}>{humanSize(attachment.size_bytes)}</Text>

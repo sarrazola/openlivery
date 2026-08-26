@@ -21,6 +21,7 @@ import {
 } from "../api";
 import { AttachmentView } from "../components/Attachments";
 import { Composer, type OutgoingFile } from "../components/Composer";
+import { useStrings, type Strings } from "../i18n";
 import { renderRichText } from "../rich";
 import { contrastOn, readableBrand, tint, useColors, useIsDark } from "../theme";
 
@@ -28,13 +29,13 @@ function timeLabel(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-function dayLabel(iso: string): string {
+function dayLabel(iso: string, s: Strings): string {
   const date = new Date(iso);
   const now = new Date();
-  if (date.toDateString() === now.toDateString()) return "Today";
+  if (date.toDateString() === now.toDateString()) return s.when.today;
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  if (date.toDateString() === yesterday.toDateString()) return s.when.yesterday;
   return date.toLocaleDateString(undefined, { day: "numeric", month: "long" });
 }
 
@@ -63,6 +64,7 @@ export function ChatScreen({
   const listRef = useRef<FlatList<Message>>(null);
   const mounted = useRef(true);
   const colors = useColors();
+  const s = useStrings();
   const isDark = useIsDark();
   const insets = useSafeAreaInsets();
 
@@ -76,7 +78,7 @@ export function ChatScreen({
       setLocalMode(detail.mode);
       setError(null);
     } catch (err) {
-      if (mounted.current) setError(err instanceof Error ? err.message : "Could not load this conversation");
+      if (mounted.current) setError(err instanceof Error ? err.message : s.chat.loadFailed);
     } finally {
       if (mounted.current) setLoaded(true);
     }
@@ -102,7 +104,7 @@ export function ChatScreen({
         setMessages(detail.messages || []);
       }
     } catch (err) {
-      if (mounted.current) setError(err instanceof Error ? err.message : "Could not change the mode");
+      if (mounted.current) setError(err instanceof Error ? err.message : s.chat.modeFailed);
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -118,7 +120,7 @@ export function ChatScreen({
         setError(null);
       }
     } catch (err) {
-      if (mounted.current) setError(err instanceof Error ? err.message : "Could not send");
+      if (mounted.current) setError(err instanceof Error ? err.message : s.chat.sendFailed);
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -134,7 +136,7 @@ export function ChatScreen({
         setError(null);
       }
     } catch (err) {
-      if (mounted.current) setError(err instanceof Error ? err.message : "Could not send that file");
+      if (mounted.current) setError(err instanceof Error ? err.message : s.chat.fileFailed);
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -156,16 +158,16 @@ export function ChatScreen({
           hitSlop={12}
           style={({ pressed }) => [styles.back, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={s.chat.back}
         >
           <Text style={[styles.backGlyph, { color: brand }]}>‹</Text>
         </Pressable>
         <View style={styles.headerText}>
           <Text style={[styles.headerTitle, { color: colors.ink }]} numberOfLines={1}>
-            {conversation.contact_name || conversation.title || "Conversation"}
+            {conversation.contact_name || conversation.title || s.list.untitled}
           </Text>
           <Text style={[styles.headerSub, { color: colors.muted }]} numberOfLines={1}>
-            {mode === "human" ? "You are replying" : "The assistant is replying"}
+            {mode === "human" ? s.chat.youAreReplying : s.chat.assistantIsReplying}
           </Text>
         </View>
         <Pressable
@@ -176,7 +178,7 @@ export function ChatScreen({
           accessibilityRole="button"
         >
           <Text style={[styles.takeover, { color: brand }]}>
-            {mode === "human" ? "Hand back" : "Take over"}
+            {mode === "human" ? s.chat.handBack : s.chat.takeOver}
           </Text>
         </Pressable>
       </View>
@@ -196,7 +198,7 @@ export function ChatScreen({
           ListEmptyComponent={
             <View style={styles.center}>
               <Text style={[styles.emptyBody, { color: colors.muted }]}>
-                No messages in this conversation yet.
+                {s.chat.empty}
               </Text>
             </View>
           }
@@ -217,7 +219,7 @@ export function ChatScreen({
                 {newDay ? (
                   <View style={styles.dayRow}>
                     <Text style={[styles.dayLabel, { color: colors.subtle, backgroundColor: colors.canvas }]}>
-                      {dayLabel(item.created_at)}
+                      {dayLabel(item.created_at, s)}
                     </Text>
                   </View>
                 ) : null}
@@ -288,7 +290,7 @@ export function ChatScreen({
             ]}
             accessibilityRole="button"
           >
-            <Text style={[styles.takeoverWideText, { color: brand }]}>Take over to reply yourself</Text>
+            <Text style={[styles.takeoverWideText, { color: brand }]}>{s.chat.takeOverWide}</Text>
           </Pressable>
         )}
       </View>

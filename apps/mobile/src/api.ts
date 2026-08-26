@@ -8,6 +8,8 @@
  * cannot rely on cookies surviving a restart.
  */
 
+import { strings } from "./i18n";
+
 export type Branding = {
   agency_name: string;
   client_name: string;
@@ -106,10 +108,10 @@ async function request<T>(server: string, path: string, init: RequestInit = {}, 
     // fetch only rejects when the request never completed: wrong address, no
     // route to the host, TLS refused. Worth its own message, because the usual
     // cause is a typo in the server field.
-    throw new ApiError("Could not reach that server. Check the address and that you are on the same network.", 0);
+    throw new ApiError(strings().errors.unreachable, 0);
   }
   if (!response.ok) {
-    let message = "Something went wrong";
+    let message = strings().errors.generic;
     try {
       const body = await response.json();
       if (typeof body.detail === "string") message = body.detail;
@@ -198,10 +200,10 @@ export async function replyWithFile(
     // Keep the underlying reason: an upload that never leaves the phone and one
     // that cannot reach the server look identical without it.
     const detail = cause instanceof Error ? cause.message : String(cause);
-    throw new ApiError(`Could not send that file: ${detail}`, 0);
+    throw new ApiError(`${strings().errors.sendFile}: ${detail}`, 0);
   }
   if (!response.ok) {
-    let message = "Could not send that file";
+    let message = strings().errors.sendFile;
     try {
       const failure = await response.json();
       if (typeof failure.detail === "string") message = failure.detail;

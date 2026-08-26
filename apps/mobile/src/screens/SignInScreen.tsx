@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { ApiError, normalizeServerUrl, signIn, type Session } from "../api";
 import { BRAND_COLOR, DEFAULT_SERVER, HOSTED, hostedServerFor } from "../brand";
+import { useStrings } from "../i18n";
 import { contrastOn, useColors } from "../theme";
 
 /**
@@ -45,6 +46,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const colors = useColors();
+  const s = useStrings();
 
   const target = useHosted ? workspace : server;
   const canSubmit = target.trim().length > 0 && email.trim().length > 0 && password.length > 0 && !busy;
@@ -68,7 +70,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
       const session = await signIn(base, email.trim(), password);
       onSignedIn(base, session);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not sign in");
+      setError(err instanceof ApiError ? err.message : s.signIn.failed);
       setBusy(false);
     }
   }
@@ -77,8 +79,8 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
     <KeyboardAvoidingView style={[styles.flex, { backgroundColor: colors.canvas }]} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.ink }]}>Your inbox</Text>
-          <Text style={[styles.subtitle, { color: colors.muted }]}>Sign in with the details your agency gave you.</Text>
+          <Text style={[styles.title, { color: colors.ink }]}>{s.signIn.title}</Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>{s.signIn.subtitle}</Text>
         </View>
 
         <View style={[styles.form, { backgroundColor: colors.surface, borderColor: colors.line }]}>
@@ -86,7 +88,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
             <View style={[styles.switcher, { backgroundColor: colors.canvas }]}>
               {[
                 { active: true, label: HOSTED.label },
-                { active: false, label: HOSTED.otherLabel },
+                { active: false, label: s.signIn.otherServer },
               ].map((option) => {
                 const selected = useHosted === option.active;
                 return (
@@ -110,12 +112,12 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
             // A View rather than a fragment: React treats a fragment's children
             // here as an unkeyed list and warns about it.
             <View>
-              <Text style={[styles.label, { color: colors.ink }]}>{HOSTED.workspaceLabel}</Text>
+              <Text style={[styles.label, { color: colors.ink }]}>{HOSTED.workspaceLabel || s.signIn.workspaceLabel}</Text>
               <TextInput
                 style={[styles.input, { borderColor: colors.line, color: colors.ink, backgroundColor: colors.surface }]}
                 value={workspace}
                 onChangeText={setWorkspace}
-                placeholder={HOSTED.workspacePlaceholder}
+                placeholder={HOSTED.workspacePlaceholder || s.signIn.workspacePlaceholder}
                 placeholderTextColor={colors.subtle}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -125,28 +127,28 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
             </View>
           ) : (
             <View>
-              <Text style={[styles.label, { color: colors.ink }]}>Server address</Text>
+              <Text style={[styles.label, { color: colors.ink }]}>{s.signIn.serverLabel}</Text>
               <TextInput
                 style={[styles.input, { borderColor: colors.line, color: colors.ink, backgroundColor: colors.surface }]}
                 value={server}
                 onChangeText={setServer}
-                placeholder="chat.myagency.com"
+                placeholder={s.signIn.serverPlaceholder}
                 placeholderTextColor={colors.subtle}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="url"
                 returnKeyType="next"
               />
-              <Text style={[styles.hint, { color: colors.subtle }]}>The address of the instance your agency runs.</Text>
+              <Text style={[styles.hint, { color: colors.subtle }]}>{s.signIn.serverHint}</Text>
             </View>
           )}
 
-          <Text style={[styles.label, { color: colors.ink }]}>E-mail</Text>
+          <Text style={[styles.label, { color: colors.ink }]}>{s.signIn.emailLabel}</Text>
           <TextInput
             style={[styles.input, { borderColor: colors.line, color: colors.ink, backgroundColor: colors.surface }]}
             value={email}
             onChangeText={setEmail}
-            placeholder="you@business.com"
+            placeholder={s.signIn.emailPlaceholder}
             placeholderTextColor={colors.subtle}
             autoCapitalize="none"
             autoCorrect={false}
@@ -155,7 +157,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
             returnKeyType="next"
           />
 
-          <Text style={[styles.label, { color: colors.ink }]}>Password</Text>
+          <Text style={[styles.label, { color: colors.ink }]}>{s.signIn.passwordLabel}</Text>
           <TextInput
             style={[styles.input, { borderColor: colors.line, color: colors.ink, backgroundColor: colors.surface }]}
             value={password}
@@ -179,7 +181,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
             {busy ? (
               <ActivityIndicator color={contrastOn(BRAND_COLOR)} />
             ) : (
-              <Text style={[styles.buttonText, { color: contrastOn(BRAND_COLOR) }]}>Sign in</Text>
+              <Text style={[styles.buttonText, { color: contrastOn(BRAND_COLOR) }]}>{s.signIn.submit}</Text>
             )}
           </TouchableOpacity>
         </View>

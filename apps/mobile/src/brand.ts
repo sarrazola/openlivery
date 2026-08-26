@@ -11,13 +11,15 @@ import Constants from "expo-constants";
 export type HostedPreset = {
   /** What to call the service on the sign-in screen, e.g. "Acme Cloud". */
   label: string;
-  /** Field label for the part of the address that identifies the customer. */
-  workspaceLabel: string;
-  workspacePlaceholder: string;
   /** Address to build, with `{workspace}` replaced by what was typed. */
   serverTemplate: string;
-  /** What to call the alternative, e.g. "Another server". */
-  otherLabel: string;
+  /**
+   * What the service calls a customer, when "agency" is wrong for it. Left out
+   * of most brand files: the interface already has translated wording for it,
+   * and anything set here is one language only.
+   */
+  workspaceLabel?: string;
+  workspacePlaceholder?: string;
 };
 
 type Extra = {
@@ -39,15 +41,9 @@ const extra = (Constants.expoConfig?.extra || {}) as Extra;
  */
 function usablePreset(value: HostedPreset | null | undefined): HostedPreset | null {
   if (!value) return null;
-  const required: (keyof HostedPreset)[] = [
-    "label",
-    "workspaceLabel",
-    "workspacePlaceholder",
-    "serverTemplate",
-    "otherLabel",
-  ];
-  const complete = required.every((key) => typeof value[key] === "string" && value[key].length > 0);
-  return complete && value.serverTemplate.includes("{workspace}") ? value : null;
+  const named = typeof value.label === "string" && value.label.length > 0;
+  const addressable = typeof value.serverTemplate === "string" && value.serverTemplate.includes("{workspace}");
+  return named && addressable ? value : null;
 }
 
 export const DEFAULT_SERVER = extra.defaultServer || "";

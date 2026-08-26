@@ -26,6 +26,7 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from "expo-audio";
+import { useStrings } from "../i18n";
 import { contrastOn, tint, useColors } from "../theme";
 
 export type OutgoingFile = { uri: string; name: string; type: string };
@@ -53,6 +54,7 @@ const IMAGE_MIME: Record<string, string> = {
 
 export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
   const colors = useColors();
+  const s = useStrings();
   const [draft, setDraft] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -85,8 +87,8 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert(
-        from === "camera" ? "Camera access is off" : "Photo access is off",
-        "Turn it on in Settings to send photos from here.",
+        from === "camera" ? s.composer.cameraDeniedTitle : s.composer.photosDeniedTitle,
+        s.composer.mediaDeniedBody,
       );
       return;
     }
@@ -115,7 +117,7 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
   async function startRecording() {
     const permission = await AudioModule.requestRecordingPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Microphone access is off", "Turn it on in Settings to send voice notes.");
+      Alert.alert(s.composer.micDeniedTitle, s.composer.micDeniedBody);
       return;
     }
     setPreparing(true);
@@ -126,7 +128,7 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
       cancelled.current = false;
       recorder.record();
     } catch {
-      Alert.alert("Could not start recording", "Try again in a moment.");
+      Alert.alert(s.composer.recordFailedTitle, s.composer.recordFailedBody);
     } finally {
       setPreparing(false);
     }
@@ -153,14 +155,14 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
           onPress={() => stopRecording(false)}
           style={({ pressed }) => [styles.recordCancel, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Discard recording"
+          accessibilityLabel={s.composer.discardLabel}
         >
-          <Text style={[styles.recordCancelText, { color: colors.muted }]}>Cancel</Text>
+          <Text style={[styles.recordCancelText, { color: colors.muted }]}>{s.composer.discard}</Text>
         </Pressable>
         <View style={styles.recordMeter}>
           <View style={[styles.recordDot, { backgroundColor: colors.danger }]} />
           <Text style={[styles.recordTime, { color: colors.ink }]}>
-            {preparing ? "Starting…" : formatDuration(recorderState.durationMillis)}
+            {preparing ? s.composer.recording : formatDuration(recorderState.durationMillis)}
           </Text>
         </View>
         <Pressable
@@ -172,7 +174,7 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
             (pressed || preparing) && styles.pressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Send voice note"
+          accessibilityLabel={s.composer.sendVoice}
         >
           <Text style={[styles.circleGlyph, { color: contrastOn(brand) }]}>↑</Text>
         </Pressable>
@@ -185,8 +187,8 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
       {sheetOpen ? (
         <View style={[styles.sheet, { borderTopColor: colors.line, backgroundColor: colors.surface }]}>
           {[
-            { label: "Photo or video", action: () => pick("library") },
-            { label: "Take a photo", action: () => pick("camera") },
+            { label: s.composer.fromLibrary, action: () => pick("library") },
+            { label: s.composer.fromCamera, action: () => pick("camera") },
           ].map((option) => (
             <Pressable
               key={option.label}
@@ -206,7 +208,7 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
           hitSlop={8}
           style={({ pressed }) => [styles.attach, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Add an attachment"
+          accessibilityLabel={s.composer.attach}
         >
           <Text style={[styles.attachGlyph, { color: colors.muted }, sheetOpen && { color: brand }]}>+</Text>
         </Pressable>
@@ -215,7 +217,7 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
           style={[styles.input, { borderColor: colors.line, color: colors.ink, backgroundColor: colors.canvas }]}
           value={draft}
           onChangeText={setDraft}
-          placeholder="Message"
+          placeholder={s.composer.placeholder}
           placeholderTextColor={colors.subtle}
           multiline
           onFocus={() => setSheetOpen(false)}
@@ -227,7 +229,7 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
             disabled={busy}
             style={({ pressed }) => [styles.circle, { backgroundColor: brand }, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel="Send"
+            accessibilityLabel={s.composer.send}
           >
             {busy ? (
               <ActivityIndicator size="small" color={contrastOn(brand)} />
@@ -241,7 +243,7 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
             disabled={busy}
             style={({ pressed }) => [styles.circleGhost, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel="Record a voice note"
+            accessibilityLabel={s.composer.record}
           >
             <Text style={[styles.micGlyph, { color: colors.muted }]}>●</Text>
           </Pressable>

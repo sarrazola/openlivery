@@ -68,12 +68,14 @@ elsewhere. `brands/_hosted-example.json` shows the shape:
 ```json
 "hosted": {
   "label": "Your Cloud",
-  "workspaceLabel": "Workspace name",
-  "workspacePlaceholder": "your-workspace",
-  "serverTemplate": "https://{workspace}.yourdomain.com",
-  "otherLabel": "Another server"
+  "serverTemplate": "https://{workspace}.yourdomain.com"
 }
 ```
+
+Only two fields, because the rest is interface copy the app already translates.
+If "agency" is the wrong word for your customers, `workspaceLabel` and
+`workspacePlaceholder` override it — in one language, so leave them out unless
+you need them.
 
 Replace the icons in `assets/` with yours — the ones here are a plain
 placeholder, not a brand. Shipping somebody else's mark under

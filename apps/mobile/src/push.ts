@@ -23,6 +23,7 @@ import { Platform } from "react-native";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { forgetDevice, registerDevice, type Session } from "./api";
+import { strings } from "./i18n";
 
 export type PushState =
   | { status: "off" }             // the server does not send notifications
@@ -73,7 +74,7 @@ export async function enablePush(server: string, session: Session): Promise<Push
     if (Platform.OS === "android") {
       // Android needs a channel before anything it delivers makes a sound.
       await Notifications.setNotificationChannelAsync("messages", {
-        name: "Messages",
+        name: strings().notifications.channelName,
         importance: Notifications.AndroidImportance.HIGH,
         sound: "default",
       });

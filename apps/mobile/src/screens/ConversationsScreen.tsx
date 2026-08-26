@@ -12,24 +12,27 @@ import {
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { assetUrl, listConversations, type Conversation, type Session } from "../api";
+import { useStrings, type Strings } from "../i18n";
 import { contrastOn, readableBrand, tint, useColors, useIsDark } from "../theme";
 
-const CHANNEL_LABELS: Record<string, string> = {
-  whatsapp: "WhatsApp",
-  whatsapp_cloud: "WhatsApp",
-  widget: "Web chat",
-  playground: "Playground",
-};
+function channelLabel(channel: string, s: Strings): string {
+  if (channel === "whatsapp" || channel === "whatsapp_cloud") return s.channels.whatsapp;
+  if (channel === "widget") return s.channels.widget;
+  if (channel === "playground") return s.channels.playground;
+  return channel;
+}
 
-function whenLabel(iso: string): string {
+function whenLabel(iso: string, s: Strings): string {
   const date = new Date(iso);
   const now = new Date();
+  // Times and dates come from the phone's own formatting, so they follow its
+  // locale without this file knowing anything about it.
   if (date.toDateString() === now.toDateString()) {
     return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   }
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  if (date.toDateString() === yesterday.toDateString()) return s.when.yesterday;
   return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
@@ -62,6 +65,7 @@ export function ConversationsScreen({
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
   const colors = useColors();
+  const s = useStrings();
   const isDark = useIsDark();
   const insets = useSafeAreaInsets();
 
@@ -76,7 +80,7 @@ export function ConversationsScreen({
         setError(null);
       }
     } catch (err) {
-      if (mounted.current) setError(err instanceof Error ? err.message : "Could not load conversations");
+      if (mounted.current) setError(err instanceof Error ? err.message : s.list.loadFailed);
     } finally {
       if (mounted.current) setLoaded(true);
     }
@@ -122,9 +126,9 @@ export function ConversationsScreen({
           hitSlop={10}
           style={({ pressed }) => pressed && styles.pressed}
           accessibilityRole="button"
-          accessibilityLabel="Sign out"
+          accessibilityLabel={s.list.signOut}
         >
-          <Text style={[styles.signOut, { color: brand }]}>Sign out</Text>
+          <Text style={[styles.signOut, { color: brand }]}>{s.list.signOut}</Text>
         </Pressable>
       </View>
 
@@ -154,9 +158,9 @@ export function ConversationsScreen({
           )}
           ListEmptyComponent={
             <View style={styles.center}>
-              <Text style={[styles.emptyTitle, { color: colors.ink }]}>No conversations yet</Text>
+              <Text style={[styles.emptyTitle, { color: colors.ink }]}>{s.list.emptyTitle}</Text>
               <Text style={[styles.emptyBody, { color: colors.muted }]}>
-                {error || "When someone writes to your assistant, the conversation shows up here."}
+                {error || s.list.emptyBody}
               </Text>
             </View>
           }
@@ -179,20 +183,20 @@ export function ConversationsScreen({
               <View style={styles.rowBody}>
                 <View style={styles.rowTop}>
                   <Text style={[styles.rowTitle, { color: colors.ink }]} numberOfLines={1}>
-                    {item.contact_name || item.title || "Conversation"}
+                    {item.contact_name || item.title || s.list.untitled}
                   </Text>
-                  <Text style={[styles.rowWhen, { color: colors.subtle }]}>{whenLabel(item.updated_at)}</Text>
+                  <Text style={[styles.rowWhen, { color: colors.subtle }]}>{whenLabel(item.updated_at, s)}</Text>
                 </View>
                 <Text style={[styles.rowPreview, { color: colors.muted }]} numberOfLines={1}>
-                  {item.preview || "No messages yet"}
+                  {item.preview || s.list.noMessages}
                 </Text>
                 <View style={styles.rowTags}>
                   <Text style={[styles.channel, { color: colors.subtle }]}>
-                    {CHANNEL_LABELS[item.channel] || item.channel}
+                    {channelLabel(item.channel, s)}
                   </Text>
                   {item.mode === "human" ? (
                     <Text style={[styles.badge, { color: contrastOn(brand), backgroundColor: brand }]}>
-                      You reply
+                      {s.list.youReply}
                     </Text>
                   ) : null}
                 </View>

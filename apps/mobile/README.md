@@ -27,7 +27,7 @@ install](#effect-on-an-existing-install).
   reply, hand back.
 - **Attachments both ways.** Photos, videos, files and voice notes: what
   arrives renders in the conversation, and the composer can send the same.
-- **Light and dark**, following the phone.
+- **Light and dark**, and **English or Spanish** — both following the phone.
 - **Notifications when the server can send them** — see
   [Notifications](#notifications).
 
@@ -106,6 +106,20 @@ apps/mobile/
   src/screens/               sign-in, conversations, chat
   scripts/verify-flow.ts     end-to-end check against a server
 ```
+
+## Language
+
+English and Spanish, chosen by the phone. There is deliberately no picker:
+someone answering their business's messages should not have to set one, and the
+device already knows. Anything else falls back to English.
+
+Both dictionaries live in [`src/i18n.ts`](./src/i18n.ts) and `es` is typed as
+`typeof en`, so a key present in one and missing from the other is a compile
+error rather than a blank label someone finds in production. Adding a language
+is one more object and one more entry in the lookup.
+
+Dates and times are formatted by the phone, so they follow its locale without
+the app knowing anything about it.
 
 ## Notifications
 
