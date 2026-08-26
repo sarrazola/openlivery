@@ -94,30 +94,45 @@ apps/mobile/
   scripts/verify-flow.ts     end-to-end check against a server
 ```
 
+## Notifications
+
+The app asks the operating system for the native push token — APNs on iOS, FCM
+on Android — and hands it to the server, which delivers through whatever it was
+configured with. No push vendor's SDK is compiled in, on purpose: one build has
+to work against a server that sends nothing and one that does, without either
+borrowing the other's account.
+
+So the server decides. `GET /api/mobile/session` reports `push.provider`, and
+when it is `none` the app asks for no permission and registers nothing —
+a prompt that leads to no notifications only teaches people to say no.
+
+The part that surprises everyone: push credentials belong to the **app binary**,
+not the server. A build can only be notified by a server sending through the
+provider it was signed for. The official OpenLivery build in the stores can read
+and answer everything on a self-hosted server, but cannot be notified by it. To
+get push on your own server, publish your own build (see `WHITELABEL.md`) and
+register a provider on the server side — the whole seam is documented in
+[`docs/push-notifications.md`](../../docs/push-notifications.md).
+
 ## What is missing
 
 Worth knowing before planning around it:
 
-- **Push notifications.** The reason to have an app at all is that a phone
-  rings when the assistant escalates. That needs a device-token table, per-agency
-  APNs/FCM credentials and a dispatch path on inbound messages. Until then the
-  app polls while it is open — 15s on the list, 10s in a conversation.
-- **One login per business.** A portal has a single e-mail and password, shared
-  by everyone at the business. That is survivable in a browser and a problem
-  with push, where you have to know which phone to ring and who replied. A real
-  `PortalUser` is the prerequisite, and it is cheaper to do before devices are
-  registered than after.
 - **Attachments.** Conversations carrying images or voice notes show a
-  placeholder; the server already stores and serves them.
+  placeholder; the server already stores and serves them. Sending them from the
+  app is not built yet either.
+- **Deep links from a notification.** The payload already carries
+  `conversation_id`; opening straight into that conversation is not wired up.
 
 ## Effect on an existing install
 
-None. This directory has its own `package.json`, the repo has no workspaces, and
-nothing in `apps/api`, `apps/web` or `apps/whatsapp` imports from here. Someone
-cloning the repo to run the platform never installs it.
+Nothing changes for someone who upgrades and never touches the app. No new
+service, no new required setting, and this directory is not installed with the
+platform — it has its own `package.json`, the repo has no workspaces, and
+nothing in `apps/api`, `apps/web` or `apps/whatsapp` imports from here.
 
-The server side is two additions and one widened check: a new router, its
-registration, and portal auth accepting a bearer token in addition to the cookie
-it already accepted. No schema change, no new environment variable, no new
-service. An install that upgrades and never touches the app behaves exactly as
-before.
+On the server there is one migration, `0020`. It adds portal users and a device
+registry, and copies each existing portal login into a user of its client, so
+everyone keeps signing in with exactly the credentials they had. The old columns
+stay and still authenticate. Notifications default to off and need no
+configuration to stay that way.

@@ -17,11 +17,28 @@ export type Branding = {
   client_logo_url: string | null;
 };
 
+/**
+ * How the server this app is pointed at expects to be able to notify it.
+ *
+ * The app deliberately does not decide this. One build has to work against a
+ * self-hosted server that sends nothing and a hosted one that does, and a phone
+ * that subscribes to a push service nobody asked for costs whoever owns that
+ * service money. So the server says, and "none" means do not initialise
+ * anything at all.
+ */
+export type PushConfig = {
+  enabled: boolean;
+  provider: string;
+};
+
 export type Session = {
   token: string;
   portal_slug: string;
   client_id: string;
+  user_id: string | null;
+  user_name: string;
   branding: Branding;
+  push: PushConfig;
   api_version: number;
 };
 
@@ -143,6 +160,25 @@ export function reply(server: string, session: Session, id: string, content: str
 }
 
 /** Absolute URL for an image the API returns as a path, e.g. a logo. */
+/** Tell the server where to reach this install. */
+export function registerDevice(
+  server: string,
+  session: Session,
+  device: { token: string; provider: string; platform: string },
+): Promise<{ registered: boolean; provider: string }> {
+  return request(server, "/mobile/devices", { method: "POST", body: JSON.stringify(device) }, session.token);
+}
+
+/** Stop notifying this install, on sign-out. */
+export async function forgetDevice(server: string, session: Session, token: string): Promise<void> {
+  await request(
+    server,
+    `/mobile/devices/${encodeURIComponent(token)}`,
+    { method: "DELETE" },
+    session.token,
+  );
+}
+
 export function assetUrl(server: string, path: string | null): string | null {
   if (!path) return null;
   return path.startsWith("http") ? path : `${server}${path}`;

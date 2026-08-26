@@ -73,7 +73,26 @@ BRAND=youragency eas build --platform all --profile production
 There is no default brand on purpose: a build without `BRAND` fails instead of
 quietly producing something identical to another agency's app.
 
-## 3. Before you submit
+## 3. Notifications (optional)
+
+Push credentials belong to the build, so they are yours to set up and yours to
+pay for — which is also why a build of this app can never be notified through
+anybody else's account.
+
+Two halves have to agree:
+
+- **The build.** `eas credentials` uploads your APNs key (iOS) and FCM service
+  account (Android). Nothing else in this directory changes; the app already
+  asks the OS for a native token.
+- **The server.** Set `PUSH_PROVIDER` to a provider your OpenLivery has
+  registered. `webhook` ships with it and needs no account anywhere — point it
+  at whatever you already use. Writing your own provider is about twenty lines;
+  see [`docs/push-notifications.md`](../../docs/push-notifications.md).
+
+Skip this entirely and the app still works: it polls while open, and asks for no
+notification permission at all.
+
+## 4. Before you submit
 
 The ones that cause most rejections, in order:
 
@@ -92,7 +111,7 @@ The ones that cause most rejections, in order:
 
 Costs: $99/year Apple, $25 once for Google.
 
-## 4. Keeping it updated
+## 5. Keeping it updated
 
 Most changes here are JavaScript, which `eas update` can ship over the air
 without another review. Only changes to native code or app configuration need a

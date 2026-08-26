@@ -75,6 +75,11 @@ export default (): ExpoConfig => {
       predictiveBackGestureEnabled: false,
     },
     web: { favicon: "./assets/favicon.png" },
+    // Notifications are optional and server-driven: the app only asks for a
+    // token when the server it is pointed at says it can deliver one (see
+    // src/push.ts). The plugin is still declared here because the entitlement
+    // and the notification icon have to be baked into the build either way.
+    plugins: [["expo-notifications", { color: brand.primaryColor }]],
     extra: {
       // Pre-fills the server field. The colour here only covers the sign-in
       // screen; once signed in the agency's own colour arrives with the session.

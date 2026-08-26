@@ -45,7 +45,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..models import Client, Conversation, PushDevice
+from ..models import Conversation, PushDevice
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +151,20 @@ register_provider("none", _send_none)
 register_provider("webhook", _send_webhook)
 
 
+# What to call a conversation whose visitor never gave a name. A web visitor is
+# anonymous, and heading the notification with their first message reads like an
+# old message arriving again.
+_CHANNEL_LABELS = {
+    "widget": "Web chat",
+    "whatsapp": "WhatsApp",
+    "whatsapp_cloud": "WhatsApp",
+}
+
+
+def _channel_label(channel: str | None) -> str:
+    return _CHANNEL_LABELS.get(channel or "", "New message")
+
+
 def devices_for_client(db: Session, client_id) -> list[Device]:
     """Installs to notify for a client, ignoring ones from another provider.
 
@@ -201,8 +215,7 @@ async def notify_conversation(
     if not devices:
         return 0
     if title is None:
-        client = db.get(Client, conversation.client_id)
-        title = sender or conversation.contact_name or conversation.title or (client.name if client else "New message")
+        title = sender or conversation.contact_name or _channel_label(conversation.channel)
     return await notify_devices(
         Notification(
             title=title,

@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, StatusBar, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { resumeSession, type Conversation, type Session } from "./src/api";
+import { disablePush, enablePush } from "./src/push";
 import { clearStored, loadStored, store } from "./src/session";
 import { ChatScreen } from "./src/screens/ChatScreen";
 import { ConversationsScreen } from "./src/screens/ConversationsScreen";
@@ -20,6 +21,8 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>({ name: "loading" });
   const [server, setServer] = useState("");
   const [session, setSession] = useState<Session | null>(null);
+  // The push token this install registered, so sign-out can release it.
+  const deviceToken = useRef<string | null>(null);
 
   // Resume a stored session on launch, which also refreshes branding.
   useEffect(() => {
@@ -36,6 +39,7 @@ export default function App() {
         setServer(stored.server);
         setSession(resumed);
         setScreen({ name: "list" });
+        registerForPush(stored.server, resumed);
       } catch {
         // Expired, revoked, or the server is unreachable: ask again rather than
         // leaving the person staring at a spinner.
@@ -48,14 +52,30 @@ export default function App() {
     };
   }, []);
 
+  /**
+   * Ask for notifications only once there is a session, and only if the server
+   * says it can send them. Deliberately not awaited: the inbox already works by
+   * polling, so nothing here should hold up showing it.
+   */
+  function registerForPush(base: string, next: Session) {
+    enablePush(base, next).then((state) => {
+      deviceToken.current = state.status === "registered" ? state.token : null;
+    });
+  }
+
   async function handleSignedIn(base: string, next: Session) {
     setServer(base);
     setSession(next);
     await store({ server: base, token: next.token });
     setScreen({ name: "list" });
+    registerForPush(base, next);
   }
 
   async function handleSignOut() {
+    // Release the device before the token goes, or this phone keeps ringing for
+    // whoever was signed in - which on a shared phone is the wrong person.
+    if (session) await disablePush(server, session, deviceToken.current);
+    deviceToken.current = null;
     await clearStored();
     setSession(null);
     setServer("");
