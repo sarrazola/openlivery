@@ -1,18 +1,20 @@
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..database import get_db
-from ..models import Agency, Agent, Conversation, Message, now_utc
+from ..models import Agency, Agent, Conversation, Message, MessageAttachment, now_utc
 from ..ratelimit import widget_rate_limit
 from ..schemas import WidgetConfigOut, WidgetMessageIn, WidgetReply
 from ..services.attachments import (
     MAX_ATTACHMENT_BYTES,
+    MAX_WIDGET_ATTACHMENTS,
     attachment_kind,
     attachment_response,
     conversation_attachment,
+    ensure_uploadable,
     llm_text,
     store_attachment,
 )
@@ -87,7 +89,7 @@ def widget_config(public_id: str, db: Session = Depends(get_db)):
     }
 
 
-@router.get("/{public_id}/history", response_model=WidgetReply)
+@router.get("/{public_id}/history", response_model=WidgetReply, dependencies=[Depends(widget_rate_limit)])
 def widget_history(public_id: str, session_id: str, db: Session = Depends(get_db)):
     agent = _agent(db, public_id)
     conversation = db.scalar(
@@ -196,6 +198,14 @@ async def widget_media(
     conversation = _conversation(db, agent, session_id)
 
     content_type = (file.content_type or "").lower() or "application/octet-stream"
+    ensure_uploadable(content_type)
+    stored = db.scalar(
+        select(func.count(MessageAttachment.id))
+        .join(Message, Message.id == MessageAttachment.message_id)
+        .where(Message.conversation_id == conversation.id)
+    )
+    if (stored or 0) >= MAX_WIDGET_ATTACHMENTS:
+        raise HTTPException(status_code=429, detail="This conversation reached its attachment limit")
     kind = attachment_kind(content_type)
     data = await file.read(MAX_ATTACHMENT_BYTES + 1)
     if len(data) > MAX_ATTACHMENT_BYTES:

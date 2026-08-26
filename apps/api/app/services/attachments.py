@@ -16,6 +16,29 @@ from ..models import Conversation, Message, MessageAttachment
 
 MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
 
+# How many files one widget conversation may hold. The widget is public and
+# unauthenticated, so without a ceiling a visitor can write into the primary
+# database indefinitely.
+MAX_WIDGET_ATTACHMENTS = 30
+
+# Types that must never be accepted. Serving already forces a download for
+# anything not renderable, so this is a second line rather than the only one.
+REJECTED_UPLOAD_MIMES = {
+    "text/html",
+    "application/xhtml+xml",
+    "image/svg+xml",
+    "image/svg",
+    "application/x-msdownload",
+    "application/x-msdos-program",
+    "application/vnd.microsoft.portable-executable",
+}
+
+
+def ensure_uploadable(mime: str) -> None:
+    """Reject types a browser would happily execute."""
+    if (mime or "").lower().split(";")[0].strip() in REJECTED_UPLOAD_MIMES:
+        raise HTTPException(status_code=400, detail="That file type is not allowed")
+
 
 def attachment_kind(mime: str) -> str:
     mime = (mime or "").lower()
@@ -88,6 +111,11 @@ def attachment_response(attachment: MessageAttachment) -> Response:
         "Cache-Control": "private, max-age=3600",
         # Stop the browser from second-guessing the type we send.
         "X-Content-Type-Options": "nosniff",
+        # The response is cacheable for an hour and CORS headers are only added
+        # when the request carries an Origin, so without this a copy stored from
+        # a direct hit is replayed to cross-origin readers and rejected. Only
+        # matters when the API is served from its own domain.
+        "Vary": "Origin",
     }
     disposition = "inline" if inline else "attachment"
     filename = attachment.filename or "attachment"
