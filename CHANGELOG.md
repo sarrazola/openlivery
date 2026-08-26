@@ -77,6 +77,15 @@ bundles ffmpeg for voice-note transcoding.
   public registrations; set `ALLOW_MULTI_AGENCY=true` to keep the previous
   multi-agency behavior.
 
+### Fixed
+
+- The inbox closes a conversation gracefully when it no longer exists (deleted
+  by another operator or a cleanup) instead of erroring on click or polling the
+  stale thread forever.
+- The database engine now sends TCP keepalives and recycles pooled connections
+  after 4 minutes, so a NAT or pooler between the API and a remote Postgres can
+  no longer leave silently dropped connections hanging until the kernel timeout.
+
 ### Known issues
 
 - Voice notes sent through the WhatsApp QR channel may not be downloadable by
