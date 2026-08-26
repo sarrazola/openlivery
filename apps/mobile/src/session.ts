@@ -10,7 +10,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const KEY = "openlivery.session.v1";
+const KEY = "inbox.session.v1";
 
 export type StoredSession = { server: string; token: string };
 

@@ -4,25 +4,38 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
-  TextInput,
-  TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   getConversation,
   reply as sendReply,
+  replyWithFile,
   setMode,
   type Conversation,
   type Message,
   type Session,
 } from "../api";
+import { AttachmentView } from "../components/Attachments";
+import { Composer, type OutgoingFile } from "../components/Composer";
 import { renderRichText } from "../rich";
-import { contrastOn, palette, tint } from "../theme";
+import { contrastOn, readableBrand, tint, useColors, useIsDark } from "../theme";
 
 function timeLabel(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function dayLabel(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) return "Today";
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "long" });
 }
 
 /**
@@ -45,13 +58,15 @@ export function ChatScreen({
   const [messages, setMessages] = useState<Message[]>([]);
   const [mode, setLocalMode] = useState<"ai" | "human">(conversation.mode);
   const [loaded, setLoaded] = useState(false);
-  const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
   const mounted = useRef(true);
+  const colors = useColors();
+  const isDark = useIsDark();
+  const insets = useSafeAreaInsets();
 
-  const brand = session.branding.brand_color;
+  const brand = readableBrand(session.branding.brand_color, isDark);
 
   const load = useCallback(async () => {
     try {
@@ -93,22 +108,33 @@ export function ChatScreen({
     }
   }
 
-  async function send() {
-    const content = draft.trim();
-    if (!content || busy || mode !== "human") return;
+  async function send(text: string) {
+    if (!text || busy || mode !== "human") return;
     setBusy(true);
-    setDraft("");
     try {
-      const detail = await sendReply(server, session, conversation.id, content);
+      const detail = await sendReply(server, session, conversation.id, text);
       if (mounted.current) {
         setMessages(detail.messages || []);
         setError(null);
       }
     } catch (err) {
+      if (mounted.current) setError(err instanceof Error ? err.message : "Could not send");
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
+
+  async function sendFile(file: OutgoingFile) {
+    if (busy || mode !== "human") return;
+    setBusy(true);
+    try {
+      const detail = await replyWithFile(server, session, conversation.id, file);
       if (mounted.current) {
-        setDraft(content);
-        setError(err instanceof Error ? err.message : "Could not send");
+        setMessages(detail.messages || []);
+        setError(null);
       }
+    } catch (err) {
+      if (mounted.current) setError(err instanceof Error ? err.message : "Could not send that file");
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -116,32 +142,48 @@ export function ChatScreen({
 
   return (
     <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={0}
+      style={[styles.flex, { backgroundColor: colors.canvas }]}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <View style={[styles.header, { backgroundColor: brand }]}>
-        <TouchableOpacity onPress={onBack} accessibilityRole="button" accessibilityLabel="Back">
-          <Text style={[styles.back, { color: contrastOn(brand) }]}>‹</Text>
-        </TouchableOpacity>
+      <View
+        style={[
+          styles.header,
+          { paddingTop: insets.top + 6, backgroundColor: colors.surface, borderBottomColor: colors.line },
+        ]}
+      >
+        <Pressable
+          onPress={onBack}
+          hitSlop={12}
+          style={({ pressed }) => [styles.back, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+        >
+          <Text style={[styles.backGlyph, { color: brand }]}>‹</Text>
+        </Pressable>
         <View style={styles.headerText}>
-          <Text style={[styles.headerTitle, { color: contrastOn(brand) }]} numberOfLines={1}>
+          <Text style={[styles.headerTitle, { color: colors.ink }]} numberOfLines={1}>
             {conversation.contact_name || conversation.title || "Conversation"}
           </Text>
-          <Text style={[styles.headerSub, { color: contrastOn(brand) }]}>
+          <Text style={[styles.headerSub, { color: colors.muted }]} numberOfLines={1}>
             {mode === "human" ? "You are replying" : "The assistant is replying"}
           </Text>
         </View>
-        <TouchableOpacity onPress={toggleMode} disabled={busy} accessibilityRole="button">
-          <Text style={[styles.takeover, { color: contrastOn(brand) }]}>
+        <Pressable
+          onPress={toggleMode}
+          disabled={busy}
+          hitSlop={10}
+          style={({ pressed }) => [pressed && styles.pressed, busy && styles.pressed]}
+          accessibilityRole="button"
+        >
+          <Text style={[styles.takeover, { color: brand }]}>
             {mode === "human" ? "Hand back" : "Take over"}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       {!loaded ? (
         <View style={styles.center}>
-          <ActivityIndicator color={brand} />
+          <ActivityIndicator color={colors.muted} />
         </View>
       ) : (
         <FlatList
@@ -149,35 +191,71 @@ export function ChatScreen({
           data={messages}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messages}
+          keyboardDismissMode="interactive"
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
           ListEmptyComponent={
             <View style={styles.center}>
-              <Text style={styles.emptyBody}>No messages in this conversation yet.</Text>
+              <Text style={[styles.emptyBody, { color: colors.muted }]}>
+                No messages in this conversation yet.
+              </Text>
             </View>
           }
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const outgoing = item.role === "assistant";
+            const previous = messages[index - 1];
+            const newDay =
+              !previous || new Date(previous.created_at).toDateString() !== new Date(item.created_at).toDateString();
+            const attachments = item.attachments || [];
+            const onlyMedia = !item.content && attachments.length > 0;
+            const bubbleColor = outgoing ? brand : colors.bubbleIn;
+            const textColor = outgoing ? contrastOn(brand) : colors.ink;
+
             return (
-              <View style={[styles.bubbleRow, outgoing ? styles.rowRight : styles.rowLeft]}>
-                <View
-                  style={[
-                    styles.bubble,
-                    outgoing ? { backgroundColor: brand } : { backgroundColor: palette.bubbleIn },
-                  ]}
-                >
-                  {item.sender_name && outgoing ? (
-                    <Text style={[styles.sender, { color: contrastOn(brand) }]}>{item.sender_name}</Text>
-                  ) : null}
-                  <Text style={[styles.bubbleText, { color: outgoing ? contrastOn(brand) : palette.ink }]}>
-                    {item.content
-                      ? renderRichText(item.content, { color: outgoing ? contrastOn(brand) : palette.ink })
-                      : item.attachments?.length
-                        ? "[attachment]"
-                        : ""}
-                  </Text>
-                  <Text style={[styles.time, { color: outgoing ? contrastOn(brand) : palette.subtle }]}>
-                    {timeLabel(item.created_at)}
-                  </Text>
+              // A View rather than a fragment: FlatList treats a fragment's
+              // children as an unkeyed list and warns about it.
+              <View>
+                {newDay ? (
+                  <View style={styles.dayRow}>
+                    <Text style={[styles.dayLabel, { color: colors.subtle, backgroundColor: colors.canvas }]}>
+                      {dayLabel(item.created_at)}
+                    </Text>
+                  </View>
+                ) : null}
+                <View style={[styles.bubbleRow, outgoing ? styles.rowRight : styles.rowLeft]}>
+                  <View
+                    style={[
+                      styles.bubble,
+                      { backgroundColor: bubbleColor },
+                      onlyMedia && styles.bubbleMedia,
+                    ]}
+                  >
+                    {item.sender_name && outgoing ? (
+                      <Text style={[styles.sender, { color: textColor }]}>{item.sender_name}</Text>
+                    ) : null}
+
+                    {attachments.map((attachment) => (
+                      <View key={attachment.id} style={styles.attachmentSlot}>
+                        <AttachmentView
+                          attachment={attachment}
+                          server={server}
+                          session={session}
+                          conversationId={conversation.id}
+                          outgoing={outgoing}
+                          brand={brand}
+                        />
+                      </View>
+                    ))}
+
+                    {item.content ? (
+                      <Text style={[styles.bubbleText, { color: textColor }]}>
+                        {renderRichText(item.content, { color: textColor })}
+                      </Text>
+                    ) : null}
+
+                    <Text style={[styles.time, { color: textColor }, onlyMedia && styles.timeOnMedia]}>
+                      {timeLabel(item.created_at)}
+                    </Text>
+                  </View>
                 </View>
               </View>
             );
@@ -185,44 +263,33 @@ export function ChatScreen({
         />
       )}
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? (
+        <Text style={[styles.error, { color: colors.danger }]} onPress={() => setError(null)}>
+          {error}
+        </Text>
+      ) : null}
 
-      <View style={styles.composer}>
+      <View
+        style={[
+          styles.footer,
+          { backgroundColor: colors.surface, borderTopColor: colors.line, paddingBottom: insets.bottom || 8 },
+        ]}
+      >
         {mode === "human" ? (
-          <>
-            <TextInput
-              style={styles.input}
-              value={draft}
-              onChangeText={setDraft}
-              placeholder="Write a reply…"
-              placeholderTextColor={palette.subtle}
-              multiline
-            />
-            <TouchableOpacity
-              style={[styles.send, { backgroundColor: brand }, (!draft.trim() || busy) && styles.sendDisabled]}
-              onPress={send}
-              disabled={!draft.trim() || busy}
-              accessibilityRole="button"
-              accessibilityLabel="Send"
-            >
-              {busy ? (
-                <ActivityIndicator color={contrastOn(brand)} size="small" />
-              ) : (
-                <Text style={[styles.sendText, { color: contrastOn(brand) }]}>Send</Text>
-              )}
-            </TouchableOpacity>
-          </>
+          <Composer brand={brand} busy={busy} onSendText={send} onSendFile={sendFile} />
         ) : (
-          <TouchableOpacity
-            style={[styles.takeoverWide, { backgroundColor: tint(brand, 0.12) }]}
+          <Pressable
             onPress={toggleMode}
             disabled={busy}
+            style={({ pressed }) => [
+              styles.takeoverWide,
+              { backgroundColor: tint(brand, isDark ? 0.22 : 0.12) },
+              pressed && styles.pressed,
+            ]}
             accessibilityRole="button"
           >
-            <Text style={[styles.takeoverWideText, { color: brand }]}>
-              Take over to reply yourself
-            </Text>
-          </TouchableOpacity>
+            <Text style={[styles.takeoverWideText, { color: brand }]}>Take over to reply yourself</Text>
+          </Pressable>
         )}
       </View>
     </KeyboardAvoidingView>
@@ -230,50 +297,52 @@ export function ChatScreen({
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: palette.canvas },
-  header: { paddingTop: 58, paddingBottom: 14, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 10 },
-  back: { fontSize: 32, lineHeight: 34, fontWeight: "300", width: 22 },
+  flex: { flex: 1 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingBottom: 10,
+    paddingHorizontal: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  back: { width: 28, alignItems: "flex-start" },
+  backGlyph: { fontSize: 32, lineHeight: 34, fontWeight: "300" },
+  pressed: { opacity: 0.5 },
   headerText: { flex: 1, minWidth: 0 },
-  headerTitle: { fontSize: 17, fontWeight: "700" },
-  headerSub: { fontSize: 12, opacity: 0.8, marginTop: 2 },
-  takeover: { fontSize: 13, fontWeight: "600", opacity: 0.95 },
+  headerTitle: { fontSize: 17, fontWeight: "600", letterSpacing: -0.2 },
+  headerSub: { fontSize: 13, marginTop: 1 },
+  takeover: { fontSize: 15, paddingHorizontal: 6 },
   center: { paddingTop: 60, alignItems: "center", paddingHorizontal: 40 },
-  emptyBody: { fontSize: 14, color: palette.muted, textAlign: "center" },
-  messages: { padding: 14, gap: 8 },
-  bubbleRow: { flexDirection: "row" },
+  emptyBody: { fontSize: 15, textAlign: "center" },
+  messages: { padding: 12, paddingBottom: 18, gap: 3 },
+  dayRow: { alignItems: "center", marginVertical: 12 },
+  dayLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  bubbleRow: { flexDirection: "row", marginTop: 3 },
   rowLeft: { justifyContent: "flex-start" },
   rowRight: { justifyContent: "flex-end" },
-  bubble: { maxWidth: "82%", borderRadius: 16, paddingHorizontal: 13, paddingVertical: 9 },
+  bubble: { maxWidth: "82%", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
+  bubbleMedia: { padding: 4 },
+  attachmentSlot: { marginBottom: 4 },
   sender: { fontSize: 12, fontWeight: "600", opacity: 0.85, marginBottom: 2 },
-  bubbleText: { fontSize: 15, lineHeight: 21 },
-  time: { fontSize: 11, marginTop: 4, opacity: 0.7, textAlign: "right" },
-  error: { paddingHorizontal: 16, paddingBottom: 6, fontSize: 13, color: palette.danger },
-  composer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 10,
-    padding: 12,
-    paddingBottom: 28,
-    backgroundColor: palette.surface,
-    borderTopWidth: 1,
-    borderTopColor: palette.line,
+  bubbleText: { fontSize: 16, lineHeight: 21 },
+  time: { fontSize: 11, marginTop: 3, opacity: 0.7, textAlign: "right" },
+  timeOnMedia: { marginRight: 4, marginBottom: 2 },
+  error: { paddingHorizontal: 16, paddingVertical: 8, fontSize: 14 },
+  footer: { borderTopWidth: StyleSheet.hairlineWidth },
+  takeoverWide: {
+    margin: 10,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  input: {
-    flex: 1,
-    minHeight: 44,
-    maxHeight: 120,
-    borderWidth: 1,
-    borderColor: palette.line,
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    fontSize: 15,
-    color: palette.ink,
-  },
-  send: { height: 44, paddingHorizontal: 18, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  sendDisabled: { opacity: 0.45 },
-  sendText: { fontSize: 15, fontWeight: "600" },
-  takeoverWide: { flex: 1, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center" },
-  takeoverWideText: { fontSize: 15, fontWeight: "600" },
+  takeoverWideText: { fontSize: 16, fontWeight: "600" },
 });

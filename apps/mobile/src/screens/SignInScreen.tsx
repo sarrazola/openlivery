@@ -11,13 +11,21 @@ import {
   View,
 } from "react-native";
 import { ApiError, normalizeServerUrl, signIn, type Session } from "../api";
-import { DEFAULT_BRAND, contrastOn, palette } from "../theme";
+import { BRAND_COLOR, DEFAULT_SERVER, HOSTED, hostedServerFor } from "../brand";
+import { contrastOn, useColors } from "../theme";
 
 /**
- * Three fields, because the app is not tied to one server: the address of the
- * instance the agency runs, and the portal credentials the agency handed to
- * this business. The portal is resolved from the credentials, so nobody has to
- * know what a slug is.
+ * Signing in.
+ *
+ * The app is not tied to one server, so it needs to be told which one: the
+ * address of the instance the agency runs, plus the portal credentials the
+ * agency handed to this business. The portal is resolved from the credentials,
+ * so nobody has to know what a slug is.
+ *
+ * A build compiled with a hosted preset (see src/brand.ts) offers that service
+ * as a choice, where naming a workspace is enough and the address is derived.
+ * Without one - which is every build from this repository - it simply asks for
+ * the address.
  */
 // Filled from EXPO_PUBLIC_DEV_* when present, so a local run does not mean
 // retyping a server and credentials on every reload. These are inlined at build
@@ -27,13 +35,19 @@ const DEV_EMAIL = process.env.EXPO_PUBLIC_DEV_EMAIL || "";
 const DEV_PASSWORD = process.env.EXPO_PUBLIC_DEV_PASSWORD || "";
 
 export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, session: Session) => void }) {
-  const [server, setServer] = useState(DEV_SERVER);
+  // Default to the hosted service when this build has one: it is what most of
+  // its users want, and the others are one tap away.
+  const [useHosted, setUseHosted] = useState(Boolean(HOSTED) && !DEV_SERVER);
+  const [workspace, setWorkspace] = useState("");
+  const [server, setServer] = useState(DEV_SERVER || DEFAULT_SERVER);
   const [email, setEmail] = useState(DEV_EMAIL);
   const [password, setPassword] = useState(DEV_PASSWORD);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const colors = useColors();
 
-  const canSubmit = server.trim().length > 0 && email.trim().length > 0 && password.length > 0 && !busy;
+  const target = useHosted ? workspace : server;
+  const canSubmit = target.trim().length > 0 && email.trim().length > 0 && password.length > 0 && !busy;
   const autoAttempted = useRef(false);
 
   // With all three dev variables set, go straight in. Only ever true on a local
@@ -49,7 +63,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
     if (!canSubmit) return;
     setBusy(true);
     setError(null);
-    const base = normalizeServerUrl(server);
+    const base = useHosted ? hostedServerFor(workspace) : normalizeServerUrl(server);
     try {
       const session = await signIn(base, email.trim(), password);
       onSignedIn(base, session);
@@ -60,65 +74,110 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView style={[styles.flex, { backgroundColor: colors.canvas }]} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Text style={styles.title}>Your inbox</Text>
-          <Text style={styles.subtitle}>Sign in with the details your agency gave you.</Text>
+          <Text style={[styles.title, { color: colors.ink }]}>Your inbox</Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>Sign in with the details your agency gave you.</Text>
         </View>
 
-        <View style={styles.form}>
-          <Text style={styles.label}>Server address</Text>
-          <TextInput
-            style={styles.input}
-            value={server}
-            onChangeText={setServer}
-            placeholder="chat.myagency.com"
-            placeholderTextColor={palette.subtle}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            returnKeyType="next"
-          />
-          <Text style={styles.hint}>The address of your agency's OpenLivery instance.</Text>
+        <View style={[styles.form, { backgroundColor: colors.surface, borderColor: colors.line }]}>
+          {HOSTED ? (
+            <View style={[styles.switcher, { backgroundColor: colors.canvas }]}>
+              {[
+                { active: true, label: HOSTED.label },
+                { active: false, label: HOSTED.otherLabel },
+              ].map((option) => {
+                const selected = useHosted === option.active;
+                return (
+                  <TouchableOpacity
+                    key={option.label}
+                    style={[styles.switcherOption, selected && [styles.switcherOptionOn, { backgroundColor: colors.surface }]]}
+                    onPress={() => setUseHosted(option.active)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                  >
+                    <Text style={[styles.switcherText, { color: colors.muted }, selected && { color: colors.ink }]} numberOfLines={1}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : null}
 
-          <Text style={styles.label}>E-mail</Text>
+          {useHosted && HOSTED ? (
+            <>
+              <Text style={[styles.label, { color: colors.ink }]}>{HOSTED.workspaceLabel}</Text>
+              <TextInput
+                style={[styles.input, { borderColor: colors.line, color: colors.ink, backgroundColor: colors.surface }]}
+                value={workspace}
+                onChangeText={setWorkspace}
+                placeholder={HOSTED.workspacePlaceholder}
+                placeholderTextColor={colors.subtle}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="next"
+              />
+              {workspace.trim() ? <Text style={[styles.hint, { color: colors.subtle }]}>{hostedServerFor(workspace)}</Text> : null}
+            </>
+          ) : (
+            <>
+              <Text style={[styles.label, { color: colors.ink }]}>Server address</Text>
+              <TextInput
+                style={[styles.input, { borderColor: colors.line, color: colors.ink, backgroundColor: colors.surface }]}
+                value={server}
+                onChangeText={setServer}
+                placeholder="chat.myagency.com"
+                placeholderTextColor={colors.subtle}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                returnKeyType="next"
+              />
+              <Text style={[styles.hint, { color: colors.subtle }]}>The address of the instance your agency runs.</Text>
+            </>
+          )}
+
+          <Text style={[styles.label, { color: colors.ink }]}>E-mail</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { borderColor: colors.line, color: colors.ink, backgroundColor: colors.surface }]}
             value={email}
             onChangeText={setEmail}
             placeholder="you@business.com"
-            placeholderTextColor={palette.subtle}
+            placeholderTextColor={colors.subtle}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="email-address"
+            textContentType="username"
             returnKeyType="next"
           />
 
-          <Text style={styles.label}>Password</Text>
+          <Text style={[styles.label, { color: colors.ink }]}>Password</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { borderColor: colors.line, color: colors.ink, backgroundColor: colors.surface }]}
             value={password}
             onChangeText={setPassword}
             placeholder="••••••••"
-            placeholderTextColor={palette.subtle}
+            placeholderTextColor={colors.subtle}
             secureTextEntry
+            textContentType="password"
             returnKeyType="go"
             onSubmitEditing={submit}
           />
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <Text style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
 
           <TouchableOpacity
-            style={[styles.button, { backgroundColor: DEFAULT_BRAND }, !canSubmit && styles.buttonDisabled]}
+            style={[styles.button, { backgroundColor: BRAND_COLOR }, !canSubmit && styles.buttonDisabled]}
             onPress={submit}
             disabled={!canSubmit}
             accessibilityRole="button"
           >
             {busy ? (
-              <ActivityIndicator color={contrastOn(DEFAULT_BRAND)} />
+              <ActivityIndicator color={contrastOn(BRAND_COLOR)} />
             ) : (
-              <Text style={[styles.buttonText, { color: contrastOn(DEFAULT_BRAND) }]}>Sign in</Text>
+              <Text style={[styles.buttonText, { color: contrastOn(BRAND_COLOR) }]}>Sign in</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -128,25 +187,31 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: palette.canvas },
+  flex: { flex: 1 },
   scroll: { flexGrow: 1, justifyContent: "center", padding: 24 },
   header: { marginBottom: 28 },
-  title: { fontSize: 30, fontWeight: "700", color: palette.ink, letterSpacing: -0.5 },
-  subtitle: { marginTop: 8, fontSize: 15, lineHeight: 21, color: palette.muted },
-  form: { backgroundColor: palette.surface, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: palette.line },
-  label: { fontSize: 13, fontWeight: "600", color: palette.ink, marginBottom: 6, marginTop: 14 },
+  title: { fontSize: 30, fontWeight: "700", letterSpacing: -0.5 },
+  subtitle: { marginTop: 8, fontSize: 15, lineHeight: 21 },
+  form: { borderRadius: 16, padding: 20, borderWidth: StyleSheet.hairlineWidth },
+  switcher: { flexDirection: "row", borderRadius: 9, padding: 3, gap: 3 },
+  switcherOption: { flex: 1, paddingVertical: 8, borderRadius: 7, alignItems: "center" },
+  switcherOptionOn: Platform.select({
+    ios: { shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
+    android: { elevation: 1 },
+    default: {},
+  }),
+  switcherText: { fontSize: 13, fontWeight: "600" },
+
+  label: { fontSize: 13, fontWeight: "600", marginBottom: 6, marginTop: 14 },
   input: {
     height: 48,
-    borderWidth: 1,
-    borderColor: palette.line,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 10,
     paddingHorizontal: 14,
-    fontSize: 15,
-    color: palette.ink,
-    backgroundColor: palette.surface,
+    fontSize: 16,
   },
-  hint: { marginTop: 6, fontSize: 12, lineHeight: 17, color: palette.subtle },
-  error: { marginTop: 16, fontSize: 13, lineHeight: 18, color: palette.danger },
+  hint: { marginTop: 6, fontSize: 12, lineHeight: 17 },
+  error: { marginTop: 16, fontSize: 14, lineHeight: 19 },
   button: { marginTop: 24, height: 50, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   buttonDisabled: { opacity: 0.45 },
   buttonText: { fontSize: 16, fontWeight: "600" },

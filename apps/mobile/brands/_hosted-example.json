@@ -1,0 +1,17 @@
+{
+  "_comment": "Same as example.json, plus a preset for a service you run. Use this shape when your build should offer a hosted option instead of only asking for a server address. Nothing in this repository ships a preset; the app asks for an address unless a brand file adds one.",
+  "name": "Inbox",
+  "slug": "inbox-app",
+  "scheme": "inboxapp",
+  "iosBundleIdentifier": "com.example.inbox",
+  "androidPackage": "com.example.inbox",
+  "primaryColor": "#2f3a4a",
+  "defaultServer": "",
+  "hosted": {
+    "label": "Example Cloud",
+    "workspaceLabel": "Workspace name",
+    "workspacePlaceholder": "your-workspace",
+    "serverTemplate": "https://{workspace}.example.com",
+    "otherLabel": "Another server"
+  }
+}

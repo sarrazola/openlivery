@@ -1,5 +1,5 @@
 /**
- * Talks to an OpenLivery server.
+ * Talks to the server this session was opened against.
  *
  * The server is not baked in: a person signs in by typing the address of the
  * instance their agency runs, so every call takes the base URL from the stored
@@ -7,6 +7,8 @@
  * that is sent as a bearer credential from then on, because a native client
  * cannot rely on cookies surviving a restart.
  */
+
+import { File } from "expo-file-system";
 
 export type Branding = {
   agency_name: string;
@@ -160,6 +162,66 @@ export function reply(server: string, session: Session, id: string, content: str
 }
 
 /** Absolute URL for an image the API returns as a path, e.g. a logo. */
+/**
+ * Send a file into a conversation: a photo, a voice note, anything.
+ *
+ * Multipart rather than JSON, because the server's portal endpoint is the same
+ * one the browser posts to - the app is a second client of it, not a second
+ * implementation.
+ *
+ * The body is a real Blob. React Native historically let you append
+ * {uri, name, type} instead, but the fetch this app runs on is spec-compliant
+ * and rejects that with "Unsupported FormDataPart implementation"; expo-file-
+ * system's File is a Blob over a local path, so nothing is read into memory to
+ * satisfy it. Content-Type is left for fetch, which is the only thing that
+ * knows the multipart boundary.
+ */
+export async function replyWithFile(
+  server: string,
+  session: Session,
+  id: string,
+  file: { uri: string; name: string; type: string },
+  caption = "",
+): Promise<ConversationDetail> {
+  const body = new FormData();
+  body.append("file", new File(file.uri), file.name);
+  body.append("caption", caption);
+  let response: Response;
+  try {
+    response = await fetch(
+      `${server}/api/portal/${session.portal_slug}/conversations/${id}/reply-media`,
+      { method: "POST", body, headers: { Authorization: `Bearer ${session.token}` } },
+    );
+  } catch (cause) {
+    // Keep the underlying reason: an upload that never leaves the phone and one
+    // that cannot reach the server look identical without it.
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    throw new ApiError(`Could not send that file: ${detail}`, 0);
+  }
+  if (!response.ok) {
+    let message = "Could not send that file";
+    try {
+      const failure = await response.json();
+      if (typeof failure.detail === "string") message = failure.detail;
+    } catch {}
+    throw new ApiError(message, response.status);
+  }
+  return response.json();
+}
+
+/** Where an attachment can be fetched from, with the session's credentials. */
+export function attachmentUrl(server: string, session: Session, conversationId: string, attachmentId: string): string {
+  return `${server}/api/portal/${session.portal_slug}/conversations/${conversationId}/attachments/${attachmentId}`;
+}
+
+/**
+ * Attachments are behind the session, so they cannot be plain <Image src>.
+ * Everything that renders one needs this header.
+ */
+export function authHeaders(session: Session): Record<string, string> {
+  return { Authorization: `Bearer ${session.token}` };
+}
+
 /** Tell the server where to reach this install. */
 export function registerDevice(
   server: string,

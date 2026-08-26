@@ -8,8 +8,8 @@ import type { ExpoConfig } from "expo/config";
  * The same source produces the official app and an agency's own build. Which
  * one comes out is decided by BRAND at build time:
  *
- *   BRAND=openlivery npx expo start
- *   BRAND=myagency  eas build --platform ios
+ *   BRAND=example  npx expo start
+ *   BRAND=myagency eas build --platform ios
  *
  * There is deliberately no default. An agency publishing to the stores must
  * ship its own name, bundle identifier and icon - a build that is a copy of
@@ -17,6 +17,14 @@ import type { ExpoConfig } from "expo/config";
  * forgetting to pick a brand fails the build instead of quietly producing a
  * duplicate.
  */
+
+type HostedPreset = {
+  label: string;
+  workspaceLabel: string;
+  workspacePlaceholder: string;
+  serverTemplate: string;
+  otherLabel: string;
+};
 
 type Brand = {
   name: string;
@@ -26,14 +34,20 @@ type Brand = {
   androidPackage: string;
   primaryColor: string;
   defaultServer?: string;
+  /**
+   * A preset for a service whoever publishes this build runs, offered on the
+   * sign-in screen alongside typing an address. No brand file here has one:
+   * an open-source build should not point at somebody's hosted product.
+   */
+  hosted?: HostedPreset;
 };
 
 function loadBrand(): Brand {
   const name = process.env.BRAND;
   if (!name) {
     throw new Error(
-      "BRAND is not set. Pick a brand file from brands/, e.g. BRAND=openlivery npx expo start.\n" +
-        "Publishing your own app? Copy brands/_template.json and use your own identifiers.",
+      "BRAND is not set. Pick a brand file from brands/, e.g. BRAND=example npx expo start.\n" +
+        "Publishing your own app? Copy brands/example.json and use your own identifiers.",
     );
   }
   const path = join(__dirname, "brands", `${name}.json`);
@@ -59,7 +73,9 @@ export default (): ExpoConfig => {
     version: "0.1.0",
     orientation: "portrait",
     icon: "./assets/icon.png",
-    userInterfaceStyle: "light",
+    // Follow the phone. An app that stays white while the system is dark is
+    // the first thing that reads as a web page in a wrapper.
+    userInterfaceStyle: "automatic",
     ios: {
       supportsTablet: true,
       bundleIdentifier: brand.iosBundleIdentifier,
@@ -79,12 +95,30 @@ export default (): ExpoConfig => {
     // token when the server it is pointed at says it can deliver one (see
     // src/push.ts). The plugin is still declared here because the entitlement
     // and the notification icon have to be baked into the build either way.
-    plugins: [["expo-notifications", { color: brand.primaryColor }]],
+    plugins: [
+      ["expo-notifications", { color: brand.primaryColor }],
+      // iOS refuses to show a permission prompt without a reason string, and
+      // rejects a build that asks for these without one.
+      [
+        "expo-image-picker",
+        {
+          photosPermission: "Lets you send a photo from your library into a conversation.",
+          cameraPermission: "Lets you take a photo to send into a conversation.",
+        },
+      ],
+      [
+        "expo-audio",
+        { microphonePermission: "Lets you record a voice note to send into a conversation." },
+      ],
+    ],
     extra: {
       // Pre-fills the server field. The colour here only covers the sign-in
       // screen; once signed in the agency's own colour arrives with the session.
       defaultServer: brand.defaultServer || "",
       primaryColor: brand.primaryColor,
+      // Absent unless a brand file adds one, in which case sign-in offers it as
+      // a choice instead of only asking for an address.
+      hosted: brand.hosted || null,
     },
   };
 };

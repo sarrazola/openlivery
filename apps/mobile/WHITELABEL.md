@@ -38,7 +38,7 @@ my clients", which is usually the truth.
 ## 1. Your brand file
 
 ```bash
-cp brands/_template.json brands/youragency.json
+cp brands/example.json brands/youragency.json
 ```
 
 Every field must be yours:
@@ -60,7 +60,23 @@ address. `primaryColor` only paints the sign-in screen — after signing in, the
 colour comes from your agency record on the server, so changing it there changes
 every installed app without a resubmission.
 
-Replace the icons in `assets/` with yours. Shipping the OpenLivery mark under
+If you run a service several agencies sign in to, add a `hosted` block and the
+sign-in screen offers it as a choice — someone names their workspace and the
+address is derived — with "Another server" alongside for anyone pointing
+elsewhere. `brands/_hosted-example.json` shows the shape:
+
+```json
+"hosted": {
+  "label": "Your Cloud",
+  "workspaceLabel": "Workspace name",
+  "workspacePlaceholder": "your-workspace",
+  "serverTemplate": "https://{workspace}.yourdomain.com",
+  "otherLabel": "Another server"
+}
+```
+
+Replace the icons in `assets/` with yours — the ones here are a plain
+placeholder, not a brand. Shipping somebody else's mark under
 your name is both a rejection risk and a trademark problem.
 
 ## 2. Build
@@ -84,7 +100,7 @@ Two halves have to agree:
 - **The build.** `eas credentials` uploads your APNs key (iOS) and FCM service
   account (Android). Nothing else in this directory changes; the app already
   asks the OS for a native token.
-- **The server.** Set `PUSH_PROVIDER` to a provider your OpenLivery has
+- **The server.** Set `PUSH_PROVIDER` to a provider your server has
   registered. `webhook` ships with it and needs no account anywhere — point it
   at whatever you already use. Writing your own provider is about twenty lines;
   see [`docs/push-notifications.md`](../../docs/push-notifications.md).
@@ -120,5 +136,6 @@ to your users and nobody else's.
 
 ## Naming
 
-The MIT licence covers the code. It does not cover the OpenLivery name or logo.
+The MIT licence covers the code. It does not cover anybody's name or logo,
+including this project's — which is why nothing in this directory carries one.
 Publish under your own name and icon.

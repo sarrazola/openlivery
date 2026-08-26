@@ -61,6 +61,35 @@ def _portal_client(
     return client
 
 
+def _sender_name(
+    slug: str,
+    portal_access_token: str | None = Cookie(default=None),
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> str:
+    """Who to sign a reply as.
+
+    Now that a portal can have several people, a reply should carry the name of
+    the one who wrote it rather than the business's. Two cases fall back to the
+    business: a session issued before portal users existed, and a person with no
+    name set - their e-mail is a login, and this name is shown to the customer.
+    """
+    token = portal_access_token
+    if not token and authorization and authorization.lower().startswith("bearer "):
+        token = authorization[7:].strip()
+    payload = decode_portal_token(token) if token else None
+    raw_user = (payload or {}).get("pu")
+    if raw_user:
+        try:
+            user = db.get(PortalUser, uuid.UUID(raw_user))
+        except (ValueError, TypeError):
+            user = None
+        if user and user.name.strip():
+            return user.name.strip()
+    client = db.scalar(select(Client).where(Client.portal_slug == slug))
+    return client.name if client else "Support"
+
+
 def _detail(db: Session, client: Client, conversation_id: uuid.UUID) -> Conversation:
     conversation = db.scalar(
         select(Conversation)
@@ -222,12 +251,13 @@ async def portal_reply_media(
     file: UploadFile = File(...),
     caption: str = Form(default=""),
     client: Client = Depends(_portal_client),
+    sender_name: str = Depends(_sender_name),
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
-    await store_operator_media_reply(db, conversation, file=file, caption=caption, sender_name=client.name)
+    await store_operator_media_reply(db, conversation, file=file, caption=caption, sender_name=sender_name)
     return _detail(db, client, conversation_id)
 
 
@@ -237,6 +267,7 @@ async def portal_reply(
     conversation_id: uuid.UUID,
     payload: SendMessageRequest,
     client: Client = Depends(_portal_client),
+    sender_name: str = Depends(_sender_name),
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
@@ -249,7 +280,7 @@ async def portal_reply(
             role="assistant",
             content=payload.content.strip(),
             sender_type="human",
-            sender_name=client.name,
+            sender_name=sender_name,
             external_message_id=external_message_id,
         )
     )

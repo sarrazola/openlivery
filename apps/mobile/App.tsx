@@ -7,7 +7,7 @@ import { clearStored, loadStored, store } from "./src/session";
 import { ChatScreen } from "./src/screens/ChatScreen";
 import { ConversationsScreen } from "./src/screens/ConversationsScreen";
 import { SignInScreen } from "./src/screens/SignInScreen";
-import { DEFAULT_BRAND, palette } from "./src/theme";
+import { useColors, useIsDark } from "./src/theme";
 
 type Screen = { name: "loading" } | { name: "signIn" } | { name: "list" } | { name: "chat"; conversation: Conversation };
 
@@ -82,42 +82,79 @@ export default function App() {
     setScreen({ name: "signIn" });
   }
 
-  const brand = session?.branding.brand_color || DEFAULT_BRAND;
-
   return (
     <SafeAreaProvider>
-    <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={brand} />
+      <Shell
+        screen={screen}
+        server={server}
+        session={session}
+        onSignedIn={handleSignedIn}
+        onSignOut={handleSignOut}
+        onOpen={(conversation) => setScreen({ name: "chat", conversation })}
+        onBack={() => setScreen({ name: "list" })}
+      />
+    </SafeAreaProvider>
+  );
+}
+
+/**
+ * Split out from App so the colour hooks run inside SafeAreaProvider, and so
+ * the whole tree re-renders when the phone switches between light and dark.
+ */
+function Shell({
+  screen,
+  server,
+  session,
+  onSignedIn,
+  onSignOut,
+  onOpen,
+  onBack,
+}: {
+  screen: Screen;
+  server: string;
+  session: Session | null;
+  onSignedIn: (server: string, session: Session) => void;
+  onSignOut: () => void;
+  onOpen: (conversation: Conversation) => void;
+  onBack: () => void;
+}) {
+  const colors = useColors();
+  const isDark = useIsDark();
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.canvas }]}>
+      {/* The bars are system-coloured now, so the status bar follows the scheme
+          rather than being forced light over a painted header. */}
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={colors.surface} />
       {screen.name === "loading" ? (
         <SafeAreaView style={styles.center}>
-          <ActivityIndicator color={brand} />
+          <ActivityIndicator color={colors.muted} />
         </SafeAreaView>
       ) : screen.name === "signIn" || !session ? (
         <SafeAreaView style={styles.flex}>
-          <SignInScreen onSignedIn={handleSignedIn} />
+          <SignInScreen onSignedIn={onSignedIn} />
         </SafeAreaView>
       ) : screen.name === "chat" ? (
         <ChatScreen
           server={server}
           session={session}
           conversation={screen.conversation}
-          onBack={() => setScreen({ name: "list" })}
+          onBack={onBack}
         />
       ) : (
         <ConversationsScreen
           server={server}
           session={session}
-          onOpen={(conversation) => setScreen({ name: "chat", conversation })}
-          onSignOut={handleSignOut}
+          onOpen={onOpen}
+          onSignOut={onSignOut}
         />
       )}
     </View>
-    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: palette.canvas },
+  root: { flex: 1 },
   flex: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 });

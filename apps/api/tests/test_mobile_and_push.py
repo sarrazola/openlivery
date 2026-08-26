@@ -341,3 +341,45 @@ def test_tokens_from_another_provider_are_skipped(authenticated_client: TestClie
         assert notifications.devices_for_client(db, model.id) == []
     finally:
         db.close()
+
+
+def test_replies_are_signed_by_the_person_not_the_business(authenticated_client: TestClient):
+    """And never by their e-mail, which the customer would see."""
+    client = authenticated_client
+    customer = _client_with_portal(client)
+    slug, cid = customer["portal_slug"], customer["id"]
+    agent = client.post(
+        "/api/agents",
+        json={
+            "client_id": cid, "name": "Sofia", "description": "", "instructions": "",
+            "personality": "", "model": "", "is_active": True,
+        },
+    ).json()
+    conversation = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()
+
+    def reply_as(token, text):
+        client.patch(
+            f"/api/portal/{slug}/conversations/{conversation['id']}/mode",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"mode": "human"},
+        )
+        answer = client.post(
+            f"/api/portal/{slug}/conversations/{conversation['id']}/reply",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"content": text},
+        )
+        assert answer.status_code == 200
+        return answer.json()["messages"][-1]["sender_name"]
+
+    client.post(
+        f"/api/clients/{cid}/portal-users",
+        json={"email": "ana@barberco.com", "password": "ana-password", "name": "Ana"},
+    )
+    named = _sign_in(client, "ana@barberco.com", "ana-password").json()["token"]
+    assert reply_as(named, "I can confirm that") == "Ana"
+
+    # Someone carried over from the old shared login has no name, and their
+    # address is a credential - the business's name is what the customer sees.
+    legacy = _sign_in(client, "owner@barber.test".replace("barber.test", "barberco.com"), "legacy-portal-pw")
+    assert legacy.status_code == 200
+    assert reply_as(legacy.json()["token"], "So can I") == "Barber Co"

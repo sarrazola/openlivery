@@ -1,37 +1,50 @@
-# OpenLivery mobile
+# The mobile inbox
 
 The inbox a client of an agency carries in their pocket. Sign in with the
 address of the agency's server plus the portal credentials the agency handed
 over, and the app shows that business's conversations, lets someone take over
-from the assistant and reply.
+from the assistant and reply — with photos, files and voice notes, like they
+would from WhatsApp.
 
-It is not part of the server install. Nobody running OpenLivery needs to build
-or deploy this to have a working platform — see [Effect on an existing
+**This app carries no brand.** No name, no logo, no bundle identifier, no
+preset pointing at anybody's hosted service. What is here is a working app and
+the machinery to make it yours: put your identity in a brand file, build, and
+publish it under your own name. See [WHITELABEL.md](./WHITELABEL.md).
+
+It is also not part of the server install. Nobody running the platform needs to
+build or deploy this to have it working — see [Effect on an existing
 install](#effect-on-an-existing-install).
 
 ## What it does
 
 - **Any server.** The address is typed at sign-in, so the same build works
-  against a self-hosted instance or a hosted one.
+  against a self-hosted instance or a hosted one. A build may add a preset for
+  a service its publisher runs; none here has one.
 - **The agency's colours.** Brand colour and logo arrive with the session and
   drive the interface, so the same binary looks like whichever agency the person
   belongs to.
-- **Conversations and replies.** List, open, take over from the assistant, reply,
-  hand back.
-
-Not here yet: push notifications, attachments and voice notes. See
-[What is missing](#what-is-missing).
+- **Conversations and replies.** List, open, take over from the assistant,
+  reply, hand back.
+- **Attachments both ways.** Photos, videos, files and voice notes: what
+  arrives renders in the conversation, and the composer can send the same.
+- **Light and dark**, following the phone.
+- **Notifications when the server can send them** — see
+  [Notifications](#notifications).
 
 ## Running it locally
 
-The app talks to a running OpenLivery server. Start one first (`make up` at the
-repo root), then:
+The app talks to a running server. Start one first (`make up` at the repo
+root), then:
 
 ```bash
 cd apps/mobile
 npm install
-BRAND=openlivery npm run ios      # or: npm run android
+BRAND=example npm run ios      # or: npm run android
 ```
+
+`brands/example.json` is a placeholder identity for exactly this — running it
+locally. It is not publishable, and it is not meant to be: copy it before you
+build anything you intend to ship.
 
 `BRAND` is required and has no default — see [WHITELABEL.md](./WHITELABEL.md)
 for why.
@@ -108,7 +121,7 @@ a prompt that leads to no notifications only teaches people to say no.
 
 The part that surprises everyone: push credentials belong to the **app binary**,
 not the server. A build can only be notified by a server sending through the
-provider it was signed for. The official OpenLivery build in the stores can read
+provider it was signed for. A build somebody else published can read
 and answer everything on a self-hosted server, but cannot be notified by it. To
 get push on your own server, publish your own build (see `WHITELABEL.md`) and
 register a provider on the server side — the whole seam is documented in

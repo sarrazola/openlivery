@@ -1,9 +1,0 @@
-{
-  "name": "OpenLivery",
-  "slug": "openlivery",
-  "scheme": "openlivery",
-  "iosBundleIdentifier": "com.megacubos.openlivery",
-  "androidPackage": "com.megacubos.openlivery",
-  "primaryColor": "#075985",
-  "defaultServer": ""
-}

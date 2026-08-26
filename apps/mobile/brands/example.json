@@ -1,0 +1,10 @@
+{
+  "_comment": "Copy this to brands/<your-brand>.json and build with BRAND=<your-brand>. Every value must be yours: publishing a copy of someone else's identity is what gets an app rejected.",
+  "name": "Inbox",
+  "slug": "inbox-app",
+  "scheme": "inboxapp",
+  "iosBundleIdentifier": "com.example.inbox",
+  "androidPackage": "com.example.inbox",
+  "primaryColor": "#2f3a4a",
+  "defaultServer": ""
+}
