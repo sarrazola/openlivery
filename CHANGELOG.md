@@ -15,6 +15,19 @@ bundles ffmpeg for voice-note transcoding.
 
 ### Added
 
+- Mobile app for the client of an agency (`apps/mobile`, Expo/React Native, iOS
+  and Android). Sign in with a server address plus the portal credentials the
+  agency issued, and the business gets its conversations on a phone: read, take
+  over from the assistant, reply. The agency's colour and logo arrive with the
+  session, so one build serves every agency, and `brands/` plus a required
+  `BRAND` at build time let an agency publish its own from the same source.
+  It is not part of a server install and nothing else imports it - see
+  `apps/mobile/README.md`.
+- `POST /api/mobile/sign-in` and `GET /api/mobile/session`, which resolve a
+  portal from its credentials and issue a bearer token. Portal routes accept
+  that token alongside the cookie they already accepted, because a native client
+  cannot rely on cookies surviving a restart. No schema change.
+
 - Chat attachments across every channel (playground, agency inbox, client
   portal, widget, WhatsApp QR and WhatsApp Cloud API): images, voice notes,
   videos and files are persisted and rendered as real chat media instead of

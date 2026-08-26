@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Cookie, Depends, Header, File, Form, HTTPException, Response, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -37,11 +37,18 @@ def _public_client(db: Session, slug: str) -> Client:
 def _portal_client(
     slug: str,
     portal_access_token: str | None = Cookie(default=None),
+    authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> Client:
-    if not portal_access_token:
+    # The browser portal carries the session in an httpOnly cookie. Native
+    # clients cannot rely on cookie persistence across restarts, so the same
+    # token is also accepted as a bearer credential.
+    token = portal_access_token
+    if not token and authorization and authorization.lower().startswith("bearer "):
+        token = authorization[7:].strip()
+    if not token:
         raise HTTPException(status_code=401, detail="Sign in to the portal")
-    payload = decode_portal_token(portal_access_token)
+    payload = decode_portal_token(token)
     if not payload or payload.get("portal_slug") != slug:
         raise HTTPException(status_code=401, detail="The portal session expired")
     try:

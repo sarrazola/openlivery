@@ -19,6 +19,10 @@ apps/web/node_modules/
 apps/web/.next/
 apps/web/out/
 apps/whatsapp/node_modules/
+apps/mobile/node_modules/
+apps/mobile/ios/
+apps/mobile/android/
+apps/mobile/.expo/
 apps/whatsapp/dist/
 .DS_Store
 *.log

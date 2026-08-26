@@ -1,0 +1,9 @@
+{
+  "name": "OpenLivery",
+  "slug": "openlivery",
+  "scheme": "openlivery",
+  "iosBundleIdentifier": "com.openlivery.app",
+  "androidPackage": "com.openlivery.app",
+  "primaryColor": "#075985",
+  "defaultServer": ""
+}
