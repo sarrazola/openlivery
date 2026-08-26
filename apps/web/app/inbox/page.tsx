@@ -8,7 +8,7 @@ import { MediaPanel } from "@/components/media-panel";
 import { RichText } from "@/components/rich-text";
 import { ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
-import { api, apiUrl, messageFrom } from "@/lib/api";
+import { api, ApiError, apiUrl, messageFrom } from "@/lib/api";
 import { formatTime, formatWhen, isNearBottom, isSameOpenThread } from "@/lib/datetime";
 import { useLanguage, useT } from "@/lib/i18n";
 import type { Agent, Attachment, Conversation, ConversationInbox } from "@/types";
@@ -96,6 +96,15 @@ export default function InboxPage() {
     }
   }, [buildParams, toast]);
 
+  // The thread was deleted elsewhere (another operator, a cleanup): close it
+  // and drop the stale row instead of erroring or polling it forever.
+  const closeGoneThread = useCallback((id: string) => {
+    selectedIdRef.current = null;
+    setSelected(null);
+    setItems((rows) => rows.filter((row) => row.id !== id));
+    toast.error(t("inbox.threadGone"));
+  }, [toast, t]);
+
   const refreshSelected = useCallback(async () => {
     const id = selectedIdRef.current;
     if (!id) return;
@@ -108,10 +117,14 @@ export default function InboxPage() {
         api(`/conversations/${id}/read`, { method: "POST" }).catch(() => {});
         return conv;
       });
-    } catch {
-      // Poll failures should not interrupt the open thread.
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404 && selectedIdRef.current === id) {
+        closeGoneThread(id);
+        return;
+      }
+      // Other poll failures should not interrupt the open thread.
     }
-  }, []);
+  }, [closeGoneThread]);
 
   useEffect(() => { loadFirst(); }, [loadFirst]);
 
@@ -142,7 +155,12 @@ export default function InboxPage() {
 
   async function choose(id: string) {
     selectedIdRef.current = id;
-    setSelected(await api<Conversation>(`/conversations/${id}`));
+    try {
+      setSelected(await api<Conversation>(`/conversations/${id}`));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) { closeGoneThread(id); return; }
+      throw err;
+    }
     setItems((rows) => rows.map((row) => (row.id === id ? { ...row, unread: false, unread_count: 0 } : row)));
     api(`/conversations/${id}/read`, { method: "POST" }).catch(() => {});
   }

@@ -34,6 +34,7 @@ const en = {
   send: "Send",
   loading: "Loading conversations…",
   unreadCount: "{count} unread",
+  threadGone: "This conversation no longer exists.",
 };
 
 const es: typeof en = {
@@ -71,6 +72,7 @@ const es: typeof en = {
   send: "Enviar",
   loading: "Cargando conversaciones…",
   unreadCount: "{count} no leídos",
+  threadGone: "Esta conversación ya no existe.",
 };
 
 export const inbox = { en, es };
