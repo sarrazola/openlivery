@@ -8,9 +8,6 @@
  *   SERVER=http://localhost:8000 EMAIL=... PASSWORD=... npx tsx scripts/verify-flow.ts
  */
 
-import { writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   attachmentUrl,
   authHeaders,
@@ -99,8 +96,6 @@ async function main() {
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
     "base64",
   );
-  const scratch = join(tmpdir(), "openlivery-verify.png");
-  writeFileSync(scratch, png);
   const form = new FormData();
   form.append("file", new Blob([png], { type: "image/png" }), "verify.png");
   form.append("caption", "Automated attachment check");
