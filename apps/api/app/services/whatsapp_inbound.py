@@ -6,6 +6,7 @@ store the visitor message, and produce the AI reply unless a human operator has
 taken over. The caller is responsible for actually delivering the reply.
 """
 
+import asyncio
 import uuid
 from dataclasses import dataclass
 
@@ -13,6 +14,8 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from ..config import get_settings
+from ..database import SessionLocal
 from ..models import Agent, Conversation, Message, now_utc
 from .attachments import llm_text, store_attachment
 from .knowledge import build_system_prompt, retrieve_knowledge
@@ -21,6 +24,7 @@ from .notifications import notify_needs_human
 from .providers import resolve_agent_credentials, resolve_provider_credentials
 from .tools import run_completion
 from .usage import record_usage
+from .whatsapp import send_channel_message
 
 
 @dataclass
@@ -167,6 +171,19 @@ async def process_inbound(
         await notify_needs_human(db, conversation, display_content or llm_content)
         return InboundResult(accepted=True, conversation_id=conversation.id, mode="human")
 
+    if get_settings().reply_debounce_seconds > 0:
+        schedule_debounced_reply(conversation.id)
+        return InboundResult(accepted=True, conversation_id=conversation.id, mode="ai")
+
+    return await _reply_with_ai(db, channel, conversation, llm_content)
+
+
+async def _reply_with_ai(db: Session, channel, conversation: Conversation, retrieval_query: str) -> InboundResult:
+    """Generate and store the AI reply for the conversation's current history.
+
+    ``retrieval_query`` drives knowledge retrieval: the triggering message's
+    text on the synchronous path, or the whole visitor burst when debounced.
+    """
     agent = channel.agent
     credentials = resolve_agent_credentials(db, agent)
     if not agent.is_active or not credentials or not agent.model.strip():
@@ -175,7 +192,7 @@ async def process_inbound(
         db.commit()
         return InboundResult(accepted=True, conversation_id=conversation.id, mode="ai")
 
-    knowledge = await retrieve_knowledge(db, agent, llm_content)
+    knowledge = await retrieve_knowledge(db, agent, retrieval_query)
     db.refresh(conversation)
     history = db.scalars(
         select(Message)
@@ -226,3 +243,82 @@ async def process_inbound(
         mode="ai",
         outbound_message_id=outbound.id,
     )
+
+
+_pending_replies: dict[uuid.UUID, "asyncio.Task[None]"] = {}
+
+
+def schedule_debounced_reply(conversation_id: uuid.UUID) -> None:
+    """(Re)start the conversation's quiet-window timer.
+
+    Every inbound message cancels the previous timer, so the reply fires only
+    once the window passes with no new visitor message, answering the whole
+    burst as a single reply built from the stored history. Timers are
+    in-process; a DB re-check when the timer fires keeps a stale one harmless.
+    """
+    previous = _pending_replies.pop(conversation_id, None)
+    if previous is not None and not previous.done():
+        previous.cancel()
+    task = asyncio.get_running_loop().create_task(_debounced_reply(conversation_id))
+    _pending_replies[conversation_id] = task
+
+    def _cleanup(finished: "asyncio.Task[None]") -> None:
+        if _pending_replies.get(conversation_id) is finished:
+            _pending_replies.pop(conversation_id, None)
+
+    task.add_done_callback(_cleanup)
+
+
+async def _debounced_reply(conversation_id: uuid.UUID) -> None:
+    await asyncio.sleep(get_settings().reply_debounce_seconds)
+    db = SessionLocal()
+    try:
+        conversation = db.get(Conversation, conversation_id)
+        if not conversation or conversation.mode == "human":
+            return
+        channel = conversation.whatsapp_channel or conversation.whatsapp_cloud_channel
+        if not channel:
+            return
+        last = db.scalar(
+            select(Message)
+            .where(Message.conversation_id == conversation_id)
+            .order_by(Message.created_at.desc())
+            .limit(1)
+        )
+        if not last or last.role != "user":
+            # A newer timer, another worker, or an operator already answered.
+            return
+        history = db.scalars(
+            select(Message)
+            .where(Message.conversation_id == conversation_id)
+            .order_by(Message.created_at.desc())
+            .limit(channel.agent.memory_limit)
+        ).all()
+        burst: list[str] = []
+        for item in history:
+            if item.role != "user":
+                break
+            burst.append(llm_text(item))
+        try:
+            result = await _reply_with_ai(db, channel, conversation, "\n".join(reversed(burst)))
+        except Exception as exc:
+            channel.last_error = f"Message received, but the agent could not reply: {str(exc)[:400]}"
+            channel.updated_at = now_utc()
+            db.commit()
+            return
+        if not result.reply:
+            return
+        try:
+            external_id = await send_channel_message(db, conversation, result.reply)
+        except HTTPException as exc:
+            channel.last_error = f"The reply could not be sent: {exc.detail}"
+            channel.updated_at = now_utc()
+            db.commit()
+            return
+        if external_id and result.outbound_message_id:
+            outbound = db.get(Message, result.outbound_message_id)
+            if outbound:
+                outbound.external_message_id = external_id
+                db.commit()
+    finally:
+        db.close()

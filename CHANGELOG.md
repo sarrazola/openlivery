@@ -15,6 +15,13 @@ bundles ffmpeg for voice-note transcoding.
 
 ### Added
 
+- Debounced WhatsApp replies: instead of answering every message the moment it
+  arrives, the assistant now waits for a quiet window (8 seconds by default,
+  `REPLY_DEBOUNCE_SECONDS`) that restarts with each new visitor message, then
+  answers the whole burst with a single reply — the way a person reads a run of
+  messages before responding. Applies to both WhatsApp channels (Baileys bridge
+  and Cloud API); set the window to `0` to restore the immediate
+  one-reply-per-message behaviour. No schema change.
 - Connection guides under `docs/connections/`: a step-by-step WhatsApp
   Business Cloud API setup guide (Meta app, phone number, permanent access
   token, app secret, webhook, go-live and troubleshooting), in English and
