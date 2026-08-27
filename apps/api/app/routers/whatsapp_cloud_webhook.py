@@ -9,6 +9,7 @@ payload is parsed only after the signature check passes.
 import hashlib
 import hmac
 import json
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -24,6 +25,8 @@ from ..services.whatsapp_inbound import InboundMessage, process_inbound
 
 
 public_router = APIRouter(prefix="/public/whatsapp-cloud", tags=["WhatsApp Cloud public"])
+
+logger = logging.getLogger("openlivery.whatsapp_cloud")
 
 
 def _channel(db: Session, channel_id: uuid.UUID) -> WhatsAppCloudChannel:
@@ -105,6 +108,8 @@ async def receive_webhook(channel_id: uuid.UUID, request: Request, db: Session =
             if change.get("field") != "messages":
                 continue
             value = change.get("value") or {}
+            for status in value.get("statuses") or []:
+                _record_status(db, channel, status)
             contacts = {
                 contact.get("wa_id"): (contact.get("profile") or {}).get("name")
                 for contact in value.get("contacts") or []
@@ -115,6 +120,28 @@ async def receive_webhook(channel_id: uuid.UUID, request: Request, db: Session =
                     continue
                 await _handle_message(db, channel, inbound, raw_message, access_token)
     return {"status": "ok"}
+
+
+def _record_status(db: Session, channel: WhatsAppCloudChannel, status: dict) -> None:
+    """Surface outbound delivery failures reported by Meta. Every outbound
+    message gets sent/delivered/read receipts here; only failures matter —
+    without this, a message Meta accepted (wamid returned) could be dropped
+    at delivery with no trace of the reason anywhere."""
+    if status.get("status") != "failed":
+        return
+    parts = []
+    for error in status.get("errors") or []:
+        detail = (error.get("error_data") or {}).get("details") or error.get("message") or error.get("title") or ""
+        parts.append(f"{error.get('code')}: {detail}".strip(": "))
+    summary = "; ".join(parts) or "no error detail provided"
+    logger.warning(
+        "WhatsApp Cloud delivery failed for %s: %s",
+        status.get("id") or "unknown message",
+        summary,
+    )
+    channel.last_error = f"Meta could not deliver a message ({summary})"[:400]
+    channel.updated_at = now_utc()
+    db.commit()
 
 
 async def _handle_message(
