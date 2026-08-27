@@ -83,6 +83,11 @@ async def send_channel_media(
         # WhatsApp only plays ogg/opus voice notes; browsers record webm/mp4.
         data, mime = await to_whatsapp_voice(data, mime)
         seconds = await audio_duration_seconds(data)
+        if mime == "audio/ogg":
+            # The filename must match the transcoded bytes: Meta classifies the
+            # upload by extension, and an ogg named .mp4/.webm comes out as
+            # application/octet-stream and fails delivery (error 131053).
+            filename = "voice-note.ogg"
     if conversation.channel == "whatsapp":
         if not conversation.whatsapp_channel_id or not conversation.external_chat_id:
             raise HTTPException(status_code=409, detail="This conversation does not have a valid WhatsApp destination")

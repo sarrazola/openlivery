@@ -1,6 +1,8 @@
+import asyncio
 import hashlib
 import hmac
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from fastapi import HTTPException
@@ -226,6 +228,82 @@ def test_webhook_ignores_statuses_and_unsupported_types(authenticated_client: Te
     sticker = _webhook_payload([{"from": "5730011", "id": "wamid.stk", "type": "sticker", "sticker": {"id": "1"}}])
     assert _post_signed(client, channel["id"], sticker).status_code == 200
     assert fake_completion.await_count == 0
+
+
+def test_webhook_failed_status_surfaces_delivery_error(authenticated_client: TestClient):
+    client = authenticated_client
+    customer, _agent, channel = _setup_channel(client)
+    payload = {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "field": "messages",
+                        "value": {
+                            "statuses": [
+                                {
+                                    "id": "wamid.out-2",
+                                    "status": "failed",
+                                    "errors": [
+                                        {
+                                            "code": 131053,
+                                            "title": "Media upload error",
+                                            "error_data": {"details": "The audio is not a valid ogg/opus file."},
+                                        }
+                                    ],
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
+        ],
+    }
+    assert _post_signed(client, channel["id"], payload).status_code == 200
+    detail = client.get(f"/api/whatsapp-cloud/channels/{customer['id']}").json()
+    assert "131053" in (detail["last_error"] or "")
+    assert "ogg/opus" in detail["last_error"]
+
+
+def test_transcoded_voice_note_uploads_with_ogg_filename(monkeypatch):
+    captured = {}
+
+    async def fake_voice(data, mime):
+        return b"OggS-transcoded", "audio/ogg"
+
+    async def fake_duration(data):
+        return 3
+
+    async def fake_upload(token, phone_number_id, data, mime, filename):
+        captured["mime"] = mime
+        captured["filename"] = filename
+        return "media-1"
+
+    async def fake_send(token, phone_number_id, to, kind, media_id, caption="", filename=None):
+        return "wamid.audio-out"
+
+    monkeypatch.setattr(whatsapp_service, "to_whatsapp_voice", fake_voice)
+    monkeypatch.setattr(whatsapp_service, "audio_duration_seconds", fake_duration)
+    monkeypatch.setattr(whatsapp_service, "upload_media", fake_upload)
+    monkeypatch.setattr(whatsapp_service, "send_media", fake_send)
+    monkeypatch.setattr(whatsapp_service, "decrypt_secret", lambda value: "token")
+
+    channel = SimpleNamespace(encrypted_access_token="enc", phone_number_id="111")
+    conversation = SimpleNamespace(
+        channel="whatsapp_cloud", whatsapp_cloud_channel_id="ch-1", external_chat_id="573001"
+    )
+    db = SimpleNamespace(get=lambda model, key: channel)
+
+    wamid = asyncio.run(
+        whatsapp_service.send_channel_media(
+            db, conversation, kind="audio", data=b"mp4-bytes", mime="audio/mp4", filename="voice-note.mp4"
+        )
+    )
+    assert wamid == "wamid.audio-out"
+    # Meta classifies uploads by extension: the name must match the ogg bytes.
+    assert captured["filename"] == "voice-note.ogg"
+    assert captured["mime"] == "audio/ogg"
 
 
 def test_webhook_human_mode_skips_ai(authenticated_client: TestClient, monkeypatch):
