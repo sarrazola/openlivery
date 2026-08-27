@@ -77,7 +77,7 @@ Everything is agency-scoped: `Agency → Users, Clients, AIConnections`; `Client
 
 ### WhatsApp flow
 
-The bridge (`apps/whatsapp/src/manager.ts`) holds live Baileys sessions and is stateful — encrypted session/auth state lives in PostgreSQL (via the backend), and the bridge reloads enabled sessions on startup. Incoming messages: bridge → `POST /api/whatsapp/channels/{channel_id}/inbound` on the backend → AI reply sent back through the bridge. Backend↔bridge calls authenticate with `WHATSAPP_BRIDGE_TOKEN`. Conversations have a `mode` field: switching to `"human"` pauses the AI so an operator answers from the portal.
+The bridge (`apps/whatsapp/src/manager.ts`) holds live Baileys sessions and is stateful — encrypted session/auth state lives in PostgreSQL (via the backend), and the bridge reloads enabled sessions on startup. Incoming messages: bridge → `POST /api/whatsapp/channels/{channel_id}/inbound` on the backend → AI reply sent back through the bridge. Replies are debounced (`REPLY_DEBOUNCE_SECONDS`, default 8s): the shared pipeline in `app/services/whatsapp_inbound.py` waits for a quiet window that restarts on each new visitor message, then answers the whole burst with one reply delivered via `send_channel_message()`; with the window at 0 the reply returns synchronously in the inbound response instead. Backend↔bridge calls authenticate with `WHATSAPP_BRIDGE_TOKEN`. Conversations have a `mode` field: switching to `"human"` pauses the AI so an operator answers from the portal.
 
 ### Frontend
 

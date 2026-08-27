@@ -41,6 +41,7 @@ Full documentation lives at **[openlivery.com/docs](https://openlivery.com/docs)
 | [Self-hosting](https://openlivery.com/docs/self-hosting) | Deploy to a server, back up, upgrade and troubleshoot |
 | [Contributing](https://openlivery.com/docs/contributing) | Run the project locally, tests and conventions |
 | [Push notifications](docs/push-notifications.md) | Optional, provider-agnostic notifications for the mobile app |
+| [WhatsApp Cloud API](docs/connections/whatsapp-cloud-api.md) | Connect a number with the official Meta API, end to end ([en español](docs/connections/whatsapp-cloud-api.es.md)) |
 
 ## Features
 
