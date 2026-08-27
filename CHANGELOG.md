@@ -13,6 +13,12 @@ Upgrading: this release adds a database migration (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups). The api image now
 bundles ffmpeg for voice-note transcoding.
 
+### Changed
+
+- Agent guidance moved from `CLAUDE.md` to `AGENTS.md`, with `CLAUDE.md`
+  kept as a one-line pointer. Same pairing already used in `apps/web`, so
+  contributors get the repo's conventions whichever coding agent they use.
+
 ### Added
 
 - Debounced WhatsApp replies: instead of answering every message the moment it
