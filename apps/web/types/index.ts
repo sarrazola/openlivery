@@ -20,14 +20,21 @@ export type Client = {
   portal_slug: string;
   portal_enabled: boolean;
   portal_title: string;
-  portal_email: string | null;
-  portal_password_configured: boolean;
   portal_domain: string | null;
   portal_domain_verified: boolean;
   logo_url: string | null;
   agents: AgentSummary[];
   created_at: string;
   updated_at: string;
+};
+
+export type PortalUser = {
+  id: string;
+  name: string;
+  email: string;
+  is_active: boolean;
+  devices: number;
+  created_at: string;
 };
 
 export type ClientDomain = {

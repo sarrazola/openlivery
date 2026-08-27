@@ -71,6 +71,13 @@ bundles ffmpeg for voice-note transcoding.
 
 ### Changed
 
+- Portal sign-in is now only through portal users, managed from a new "Portal
+  access" section on the client's portal tab (add, suspend, reactivate,
+  remove). The shared email/password pair on the client is gone, closing the
+  gap where credentials saved through the old form never appeared in the
+  portal user list. Upgrading: the migration carries any remaining shared
+  login over as a portal user, so existing credentials keep working;
+  `portal_email`/`portal_password` disappear from the client API.
 - Self-hosted instances are single-agency by default: the first registration
   creates the owner agency and closes public sign-up (further attempts return
   403). Upgrading: instances that already have an agency stop accepting new

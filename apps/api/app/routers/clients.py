@@ -132,11 +132,6 @@ def update_client_portal(
 ):
     client = _client(db, user, client_id)
     values = payload.model_dump(exclude_unset=True)
-    password = values.pop("portal_password", None)
-    if password:
-        client.portal_password_hash = hash_password(password)
-    if "portal_email" in values and values["portal_email"]:
-        values["portal_email"] = str(values["portal_email"]).lower()
     if "portal_slug" in values and values["portal_slug"]:
         candidate = slugify(values["portal_slug"])
         existing = db.scalar(select(Client).where(Client.portal_slug == candidate, Client.id != client.id))
@@ -150,8 +145,7 @@ def update_client_portal(
             PortalUser.client_id == client.id, PortalUser.is_active.is_(True)
         )
     )
-    has_legacy_login = bool(client.portal_email and client.portal_password_hash)
-    if client.portal_enabled and not has_legacy_login and not has_users:
+    if client.portal_enabled and not has_users:
         raise HTTPException(status_code=400, detail="Add someone who can sign in before enabling the portal")
     db.commit()
     return _client(db, user, client_id)

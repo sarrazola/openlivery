@@ -411,10 +411,11 @@ def test_custom_portal_domain_flow(authenticated_client: TestClient, monkeypatch
         "/api/clients",
         json={"name": "Brand", "industry": "", "description": "", "general_context": "", "is_active": True},
     ).json()
-    client.patch(
-        f"/api/clients/{customer['id']}/portal",
-        json={"portal_enabled": True, "portal_email": "owner@brand.com", "portal_password": "portal-password"},
+    client.post(
+        f"/api/clients/{customer['id']}/portal-users",
+        json={"name": "Owner", "email": "owner@brand.com", "password": "portal-password"},
     )
+    client.patch(f"/api/clients/{customer['id']}/portal", json={"portal_enabled": True})
 
     body = client.put(f"/api/clients/{customer['id']}/domain", json={"domain": "Chat.Brand.com"}).json()
     assert body["domain"] == "chat.brand.com"
@@ -553,18 +554,17 @@ def test_white_label_portal_and_human_takeover(authenticated_client: TestClient)
 
     missing_credentials = client.patch(f"/api/clients/{client_id}/portal", json={"portal_enabled": True})
     assert missing_credentials.status_code == 400
+    created_user = client.post(
+        f"/api/clients/{client_id}/portal-users",
+        json={"name": "Equipo", "email": "equipo@luna.com", "password": "secure-portal"},
+    )
+    assert created_user.status_code == 201
     configured = client.patch(
         f"/api/clients/{client_id}/portal",
-        json={
-            "portal_enabled": True,
-            "portal_title": "Luna Inbox",
-            "portal_email": "equipo@luna.com",
-            "portal_password": "secure-portal",
-        },
+        json={"portal_enabled": True, "portal_title": "Luna Inbox"},
     )
     assert configured.status_code == 200
-    assert configured.json()["portal_password_configured"] is True
-    assert "portal_password_hash" not in configured.json()
+    assert "password" not in str(configured.json()).lower()
 
     agent = client.post(
         "/api/agents",

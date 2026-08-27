@@ -73,8 +73,6 @@ class Client(Base):
     portal_slug: Mapped[str] = mapped_column(String(180), unique=True, index=True)
     portal_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     portal_title: Mapped[str] = mapped_column(String(180), default="")
-    portal_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
-    portal_password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Optional custom domain for this client's portal. Verified via a DNS TXT
     # challenge; only verified domains are routed and get an on-demand cert.
     portal_domain: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
@@ -93,10 +91,6 @@ class Client(Base):
     portal_users: Mapped[list["PortalUser"]] = relationship(
         back_populates="client", cascade="all, delete-orphan"
     )
-
-    @property
-    def portal_password_configured(self) -> bool:
-        return bool(self.portal_password_hash)
 
     @property
     def logo_url(self) -> str | None:
@@ -412,8 +406,8 @@ class PortalUser(Base):
     Before this table a portal had a single e-mail and password shared by
     everyone at the business. That is workable in a browser and breaks down with
     push: you cannot tell which phone to notify, who replied, or revoke one
-    employee. The legacy ``Client.portal_email`` still authenticates, so an
-    install that never creates a user keeps working exactly as before.
+    employee. Since 0021 this is the only portal login; the migration carried
+    every legacy credential over, so nobody's password stopped working.
     """
 
     __tablename__ = "portal_users"

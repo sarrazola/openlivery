@@ -136,20 +136,6 @@ def mobile_sign_in(payload: MobileSignInRequest, db: Session = Depends(get_db)):
         if agency:
             return _session_for(client, agency, user)
 
-    # Installs that never created portal users still sign in with the single
-    # login the client carries.
-    legacy = db.scalars(
-        select(Client).where(Client.portal_enabled.is_(True), Client.portal_email.is_not(None))
-    ).all()
-    for client in legacy:
-        if (client.portal_email or "").lower() != email:
-            continue
-        if not client.portal_password_hash or not verify_password(payload.password, client.portal_password_hash):
-            continue
-        agency = db.get(Agency, client.agency_id)
-        if agency:
-            return _session_for(client, agency, None)
-
     raise HTTPException(status_code=401, detail="Incorrect e-mail or password")
 
 

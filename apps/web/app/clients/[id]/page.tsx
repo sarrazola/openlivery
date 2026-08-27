@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Bot, Copy, ExternalLink, Globe2, ImagePlus, Inbox, LoaderCircle, MessageCircle, QrCode, Radio, Save, Settings2, ShieldAlert, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { EmptyState, StatusBadge } from "@/components/ui";
@@ -9,7 +9,7 @@ import { FormSkeleton, ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { api, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
-import type { Client, ClientDomain, Conversation } from "@/types";
+import type { Client, ClientDomain, Conversation, PortalUser } from "@/types";
 
 type Tab = "details" | "agents" | "channels" | "inbox" | "portal";
 
@@ -47,8 +47,7 @@ export default function ClientDetailPage() {
   async function savePortal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true);
     const data = new FormData(event.currentTarget);
-    const payload: Record<string, unknown> = { portal_enabled: data.get("portal_enabled") === "on", portal_slug: data.get("portal_slug"), portal_title: data.get("portal_title"), portal_email: data.get("portal_email") || null };
-    if (data.get("portal_password")) payload.portal_password = data.get("portal_password");
+    const payload: Record<string, unknown> = { portal_enabled: data.get("portal_enabled") === "on", portal_slug: data.get("portal_slug"), portal_title: data.get("portal_title") };
     try { setClient(await api<Client>(`/clients/${id}/portal`, { method: "PATCH", body: JSON.stringify(payload) })); toast.success(t("clients.detail.portalUpdated")); }
     catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); }
   }
@@ -73,8 +72,60 @@ export default function ClientDetailPage() {
 
     {tab === "inbox" && <ClientInbox clientId={client.id} />}
 
-    {tab === "portal" && <><form className="page-form" onSubmit={savePortal}><section className="form-section"><div className="section-copy"><h2>{t("clients.detail.portalTitle")}</h2><p>{t("clients.detail.portalCopy")}</p></div><div className="form-fields"><label>{t("clients.detail.portalTitleLabel")}<input name="portal_title" defaultValue={client.portal_title} placeholder={t("clients.detail.portalTitlePlaceholder", { name: client.name })} /></label><label>{t("clients.detail.portalUrl")}<div className="slug-input"><span>localhost:3000/portal/</span><input name="portal_slug" defaultValue={client.portal_slug} /></div></label><div className="url-preview"><code>{portalUrl}</code><button type="button" onClick={() => navigator.clipboard.writeText(portalUrl)}><Copy size={15} /> {t("clients.detail.copy")}</button>{client.portal_enabled && <a href={portalUrl} target="_blank"><ExternalLink size={15} /> {t("clients.detail.open")}</a>}</div><div className="form-grid"><label>{t("clients.detail.portalEmail")}<input name="portal_email" type="email" defaultValue={client.portal_email || ""} placeholder={t("clients.detail.portalEmailPlaceholder")} /></label><label>{t("clients.detail.portalPassword")}<input name="portal_password" type="password" autoComplete="new-password" placeholder={client.portal_password_configured ? t("clients.detail.portalPasswordKeep") : t("clients.detail.portalPasswordMin")} /></label></div><label className="switch-row"><span><strong>{t("clients.detail.publishPortal")}</strong><small>{t("clients.detail.publishPortalHint")}</small></span><input name="portal_enabled" type="checkbox" defaultChecked={client.portal_enabled} /></label></div></section><div className="form-footer"><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} {t("clients.detail.savePortal")}</button></div></form><PortalDomain clientId={client.id} /></>}
+    {tab === "portal" && <><form className="page-form" onSubmit={savePortal}><section className="form-section"><div className="section-copy"><h2>{t("clients.detail.portalTitle")}</h2><p>{t("clients.detail.portalCopy")}</p></div><div className="form-fields"><label>{t("clients.detail.portalTitleLabel")}<input name="portal_title" defaultValue={client.portal_title} placeholder={t("clients.detail.portalTitlePlaceholder", { name: client.name })} /></label><label>{t("clients.detail.portalUrl")}<div className="slug-input"><span>localhost:3000/portal/</span><input name="portal_slug" defaultValue={client.portal_slug} /></div></label><div className="url-preview"><code>{portalUrl}</code><button type="button" onClick={() => navigator.clipboard.writeText(portalUrl)}><Copy size={15} /> {t("clients.detail.copy")}</button>{client.portal_enabled && <a href={portalUrl} target="_blank"><ExternalLink size={15} /> {t("clients.detail.open")}</a>}</div><label className="switch-row"><span><strong>{t("clients.detail.publishPortal")}</strong><small>{t("clients.detail.publishPortalHint")}</small></span><input name="portal_enabled" type="checkbox" defaultChecked={client.portal_enabled} /></label></div></section><div className="form-footer"><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} {t("clients.detail.savePortal")}</button></div></form><PortalUsers clientId={client.id} /><PortalDomain clientId={client.id} /></>}
   </div>;
+}
+
+function PortalUsers({ clientId }: { clientId: string }) {
+  const t = useT();
+  const toast = useToast();
+  const [users, setUsers] = useState<PortalUser[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setUsers(await api<PortalUser[]>(`/clients/${clientId}/portal-users`));
+  }, [clientId]);
+  useEffect(() => { load().catch(() => {}); }, [load]);
+
+  async function add(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    setBusy(true);
+    try {
+      await api(`/clients/${clientId}/portal-users`, { method: "POST", body: JSON.stringify({ name: data.get("name"), email: data.get("email"), password: data.get("password") }) });
+      form.reset();
+      toast.success(t("clients.detail.portalUserAdded"));
+      await load();
+    } catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); }
+  }
+  async function toggle(u: PortalUser) {
+    try { await api(`/clients/${clientId}/portal-users/${u.id}`, { method: "PATCH", body: JSON.stringify({ is_active: !u.is_active }) }); await load(); }
+    catch (err) { toast.error(messageFrom(err)); }
+  }
+  async function removeUser(u: PortalUser) {
+    try { await api(`/clients/${clientId}/portal-users/${u.id}`, { method: "DELETE" }); toast.success(t("clients.detail.portalUserRemoved")); await load(); }
+    catch (err) { toast.error(messageFrom(err)); }
+  }
+
+  return <section className="form-section"><div className="section-copy"><h2>{t("clients.detail.portalUsersTitle")}</h2><p>{t("clients.detail.portalUsersCopy")}</p></div><div className="form-fields">
+    {users === null ? <ListRowsSkeleton rows={2} /> : users.length ? <div className="table-shell"><table className="data-table"><tbody>
+      {users.map((u) => <tr key={u.id}>
+        <td><span className="entity-cell"><span className="agent-avatar"><UserRound size={17} /></span><span><strong>{u.name || u.email}</strong>{u.name && <small style={{ display: "block", color: "#89909d" }}>{u.email}</small>}</span></span></td>
+        <td><StatusBadge active={u.is_active} /></td>
+        <td><button type="button" className="text-button" onClick={() => toggle(u)}>{u.is_active ? t("clients.detail.portalUserSuspend") : t("clients.detail.portalUserActivate")}</button></td>
+        <td><button type="button" className="text-button danger-text" onClick={() => removeUser(u)} aria-label={t("clients.detail.portalUserRemove")}><Trash2 size={15} /></button></td>
+      </tr>)}
+    </tbody></table></div> : <p className="field-help">{t("clients.detail.portalUsersEmpty")}</p>}
+    <form onSubmit={add} className="form-fields">
+      <div className="form-grid">
+        <label>{t("clients.detail.portalUserName")}<input name="name" required minLength={2} /></label>
+        <label>{t("clients.detail.portalUserEmail")}<input name="email" required type="email" placeholder={t("clients.detail.portalEmailPlaceholder")} /></label>
+      </div>
+      <label>{t("clients.detail.portalUserPassword")}<input name="password" required type="password" minLength={8} autoComplete="new-password" placeholder={t("clients.detail.portalPasswordMin")} /></label>
+      <button className="button secondary align-start" disabled={busy}>{busy ? <LoaderCircle className="spin" size={15} /> : <UserRound size={15} />} {t("clients.detail.portalUserAdd")}</button>
+    </form>
+  </div></section>;
 }
 
 function PortalDomain({ clientId }: { clientId: string }) {

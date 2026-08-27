@@ -31,14 +31,13 @@ def _client_with_portal(client: TestClient, name="Barber Co"):
         "/api/clients",
         json={"name": name, "industry": "", "description": "", "general_context": "", "is_active": True},
     ).json()
-    client.patch(
-        f"/api/clients/{customer['id']}/portal",
-        json={
-            "portal_enabled": True,
-            "portal_email": "owner@barberco.com",
-            "portal_password": "legacy-portal-pw",
-        },
+    # Mirrors a user carried over from the pre-0021 shared login: real
+    # credentials, no display name.
+    client.post(
+        f"/api/clients/{customer['id']}/portal-users",
+        json={"name": "", "email": "owner@barberco.com", "password": "legacy-portal-pw"},
     )
+    client.patch(f"/api/clients/{customer['id']}/portal", json={"portal_enabled": True})
     return customer
 
 
@@ -46,8 +45,7 @@ def _sign_in(client: TestClient, email, password):
     return client.post("/api/mobile/sign-in", json={"email": email, "password": password})
 
 
-def test_legacy_portal_login_still_signs_in_on_mobile(authenticated_client: TestClient):
-    """The single login a client used to carry keeps working, untouched."""
+def test_portal_user_signs_in_on_mobile(authenticated_client: TestClient):
     customer = _client_with_portal(authenticated_client)
 
     session = _sign_in(authenticated_client, "owner@barberco.com", "legacy-portal-pw")
@@ -55,8 +53,8 @@ def test_legacy_portal_login_still_signs_in_on_mobile(authenticated_client: Test
     body = session.json()
     assert body["portal_slug"] == customer["portal_slug"]
     assert body["token"]
-    # No portal user was involved, so the session is not attributed to one.
-    assert body["user_id"] is None
+    # The session is attributed to the portal user who signed in.
+    assert body["user_id"]
     # Nothing is configured, so the app is told not to initialise a push SDK.
     assert body["push"] == {"enabled": False, "provider": "none"}
 
@@ -88,7 +86,7 @@ def test_portal_users_can_be_managed_and_sign_in_everywhere(authenticated_client
         json={"email": "luis@barberco.com", "password": "luis-password", "name": "Luis"},
     )
     listed = client.get(f"/api/clients/{cid}/portal-users").json()
-    assert [row["name"] for row in listed] == ["Ana", "Luis"]
+    assert [row["name"] for row in listed] == ["", "Ana", "Luis"]
 
     # Both can sign in on a phone, each attributed to themselves.
     ana = _sign_in(client, "ana@barberco.com", "ana-password")
@@ -165,10 +163,10 @@ def test_device_registration_is_accepted_and_deduplicated(authenticated_client: 
         headers=auth,
     )
     listed = client.get(f"/api/clients/{cid}/portal-users").json()
-    assert [row["devices"] for row in listed] == [1]
+    assert [row["devices"] for row in listed] == [0, 1]
 
     assert client.delete("/api/mobile/devices/device-token-aaa", headers=auth).status_code == 204
-    assert client.get(f"/api/clients/{cid}/portal-users").json()[0]["devices"] == 0
+    assert [row["devices"] for row in client.get(f"/api/clients/{cid}/portal-users").json()] == [0, 0]
 
     assert client.post("/api/mobile/devices", json={"token": "x" * 20}).status_code == 401
 

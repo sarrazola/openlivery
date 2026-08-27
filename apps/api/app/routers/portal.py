@@ -140,8 +140,6 @@ def public_client_logo(slug: str, db: Session = Depends(get_db)):
 def portal_login(slug: str, payload: PortalLoginRequest, response: Response, db: Session = Depends(get_db)):
     client = _public_client(db, slug)
     email = payload.email.lower()
-    # Whoever the business added, or - for a portal that predates portal users -
-    # the single login the client itself still carries.
     portal_user = db.scalar(
         select(PortalUser).where(
             PortalUser.client_id == client.id,
@@ -149,16 +147,7 @@ def portal_login(slug: str, payload: PortalLoginRequest, response: Response, db:
             PortalUser.is_active.is_(True),
         )
     )
-    if portal_user and verify_password(payload.password, portal_user.password_hash):
-        pass
-    elif (
-        client.portal_email
-        and email == client.portal_email.lower()
-        and client.portal_password_hash
-        and verify_password(payload.password, client.portal_password_hash)
-    ):
-        portal_user = None
-    else:
+    if not portal_user or not verify_password(payload.password, portal_user.password_hash):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     settings = get_settings()
     response.set_cookie(

@@ -66,8 +66,6 @@ class ClientPortalUpdate(BaseModel):
     portal_enabled: bool | None = None
     portal_slug: str | None = Field(default=None, min_length=2, max_length=180)
     portal_title: str | None = Field(default=None, max_length=180)
-    portal_email: EmailStr | None = None
-    portal_password: str | None = Field(default=None, min_length=8, max_length=128)
 
 
 class AgentSummary(ORMModel):
@@ -87,8 +85,6 @@ class ClientOut(ORMModel):
     portal_slug: str
     portal_enabled: bool
     portal_title: str
-    portal_email: EmailStr | None
-    portal_password_configured: bool
     portal_domain: str | None
     portal_domain_verified: bool
     logo_url: str | None = None
