@@ -3,7 +3,7 @@
 Each model declares its context window, capabilities (tools/vision) and price
 per 1k tokens. This metadata powers:
 - the model picker and token counter in the agent creation wizard,
-- cost estimation and per-model markup (billing).
+- the per-model cost figures the catalog API exposes to clients.
 
 IDs are kept in sync with `apps/web/lib/providers.ts` (same identifiers per
 provider). Keep both in sync when adding models.
