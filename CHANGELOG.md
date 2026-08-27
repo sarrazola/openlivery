@@ -15,6 +15,10 @@ bundles ffmpeg for voice-note transcoding.
 
 ### Added
 
+- Connection guides under `docs/connections/`: a step-by-step WhatsApp
+  Business Cloud API setup guide (Meta app, phone number, permanent access
+  token, app secret, webhook, go-live and troubleshooting), in English and
+  Spanish, linked from the README.
 - Mobile app for the client of an agency (`apps/mobile`, Expo/React Native, iOS
   and Android). Sign in with a server address plus the portal credentials the
   agency issued, and the business gets its conversations on a phone: read, take
