@@ -89,6 +89,18 @@ const en = {
       open: "Open",
       resolved: "Resolved",
     },
+    folders: {
+      all: "All",
+      unread: "Unread",
+      mine: "Mine",
+      unassigned: "Unassigned",
+      ai: "AI",
+    },
+    assignment: {
+      label: "Assigned to",
+      nobody: "Nobody",
+      me: "{name} (me)",
+    },
     conversation: {
       channel: "Channel: {channel}",
       takeControl: "Take control",
@@ -109,6 +121,10 @@ const en = {
       taken_over: "{actor} took over the conversation",
       returned_to_ai: "{actor} returned the conversation to the AI",
       auto_resolved: "Resolved automatically after {hours} h without activity",
+      self_assigned: "{actor} is now handling the conversation",
+      assigned: "{actor} assigned the conversation to {assignee}",
+      transferred: "{actor} transferred the conversation to {assignee}",
+      unassigned: "{actor} released the conversation",
       someone: "Someone",
     },
     empty: {
@@ -209,6 +225,18 @@ const es: typeof en = {
       open: "Abiertas",
       resolved: "Resueltas",
     },
+    folders: {
+      all: "Todas",
+      unread: "Sin leer",
+      mine: "Mías",
+      unassigned: "Sin asignar",
+      ai: "IA",
+    },
+    assignment: {
+      label: "Asignada a",
+      nobody: "Nadie",
+      me: "{name} (yo)",
+    },
     conversation: {
       channel: "Canal: {channel}",
       takeControl: "Tomar control",
@@ -229,6 +257,10 @@ const es: typeof en = {
       taken_over: "{actor} tomó el control de la conversación",
       returned_to_ai: "{actor} devolvió la conversación a la IA",
       auto_resolved: "Resuelta automáticamente tras {hours} h sin actividad",
+      self_assigned: "{actor} ahora atiende la conversación",
+      assigned: "{actor} asignó la conversación a {assignee}",
+      transferred: "{actor} transfirió la conversación a {assignee}",
+      unassigned: "{actor} liberó la conversación",
       someone: "Alguien",
     },
     empty: {

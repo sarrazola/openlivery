@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import Conversation, Message, now_utc
+from ..models import Conversation, Message, PortalUser, now_utc
 
 
 STATUSES = ("open", "resolved")
@@ -27,6 +27,10 @@ _ACTIVITY_TEXT = {
     "taken_over": "{actor} took over the conversation",
     "returned_to_ai": "{actor} returned the conversation to the AI",
     "auto_resolved": "Resolved automatically after {hours} h without activity",
+    "self_assigned": "{actor} is now handling the conversation",
+    "assigned": "{actor} assigned the conversation to {assignee}",
+    "transferred": "{actor} transferred the conversation to {assignee}",
+    "unassigned": "{actor} released the conversation",
 }
 
 
@@ -72,14 +76,63 @@ def set_status(db: Session, conversation: Conversation, status: str, *, actor: s
     return True
 
 
-def set_mode(db: Session, conversation: Conversation, mode: str, *, actor: str | None = None) -> bool:
-    """Switch who answers, and leave a trace of it in the thread."""
+def set_mode(
+    db: Session, conversation: Conversation, mode: str, *, actor: str | None = None, user: PortalUser | None = None
+) -> bool:
+    """Switch who answers, and leave a trace of it in the thread.
+
+    Taking over from the portal also hands the conversation to that person;
+    giving it back to the AI releases it, since nobody is handling it now.
+    """
     if conversation.mode == mode:
         return False
     conversation.mode = mode
+    now = now_utc()
     if mode == "human":
-        conversation.taken_over_at = now_utc()
+        conversation.taken_over_at = now
+        if user:
+            conversation.assignee_id = user.id
+            conversation.assigned_at = now
+    else:
+        conversation.assignee_id = None
+        conversation.assigned_at = None
     record_activity(db, conversation, "taken_over" if mode == "human" else "returned_to_ai", actor=actor)
+    return True
+
+
+def assign(
+    db: Session,
+    conversation: Conversation,
+    assignee: PortalUser | None,
+    *,
+    actor: str | None = None,
+    actor_user: PortalUser | None = None,
+) -> bool:
+    """Hand the conversation to ``assignee`` (None releases it).
+
+    Assigning a person means a person answers, so the AI steps aside. The
+    thread says what happened in the words people use: took it, assigned
+    it, transferred it, released it.
+    """
+    new_id = assignee.id if assignee else None
+    if conversation.assignee_id == new_id and (assignee is None or conversation.mode == "human"):
+        return False
+    previous = conversation.assignee
+    now = now_utc()
+    conversation.assignee_id = new_id
+    conversation.assigned_at = now if assignee else None
+    if assignee and conversation.mode != "human":
+        conversation.mode = "human"
+        conversation.taken_over_at = now
+    if assignee is None:
+        event, details = "unassigned", None
+    elif actor_user and assignee.id == actor_user.id:
+        event, details = "self_assigned", {"assignee": assignee.name}
+    elif previous and previous.id != assignee.id:
+        event, details = "transferred", {"assignee": assignee.name, "from": previous.name}
+    else:
+        event, details = "assigned", {"assignee": assignee.name}
+    record_activity(db, conversation, event, actor=actor, details=details)
     return True
 
 

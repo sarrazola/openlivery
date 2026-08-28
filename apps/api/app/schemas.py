@@ -308,6 +308,8 @@ class ConversationOut(ORMModel):
     first_reply_at: datetime | None = None
     taken_over_at: datetime | None = None
     waiting_since: datetime | None = None
+    assignee_id: uuid.UUID | None = None
+    assignee_name: str | None = None
     preview: str = ""
     unread: bool = False
     unread_count: int = 0
@@ -375,6 +377,17 @@ class ConversationStatusUpdate(BaseModel):
     status: str = Field(pattern=r"^(open|resolved)$")
 
 
+class ConversationAssignmentUpdate(BaseModel):
+    # A portal user id, or null to release the conversation.
+    assignee_id: uuid.UUID | None = None
+
+
+class PortalMemberOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: str
+
+
 class ContactCreate(BaseModel):
     name: str = Field(default="", max_length=180)
     phone: str = Field(min_length=7, max_length=40)
@@ -408,6 +421,8 @@ class PortalInboxSummary(BaseModel):
     human: int = 0
     ai: int = 0
     unread: int = 0
+    mine: int = 0
+    unassigned: int = 0
 
 
 class PortalLoginRequest(BaseModel):
@@ -430,6 +445,9 @@ class PortalSessionOut(BaseModel):
     client_name: str
     portal_slug: str
     agency_name: str
+    # The person behind the session; absent on sessions that predate portal users.
+    user_id: uuid.UUID | None = None
+    user_name: str | None = None
 
 
 class DashboardOut(BaseModel):

@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Cookie, Depends, Header, File, Form, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
@@ -14,18 +14,21 @@ from ..schemas import (
     ContactOut,
     ContactUpdate,
     ConversationDetail,
+    ConversationAssignmentUpdate,
     ConversationModeUpdate,
     ConversationStatusUpdate,
     ConversationOut,
     PortalInboxSummary,
     PortalLoginRequest,
+    PortalMemberOut,
     PortalPublicOut,
     PortalSessionOut,
     SendMessageRequest,
 )
 from ..security import create_portal_token, decode_portal_token, verify_password
 from ..services.contacts import display_name, normalize_phone, rename_conversations
-from ..services.conversation_state import note_reply, set_mode, set_status
+from ..services.conversation_state import assign, note_reply, set_mode, set_status
+from ..services.notifications import notify_assigned
 from ..services.attachments import attachment_response, conversation_attachment, logo_response
 from ..services.operator_media import store_operator_media_reply
 from ..services.whatsapp import send_channel_message
@@ -111,10 +114,17 @@ def _sender_name(
     return client.name if client else "Support"
 
 
+def _present(conversation: Conversation) -> ConversationDetail:
+    assignee = conversation.assignee
+    return ConversationDetail.model_validate(conversation).model_copy(
+        update={"assignee_name": (assignee.name.strip() or assignee.email) if assignee else None}
+    )
+
+
 def _detail(db: Session, client: Client, conversation_id: uuid.UUID) -> Conversation:
     conversation = db.scalar(
         select(Conversation)
-        .options(selectinload(Conversation.messages).selectinload(Message.attachments), joinedload(Conversation.agent))
+        .options(selectinload(Conversation.messages).selectinload(Message.attachments), joinedload(Conversation.agent), joinedload(Conversation.assignee))
         .execution_options(populate_existing=True)
         .where(Conversation.id == conversation_id, Conversation.client_id == client.id)
     )
@@ -183,7 +193,14 @@ def portal_login(slug: str, payload: PortalLoginRequest, response: Response, db:
         path="/",
     )
     agency = db.get(Agency, client.agency_id)
-    return {"client_id": client.id, "client_name": client.name, "portal_slug": client.portal_slug, "agency_name": agency.name}
+    return {
+        "client_id": client.id,
+        "client_name": client.name,
+        "portal_slug": client.portal_slug,
+        "agency_name": agency.name,
+        "user_id": portal_user.id,
+        "user_name": portal_user.name.strip() or portal_user.email,
+    }
 
 
 @router.post("/{slug}/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -192,9 +209,30 @@ def portal_logout(response: Response):
 
 
 @router.get("/{slug}/me", response_model=PortalSessionOut)
-def portal_me(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+def portal_me(
+    slug: str,
+    client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
+    db: Session = Depends(get_db),
+):
     agency = db.get(Agency, client.agency_id)
-    return {"client_id": client.id, "client_name": client.name, "portal_slug": client.portal_slug, "agency_name": agency.name}
+    return {
+        "client_id": client.id,
+        "client_name": client.name,
+        "portal_slug": client.portal_slug,
+        "agency_name": agency.name,
+        "user_id": user.id if user else None,
+        "user_name": (user.name.strip() or user.email) if user else None,
+    }
+
+
+@router.get("/{slug}/members", response_model=list[PortalMemberOut])
+def portal_members(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+    """The people a conversation can be handed to."""
+    rows = db.scalars(
+        select(PortalUser).where(PortalUser.client_id == client.id, PortalUser.is_active.is_(True)).order_by(PortalUser.name, PortalUser.email)
+    ).all()
+    return [{"id": row.id, "name": row.name.strip() or row.email, "email": row.email} for row in rows]
 
 
 @router.get("/{slug}/agents", response_model=list[AgentSummary])
@@ -207,11 +245,13 @@ def portal_conversations(
     slug: str,
     status: str | None = None,
     mode: str | None = None,
+    assignee: str | None = None,
     search: str | None = None,
     unread: bool = False,
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
     db: Session = Depends(get_db),
 ):
     # Same shape as the agency inbox: the latest message and the unread count
@@ -237,19 +277,26 @@ def portal_conversations(
         .group_by(Message.conversation_id)
     ).subquery()
     # Unread is a call to action for a person: the contact wrote and nobody
-    # has looked. While the AI answers there is nothing to act on, so those
-    # conversations never count as unread; they live under the AI filter.
+    # has looked. While the AI answers there is nothing to act on, and a
+    # conversation a colleague holds is theirs to catch up on, so unread only
+    # counts what is mine or nobody's.
+    concerns_me = or_(Conversation.assignee_id.is_(None), Conversation.assignee_id == (user.id if user else None))
     unread_count = case(
-        (Conversation.mode == "human", func.coalesce(unread_counts.c.n, 0)),
+        (and_(Conversation.mode == "human", concerns_me), func.coalesce(unread_counts.c.n, 0)),
         else_=0,
     )
 
     query = (
-        select(Conversation, last.c.content, unread_count.label("unread_count"))
+        select(Conversation, last.c.content, unread_count.label("unread_count"), PortalUser.name.label("assignee_name"), PortalUser.email.label("assignee_email"))
         .outerjoin(last, last.c.cid == Conversation.id)
         .outerjoin(unread_counts, unread_counts.c.cid == Conversation.id)
+        .outerjoin(PortalUser, PortalUser.id == Conversation.assignee_id)
         .where(Conversation.client_id == client.id)
     )
+    if assignee == "me" and user:
+        query = query.where(Conversation.assignee_id == user.id)
+    elif assignee == "none":
+        query = query.where(Conversation.mode == "human", Conversation.assignee_id.is_(None))
     # No status filter means everything, so clients that predate statuses keep
     # seeing their whole list.
     if status in ("open", "resolved"):
@@ -274,9 +321,10 @@ def portal_conversations(
                 "preview": (content or "")[:140].strip(),
                 "unread": int(row_unread_count) > 0,
                 "unread_count": int(row_unread_count),
+                "assignee_name": ((assignee_name or "").strip() or assignee_email) if conv.assignee_id else None,
             }
         )
-        for conv, content, row_unread_count in rows
+        for conv, content, row_unread_count, assignee_name, assignee_email in rows
     ]
 
 
@@ -472,7 +520,12 @@ def portal_contact_conversations(
 
 
 @router.get("/{slug}/conversations/summary", response_model=PortalInboxSummary)
-def portal_inbox_summary(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+def portal_inbox_summary(
+    slug: str,
+    client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
+    db: Session = Depends(get_db),
+):
     """Counts behind the list's switches and chips, computed the same way the
     list is so a badge never promises something the filter does not show."""
     unread_exists = (
@@ -485,21 +538,29 @@ def portal_inbox_summary(slug: str, client: Client = Depends(_portal_client), db
         .exists()
     )
     is_open = Conversation.status == "open"
+    is_human = Conversation.mode == "human"
+    is_mine = Conversation.assignee_id == (user.id if user else None)
+    concerns_me = or_(Conversation.assignee_id.is_(None), is_mine)
     row = db.execute(
         select(
             func.count().filter(is_open).label("open"),
             func.count().filter(Conversation.status == "resolved").label("resolved"),
-            func.count().filter(is_open, Conversation.mode == "human").label("human"),
+            func.count().filter(is_open, is_human).label("human"),
             func.count().filter(is_open, Conversation.mode == "ai").label("ai"),
-            func.count().filter(is_open, Conversation.mode == "human", unread_exists).label("unread"),
+            func.count().filter(is_open, is_human, concerns_me, unread_exists).label("unread"),
+            func.count().filter(is_open, is_mine).label("mine"),
+            func.count().filter(is_open, is_human, Conversation.assignee_id.is_(None)).label("unassigned"),
         ).where(Conversation.client_id == client.id)
     ).one()
-    return {"open": row.open, "resolved": row.resolved, "human": row.human, "ai": row.ai, "unread": row.unread}
+    return {
+        "open": row.open, "resolved": row.resolved, "human": row.human, "ai": row.ai,
+        "unread": row.unread, "mine": row.mine, "unassigned": row.unassigned,
+    }
 
 
 @router.get("/{slug}/conversations/{conversation_id}", response_model=ConversationDetail)
 def portal_conversation(slug: str, conversation_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
-    return _detail(db, client, conversation_id)
+    return _present(_detail(db, client, conversation_id))
 
 
 @router.patch("/{slug}/conversations/{conversation_id}/mode", response_model=ConversationDetail)
@@ -508,13 +569,41 @@ def portal_mode(
     conversation_id: uuid.UUID,
     payload: ConversationModeUpdate,
     client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
     sender_name: str = Depends(_sender_name),
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
-    if set_mode(db, conversation, payload.mode, actor=sender_name):
+    if set_mode(db, conversation, payload.mode, actor=sender_name, user=user):
         db.commit()
-    return _detail(db, client, conversation_id)
+    return _present(_detail(db, client, conversation_id))
+
+
+@router.post("/{slug}/conversations/{conversation_id}/assignment", response_model=ConversationDetail)
+async def portal_assign(
+    slug: str,
+    conversation_id: uuid.UUID,
+    payload: ConversationAssignmentUpdate,
+    client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
+    sender_name: str = Depends(_sender_name),
+    db: Session = Depends(get_db),
+):
+    conversation = _detail(db, client, conversation_id)
+    assignee = None
+    if payload.assignee_id:
+        assignee = db.scalar(
+            select(PortalUser).where(
+                PortalUser.id == payload.assignee_id, PortalUser.client_id == client.id, PortalUser.is_active.is_(True)
+            )
+        )
+        if not assignee:
+            raise HTTPException(status_code=404, detail="That person is not part of this portal")
+    if assign(db, conversation, assignee, actor=sender_name, actor_user=user):
+        db.commit()
+        if assignee and (not user or assignee.id != user.id):
+            await notify_assigned(db, conversation, assignee, sender_name)
+    return _present(_detail(db, client, conversation_id))
 
 
 @router.patch("/{slug}/conversations/{conversation_id}/status", response_model=ConversationDetail)
@@ -529,7 +618,7 @@ def portal_status(
     conversation = _detail(db, client, conversation_id)
     if set_status(db, conversation, payload.status, actor=sender_name):
         db.commit()
-    return _detail(db, client, conversation_id)
+    return _present(_detail(db, client, conversation_id))
 
 
 @router.get("/{slug}/conversations/{conversation_id}/attachments/{attachment_id}")
@@ -551,14 +640,17 @@ async def portal_reply_media(
     file: UploadFile = File(...),
     caption: str = Form(default=""),
     client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
     sender_name: str = Depends(_sender_name),
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
-    await store_operator_media_reply(db, conversation, file=file, caption=caption, sender_name=sender_name)
-    return _detail(db, client, conversation_id)
+    await store_operator_media_reply(
+        db, conversation, file=file, caption=caption, sender_name=sender_name, portal_user_id=user.id if user else None
+    )
+    return _present(_detail(db, client, conversation_id))
 
 
 @router.post("/{slug}/conversations/{conversation_id}/reply", response_model=ConversationDetail)
@@ -567,6 +659,7 @@ async def portal_reply(
     conversation_id: uuid.UUID,
     payload: SendMessageRequest,
     client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
     sender_name: str = Depends(_sender_name),
     db: Session = Depends(get_db),
 ):
@@ -581,10 +674,11 @@ async def portal_reply(
             content=payload.content.strip(),
             sender_type="human",
             sender_name=sender_name,
+            portal_user_id=user.id if user else None,
             external_message_id=external_message_id,
         )
     )
     note_reply(conversation)
     conversation.updated_at = now_utc()
     db.commit()
-    return _detail(db, client, conversation_id)
+    return _present(_detail(db, client, conversation_id))

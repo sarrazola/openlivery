@@ -126,7 +126,7 @@ export type ToolCallMeta = { name: string; arguments: Record<string, unknown>; r
 
 export type Source = { id: string; filename: string; excerpt: string };
 export type Attachment = { id: string; kind: "image" | "audio" | "video" | "file"; mime: string; filename: string | null; size_bytes: number };
-export type Message = { id: string; role: "user" | "assistant" | "system"; kind?: "message" | "activity"; activity?: { event: string; hours?: number | string } | null; content: string; sources: Source[]; tool_calls?: ToolCallMeta[] | null; sender_type: "visitor" | "ai" | "human"; sender_name: string | null; reaction?: string | null; quoted_message_id?: string | null; created_at: string; attachments?: Attachment[] };
+export type Message = { id: string; role: "user" | "assistant" | "system"; kind?: "message" | "activity"; activity?: { event: string; hours?: number | string; assignee?: string; from?: string } | null; content: string; sources: Source[]; tool_calls?: ToolCallMeta[] | null; sender_type: "visitor" | "ai" | "human"; sender_name: string | null; reaction?: string | null; quoted_message_id?: string | null; created_at: string; attachments?: Attachment[] };
 
 export type ConversationInbox = {
   id: string;
@@ -151,7 +151,10 @@ export type Conversation = {
   status?: "open" | "resolved";
   resolved_at?: string | null;
   first_reply_at?: string | null;
+  taken_over_at?: string | null;
   waiting_since?: string | null;
+  assignee_id?: string | null;
+  assignee_name?: string | null;
   channel: string;
   external_chat_id: string | null;
   contact_name: string | null;

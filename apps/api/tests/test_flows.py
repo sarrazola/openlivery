@@ -639,7 +639,7 @@ def test_portal_inbox_pages_searches_and_tracks_unread(authenticated_client: Tes
         db.commit()
     assert client.get(f"/api/portal/{slug}/conversations?unread=1").json() == []
     client.patch(f"/api/portal/{slug}/conversations/{ids[0]}/mode", json={"mode": "human"})
-    assert client.get(f"/api/portal/{slug}/conversations/summary").json() == {"open": 3, "resolved": 0, "human": 1, "ai": 2, "unread": 1}
+    assert client.get(f"/api/portal/{slug}/conversations/summary").json() == {"open": 3, "resolved": 0, "human": 1, "ai": 2, "unread": 1, "mine": 1, "unassigned": 0}
     unread = client.get(f"/api/portal/{slug}/conversations?unread=1").json()
     assert [row["id"] for row in unread] == [ids[0]]
     assert unread[0]["unread_count"] == 1

@@ -383,6 +383,12 @@ class Conversation(Base):
     first_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # When a person last took the conversation over from the AI.
     taken_over_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The portal user handling this conversation, when a person is. Cleared
+    # when it goes back to the AI or is released for someone else to take.
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Set by an inbound message, cleared by the next reply: how long the
     # contact has been waiting for an answer.
     waiting_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -391,6 +397,7 @@ class Conversation(Base):
 
     agent: Mapped[Agent] = relationship(back_populates="conversations")
     contact: Mapped[Contact | None] = relationship(back_populates="conversations")
+    assignee: Mapped["PortalUser | None"] = relationship(foreign_keys=[assignee_id])
     whatsapp_channel: Mapped[WhatsAppChannel | None] = relationship(back_populates="conversations")
     whatsapp_cloud_channel: Mapped[WhatsAppCloudChannel | None] = relationship(back_populates="conversations")
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")
@@ -423,6 +430,11 @@ class Message(Base):
     tool_calls: Mapped[list | None] = mapped_column(JSON, nullable=True)
     sender_type: Mapped[str] = mapped_column(String(30), default="visitor")
     sender_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    # The portal user who wrote a human reply, when known. sender_name stays
+    # as the display text; this is the link reports count on.
+    portal_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True
+    )
     external_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # The business's emoji reaction to this (visitor) message, mirrored in the
     # portal so operators see the same gesture the customer saw on WhatsApp.
