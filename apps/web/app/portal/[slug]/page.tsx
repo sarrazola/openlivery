@@ -193,9 +193,9 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
   );
   return <main className="portal-app" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><aside className="portal-nav"><div className="portal-brand">{portal.client_logo_url || portal.agency_logo_url ? <img src={`${portal.client_logo_url || portal.agency_logo_url}`} alt="Logo" /> : <span>{portal.client_name.slice(0, 1)}</span>}<strong>{portal.client_name}</strong></div><nav><a className="active"><Inbox size={18} /> {t("portal.inbox.nav.inbox")}</a><a className="disabled"><Bot size={18} /> {t("portal.inbox.nav.agents")}</a></nav><LanguageSwitcher /><button onClick={logout}><LogOut size={17} /> {t("portal.inbox.nav.logout")}</button></aside><section className="portal-main"><header><div><small>{t("portal.inbox.header.eyebrow")}</small><h1>{portal.portal_title}</h1></div><span>{t("portal.inbox.header.conversationsCount", { count: items.length })}</span></header>{items.length || query || tab !== "all" || status !== "open" ? <div className="portal-inbox"><aside onScroll={onListScroll}>
       <div className="inbox-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("inbox.searchPlaceholder")} /></div>
-      <div className="inbox-tabs portal-status-tabs">
-        <button className={status === "open" ? "active" : ""} onClick={() => setStatus("open")}><Inbox size={13} /> {t("portal.inbox.status.open")}</button>
-        <button className={status === "resolved" ? "active" : ""} onClick={() => setStatus("resolved")}><CheckCircle2 size={13} /> {t("portal.inbox.status.resolved")}</button>
+      <div className="segmented" role="tablist" aria-label={t("portal.inbox.status.open") + " / " + t("portal.inbox.status.resolved")}>
+        <button role="tab" aria-selected={status === "open"} className={status === "open" ? "active" : ""} onClick={() => setStatus("open")}><Inbox size={14} /> {t("portal.inbox.status.open")}</button>
+        <button role="tab" aria-selected={status === "resolved"} className={status === "resolved" ? "active" : ""} onClick={() => setStatus("resolved")}><CheckCircle2 size={14} /> {t("portal.inbox.status.resolved")}</button>
       </div>
       <div className="inbox-tabs">
         <button className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>{t("inbox.tabAll")}</button>
