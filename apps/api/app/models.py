@@ -343,6 +343,16 @@ class Conversation(Base):
     external_chat_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
     operator_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Where the case stands, independent of who answers (``mode``): open |
+    # resolved. A contact writing to a resolved conversation reopens it.
+    status: Mapped[str] = mapped_column(String(20), default="open", server_default="open")
+    status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # First reply of any kind (AI or person) after the conversation opened.
+    first_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set by an inbound message, cleared by the next reply: how long the
+    # contact has been waiting for an answer.
+    waiting_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
@@ -361,6 +371,14 @@ class Message(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     conversation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(30))
+    # message: exchanged with the contact. activity: something that happened
+    # to the conversation (resolved, reopened, taken over), shown in the
+    # thread but never sent out nor fed to the model. See ``activity``.
+    kind: Mapped[str] = mapped_column(String(20), default="message", server_default="message")
+    # For kind=activity: {"event": "resolved" | "reopened" | "reopened_by_contact"
+    # | "taken_over" | "returned_to_ai"}. ``sender_name`` carries who did it
+    # and ``content`` an English sentence for clients that do not know the event.
+    activity: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     content: Mapped[str] = mapped_column(Text)
     # What the LLM sees for this message when it differs from the displayed
     # content (e.g. an image description or audio transcript for a media

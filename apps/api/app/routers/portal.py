@@ -12,6 +12,7 @@ from ..schemas import (
     AgentSummary,
     ConversationDetail,
     ConversationModeUpdate,
+    ConversationStatusUpdate,
     ConversationOut,
     PortalLoginRequest,
     PortalPublicOut,
@@ -19,6 +20,7 @@ from ..schemas import (
     SendMessageRequest,
 )
 from ..security import create_portal_token, decode_portal_token, verify_password
+from ..services.conversation_state import note_reply, set_mode, set_status
 from ..services.attachments import attachment_response, conversation_attachment, logo_response
 from ..services.operator_media import store_operator_media_reply
 from ..services.whatsapp import send_channel_message
@@ -198,6 +200,7 @@ def portal_agents(slug: str, client: Client = Depends(_portal_client), db: Sessi
 @router.get("/{slug}/conversations", response_model=list[ConversationOut])
 def portal_conversations(
     slug: str,
+    status: str | None = None,
     mode: str | None = None,
     search: str | None = None,
     unread: bool = False,
@@ -209,11 +212,15 @@ def portal_conversations(
     # Same shape as the agency inbox: the latest message and the unread count
     # are resolved in SQL, so the list never loads message histories, and the
     # filters run server-side so paging stays consistent with what is shown.
-    ranked = select(
-        Message.conversation_id.label("cid"),
-        Message.content.label("content"),
-        func.row_number().over(partition_by=Message.conversation_id, order_by=Message.created_at.desc()).label("rn"),
-    ).subquery()
+    ranked = (
+        select(
+            Message.conversation_id.label("cid"),
+            Message.content.label("content"),
+            func.row_number().over(partition_by=Message.conversation_id, order_by=Message.created_at.desc()).label("rn"),
+        )
+        .where(Message.kind == "message")
+        .subquery()
+    )
     last = select(ranked).where(ranked.c.rn == 1).subquery()
     unread_counts = (
         select(Message.conversation_id.label("cid"), func.count(Message.id).label("n"))
@@ -232,6 +239,10 @@ def portal_conversations(
         .outerjoin(unread_counts, unread_counts.c.cid == Conversation.id)
         .where(Conversation.client_id == client.id)
     )
+    # No status filter means everything, so clients that predate statuses keep
+    # seeing their whole list.
+    if status in ("open", "resolved"):
+        query = query.where(Conversation.status == status)
     if mode in ("ai", "human"):
         query = query.where(Conversation.mode == mode)
     if unread:
@@ -286,12 +297,27 @@ def portal_mode(
     conversation_id: uuid.UUID,
     payload: ConversationModeUpdate,
     client: Client = Depends(_portal_client),
+    sender_name: str = Depends(_sender_name),
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
-    conversation.mode = payload.mode
-    conversation.updated_at = now_utc()
-    db.commit()
+    if set_mode(db, conversation, payload.mode, actor=sender_name):
+        db.commit()
+    return _detail(db, client, conversation_id)
+
+
+@router.patch("/{slug}/conversations/{conversation_id}/status", response_model=ConversationDetail)
+def portal_status(
+    slug: str,
+    conversation_id: uuid.UUID,
+    payload: ConversationStatusUpdate,
+    client: Client = Depends(_portal_client),
+    sender_name: str = Depends(_sender_name),
+    db: Session = Depends(get_db),
+):
+    conversation = _detail(db, client, conversation_id)
+    if set_status(db, conversation, payload.status, actor=sender_name):
+        db.commit()
     return _detail(db, client, conversation_id)
 
 
@@ -347,6 +373,7 @@ async def portal_reply(
             external_message_id=external_message_id,
         )
     )
+    note_reply(conversation)
     conversation.updated_at = now_utc()
     db.commit()
     return _detail(db, client, conversation_id)

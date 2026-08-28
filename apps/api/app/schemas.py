@@ -302,6 +302,10 @@ class ConversationOut(ORMModel):
     contact_name: str | None = None
     created_at: datetime
     updated_at: datetime
+    status: str = "open"
+    resolved_at: datetime | None = None
+    first_reply_at: datetime | None = None
+    waiting_since: datetime | None = None
     preview: str = ""
     unread: bool = False
     unread_count: int = 0
@@ -324,6 +328,8 @@ class AttachmentOut(ORMModel):
 class MessageOut(ORMModel):
     id: uuid.UUID
     role: str
+    kind: str = "message"
+    activity: dict | None = None
     content: str
     sources: list[dict] = []
     tool_calls: list[dict] | None = None
@@ -361,6 +367,10 @@ class SendMessageRequest(BaseModel):
 
 class ConversationModeUpdate(BaseModel):
     mode: str = Field(pattern=r"^(ai|human)$")
+
+
+class ConversationStatusUpdate(BaseModel):
+    status: str = Field(pattern=r"^(open|resolved)$")
 
 
 class PortalLoginRequest(BaseModel):

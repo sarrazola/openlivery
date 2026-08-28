@@ -565,6 +565,13 @@ textarea { line-height: 1.55; }
 .portal-inbox > aside button { width: 100%; padding: 14px; display: flex; gap: 10px; text-align: left; border: 0; border-bottom: 1px solid #edf0f3; background: transparent; }
 .portal-inbox > aside button.active { background: #f0efff; }
 .portal-inbox > aside button.unread strong { font-weight: 700; }
+.portal-inbox > aside .portal-status-tabs { padding-bottom: 0; }
+.portal-inbox > aside .portal-status-tabs button { display: inline-flex; align-items: center; gap: 5px; }
+.mini-badge.resolved { display: inline-flex; align-items: center; gap: 3px; color: #2e7d4f; background: #e3f2e9; }
+.status-toggle { min-height: 35px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 7px; border: 1px solid #a9ddce; color: #087a5e; background: #eaf8f3; font-weight: 600; cursor: pointer; }
+.status-toggle.resolved { border-color: var(--line); color: var(--ink); background: white; }
+.activity-line { align-self: center; max-width: 90%; display: inline-flex; align-items: baseline; gap: 8px; padding: 4px 12px; border-radius: 20px; background: #f0f2f5; color: #5b6774; font-size: 12.5px; }
+.activity-line time { color: #9aa3ad; font-size: 11px; }
 .portal-inbox > aside button.unread .portal-inbox-preview { color: var(--ink); }
 .portal-inbox > aside button > span:last-child { min-width: 0; display: flex; flex-direction: column; }
 .portal-inbox > aside strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

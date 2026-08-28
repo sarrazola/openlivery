@@ -9,6 +9,7 @@ of what happened while a human was handling the conversation."""
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+from .conversation_state import note_reply
 from ..models import Agent, Conversation, Message, now_utc
 from .attachments import MAX_ATTACHMENT_BYTES, attachment_kind, store_attachment
 from .media import describe_image, transcribe_audio
@@ -97,5 +98,6 @@ async def store_operator_media_reply(
     db.add(message)
     db.flush()
     store_attachment(db, message, data=data, mime=content_type, filename=file.filename, kind=kind)
+    note_reply(conversation)
     conversation.updated_at = now_utc()
     db.commit()

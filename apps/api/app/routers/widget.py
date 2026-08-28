@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..database import get_db
+from ..services.conversation_state import exchanged_only
 from ..models import Agency, Agent, Client, Conversation, Message, MessageAttachment, now_utc
 from ..ratelimit import public_asset_rate_limit, widget_rate_limit
 from ..schemas import WidgetConfigOut, WidgetMessageIn, WidgetReply
@@ -161,8 +162,7 @@ async def _widget_ai_reply(db: Session, agent: Agent, conversation: Conversation
     knowledge = await retrieve_knowledge(db, agent, query)
     db.refresh(conversation)
     history = db.scalars(
-        select(Message)
-        .where(Message.conversation_id == conversation.id)
+        exchanged_only(select(Message).where(Message.conversation_id == conversation.id))
         .order_by(Message.created_at.desc())
         .limit(agent.memory_limit or HISTORY_LIMIT)
     ).all()

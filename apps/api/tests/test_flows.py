@@ -648,6 +648,99 @@ def test_portal_inbox_pages_searches_and_tracks_unread(authenticated_client: Tes
     assert len(client.get(f"/api/portal/{slug}/conversations?mode=ai").json()) == 2
 
 
+def test_portal_resolves_reopens_and_narrates_the_thread(authenticated_client: TestClient):
+    client = authenticated_client
+    customer = client.post(
+        "/api/clients",
+        json={"name": "Status Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+    ).json()
+    client.post(
+        f"/api/clients/{customer['id']}/portal-users",
+        json={"name": "Ana", "email": "ana@status.com", "password": "secure-portal"},
+    )
+    client.patch(f"/api/clients/{customer['id']}/portal", json={"portal_enabled": True})
+    agent = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "name": "Host", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+    ).json()
+    conversation_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    slug = customer["portal_slug"]
+    base = f"/api/portal/{slug}/conversations"
+    client.post(f"/api/portal/{slug}/login", json={"email": "ana@status.com", "password": "secure-portal"})
+
+    assert client.get(f"{base}/{conversation_id}").json()["status"] == "open"
+    assert [row["id"] for row in client.get(f"{base}?status=open").json()] == [conversation_id]
+    assert client.get(f"{base}?status=resolved").json() == []
+
+    resolved = client.patch(f"{base}/{conversation_id}/status", json={"status": "resolved"})
+    assert resolved.status_code == 200
+    body = resolved.json()
+    assert body["status"] == "resolved" and body["resolved_at"]
+    trail = body["messages"][-1]
+    assert trail["kind"] == "activity"
+    assert trail["activity"] == {"event": "resolved"}
+    assert trail["sender_name"] == "Ana"
+    assert client.get(f"{base}?status=open").json() == []
+    assert [row["id"] for row in client.get(f"{base}?status=resolved").json()] == [conversation_id]
+    # Pressing the button twice leaves a single line in the thread.
+    again = client.patch(f"{base}/{conversation_id}/status", json={"status": "resolved"}).json()
+    assert len([m for m in again["messages"] if m["kind"] == "activity"]) == 1
+    assert client.patch(f"{base}/{conversation_id}/status", json={"status": "snoozed"}).status_code == 422
+
+    reopened = client.patch(f"{base}/{conversation_id}/status", json={"status": "open"}).json()
+    assert reopened["status"] == "open" and reopened["resolved_at"] is None
+    assert reopened["messages"][-1]["activity"] == {"event": "reopened"}
+
+    # Who answers is narrated too, and the preview never shows an activity line.
+    taken = client.patch(f"{base}/{conversation_id}/mode", json={"mode": "human"}).json()
+    assert taken["messages"][-1]["activity"] == {"event": "taken_over"}
+    assert client.get(base).json()[0]["preview"] == ""
+    client.post(f"{base}/{conversation_id}/reply", json={"content": "On it."})
+    detail = client.get(f"{base}/{conversation_id}").json()
+    assert detail["first_reply_at"] and detail["waiting_since"] is None
+
+
+def test_contact_message_reopens_a_resolved_conversation(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    customer = client.post(
+        "/api/clients",
+        json={"name": "Reopen Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+    ).json()
+    client.put("/api/providers/openai", json={"api_key": "secret"})
+    agent = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Host", "description": "", "instructions": "", "personality": "", "is_active": True},
+    ).json()
+    channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
+    headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Hello!", input_tokens=1, output_tokens=1)))
+    monkeypatch.setattr(whatsapp_inbound_service.get_settings(), "reply_debounce_seconds", 0)
+
+    def inbound(message_id: str, text: str):
+        return client.post(
+            f"/api/internal/whatsapp/channels/{channel['id']}/inbound",
+            json={"external_message_id": message_id, "remote_jid": "573001112233@s.whatsapp.net", "sender_name": "Sam", "text": text},
+            headers=headers,
+        )
+
+    first = inbound("m1", "Hola")
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+    detail = client.get(f"/api/conversations/{conversation_id}").json()
+    assert detail["first_reply_at"] and detail["waiting_since"] is None
+
+    client.patch(f"/api/conversations/{conversation_id}/status", json={"status": "resolved"})
+    inbound("m2", "Una cosa más")
+    detail = client.get(f"/api/conversations/{conversation_id}").json()
+    assert detail["status"] == "open"
+    events = [m["activity"]["event"] for m in detail["messages"] if m["kind"] == "activity"]
+    assert events == ["resolved", "reopened_by_contact"]
+    # The model only ever sees what was exchanged with the contact.
+    sent = whatsapp_inbound_service.run_completion.call_args.args[4]
+    assert all(m["role"] in ("system", "user", "assistant") for m in sent)
+    assert not any("resolved" in m["content"] for m in sent if m["role"] != "system")
+
+
 def test_provider_test_returns_models(authenticated_client: TestClient, monkeypatch):
     authenticated_client.put("/api/providers/openai", json={"api_key": "secret"})
     fake = AsyncMock(return_value={"ok": True, "message": "Key verified. 2 models available.", "models": ["model-a", "model-b"]})

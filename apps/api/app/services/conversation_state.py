@@ -1,0 +1,101 @@
+"""Conversation lifecycle: status changes, reply timing and the activity
+events that narrate them inside the thread.
+
+``mode`` (who answers) and ``status`` (where the case stands) are kept apart
+on purpose: resolving does not hand the conversation back to the AI, and
+taking control does not reopen a resolved case. What links them is the
+activity trail, so a person reading the thread sees both.
+"""
+
+from __future__ import annotations
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ..models import Conversation, Message, now_utc
+
+
+STATUSES = ("open", "resolved")
+
+# English fallbacks for clients that do not translate events themselves.
+_ACTIVITY_TEXT = {
+    "resolved": "{actor} resolved the conversation",
+    "reopened": "{actor} reopened the conversation",
+    "reopened_by_contact": "Reopened: the contact wrote again",
+    "taken_over": "{actor} took over the conversation",
+    "returned_to_ai": "{actor} returned the conversation to the AI",
+}
+
+
+def record_activity(db: Session, conversation: Conversation, event: str, *, actor: str | None = None) -> Message:
+    """Append an activity event to the thread. Never sent out, never fed to the model."""
+    text = _ACTIVITY_TEXT[event].format(actor=actor or "Someone")
+    message = Message(
+        conversation_id=conversation.id,
+        role="system",
+        kind="activity",
+        activity={"event": event},
+        content=text,
+        sender_type="system",
+        sender_name=actor,
+    )
+    db.add(message)
+    conversation.updated_at = now_utc()
+    return message
+
+
+def set_status(db: Session, conversation: Conversation, status: str, *, actor: str | None = None) -> bool:
+    """Move the conversation to ``status`` if it is not there already.
+
+    Returns whether anything changed, so callers can skip a commit and avoid
+    a duplicate activity line when a button is pressed twice.
+    """
+    if status not in STATUSES:
+        raise ValueError(f"Unknown conversation status: {status}")
+    if conversation.status == status:
+        return False
+    now = now_utc()
+    conversation.status = status
+    conversation.status_changed_at = now
+    if status == "resolved":
+        conversation.resolved_at = now
+        conversation.waiting_since = None
+        record_activity(db, conversation, "resolved", actor=actor)
+    else:
+        conversation.resolved_at = None
+        record_activity(db, conversation, "reopened", actor=actor)
+    return True
+
+
+def set_mode(db: Session, conversation: Conversation, mode: str, *, actor: str | None = None) -> bool:
+    """Switch who answers, and leave a trace of it in the thread."""
+    if conversation.mode == mode:
+        return False
+    conversation.mode = mode
+    record_activity(db, conversation, "taken_over" if mode == "human" else "returned_to_ai", actor=actor)
+    return True
+
+
+def note_inbound(db: Session, conversation: Conversation) -> None:
+    """A contact wrote: they are waiting, and a resolved case is open again."""
+    now = now_utc()
+    if conversation.waiting_since is None:
+        conversation.waiting_since = now
+    if conversation.status == "resolved":
+        conversation.status = "open"
+        conversation.status_changed_at = now
+        conversation.resolved_at = None
+        record_activity(db, conversation, "reopened_by_contact")
+
+
+def note_reply(conversation: Conversation) -> None:
+    """Something answered the contact, whether the AI or a person."""
+    now = now_utc()
+    if conversation.first_reply_at is None:
+        conversation.first_reply_at = now
+    conversation.waiting_since = None
+
+
+def exchanged_only(query):
+    """Restrict a Message query to what was exchanged with the contact."""
+    return query.where(Message.kind == "message")
