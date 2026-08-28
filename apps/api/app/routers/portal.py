@@ -14,6 +14,7 @@ from ..schemas import (
     ConversationModeUpdate,
     ConversationStatusUpdate,
     ConversationOut,
+    PortalInboxSummary,
     PortalLoginRequest,
     PortalPublicOut,
     PortalSessionOut,
@@ -290,6 +291,32 @@ def portal_mark_read(
     conversation.operator_read_at = now_utc()
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{slug}/conversations/summary", response_model=PortalInboxSummary)
+def portal_inbox_summary(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+    """Counts behind the list's switches and chips, computed the same way the
+    list is so a badge never promises something the filter does not show."""
+    unread_exists = (
+        select(Message.id)
+        .where(
+            Message.conversation_id == Conversation.id,
+            Message.sender_type == "visitor",
+            or_(Conversation.operator_read_at.is_(None), Message.created_at > Conversation.operator_read_at),
+        )
+        .exists()
+    )
+    is_open = Conversation.status == "open"
+    row = db.execute(
+        select(
+            func.count().filter(is_open).label("open"),
+            func.count().filter(Conversation.status == "resolved").label("resolved"),
+            func.count().filter(is_open, Conversation.mode == "human").label("human"),
+            func.count().filter(is_open, Conversation.mode == "ai").label("ai"),
+            func.count().filter(is_open, Conversation.mode == "human", unread_exists).label("unread"),
+        ).where(Conversation.client_id == client.id)
+    ).one()
+    return {"open": row.open, "resolved": row.resolved, "human": row.human, "ai": row.ai, "unread": row.unread}
 
 
 @router.get("/{slug}/conversations/{conversation_id}", response_model=ConversationDetail)

@@ -373,6 +373,14 @@ class ConversationStatusUpdate(BaseModel):
     status: str = Field(pattern=r"^(open|resolved)$")
 
 
+class PortalInboxSummary(BaseModel):
+    open: int = 0
+    resolved: int = 0
+    human: int = 0
+    ai: int = 0
+    unread: int = 0
+
+
 class PortalLoginRequest(BaseModel):
     email: EmailStr
     password: str

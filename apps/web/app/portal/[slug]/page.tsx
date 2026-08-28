@@ -18,6 +18,7 @@ const POLL_MS = 8000;
 const LIMIT = 30;
 
 type Session = { client_id: string; client_name: string; portal_slug: string; agency_name: string };
+type InboxSummary = { open: number; resolved: number; human: number; ai: number; unread: number };
 
 export default function PortalPage() {
   const t = useT();
@@ -45,6 +46,7 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [tab, setTab] = useState<"all" | "unread" | "human" | "ai">("all");
   const [status, setStatus] = useState<"open" | "resolved">("open");
+  const [summary, setSummary] = useState<InboxSummary | null>(null);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
@@ -101,10 +103,12 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
 
   const markRead = useCallback((id: string) => {
     setItems((rows) => rows.map((row) => (row.id === id ? { ...row, unread: false, unread_count: 0 } : row)));
+    setSummary((prev) => (prev && prev.unread > 0 ? { ...prev, unread: prev.unread - 1 } : prev));
     api(`/portal/${slug}/conversations/${id}/read`, { method: "POST" }).catch(() => {});
   }, [slug]);
 
   const refresh = useCallback(async () => {
+    api<InboxSummary>(`/portal/${slug}/conversations/summary`).then(setSummary).catch(() => {});
     const rows = await api<Conversation[]>(`/portal/${slug}/conversations?${buildParams(0)}`);
     setItems(rows); setOffset(rows.length); setHasMore(rows.length === LIMIT);
     const openId = selectedIdRef.current ?? rows[0]?.id;
@@ -199,7 +203,7 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
       </div>
       <div className="inbox-tabs">
         <button className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>{t("inbox.tabAll")}</button>
-        <button className={tab === "unread" ? "active" : ""} onClick={() => setTab("unread")}>{t("inbox.tabUnread")}</button>
+        <button className={tab === "unread" ? "active" : ""} onClick={() => setTab("unread")}>{t("inbox.tabUnread")}{summary && summary.unread > 0 && <em>{summary.unread > 99 ? "99+" : summary.unread}</em>}</button>
         <button className={tab === "human" ? "active" : ""} onClick={() => setTab("human")}>{t("inbox.statusHuman")}</button>
         <button className={tab === "ai" ? "active" : ""} onClick={() => setTab("ai")}>{t("inbox.statusAi")}</button>
       </div>

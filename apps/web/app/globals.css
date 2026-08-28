@@ -585,7 +585,8 @@ textarea { line-height: 1.55; }
 .portal-inbox > section > header { min-height: 64px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
 .portal-inbox > section > header div { display: flex; flex-direction: column; }
 .portal-inbox > section > header small { color: #7d8594; }
-.portal-messages { padding: 24px; display: flex; flex: 1; overflow: auto; overflow-anchor: none; flex-direction: column; gap: 15px; }
+.portal-messages { padding: 24px 24px 12px; display: flex; flex: 1; overflow: auto; overflow-anchor: none; flex-direction: column; gap: 15px; }
+.portal-messages::after { content: ""; flex: 0 0 8px; }
 .portal-messages article { max-width: 76%; }
 .portal-messages article.user { align-self: flex-end; }
 .portal-messages small { color: #7a8291; font-size: 12px; }
@@ -601,7 +602,7 @@ textarea { line-height: 1.55; }
 .quoted-snippet strong { display: block; font-size: 11.5px; opacity: .8; }
 .portal-messages article.user .quoted-snippet, .inbox-message.user .quoted-snippet { background: rgba(255, 255, 255, .18); }
 
-.portal-composer { padding: 13px; display: flex; gap: 8px; border-top: 1px solid var(--line); }
+.portal-composer { padding: 14px 16px; display: flex; gap: 8px; border-top: 1px solid var(--line); }
 .portal-composer input { flex: 1; }
 .portal-composer button { width: 42px; display: grid; place-items: center; color: white; border: 0; border-radius: 7px; background: var(--portal-color); }
 
