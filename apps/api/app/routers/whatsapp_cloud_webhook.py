@@ -127,7 +127,16 @@ def _record_status(db: Session, channel: WhatsAppCloudChannel, status: dict) -> 
     message gets sent/delivered/read receipts here; only failures matter —
     without this, a message Meta accepted (wamid returned) could be dropped
     at delivery with no trace of the reason anywhere."""
-    if status.get("status") != "failed":
+    state = status.get("status")
+    if state in ("sent", "delivered", "read"):
+        # A delivery error is transient state: clear it once traffic flows again
+        # so the channel UI stops showing a stale failure.
+        if channel.last_error and channel.last_error.startswith("Meta could not deliver"):
+            channel.last_error = None
+            channel.updated_at = now_utc()
+            db.commit()
+        return
+    if state != "failed":
         return
     parts = []
     for error in status.get("errors") or []:
