@@ -71,8 +71,8 @@ export function ContactsView({ slug, openConversation }: { slug: string; openCon
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
 
-  const confirmWord = selected ? nameOf(selected) : "";
-  const confirmed = typed.trim().toLowerCase() === confirmWord.trim().toLowerCase();
+  const confirmWord = t("portal.contacts.deleteWord");
+  const confirmed = typed.trim().toUpperCase() === confirmWord.toUpperCase();
   async function remove(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected || !confirmed) return;
@@ -134,10 +134,11 @@ export function ContactsView({ slug, openConversation }: { slug: string; openCon
         </> : <EmptyState icon={<UserRound />} title={t("portal.contacts.selectTitle")} description={t("portal.contacts.selectDescription")} />}
       </section>
     </div>
-    <Modal open={deleting && Boolean(selected)} title={t("portal.contacts.deleteTitle", { name: confirmWord })} onClose={() => setDeleting(false)}>
+    <Modal open={deleting && Boolean(selected)} title={t("portal.contacts.deleteTitle", { name: selected ? nameOf(selected) : "" })} onClose={() => setDeleting(false)}>
       <form className="modal-form" onSubmit={remove}>
         <Alert type="error">{t("portal.contacts.deleteWarning", { count: selected?.conversation_count ?? 0 })}</Alert>
-        <label>{t("portal.contacts.deleteTypeName", { name: confirmWord })}<input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={confirmWord} autoFocus autoComplete="off" /></label>
+        <div className="confirm-word"><span>{t("portal.contacts.deleteTypeWord")}</span><code>{confirmWord}</code></div>
+        <input aria-label={confirmWord} value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={confirmWord} autoFocus autoComplete="off" spellCheck={false} />
         {error && <Alert>{error}</Alert>}
         <div className="modal-actions"><button type="button" className="button" onClick={() => setDeleting(false)}>{t("portal.contacts.form.cancel")}</button><button className="button danger" disabled={!confirmed || busy}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Trash2 size={15} /> {t("portal.contacts.deleteConfirm")}</>}</button></div>
       </form>
