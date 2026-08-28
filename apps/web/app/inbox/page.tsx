@@ -6,6 +6,7 @@ import { PageHead } from "@/components/ui";
 import { AttachButton, MessageAttachments, PendingAttachment, RecordButton, useFileDrop, type GalleryImage } from "@/components/attachments";
 import { MediaPanel } from "@/components/media-panel";
 import { RichText } from "@/components/rich-text";
+import { QuotedSnippet, ReactionBadge } from "@/components/message-gestures";
 import { ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { api, ApiError, apiUrl, messageFrom } from "@/lib/api";
@@ -276,8 +277,9 @@ export default function InboxPage() {
                   <div key={message.id} className={`inbox-message ${message.role}${grouped ? " grouped" : ""}`}>
                     {!grouped && <small>{message.sender_name || (message.role === "assistant" ? t("inbox.senderAgent") : t("inbox.senderVisitor"))}</small>}
                     <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={stamp} />
-                    {message.content ? <p><RichText text={message.content} /><time className="msg-time">{stamp}</time></p>
+                    {message.content ? <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}</time></p>
                       : !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}
+                    <ReactionBadge emoji={message.reaction} />
                   </div>
                 );
               })}

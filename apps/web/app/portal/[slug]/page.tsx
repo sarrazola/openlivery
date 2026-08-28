@@ -7,6 +7,7 @@ import { AttachButton, MessageAttachments, PendingAttachment, RecordButton, useF
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { MediaPanel } from "@/components/media-panel";
 import { RichText } from "@/components/rich-text";
+import { QuotedSnippet, ReactionBadge } from "@/components/message-gestures";
 import { Alert, EmptyState } from "@/components/ui";
 import { api, ApiError, apiUrl, messageFrom } from "@/lib/api";
 import { formatTime, formatWhen, isNearBottom, isSameOpenThread } from "@/lib/datetime";
@@ -146,8 +147,9 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
               return <article key={message.id} className={`${message.role}${grouped ? " grouped" : ""}`}>
                 {!grouped && <small>{message.sender_name || (message.role === "assistant" ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor"))}</small>}
                 <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={stamp} />
-                {message.content ? <p><RichText text={message.content} /><time className="msg-time">{stamp}</time></p>
+                {message.content ? <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}</time></p>
                   : !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}
+                <ReactionBadge emoji={message.reaction} />
               </article>;
             })}</div>{error && <Alert>{error}</Alert>}{pendingFile && <PendingAttachment file={pendingFile} onCancel={() => setPendingFile(null)} />}<form onSubmit={reply} className="portal-composer"><AttachButton onFile={setPendingFile} disabled={selected.mode !== "human" || busy} title={t("chat.attachFile")} /><RecordButton onRecorded={sendAttachment} onError={() => setError(t("chat.micDenied"))} disabled={selected.mode !== "human" || busy} title={t("chat.recordAudio")} titleStop={t("chat.stopRecording")} /><input ref={replyInputRef} name="content" required={!pendingFile} disabled={selected.mode !== "human" || busy} placeholder={selected.mode === "human" ? t("portal.inbox.conversation.replyPlaceholder") : t("portal.inbox.conversation.takeControlToReply")} /><button disabled={selected.mode !== "human" || busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}</button></form><MediaPanel open={mediaOpen} onClose={() => setMediaOpen(false)} messages={selected.messages ?? []} urlFor={attachmentUrl} /></>}</section></div> : <EmptyState icon={<Inbox />} title={t("portal.inbox.empty.title")} description={t("portal.inbox.empty.description")} />}</section></main>;
 }

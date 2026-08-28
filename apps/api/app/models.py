@@ -372,6 +372,13 @@ class Message(Base):
     sender_type: Mapped[str] = mapped_column(String(30), default="visitor")
     sender_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
     external_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # The business's emoji reaction to this (visitor) message, mirrored in the
+    # portal so operators see the same gesture the customer saw on WhatsApp.
+    reaction: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Set when this reply quotes a specific earlier message (swipe-to-reply).
+    quoted_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")

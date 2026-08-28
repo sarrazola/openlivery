@@ -328,6 +328,8 @@ class MessageOut(ORMModel):
     sender_type: str
     sender_name: str | None
     external_message_id: str | None = None
+    reaction: str | None = None
+    quoted_message_id: uuid.UUID | None = None
     created_at: datetime
     attachments: list[AttachmentOut] = []
 

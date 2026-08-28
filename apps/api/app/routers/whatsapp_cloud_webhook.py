@@ -21,6 +21,7 @@ from ..models import Message, WhatsAppCloudChannel, now_utc
 from ..ratelimit import whatsapp_cloud_webhook_rate_limit
 from ..security import decrypt_secret
 from ..services.whatsapp_cloud import fetch_media, send_text
+from ..services.whatsapp_format import markdown_to_whatsapp
 from ..services.whatsapp_inbound import InboundMessage, process_inbound
 
 
@@ -184,7 +185,13 @@ async def _handle_message(
     if not result.reply or not access_token or not channel.phone_number_id:
         return
     try:
-        wamid = await send_text(access_token, channel.phone_number_id, inbound.external_chat_id, result.reply)
+        wamid = await send_text(
+            access_token,
+            channel.phone_number_id,
+            inbound.external_chat_id,
+            markdown_to_whatsapp(result.reply),
+            context_message_id=result.quote_external_id,
+        )
     except HTTPException as exc:
         channel.last_error = f"The reply could not be sent: {exc.detail}"
         channel.updated_at = now_utc()

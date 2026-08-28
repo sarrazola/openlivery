@@ -183,6 +183,8 @@ def test_webhook_text_message_creates_conversation_and_replies(authenticated_cli
     monkeypatch.setattr(whatsapp_inbound_service, "run_completion", fake_completion)
     fake_send = AsyncMock(return_value="wamid.out-1")
     monkeypatch.setattr(webhook_router, "send_text", fake_send)
+    fake_read = AsyncMock()
+    monkeypatch.setattr(whatsapp_inbound_service, "mark_read_with_typing", fake_read)
 
     payload = _webhook_payload(
         [{"from": "5730011", "id": "wamid.in-1", "type": "text", "text": {"body": "Are you open?"}}],
@@ -190,7 +192,11 @@ def test_webhook_text_message_creates_conversation_and_replies(authenticated_cli
     )
     response = _post_signed(client, channel["id"], payload)
     assert response.status_code == 200, response.text
-    fake_send.assert_awaited_once_with("meta-access-token", "111", "5730011", "We are open every day.")
+    fake_send.assert_awaited_once_with(
+        "meta-access-token", "111", "5730011", "We are open every day.", context_message_id=None
+    )
+    # The visitor's message is blue-ticked with the typing indicator before the reply.
+    fake_read.assert_awaited_once_with("meta-access-token", "111", "wamid.in-1")
 
     conversation = client.get("/api/conversations").json()[0]
     detail = client.get(f"/api/conversations/{conversation['id']}").json()
@@ -228,6 +234,51 @@ def test_webhook_ignores_statuses_and_unsupported_types(authenticated_client: Te
     sticker = _webhook_payload([{"from": "5730011", "id": "wamid.stk", "type": "sticker", "sticker": {"id": "1"}}])
     assert _post_signed(client, channel["id"], sticker).status_code == 200
     assert fake_completion.await_count == 0
+
+
+def test_reply_react_gesture_sends_reaction_without_text(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    _customer, _agent, channel = _setup_channel(client)
+    fake_completion = AsyncMock(return_value=ai_service.Completion(text="[react: 👍]"))
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", fake_completion)
+    fake_send = AsyncMock(return_value="wamid.out-1")
+    monkeypatch.setattr(webhook_router, "send_text", fake_send)
+    fake_react = AsyncMock()
+    monkeypatch.setattr(whatsapp_inbound_service, "send_reaction", fake_react)
+    monkeypatch.setattr(whatsapp_inbound_service, "mark_read_with_typing", AsyncMock())
+
+    payload = _webhook_payload([{"from": "5730011", "id": "wamid.in-1", "type": "text", "text": {"body": "gracias!"}}])
+    assert _post_signed(client, channel["id"], payload).status_code == 200
+    fake_react.assert_awaited_once_with("meta-access-token", "111", "5730011", "wamid.in-1", "👍")
+    fake_send.assert_not_awaited()
+
+    conversation = client.get("/api/conversations").json()[0]
+    detail = client.get(f"/api/conversations/{conversation['id']}").json()
+    # Reaction stored on the visitor message; no empty assistant bubble.
+    assert [item["sender_type"] for item in detail["messages"]] == ["visitor"]
+    assert detail["messages"][0]["reaction"] == "👍"
+
+
+def test_reply_quote_gesture_quotes_the_visitor_message(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    _customer, _agent, channel = _setup_channel(client)
+    fake_completion = AsyncMock(return_value=ai_service.Completion(text="[quote: 1] Claro, hasta las 10pm."))
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", fake_completion)
+    fake_send = AsyncMock(return_value="wamid.out-1")
+    monkeypatch.setattr(webhook_router, "send_text", fake_send)
+    monkeypatch.setattr(whatsapp_inbound_service, "mark_read_with_typing", AsyncMock())
+
+    payload = _webhook_payload([{"from": "5730011", "id": "wamid.in-1", "type": "text", "text": {"body": "¿hasta qué hora abren?"}}])
+    assert _post_signed(client, channel["id"], payload).status_code == 200
+    fake_send.assert_awaited_once_with(
+        "meta-access-token", "111", "5730011", "Claro, hasta las 10pm.", context_message_id="wamid.in-1"
+    )
+
+    conversation = client.get("/api/conversations").json()[0]
+    detail = client.get(f"/api/conversations/{conversation['id']}").json()
+    visitor, assistant = detail["messages"]
+    assert assistant["content"] == "Claro, hasta las 10pm."
+    assert assistant["quoted_message_id"] == visitor["id"]
 
 
 def test_webhook_failed_status_surfaces_delivery_error(authenticated_client: TestClient):
@@ -332,7 +383,9 @@ def test_webhook_human_mode_skips_ai(authenticated_client: TestClient, monkeypat
     reply = client.post(f"/api/conversations/{conversation['id']}/reply", json={"content": "Hola Maria, te ayudo yo."})
     assert reply.status_code == 200, reply.text
     assert reply.json()["messages"][-1]["external_message_id"] == "wamid.human-1"
-    operator_send.assert_awaited_once_with("meta-access-token", "111", "5730011", "Hola Maria, te ayudo yo.")
+    operator_send.assert_awaited_once_with(
+        "meta-access-token", "111", "5730011", "Hola Maria, te ayudo yo.", context_message_id=None
+    )
 
 
 def test_webhook_image_uses_capability(authenticated_client: TestClient, monkeypatch):
