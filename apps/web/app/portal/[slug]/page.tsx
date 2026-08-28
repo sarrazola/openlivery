@@ -218,7 +218,8 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
               const grouped = Boolean(prev && prev.kind !== "activity" && prev.role === message.role && prev.sender_name === message.sender_name);
               const stamp = formatTime(message.created_at, lang);
               const hasAudio = message.attachments?.some((a) => a.kind === "audio");
-              return <article key={message.id} className={`${message.role}${grouped ? " grouped" : ""}`}>
+              const mine = message.role === "assistant";
+              return <article key={message.id} className={`${message.role}${mine ? " mine" : ""}${mine && message.sender_type === "ai" ? " ai" : ""}${grouped ? " grouped" : ""}`}>
                 {!grouped && <small>{message.sender_name || (message.role === "assistant" ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor"))}</small>}
                 <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={stamp} />
                 {message.content ? <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}</time></p>

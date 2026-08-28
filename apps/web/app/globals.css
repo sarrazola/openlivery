@@ -588,19 +588,26 @@ textarea { line-height: 1.55; }
 .portal-messages { padding: 24px 24px 12px; display: flex; flex: 1; overflow: auto; overflow-anchor: none; flex-direction: column; gap: 15px; }
 .portal-messages::after { content: ""; flex: 0 0 8px; }
 .portal-messages article { max-width: 76%; }
-.portal-messages article.user { align-self: flex-end; }
+.portal-messages article.mine { align-self: flex-end; }
 .portal-messages small { color: #7a8291; font-size: 12px; }
 .portal-messages p { margin: 4px 0 0; padding: 11px 13px; border-radius: 4px 11px 11px; background: #f0f2f5; }
-.portal-messages article.user p { color: white; border-radius: 11px 4px 11px 11px; background: var(--portal-color); }
+.portal-messages article.mine p { color: white; border-radius: 11px 4px 11px 11px; background: var(--portal-color); }
+/* The business sits on the right, like "me" in any chat. A person's reply
+   takes the brand colour; the AI's takes a light tint of it, so who spoke
+   reads at a glance without the name label. */
+.portal-messages article.mine.ai p { color: var(--ink); background: color-mix(in srgb, var(--portal-color) 12%, white); }
+.portal-messages article.mine.ai .quoted-snippet { background: rgba(10, 14, 29, .06); }
+.portal-messages article.mine.ai .rich-text code { background: rgba(10, 14, 29, .08); }
+.portal-messages article.mine.ai .msg-time { color: #7a8291; }
 /* WhatsApp-style gestures mirrored in the chat views: the business's emoji
    reaction on a visitor bubble and the quoted-reply snippet inside a bubble. */
 .reaction-badge { display: inline-flex; width: fit-content; margin-top: -12px; margin-left: 14px; padding: 3px 9px; font-size: 15px; line-height: 1.3; background: var(--surface, #fff); border: 1px solid rgba(10, 14, 29, .12); border-radius: 999px; box-shadow: 0 1px 3px rgba(10, 14, 29, .16); position: relative; z-index: 1; }
-.inbox-message.user .reaction-badge, .portal-messages article.user .reaction-badge { margin-left: 0; margin-right: 14px; }
+.inbox-message.user .reaction-badge, .portal-messages article.mine .reaction-badge { margin-left: 0; margin-right: 14px; }
 .inbox-message, .portal-messages article { display: flex; flex-direction: column; align-items: flex-start; }
-.inbox-message.user, .portal-messages article.user { align-items: flex-end; }
+.inbox-message.user, .portal-messages article.mine { align-items: flex-end; }
 .quoted-snippet { display: block; margin-bottom: 7px; padding: 5px 9px; font-size: 12.5px; line-height: 1.35; border-left: 3px solid currentColor; border-radius: 5px; background: rgba(10, 14, 29, .07); opacity: .85; }
 .quoted-snippet strong { display: block; font-size: 11.5px; opacity: .8; }
-.portal-messages article.user .quoted-snippet, .inbox-message.user .quoted-snippet { background: rgba(255, 255, 255, .18); }
+.portal-messages article.mine .quoted-snippet, .inbox-message.user .quoted-snippet { background: rgba(255, 255, 255, .18); }
 
 .portal-composer { padding: 14px 16px; display: flex; gap: 8px; border-top: 1px solid var(--line); }
 .portal-composer input { flex: 1; }
@@ -1131,7 +1138,7 @@ input:focus, textarea:focus, select:focus { border-color: #3b8ca0; box-shadow: 0
 .drop-target { position: relative; }
 .drop-overlay { position: absolute; inset: 8px; z-index: 6; display: grid; place-items: center; border: 2px dashed var(--purple); border-radius: 12px; background: rgba(108,92,231,.08); color: var(--purple); font-weight: 600; font-size: 14px; pointer-events: none; }
 .attachments { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
-.message-row.user .attachments, .inbox-message.user .attachments, .portal-messages article.user .attachments { align-items: flex-end; }
+.message-row.user .attachments, .inbox-message.user .attachments, .portal-messages article.mine .attachments { align-items: flex-end; }
 .attachment-image { display: block; line-height: 0; }
 .attachment-image img { max-width: min(280px, 100%); max-height: 280px; border-radius: 12px; border: 1px solid var(--line); }
 .attachment-audio { width: min(320px, 100%); height: 54px; }
@@ -1168,12 +1175,12 @@ button.composer-attach.record.recording svg { animation: record-pulse 1.2s ease-
 .rich-text .rt-li { display: block; position: relative; padding-left: 18px; margin: 2px 0; }
 .rich-text .rt-li::before { content: attr(data-marker); position: absolute; left: 2px; opacity: .75; }
 .rich-text code { padding: 1px 5px; border-radius: 5px; background: rgba(20, 24, 46, .09); font-size: .92em; }
-.message-row.user .rich-text code, .portal-messages article.user .rich-text code, .widget-msg.user .rich-text code { background: rgba(255,255,255,.22); }
+.message-row.user .rich-text code, .portal-messages article.mine .rich-text code, .widget-msg.user .rich-text code { background: rgba(255,255,255,.22); }
 .rich-text a { color: inherit; text-decoration: underline; }
 
 /* WhatsApp-style media bubbles: fixed footprint, rounded, aligned to the sender */
 .attachments { align-items: flex-start; }
-.message-row.user .attachments, .inbox-message.user .attachments, .portal-messages article.user .attachments, .widget-msg.user .attachments { align-items: flex-end; }
+.message-row.user .attachments, .inbox-message.user .attachments, .portal-messages article.mine .attachments, .widget-msg.user .attachments { align-items: flex-end; }
 .attachments .attachment-image { width: fit-content; max-width: min(300px, 100%); border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(20, 24, 46, .12); }
 /* Keep the natural aspect ratio (no crop/squash); just cap the footprint. */
 .attachments .attachment-image img { display: block; width: auto; height: auto; max-width: min(300px, 100%); max-height: 360px; object-fit: initial; border: 0; border-radius: 14px; }
@@ -1293,9 +1300,9 @@ button.composer-attach.record.recording svg { animation: record-pulse 1.2s ease-
 
 /* Bubbles hug their content instead of stretching to the max width (WhatsApp-like) */
 .portal-messages article { align-self: flex-start; }
-.portal-messages article.user { align-self: flex-end; }
+.portal-messages article.mine { align-self: flex-end; }
 .portal-messages p { width: fit-content; max-width: 100%; }
-.portal-messages article.user p { margin-left: auto; }
+.portal-messages article.mine p { margin-left: auto; }
 .inbox-message { align-self: flex-start; }
 .inbox-message.user { align-self: flex-end; }
 .inbox-message p { width: fit-content; max-width: 100%; }
@@ -1308,7 +1315,7 @@ button.composer-attach.record.recording svg { animation: record-pulse 1.2s ease-
 /* WhatsApp-style timestamps inside bubbles + grouped consecutive messages */
 p .msg-time, .bubble .msg-time { float: right; margin: 9px -2px -2px 10px; font-size: 10.5px; line-height: 1; color: inherit; opacity: .55; font-variant-numeric: tabular-nums; }
 .msg-time.bare { display: block; width: fit-content; margin-top: 3px; color: #98a0b1; font-size: 10.5px; font-variant-numeric: tabular-nums; }
-.portal-messages article.user .msg-time.bare, .inbox-message.user .msg-time.bare, .message-row.user .msg-time.bare { margin-left: auto; }
+.portal-messages article.mine .msg-time.bare, .inbox-message.user .msg-time.bare, .message-row.user .msg-time.bare { margin-left: auto; }
 .portal-messages article.grouped { margin-top: -10px; }
 .inbox-message.grouped { margin-top: -9px; }
 .portal-messages article > small, .inbox-message > small { display: block; margin-bottom: 3px; }
