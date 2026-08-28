@@ -631,10 +631,14 @@ def test_portal_inbox_pages_searches_and_tracks_unread(authenticated_client: Tes
     assert len(client.get(f"/api/portal/{slug}/conversations?search=New").json()) == 3
     assert client.get(f"/api/portal/{slug}/conversations?search=zzznomatch").json() == []
 
-    # A visitor message counts as unread until the portal marks the thread read.
+    # A visitor message counts as unread until the portal marks the thread
+    # read, but only once a person holds the conversation: while the AI
+    # answers there is nothing for anyone to catch up on.
     with SessionLocal() as db:
         db.add(Message(conversation_id=uuid.UUID(ids[0]), role="user", content="Hola", sender_type="visitor"))
         db.commit()
+    assert client.get(f"/api/portal/{slug}/conversations?unread=1").json() == []
+    client.patch(f"/api/portal/{slug}/conversations/{ids[0]}/mode", json={"mode": "human"})
     unread = client.get(f"/api/portal/{slug}/conversations?unread=1").json()
     assert [row["id"] for row in unread] == [ids[0]]
     assert unread[0]["unread_count"] == 1
@@ -644,8 +648,8 @@ def test_portal_inbox_pages_searches_and_tracks_unread(authenticated_client: Tes
 
     # Mode filtering happens server-side, so tabs and paging agree.
     client.patch(f"/api/portal/{slug}/conversations/{ids[1]}/mode", json={"mode": "human"})
-    assert [row["id"] for row in client.get(f"/api/portal/{slug}/conversations?mode=human").json()] == [ids[1]]
-    assert len(client.get(f"/api/portal/{slug}/conversations?mode=ai").json()) == 2
+    assert {row["id"] for row in client.get(f"/api/portal/{slug}/conversations?mode=human").json()} == {ids[0], ids[1]}
+    assert [row["id"] for row in client.get(f"/api/portal/{slug}/conversations?mode=ai").json()] == [ids[2]]
 
 
 def test_portal_resolves_reopens_and_narrates_the_thread(authenticated_client: TestClient):

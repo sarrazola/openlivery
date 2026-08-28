@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Cookie, Depends, Header, File, Form, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
@@ -231,7 +231,13 @@ def portal_conversations(
         )
         .group_by(Message.conversation_id)
     ).subquery()
-    unread_count = func.coalesce(unread_counts.c.n, 0)
+    # Unread is a call to action for a person: the contact wrote and nobody
+    # has looked. While the AI answers there is nothing to act on, so those
+    # conversations never count as unread; they live under the AI filter.
+    unread_count = case(
+        (Conversation.mode == "human", func.coalesce(unread_counts.c.n, 0)),
+        else_=0,
+    )
 
     query = (
         select(Conversation, last.c.content, unread_count.label("unread_count"))

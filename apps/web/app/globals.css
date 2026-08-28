@@ -1192,7 +1192,7 @@ button.composer-attach.record.recording svg { animation: record-pulse 1.2s ease-
 .pending-attachment > button:hover { background: #eceef3; color: var(--ink); }
 
 /* Portal inbox: search, mode tabs and channel badges (mirrors the agency inbox) */
-.portal-inbox > aside .inbox-search { padding: 12px 14px; }
+.portal-inbox > aside .inbox-search { min-height: 64px; padding: 0 14px; }
 .portal-inbox > aside .inbox-search input { border: 0; background: transparent; box-shadow: none; padding: 0; }
 .portal-inbox > aside .inbox-tabs { gap: 6px; padding: 0 12px 14px; }
 .portal-inbox > aside .inbox-tabs button { flex: 1; width: auto; padding: 6px 8px; justify-content: center; text-align: center; border-bottom: 0; border-radius: 20px; }
