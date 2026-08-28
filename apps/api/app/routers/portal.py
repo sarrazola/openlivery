@@ -27,7 +27,7 @@ from ..schemas import (
 )
 from ..security import create_portal_token, decode_portal_token, verify_password
 from ..services.contacts import display_name, normalize_phone, rename_conversations
-from ..services.conversation_state import assign, note_reply, set_mode, set_status
+from ..services.conversation_state import ConversationClosed, assign, note_reply, set_mode, set_status
 from ..services.notifications import notify_assigned
 from ..services.attachments import attachment_response, conversation_attachment, logo_response
 from ..services.operator_media import store_operator_media_reply
@@ -574,7 +574,11 @@ def portal_mode(
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
-    if set_mode(db, conversation, payload.mode, actor=sender_name, user=user):
+    try:
+        changed = set_mode(db, conversation, payload.mode, actor=sender_name, user=user)
+    except ConversationClosed as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if changed:
         db.commit()
     return _present(_detail(db, client, conversation_id))
 
@@ -599,7 +603,11 @@ async def portal_assign(
         )
         if not assignee:
             raise HTTPException(status_code=404, detail="That person is not part of this portal")
-    if assign(db, conversation, assignee, actor=sender_name, actor_user=user):
+    try:
+        changed = assign(db, conversation, assignee, actor=sender_name, actor_user=user)
+    except ConversationClosed as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if changed:
         db.commit()
         if assignee and (not user or assignee.id != user.id):
             await notify_assigned(db, conversation, assignee, sender_name)
@@ -616,7 +624,11 @@ def portal_status(
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
-    if set_status(db, conversation, payload.status, actor=sender_name):
+    try:
+        changed = set_status(db, conversation, payload.status, actor=sender_name)
+    except ConversationClosed as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if changed:
         db.commit()
     return _present(_detail(db, client, conversation_id))
 

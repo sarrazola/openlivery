@@ -19,6 +19,17 @@ from ..models import Conversation, Message, PortalUser, now_utc
 
 STATUSES = ("open", "resolved")
 
+RESOLVED_IS_FINAL = "A resolved conversation stays resolved. The contact's next message opens a new one."
+
+
+class ConversationClosed(ValueError):
+    """Raised when something tries to act on a resolved conversation."""
+
+
+def ensure_open(conversation: Conversation) -> None:
+    if conversation.status == "resolved":
+        raise ConversationClosed(RESOLVED_IS_FINAL)
+
 # English fallbacks for clients that do not translate events themselves.
 _ACTIVITY_TEXT = {
     "resolved": "{actor} resolved the conversation",
@@ -63,6 +74,10 @@ def set_status(db: Session, conversation: Conversation, status: str, *, actor: s
         raise ValueError(f"Unknown conversation status: {status}")
     if conversation.status == status:
         return False
+    if status == "open":
+        # Cases end; they do not come back. The next message from the
+        # contact opens a fresh conversation for the same person.
+        ensure_open(conversation)
     now = now_utc()
     conversation.status = status
     conversation.status_changed_at = now
@@ -86,6 +101,7 @@ def set_mode(
     """
     if conversation.mode == mode:
         return False
+    ensure_open(conversation)
     conversation.mode = mode
     now = now_utc()
     if mode == "human":
@@ -117,6 +133,7 @@ def assign(
     new_id = assignee.id if assignee else None
     if conversation.assignee_id == new_id and (assignee is None or conversation.mode == "human"):
         return False
+    ensure_open(conversation)
     previous = conversation.assignee
     now = now_utc()
     conversation.assignee_id = new_id

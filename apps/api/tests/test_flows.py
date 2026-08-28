@@ -692,11 +692,14 @@ def test_portal_resolves_reopens_and_narrates_the_thread(authenticated_client: T
     assert len([m for m in again["messages"] if m["kind"] == "activity"]) == 1
     assert client.patch(f"{base}/{conversation_id}/status", json={"status": "snoozed"}).status_code == 422
 
-    reopened = client.patch(f"{base}/{conversation_id}/status", json={"status": "open"}).json()
-    assert reopened["status"] == "open" and reopened["resolved_at"] is None
-    assert reopened["messages"][-1]["activity"] == {"event": "reopened"}
+    # A resolved case is final: no reopening, no handing around.
+    assert client.patch(f"{base}/{conversation_id}/status", json={"status": "open"}).status_code == 409
+    assert client.patch(f"{base}/{conversation_id}/mode", json={"mode": "human"}).status_code == 409
+    assert client.get(f"{base}/{conversation_id}").json()["status"] == "resolved"
 
     # Who answers is narrated too, and the preview never shows an activity line.
+    fresh_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    conversation_id = fresh_id
     taken = client.patch(f"{base}/{conversation_id}/mode", json={"mode": "human"}).json()
     assert taken["messages"][-1]["activity"] == {"event": "taken_over"}
     assert client.get(base).json()[0]["preview"] == ""

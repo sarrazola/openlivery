@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..database import get_db
 from ..deps import get_current_user
-from ..services.conversation_state import STATUSES, note_reply, set_mode, set_status
+from ..services.conversation_state import ConversationClosed, STATUSES, note_reply, set_mode, set_status
 from ..models import Agent, Conversation, Message, User, now_utc
 from ..schemas import (
     ConversationCreate,
@@ -323,7 +323,11 @@ def set_conversation_mode(
     user: User = Depends(get_current_user),
 ):
     conversation = _conversation(db, user, conversation_id)
-    if set_mode(db, conversation, payload.mode, actor=user.name):
+    try:
+        changed = set_mode(db, conversation, payload.mode, actor=user.name)
+    except ConversationClosed as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if changed:
         db.commit()
     return _conversation(db, user, conversation_id)
 
@@ -336,7 +340,11 @@ def set_conversation_status(
     user: User = Depends(get_current_user),
 ):
     conversation = _conversation(db, user, conversation_id)
-    if set_status(db, conversation, payload.status, actor=user.name):
+    try:
+        changed = set_status(db, conversation, payload.status, actor=user.name)
+    except ConversationClosed as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if changed:
         db.commit()
     return _conversation(db, user, conversation_id)
 

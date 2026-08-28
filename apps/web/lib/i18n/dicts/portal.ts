@@ -113,7 +113,7 @@ const en = {
       visitor: "Visitor",
       replyPlaceholder: "Write a reply…",
       takeControlToReply: "Take control to reply",
-      reopenToReply: "Reopen the conversation to reply",
+      resolvedLocked: "This conversation is resolved. The contact's next message opens a new one.",
     },
     activity: {
       resolved: "{actor} resolved the conversation",
@@ -250,7 +250,7 @@ const es: typeof en = {
       visitor: "Visitante",
       replyPlaceholder: "Escribe una respuesta…",
       takeControlToReply: "Toma el control para responder",
-      reopenToReply: "Reabre la conversación para responder",
+      resolvedLocked: "Esta conversación está resuelta. El próximo mensaje del contacto abre una nueva.",
     },
     activity: {
       resolved: "{actor} resolvió la conversación",
