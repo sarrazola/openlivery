@@ -52,14 +52,21 @@ async def verify_phone_number(access_token: str, phone_number_id: str) -> dict:
         raise HTTPException(status_code=502, detail="Invalid response from the Meta API.") from exc
 
 
-async def send_text(access_token: str, phone_number_id: str, to: str, body: str) -> str | None:
-    """Send a text message; returns the outbound message id (wamid)."""
+async def send_text(
+    access_token: str, phone_number_id: str, to: str, body: str, context_message_id: str | None = None
+) -> str | None:
+    """Send a text message; returns the outbound message id (wamid).
+
+    ``context_message_id`` makes it a quoted reply (the swipe-to-reply look)
+    on the referenced message."""
     payload = {
         "messaging_product": "whatsapp",
         "to": to,
         "type": "text",
         "text": {"body": body[:MAX_TEXT_LENGTH]},
     }
+    if context_message_id:
+        payload["context"] = {"message_id": context_message_id}
     response = await _graph_request("POST", _graph_url(f"{phone_number_id}/messages"), access_token, json=payload)
     if response.status_code >= 400:
         raise HTTPException(status_code=502, detail=f"WhatsApp could not send the message: {_graph_error(response)}")
@@ -68,6 +75,38 @@ async def send_text(access_token: str, phone_number_id: str, to: str, body: str)
         return messages[0].get("id") if messages else None
     except ValueError:
         return None
+
+
+async def send_reaction(access_token: str, phone_number_id: str, to: str, message_id: str, emoji: str) -> None:
+    """React with an emoji to one of the customer's messages. Best-effort: a
+    reaction is a gesture, never worth failing the reply over."""
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "reaction",
+        "reaction": {"message_id": message_id, "emoji": emoji},
+    }
+    try:
+        await _graph_request("POST", _graph_url(f"{phone_number_id}/messages"), access_token, json=payload)
+    except HTTPException:
+        pass
+
+
+async def mark_read_with_typing(access_token: str, phone_number_id: str, message_id: str) -> None:
+    """Mark the conversation as read up to ``message_id`` (blue ticks) and show
+    the typing indicator while the reply is being generated. Meta dismisses the
+    indicator when a message is sent, or after ~25 seconds. Best-effort: the
+    reply must never depend on this call."""
+    payload = {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": message_id,
+        "typing_indicator": {"type": "text"},
+    }
+    try:
+        await _graph_request("POST", _graph_url(f"{phone_number_id}/messages"), access_token, json=payload)
+    except HTTPException:
+        pass
 
 
 async def upload_media(access_token: str, phone_number_id: str, data: bytes, mime: str, filename: str) -> str:

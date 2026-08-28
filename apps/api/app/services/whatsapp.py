@@ -10,6 +10,7 @@ from ..models import Conversation, WhatsAppCloudChannel
 from ..security import decrypt_secret
 from .audio import audio_duration_seconds, to_whatsapp_voice
 from .whatsapp_cloud import send_media, send_text, upload_media
+from .whatsapp_format import markdown_to_whatsapp
 
 
 async def bridge_command(method: str, path: str, payload: dict | None = None, timeout: float = 20) -> dict:
@@ -38,16 +39,20 @@ async def bridge_command(method: str, path: str, payload: dict | None = None, ti
     return response.json()
 
 
-async def send_channel_message(db: Session, conversation: Conversation, content: str) -> str | None:
+async def send_channel_message(
+    db: Session, conversation: Conversation, content: str, *, quoted_external_id: str | None = None
+) -> str | None:
     """Deliver an operator message through the conversation's channel. Returns
-    the external message id, or None for channels without outbound delivery."""
+    the external message id, or None for channels without outbound delivery.
+
+    ``quoted_external_id`` sends it as a quoted reply (Cloud API only)."""
     if conversation.channel == "whatsapp":
         if not conversation.whatsapp_channel_id or not conversation.external_chat_id:
             raise HTTPException(status_code=409, detail="This conversation does not have a valid WhatsApp destination")
         result = await bridge_command(
             "POST",
             f"/channels/{conversation.whatsapp_channel_id}/send",
-            {"remote_jid": conversation.external_chat_id, "text": content},
+            {"remote_jid": conversation.external_chat_id, "text": markdown_to_whatsapp(content)},
         )
         return result.get("external_message_id")
     if conversation.channel == "whatsapp_cloud":
@@ -60,7 +65,8 @@ async def send_channel_message(db: Session, conversation: Conversation, content:
             decrypt_secret(channel.encrypted_access_token),
             channel.phone_number_id,
             conversation.external_chat_id,
-            content,
+            markdown_to_whatsapp(content),
+            context_message_id=quoted_external_id,
         )
     return None
 
@@ -78,6 +84,7 @@ async def send_channel_media(
     """Deliver an operator media message (image/audio/video/file) through the
     conversation's channel. Returns the external message id, or None for
     channels without outbound delivery (playground, widget)."""
+    caption = markdown_to_whatsapp(caption)
     seconds = None
     if kind == "audio" and conversation.channel in ("whatsapp", "whatsapp_cloud"):
         # WhatsApp only plays ogg/opus voice notes; browsers record webm/mp4.
