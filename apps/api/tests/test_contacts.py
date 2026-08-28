@@ -99,3 +99,9 @@ def test_inbound_creates_the_contact_and_a_new_case_after_resolution(authenticat
     client.patch(f"/api/portal/{slug}/contacts/{contact_id}", json={"name": "Samuel"})
     titles = {row["title"] for row in client.get(f"/api/portal/{slug}/contacts/{contact_id}/conversations").json()}
     assert titles == {"Samuel"}
+
+    # Deleting the contact deletes their conversations with them.
+    assert client.delete(f"/api/portal/{slug}/contacts/{contact_id}").status_code == 204
+    assert client.get(f"/api/conversations/{first_id}").status_code == 404
+    assert client.get(f"/api/conversations/{second_id}").status_code == 404
+    assert client.get(f"/api/portal/{slug}/conversations").json() == []

@@ -433,8 +433,12 @@ def portal_update_contact(
 def portal_delete_contact(
     slug: str, contact_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
 ):
-    # Conversations stay; they just lose the link (ON DELETE SET NULL).
+    # Everything about the person goes with them: their conversations (and
+    # with those, the messages and attachments). The portal asks the person
+    # to type the contact's name before it calls this.
     contact = _portal_contact(db, client, contact_id)
+    for conversation in db.scalars(select(Conversation).where(Conversation.contact_id == contact.id)).all():
+        db.delete(conversation)
     db.delete(contact)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

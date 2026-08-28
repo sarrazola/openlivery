@@ -584,6 +584,8 @@ textarea { line-height: 1.55; }
 .portal-contact-history small { color: #7b8391; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .portal-contact-history > button > svg:last-child { color: #9097aa; }
 .icon-button.danger { color: #b23a3a; }
+.button.danger { color: white; border-color: #b23a3a; background: #b23a3a; display: inline-flex; align-items: center; gap: 6px; }
+.button.danger:disabled { opacity: .45; }
 .icon-button.danger:hover { background: #fbeaea; }
 @media (max-width: 900px) { .portal-contact-body { grid-template-columns: 1fr; } .portal-contacts { grid-template-columns: 1fr; grid-template-rows: 190px 1fr; } }
 .portal-nav nav a.disabled { opacity: .45; }

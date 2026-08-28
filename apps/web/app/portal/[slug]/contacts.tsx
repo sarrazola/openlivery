@@ -21,6 +21,8 @@ export function ContactsView({ slug, openConversation }: { slug: string; openCon
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<"new" | "edit" | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -69,11 +71,15 @@ export function ContactsView({ slug, openConversation }: { slug: string; openCon
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
 
-  async function remove() {
-    if (!selected || !window.confirm(t("portal.contacts.confirmDelete", { name: nameOf(selected) }))) return;
+  const confirmWord = selected ? nameOf(selected) : "";
+  const confirmed = typed.trim().toLowerCase() === confirmWord.trim().toLowerCase();
+  async function remove(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected || !confirmed) return;
     setBusy(true); setError("");
     try {
       await api(`/portal/${slug}/contacts/${selected.id}`, { method: "DELETE" });
+      setDeleting(false); setTyped("");
       setSelected(null); setHistory([]);
       await load();
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
@@ -107,7 +113,7 @@ export function ContactsView({ slug, openConversation }: { slug: string; openCon
             </div>
             <div className="thread-actions">
               <button className="button small" onClick={() => setEditing("edit")}><Pencil size={15} /> {t("portal.contacts.edit")}</button>
-              <button className="icon-button danger" onClick={remove} disabled={busy} title={t("portal.contacts.delete")} aria-label={t("portal.contacts.delete")}><Trash2 size={16} /></button>
+              <button className="icon-button danger" onClick={() => { setTyped(""); setDeleting(true); }} disabled={busy} title={t("portal.contacts.delete")} aria-label={t("portal.contacts.delete")}><Trash2 size={16} /></button>
             </div>
           </header>
           {error && <Alert>{error}</Alert>}
@@ -128,6 +134,14 @@ export function ContactsView({ slug, openConversation }: { slug: string; openCon
         </> : <EmptyState icon={<UserRound />} title={t("portal.contacts.selectTitle")} description={t("portal.contacts.selectDescription")} />}
       </section>
     </div>
+    <Modal open={deleting && Boolean(selected)} title={t("portal.contacts.deleteTitle", { name: confirmWord })} onClose={() => setDeleting(false)}>
+      <form className="modal-form" onSubmit={remove}>
+        <Alert type="error">{t("portal.contacts.deleteWarning", { count: selected?.conversation_count ?? 0 })}</Alert>
+        <label>{t("portal.contacts.deleteTypeName", { name: confirmWord })}<input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={confirmWord} autoFocus autoComplete="off" /></label>
+        {error && <Alert>{error}</Alert>}
+        <div className="modal-actions"><button type="button" className="button" onClick={() => setDeleting(false)}>{t("portal.contacts.form.cancel")}</button><button className="button danger" disabled={!confirmed || busy}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Trash2 size={15} /> {t("portal.contacts.deleteConfirm")}</>}</button></div>
+      </form>
+    </Modal>
     <Modal open={editing !== null} title={editing === "new" ? t("portal.contacts.newTitle") : t("portal.contacts.editTitle")} onClose={() => setEditing(null)}>
       <form className="modal-form" onSubmit={save}>
         <div className="form-grid">
