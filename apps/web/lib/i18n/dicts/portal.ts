@@ -100,6 +100,7 @@ const en = {
       label: "Assigned to",
       nobody: "Nobody",
       me: "{name} (me)",
+      received: "New conversation assigned to you: {title}",
     },
     conversation: {
       channel: "Channel: {channel}",
@@ -236,6 +237,7 @@ const es: typeof en = {
       label: "Asignada a",
       nobody: "Nadie",
       me: "{name} (yo)",
+      received: "Te asignaron una conversación: {title}",
     },
     conversation: {
       channel: "Canal: {channel}",

@@ -9,6 +9,7 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { MediaPanel } from "@/components/media-panel";
 import { RichText } from "@/components/rich-text";
 import { QuotedSnippet, ReactionBadge } from "@/components/message-gestures";
+import { useToast } from "@/components/toast";
 import { Alert, EmptyState } from "@/components/ui";
 import { api, ApiError, apiUrl, messageFrom } from "@/lib/api";
 import { formatTime, formatWhen, isNearBottom, isSameOpenThread } from "@/lib/datetime";
@@ -16,6 +17,23 @@ import { useLanguage, useT } from "@/lib/i18n";
 import type { Attachment, Conversation, Message, PortalPublic } from "@/types";
 
 const POLL_MS = 8000;
+
+function chime() {
+  try {
+    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const play = (freq: number, at: number) => {
+      const osc = ctx.createOscillator(); const gain = ctx.createGain();
+      osc.type = "sine"; osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + at);
+      gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.28);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + at); osc.stop(ctx.currentTime + at + 0.3);
+    };
+    play(880, 0); play(1175, 0.16);
+    setTimeout(() => ctx.close().catch(() => {}), 800);
+  } catch { /* no audio available */ }
+}
 const LIMIT = 30;
 
 type Session = { client_id: string; client_name: string; portal_slug: string; agency_name: string; user_id?: string | null; user_name?: string | null };
@@ -49,6 +67,35 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   const [tab, setTab] = useState<"all" | "unread" | "mine" | "unassigned" | "ai">("all");
   const [members, setMembers] = useState<Member[]>([]);
   useEffect(() => { api<Member[]>(`/portal/${slug}/members`).then(setMembers).catch(() => {}); }, [slug]);
+  const toast = useToast();
+  // Conversations handed to me: the first poll only learns what is mine,
+  // every later one announces what is new, so a transfer is felt at once.
+  const mineKnownRef = useRef<Set<string> | null>(null);
+  const announceAssignments = useCallback(async () => {
+    if (!session.user_id) return;
+    const mine = await api<Conversation[]>(`/portal/${slug}/conversations?status=open&assignee=me&limit=100`);
+    const known = mineKnownRef.current;
+    const next = new Set(mine.map((row) => row.id));
+    if (known) {
+      const fresh = mine.filter((row) => !known.has(row.id));
+      if (fresh.length) {
+        chime();
+        for (const row of fresh) {
+          const text = t("portal.inbox.assignment.received", { title: row.title });
+          toast.info(text);
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            try { new Notification(portal.portal_title, { body: text }); } catch { /* blocked */ }
+          }
+        }
+      }
+    }
+    mineKnownRef.current = next;
+  }, [slug, session.user_id, t, toast, portal.portal_title]);
+  useEffect(() => {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
   const [status, setStatus] = useState<"open" | "resolved">("open");
   const [summary, setSummary] = useState<InboxSummary | null>(null);
   const [view, setView] = useState<"inbox" | "contacts">("inbox");
@@ -132,6 +179,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
 
   const refresh = useCallback(async () => {
     api<InboxSummary>(`/portal/${slug}/conversations/summary`).then(setSummary).catch(() => {});
+    announceAssignments().catch(() => {});
     const rows = await api<Conversation[]>(`/portal/${slug}/conversations?${buildParams(0)}`);
     setItems(rows); setOffset(rows.length); setHasMore(rows.length === LIMIT);
     const openId = selectedIdRef.current ?? rows[0]?.id;
@@ -145,7 +193,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
       if (prev && rows.find((row) => row.id === openId)?.unread) markRead(openId);
       return conv;
     });
-  }, [slug, buildParams, markRead]);
+  }, [slug, buildParams, markRead, announceAssignments]);
 
   useEffect(() => { refresh().catch((err) => setError(messageFrom(err))); }, [refresh]);
   useEffect(() => {
@@ -245,7 +293,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
       {items.map((item) => <button key={item.id} onClick={() => choose(item)} className={`${selected?.id === item.id ? "active" : ""}${item.unread && selected?.id !== item.id ? " unread" : ""}`}><span className="entity-avatar tiny"><UserRound size={15} /></span><span><span className="portal-inbox-row-top"><strong>{item.title}</strong>{item.unread && selected?.id !== item.id ? <span className="inbox-unread-count" aria-label={t("inbox.unreadCount", { count: item.unread_count ?? 0 })}>{(item.unread_count ?? 0) > 99 ? "99+" : item.unread_count}</span> : <time>{formatWhen(item.updated_at, lang)}</time>}</span><small className="portal-inbox-preview">{item.preview || t("portal.inbox.list.noMessages")}</small><small className="inbox-row-meta"><span className={`channel-dot ${item.channel}`}>{channelIcon(item.channel)}</span> {channelLabel(item.channel)} <span className={`mini-badge ${item.mode}`}>{item.mode === "human" ? (item.assignee_name || t("portal.inbox.list.humanSupport")) : t("portal.inbox.list.aiAgent")}</span></small></span></button>)}
       {!items.length && <div className="no-conversations">{t("inbox.empty")}</div>}
       {loadingMore && <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>}
-    </aside><section className="drop-target" {...dropProps}>{overlay}{selected && <><header><div><strong>{selected.title}</strong><small className="portal-channel-line">{channelIcon(selected.channel)} {channelLabel(selected.channel)} <span className={`mini-badge ${selected.mode}`}>{selected.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span>{isResolved && <span className="mini-badge resolved"><CheckCircle2 size={11} /> {t("portal.inbox.conversation.resolvedBadge")}</span>}</small></div><div className="thread-actions">{!isResolved && <label className="assignee-picker"><span>{t("portal.inbox.assignment.label")}</span><select value={selected.assignee_id ?? ""} onChange={(e) => assignTo(e.target.value || null)}><option value="">{t("portal.inbox.assignment.nobody")}</option>{members.map((member) => <option key={member.id} value={member.id}>{memberLabel(member)}</option>)}</select></label>}<button className="icon-button" onClick={() => setMediaOpen(true)} title={t("chat.sharedContent")} aria-label={t("chat.sharedContent")}><Images size={16} /></button><button className={`mode-toggle ${selected.mode}`} onClick={() => setMode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("portal.inbox.conversation.takeControl") : t("portal.inbox.conversation.returnToAi")}</button><button className={`status-toggle ${isResolved ? "resolved" : "open"}`} onClick={() => setConversationStatus(isResolved ? "open" : "resolved")}>{isResolved ? <><RotateCcw size={15} /> {t("portal.inbox.conversation.reopen")}</> : <><CheckCircle2 size={15} /> {t("portal.inbox.conversation.resolve")}</>}</button></div></header><div className="portal-messages" ref={messagesRef}>{selected.messages?.map((message, index) => {
+    </aside><section className="drop-target" {...dropProps}>{overlay}{selected && <><header><div><strong>{selected.title}</strong><small className="portal-channel-line">{channelIcon(selected.channel)} {channelLabel(selected.channel)} <span className={`mini-badge ${selected.mode}`}>{selected.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span>{isResolved && <span className="mini-badge resolved"><CheckCircle2 size={11} /> {t("portal.inbox.conversation.resolvedBadge")}</span>}</small></div><div className="thread-actions">{!isResolved && selected.mode === "human" && <label className="assignee-picker"><span>{t("portal.inbox.assignment.label")}</span><select value={selected.assignee_id ?? ""} onChange={(e) => assignTo(e.target.value || null)}><option value="">{t("portal.inbox.assignment.nobody")}</option>{members.map((member) => <option key={member.id} value={member.id}>{memberLabel(member)}</option>)}</select></label>}<button className="icon-button" onClick={() => setMediaOpen(true)} title={t("chat.sharedContent")} aria-label={t("chat.sharedContent")}><Images size={16} /></button><button className={`mode-toggle ${selected.mode}`} onClick={() => setMode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("portal.inbox.conversation.takeControl") : t("portal.inbox.conversation.returnToAi")}</button><button className={`status-toggle ${isResolved ? "resolved" : "open"}`} onClick={() => setConversationStatus(isResolved ? "open" : "resolved")}>{isResolved ? <><RotateCcw size={15} /> {t("portal.inbox.conversation.reopen")}</> : <><CheckCircle2 size={15} /> {t("portal.inbox.conversation.resolve")}</>}</button></div></header><div className="portal-messages" ref={messagesRef}>{selected.messages?.map((message, index) => {
               if (message.kind === "activity") {
                 return <div key={message.id} className="activity-line"><span>{activityText(message)}</span><time>{formatTime(message.created_at, lang)}</time></div>;
               }
