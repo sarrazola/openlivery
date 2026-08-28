@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from ..config import get_settings
-from ..database import SessionLocal
+from ..database import new_session
 from ..models import Agent, Conversation, Message, now_utc
 from ..security import decrypt_secret
 from .attachments import llm_text, store_attachment
@@ -372,7 +372,7 @@ def schedule_debounced_reply(conversation_id: uuid.UUID) -> None:
 
 async def _debounced_reply(conversation_id: uuid.UUID) -> None:
     await asyncio.sleep(get_settings().reply_debounce_seconds)
-    db = SessionLocal()
+    db = new_session()
     try:
         conversation = db.get(Conversation, conversation_id)
         if not conversation or conversation.mode == "human":

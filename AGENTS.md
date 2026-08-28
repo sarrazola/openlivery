@@ -69,6 +69,7 @@ Everything is agency-scoped: `Agency → Users, Clients, AIConnections`; `Client
 
 ### Backend layout
 
+- `app/database.py` — the engine and the one place a session is created. Routes receive one through `get_db`, which FastAPI lets a deployment substitute (the test suite does); anything running outside a request calls `new_session()`. Never call `SessionLocal()` elsewhere: it opts that code out of the substitution, so a swapped session never reaches it, and the failure surfaces inside a background task rather than in a response. `tests/test_session_factory.py` enforces this.
 - `app/main.py` — app creation, CORS, router registration
 - `app/routers/` — one file per domain (auth, agency, clients, agents, connections, conversations, dashboard, portal, whatsapp); `domains.py` holds the public, unauthenticated `/api/public/portal-domain` used by the frontend `proxy.ts` and the gateway's on-demand-TLS `ask` hook to map a client's custom domain to its portal
 - `app/services/ai.py` — `chat_completion()` calls any OpenAI-compatible endpoint (base_url + model are per-connection config); connection testing lists `{base_url}/models`

@@ -30,8 +30,24 @@ engine = create_engine(
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
+def new_session():
+    """Open a session. The one place a session is created.
+
+    Request handlers receive one through ``get_db``, which FastAPI lets a
+    deployment substitute; the test suite does exactly that. Work that runs
+    outside a request has no dependency to receive, so it calls this instead of
+    reaching for ``SessionLocal`` directly.
+
+    Both paths going through here is the point: a substituted session reaches
+    every query, not only the routed ones. Calling ``SessionLocal()`` from
+    elsewhere silently opts that code out, and the resulting failure surfaces
+    inside whatever background task made the call rather than in a response.
+    """
+    return SessionLocal()
+
+
 def get_db():
-    db = SessionLocal()
+    db = new_session()
     try:
         yield db
     finally:
