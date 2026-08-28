@@ -15,6 +15,7 @@ import { useLanguage, useT } from "@/lib/i18n";
 import type { Attachment, Conversation, PortalPublic } from "@/types";
 
 const POLL_MS = 8000;
+const LIMIT = 30;
 
 type Session = { client_id: string; client_name: string; portal_slug: string; agency_name: string };
 
@@ -42,8 +43,12 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [tab, setTab] = useState<"all" | "human" | "ai">("all");
+  const [tab, setTab] = useState<"all" | "unread" | "human" | "ai">("all");
   const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
   const selectedIdRef = useRef<string | null>(null);
 
@@ -61,10 +66,21 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
     if (value === "playground") return <FlaskConical size={10} />;
     return <MessageCircle size={10} />;
   };
-  const visible = items.filter((item) =>
-    (tab === "all" || item.mode === tab)
-    && (!search.trim() || `${item.title} ${item.preview || ""}`.toLowerCase().includes(search.trim().toLowerCase()))
-  );
+  // Search is sent to the server after a short pause, so the list, the tabs
+  // and paging all agree on the same filter.
+  useEffect(() => {
+    const id = setTimeout(() => setQuery(search.trim()), 300);
+    return () => clearTimeout(id);
+  }, [search]);
+  const buildParams = useCallback((offsetValue: number) => {
+    const params = new URLSearchParams();
+    if (tab === "human" || tab === "ai") params.set("mode", tab);
+    if (tab === "unread") params.set("unread", "1");
+    if (query) params.set("search", query);
+    params.set("limit", String(LIMIT));
+    params.set("offset", String(offsetValue));
+    return params.toString();
+  }, [tab, query]);
   const messagesRef = useRef<HTMLDivElement>(null);
   useEffect(() => { selectedIdRef.current = selected?.id ?? null; }, [selected]);
   const wasNearBottomRef = useRef(true);
@@ -81,24 +97,49 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
     }
   }, [selected?.id, selected?.messages?.at(-1)?.id]);
 
+  const markRead = useCallback((id: string) => {
+    setItems((rows) => rows.map((row) => (row.id === id ? { ...row, unread: false, unread_count: 0 } : row)));
+    api(`/portal/${slug}/conversations/${id}/read`, { method: "POST" }).catch(() => {});
+  }, [slug]);
+
   const refresh = useCallback(async () => {
-    const rows = await api<Conversation[]>(`/portal/${slug}/conversations`);
-    setItems(rows);
+    const rows = await api<Conversation[]>(`/portal/${slug}/conversations?${buildParams(0)}`);
+    setItems(rows); setOffset(rows.length); setHasMore(rows.length === LIMIT);
     const openId = selectedIdRef.current ?? rows[0]?.id;
     if (!openId) return;
     const conv = await api<Conversation>(`/portal/${slug}/conversations/${openId}`);
     if (selectedIdRef.current && selectedIdRef.current !== openId) return;
-    setSelected((prev) => (isSameOpenThread(prev, conv) ? prev : conv));
-  }, [slug]);
+    if (!selectedIdRef.current) { selectedIdRef.current = openId; markRead(openId); }
+    setSelected((prev) => {
+      if (isSameOpenThread(prev, conv)) return prev;
+      // New visitor messages arrived while this thread is on screen: they are read.
+      if (prev && rows.find((row) => row.id === openId)?.unread) markRead(openId);
+      return conv;
+    });
+  }, [slug, buildParams, markRead]);
 
   useEffect(() => { refresh().catch((err) => setError(messageFrom(err))); }, [refresh]);
   useEffect(() => {
-    const id = setInterval(() => { refresh().catch(() => {}); }, POLL_MS);
+    const id = setInterval(() => { if (offset <= LIMIT) refresh().catch(() => {}); }, POLL_MS);
     return () => clearInterval(id);
-  }, [refresh]);
+  }, [refresh, offset]);
+
+  async function loadMore() {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const rows = await api<Conversation[]>(`/portal/${slug}/conversations?${buildParams(offset)}`);
+      setItems((prev) => [...prev, ...rows]); setOffset((o) => o + rows.length); setHasMore(rows.length === LIMIT);
+    } catch (err) { setError(messageFrom(err)); } finally { setLoadingMore(false); }
+  }
+  function onListScroll(event: React.UIEvent<HTMLElement>) {
+    const el = event.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) loadMore();
+  }
 
   async function choose(item: Conversation) {
     selectedIdRef.current = item.id;
+    markRead(item.id);
     setSelected(await api<Conversation>(`/portal/${slug}/conversations/${item.id}`));
   }
   async function setMode(mode: "ai" | "human") { if (!selected) return; setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/mode`, { method: "PATCH", body: JSON.stringify({ mode }) })); await refresh(); }
@@ -130,15 +171,17 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
     ),
     [selected, attachmentUrl],
   );
-  return <main className="portal-app" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><aside className="portal-nav"><div className="portal-brand">{portal.client_logo_url || portal.agency_logo_url ? <img src={`${portal.client_logo_url || portal.agency_logo_url}`} alt="Logo" /> : <span>{portal.client_name.slice(0, 1)}</span>}<strong>{portal.client_name}</strong></div><nav><a className="active"><Inbox size={18} /> {t("portal.inbox.nav.inbox")}</a><a className="disabled"><Bot size={18} /> {t("portal.inbox.nav.agents")}</a></nav><LanguageSwitcher /><button onClick={logout}><LogOut size={17} /> {t("portal.inbox.nav.logout")}</button></aside><section className="portal-main"><header><div><small>{t("portal.inbox.header.eyebrow")}</small><h1>{portal.portal_title}</h1></div><span>{t("portal.inbox.header.conversationsCount", { count: items.length })}</span></header>{items.length ? <div className="portal-inbox"><aside>
+  return <main className="portal-app" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><aside className="portal-nav"><div className="portal-brand">{portal.client_logo_url || portal.agency_logo_url ? <img src={`${portal.client_logo_url || portal.agency_logo_url}`} alt="Logo" /> : <span>{portal.client_name.slice(0, 1)}</span>}<strong>{portal.client_name}</strong></div><nav><a className="active"><Inbox size={18} /> {t("portal.inbox.nav.inbox")}</a><a className="disabled"><Bot size={18} /> {t("portal.inbox.nav.agents")}</a></nav><LanguageSwitcher /><button onClick={logout}><LogOut size={17} /> {t("portal.inbox.nav.logout")}</button></aside><section className="portal-main"><header><div><small>{t("portal.inbox.header.eyebrow")}</small><h1>{portal.portal_title}</h1></div><span>{t("portal.inbox.header.conversationsCount", { count: items.length })}</span></header>{items.length || query || tab !== "all" ? <div className="portal-inbox"><aside onScroll={onListScroll}>
       <div className="inbox-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("inbox.searchPlaceholder")} /></div>
       <div className="inbox-tabs">
         <button className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>{t("inbox.tabAll")}</button>
+        <button className={tab === "unread" ? "active" : ""} onClick={() => setTab("unread")}>{t("inbox.tabUnread")}</button>
         <button className={tab === "human" ? "active" : ""} onClick={() => setTab("human")}>{t("inbox.statusHuman")}</button>
         <button className={tab === "ai" ? "active" : ""} onClick={() => setTab("ai")}>{t("inbox.statusAi")}</button>
       </div>
-      {visible.map((item) => <button key={item.id} onClick={() => choose(item)} className={selected?.id === item.id ? "active" : ""}><span className="entity-avatar tiny"><UserRound size={15} /></span><span><span className="portal-inbox-row-top"><strong>{item.title}</strong><time>{formatWhen(item.updated_at, lang)}</time></span><small className="portal-inbox-preview">{item.preview || t("portal.inbox.list.noMessages")}</small><small className="inbox-row-meta"><span className={`channel-dot ${item.channel}`}>{channelIcon(item.channel)}</span> {channelLabel(item.channel)} <span className={`mini-badge ${item.mode}`}>{item.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span></small></span></button>)}
-      {!visible.length && <div className="no-conversations">{t("inbox.empty")}</div>}
+      {items.map((item) => <button key={item.id} onClick={() => choose(item)} className={`${selected?.id === item.id ? "active" : ""}${item.unread && selected?.id !== item.id ? " unread" : ""}`}><span className="entity-avatar tiny"><UserRound size={15} /></span><span><span className="portal-inbox-row-top"><strong>{item.title}</strong>{item.unread && selected?.id !== item.id ? <span className="inbox-unread-count" aria-label={t("inbox.unreadCount", { count: item.unread_count ?? 0 })}>{(item.unread_count ?? 0) > 99 ? "99+" : item.unread_count}</span> : <time>{formatWhen(item.updated_at, lang)}</time>}</span><small className="portal-inbox-preview">{item.preview || t("portal.inbox.list.noMessages")}</small><small className="inbox-row-meta"><span className={`channel-dot ${item.channel}`}>{channelIcon(item.channel)}</span> {channelLabel(item.channel)} <span className={`mini-badge ${item.mode}`}>{item.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span></small></span></button>)}
+      {!items.length && <div className="no-conversations">{t("inbox.empty")}</div>}
+      {loadingMore && <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>}
     </aside><section className="drop-target" {...dropProps}>{overlay}{selected && <><header><div><strong>{selected.title}</strong><small className="portal-channel-line">{channelIcon(selected.channel)} {channelLabel(selected.channel)} <span className={`mini-badge ${selected.mode}`}>{selected.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span></small></div><div className="thread-actions"><button className="icon-button" onClick={() => setMediaOpen(true)} title={t("chat.sharedContent")} aria-label={t("chat.sharedContent")}><Images size={16} /></button><button className={`mode-toggle ${selected.mode}`} onClick={() => setMode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("portal.inbox.conversation.takeControl") : t("portal.inbox.conversation.returnToAi")}</button></div></header><div className="portal-messages" ref={messagesRef}>{selected.messages?.map((message, index) => {
               const prev = index > 0 ? selected.messages![index - 1] : null;
               const grouped = Boolean(prev && prev.role === message.role && prev.sender_name === message.sender_name);

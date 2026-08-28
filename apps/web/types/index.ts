@@ -154,6 +154,8 @@ export type Conversation = {
   created_at: string;
   updated_at: string;
   preview?: string;
+  unread?: boolean;
+  unread_count?: number;
   messages?: Message[];
 };
 

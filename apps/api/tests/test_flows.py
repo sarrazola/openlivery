@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import uuid
 from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
@@ -10,6 +11,8 @@ from app.routers import providers as providers_router
 from app.routers import conversations as conversations_router
 from app.routers import widget as widget_router
 from app.config import get_settings
+from app.database import SessionLocal
+from app.models import Message
 from app.services import ai as ai_service
 from app.services import whatsapp_inbound as whatsapp_inbound_service
 
@@ -598,6 +601,51 @@ def test_white_label_portal_and_human_takeover(authenticated_client: TestClient)
     assert replied.json()["messages"][-1]["sender_type"] == "human"
     inbox_after = client.get(f"/api/portal/{customer['portal_slug']}/conversations")
     assert inbox_after.json()[0]["preview"] == "Hi, I'm part of the Luna team."
+
+
+def test_portal_inbox_pages_searches_and_tracks_unread(authenticated_client: TestClient):
+    client = authenticated_client
+    customer = client.post(
+        "/api/clients",
+        json={"name": "Paged Portal", "industry": "", "description": "", "general_context": "", "is_active": True},
+    ).json()
+    client.post(
+        f"/api/clients/{customer['id']}/portal-users",
+        json={"name": "Ana", "email": "ana@paged.com", "password": "secure-portal"},
+    )
+    client.patch(f"/api/clients/{customer['id']}/portal", json={"portal_enabled": True})
+    agent = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "name": "Pager", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+    ).json()
+    ids = [client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"] for _ in range(3)]
+    slug = customer["portal_slug"]
+    client.post(f"/api/portal/{slug}/login", json={"email": "ana@paged.com", "password": "secure-portal"})
+
+    page = client.get(f"/api/portal/{slug}/conversations?limit=2&offset=0").json()
+    assert len(page) == 2
+    page2 = client.get(f"/api/portal/{slug}/conversations?limit=2&offset=2").json()
+    assert len(page2) == 1
+    assert {row["id"] for row in page}.isdisjoint({row["id"] for row in page2})
+
+    assert len(client.get(f"/api/portal/{slug}/conversations?search=New").json()) == 3
+    assert client.get(f"/api/portal/{slug}/conversations?search=zzznomatch").json() == []
+
+    # A visitor message counts as unread until the portal marks the thread read.
+    with SessionLocal() as db:
+        db.add(Message(conversation_id=uuid.UUID(ids[0]), role="user", content="Hola", sender_type="visitor"))
+        db.commit()
+    unread = client.get(f"/api/portal/{slug}/conversations?unread=1").json()
+    assert [row["id"] for row in unread] == [ids[0]]
+    assert unread[0]["unread_count"] == 1
+    assert client.post(f"/api/portal/{slug}/conversations/{ids[0]}/read").status_code == 204
+    assert client.get(f"/api/portal/{slug}/conversations?unread=1").json() == []
+    assert all(row["unread"] is False for row in client.get(f"/api/portal/{slug}/conversations").json())
+
+    # Mode filtering happens server-side, so tabs and paging agree.
+    client.patch(f"/api/portal/{slug}/conversations/{ids[1]}/mode", json={"mode": "human"})
+    assert [row["id"] for row in client.get(f"/api/portal/{slug}/conversations?mode=human").json()] == [ids[1]]
+    assert len(client.get(f"/api/portal/{slug}/conversations?mode=ai").json()) == 2
 
 
 def test_provider_test_returns_models(authenticated_client: TestClient, monkeypatch):

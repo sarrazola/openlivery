@@ -1,7 +1,7 @@
 import uuid
 
-from fastapi import APIRouter, Cookie, Depends, Header, File, Form, HTTPException, Response, UploadFile, status
-from sqlalchemy import func, select
+from fastapi import APIRouter, Cookie, Depends, Header, File, Form, HTTPException, Query, Response, UploadFile, status
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
@@ -61,10 +61,34 @@ def _portal_client(
     return client
 
 
-def _sender_name(
-    slug: str,
+def _portal_user(
     portal_access_token: str | None = Cookie(default=None),
     authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> PortalUser | None:
+    """The person behind the session, when the token names one.
+
+    Sessions issued before portal users existed carry no person, and those keep
+    working for reading. Anything that needs to know who acted should depend on
+    this and treat None as "the business itself".
+    """
+    token = portal_access_token
+    if not token and authorization and authorization.lower().startswith("bearer "):
+        token = authorization[7:].strip()
+    payload = decode_portal_token(token) if token else None
+    raw_user = (payload or {}).get("pu")
+    if not raw_user:
+        return None
+    try:
+        user = db.get(PortalUser, uuid.UUID(raw_user))
+    except (ValueError, TypeError):
+        return None
+    return user if user and user.is_active else None
+
+
+def _sender_name(
+    slug: str,
+    user: PortalUser | None = Depends(_portal_user),
     db: Session = Depends(get_db),
 ) -> str:
     """Who to sign a reply as.
@@ -74,18 +98,8 @@ def _sender_name(
     business: a session issued before portal users existed, and a person with no
     name set - their e-mail is a login, and this name is shown to the customer.
     """
-    token = portal_access_token
-    if not token and authorization and authorization.lower().startswith("bearer "):
-        token = authorization[7:].strip()
-    payload = decode_portal_token(token) if token else None
-    raw_user = (payload or {}).get("pu")
-    if raw_user:
-        try:
-            user = db.get(PortalUser, uuid.UUID(raw_user))
-        except (ValueError, TypeError):
-            user = None
-        if user and user.name.strip():
-            return user.name.strip()
+    if user and user.name.strip():
+        return user.name.strip()
     client = db.scalar(select(Client).where(Client.portal_slug == slug))
     return client.name if client else "Support"
 
@@ -182,23 +196,83 @@ def portal_agents(slug: str, client: Client = Depends(_portal_client), db: Sessi
 
 
 @router.get("/{slug}/conversations", response_model=list[ConversationOut])
-def portal_conversations(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+def portal_conversations(
+    slug: str,
+    mode: str | None = None,
+    search: str | None = None,
+    unread: bool = False,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    # Same shape as the agency inbox: the latest message and the unread count
+    # are resolved in SQL, so the list never loads message histories, and the
+    # filters run server-side so paging stays consistent with what is shown.
     ranked = select(
         Message.conversation_id.label("cid"),
         Message.content.label("content"),
         func.row_number().over(partition_by=Message.conversation_id, order_by=Message.created_at.desc()).label("rn"),
     ).subquery()
     last = select(ranked).where(ranked.c.rn == 1).subquery()
-    rows = db.execute(
-        select(Conversation, last.c.content)
+    unread_counts = (
+        select(Message.conversation_id.label("cid"), func.count(Message.id).label("n"))
+        .join(Conversation, Conversation.id == Message.conversation_id)
+        .where(
+            Message.sender_type == "visitor",
+            or_(Conversation.operator_read_at.is_(None), Message.created_at > Conversation.operator_read_at),
+        )
+        .group_by(Message.conversation_id)
+    ).subquery()
+    unread_count = func.coalesce(unread_counts.c.n, 0)
+
+    query = (
+        select(Conversation, last.c.content, unread_count.label("unread_count"))
         .outerjoin(last, last.c.cid == Conversation.id)
+        .outerjoin(unread_counts, unread_counts.c.cid == Conversation.id)
         .where(Conversation.client_id == client.id)
-        .order_by(Conversation.updated_at.desc())
-    ).all()
+    )
+    if mode in ("ai", "human"):
+        query = query.where(Conversation.mode == mode)
+    if unread:
+        query = query.where(unread_count > 0)
+    if search and search.strip():
+        term = f"%{search.strip().lower()}%"
+        query = query.where(
+            or_(
+                func.lower(Conversation.title).like(term),
+                func.lower(func.coalesce(Conversation.contact_name, "")).like(term),
+                func.lower(func.coalesce(last.c.content, "")).like(term),
+            )
+        )
+    rows = db.execute(query.order_by(Conversation.updated_at.desc()).limit(limit).offset(offset)).all()
     return [
-        ConversationOut.model_validate(conv).model_copy(update={"preview": (content or "")[:140].strip()})
-        for conv, content in rows
+        ConversationOut.model_validate(conv).model_copy(
+            update={
+                "preview": (content or "")[:140].strip(),
+                "unread": int(row_unread_count) > 0,
+                "unread_count": int(row_unread_count),
+            }
+        )
+        for conv, content, row_unread_count in rows
     ]
+
+
+@router.post("/{slug}/conversations/{conversation_id}/read", status_code=status.HTTP_204_NO_CONTENT)
+def portal_mark_read(
+    slug: str,
+    conversation_id: uuid.UUID,
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    conversation = db.scalar(
+        select(Conversation).where(Conversation.id == conversation_id, Conversation.client_id == client.id)
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    conversation.operator_read_at = now_utc()
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{slug}/conversations/{conversation_id}", response_model=ConversationDetail)

@@ -564,6 +564,8 @@ textarea { line-height: 1.55; }
 .portal-inbox > aside { overflow: auto; border-right: 1px solid var(--line); background: #fafbfc; }
 .portal-inbox > aside button { width: 100%; padding: 14px; display: flex; gap: 10px; text-align: left; border: 0; border-bottom: 1px solid #edf0f3; background: transparent; }
 .portal-inbox > aside button.active { background: #f0efff; }
+.portal-inbox > aside button.unread strong { font-weight: 700; }
+.portal-inbox > aside button.unread .portal-inbox-preview { color: var(--ink); }
 .portal-inbox > aside button > span:last-child { min-width: 0; display: flex; flex-direction: column; }
 .portal-inbox > aside strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .portal-inbox > aside small { color: #7b8391; }

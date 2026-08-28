@@ -303,6 +303,8 @@ class ConversationOut(ORMModel):
     created_at: datetime
     updated_at: datetime
     preview: str = ""
+    unread: bool = False
+    unread_count: int = 0
 
 
 class SourceOut(BaseModel):
