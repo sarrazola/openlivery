@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # messages keep arriving the timer restarts, and the whole burst is answered
     # with a single reply. 0 restores the immediate one-reply-per-message flow.
     reply_debounce_seconds: float = 8.0
+    # Conversations the AI is answering resolve themselves after this many
+    # hours without a message from either side. Conversations a person took
+    # over are never closed automatically: only that person decides. 0 disables.
+    auto_resolve_after_hours: float = 24.0
 
     # Push notifications for the mobile app. "none" (the default) sends nothing
     # and needs no account with anyone; "webhook" POSTs each event to

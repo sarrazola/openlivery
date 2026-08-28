@@ -9,7 +9,9 @@ activity trail, so a person reading the thread sees both.
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from datetime import datetime, timedelta
+
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..models import Conversation, Message, now_utc
@@ -24,17 +26,20 @@ _ACTIVITY_TEXT = {
     "reopened_by_contact": "Reopened: the contact wrote again",
     "taken_over": "{actor} took over the conversation",
     "returned_to_ai": "{actor} returned the conversation to the AI",
+    "auto_resolved": "Resolved automatically after {hours} h without activity",
 }
 
 
-def record_activity(db: Session, conversation: Conversation, event: str, *, actor: str | None = None) -> Message:
+def record_activity(
+    db: Session, conversation: Conversation, event: str, *, actor: str | None = None, details: dict | None = None
+) -> Message:
     """Append an activity event to the thread. Never sent out, never fed to the model."""
-    text = _ACTIVITY_TEXT[event].format(actor=actor or "Someone")
+    text = _ACTIVITY_TEXT[event].format(actor=actor or "Someone", **(details or {}))
     message = Message(
         conversation_id=conversation.id,
         role="system",
         kind="activity",
-        activity={"event": event},
+        activity={"event": event, **(details or {})},
         content=text,
         sender_type="system",
         sender_name=actor,
@@ -94,6 +99,43 @@ def note_reply(conversation: Conversation) -> None:
     if conversation.first_reply_at is None:
         conversation.first_reply_at = now
     conversation.waiting_since = None
+
+
+def resolve_idle_ai_conversations(db: Session, *, hours: float, now: datetime | None = None) -> int:
+    """Resolve open AI-handled conversations idle for ``hours``.
+
+    Idle means no exchanged message from either side, so a case the AI
+    answered and the contact never followed up on leaves the open list on
+    its own. Human-held conversations are left alone on purpose: the person
+    who took them over is the only one who closes them.
+    """
+    if hours <= 0:
+        return 0
+    cutoff = (now or now_utc()) - timedelta(hours=hours)
+    last_message_at = (
+        select(func.max(Message.created_at))
+        .where(Message.conversation_id == Conversation.id, Message.kind == "message")
+        .correlate(Conversation)
+        .scalar_subquery()
+    )
+    idle = db.scalars(
+        select(Conversation).where(
+            Conversation.status == "open",
+            Conversation.mode == "ai",
+            func.coalesce(last_message_at, Conversation.created_at) < cutoff,
+        )
+    ).all()
+    shown = int(hours) if float(hours).is_integer() else hours
+    for conversation in idle:
+        stamp = now_utc()
+        conversation.status = "resolved"
+        conversation.status_changed_at = stamp
+        conversation.resolved_at = stamp
+        conversation.waiting_since = None
+        record_activity(db, conversation, "auto_resolved", details={"hours": shown})
+    if idle:
+        db.commit()
+    return len(idle)
 
 
 def exchanged_only(query):

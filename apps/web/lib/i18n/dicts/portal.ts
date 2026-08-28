@@ -71,6 +71,7 @@ const en = {
       reopened_by_contact: "Reopened: the contact wrote again",
       taken_over: "{actor} took over the conversation",
       returned_to_ai: "{actor} returned the conversation to the AI",
+      auto_resolved: "Resolved automatically after {hours} h without activity",
       someone: "Someone",
     },
     empty: {
@@ -153,6 +154,7 @@ const es: typeof en = {
       reopened_by_contact: "Reabierta: el contacto volvió a escribir",
       taken_over: "{actor} tomó el control de la conversación",
       returned_to_ai: "{actor} devolvió la conversación a la IA",
+      auto_resolved: "Resuelta automáticamente tras {hours} h sin actividad",
       someone: "Alguien",
     },
     empty: {

@@ -164,6 +164,7 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
       case "reopened_by_contact": return t("portal.inbox.activity.reopened_by_contact");
       case "taken_over": return t("portal.inbox.activity.taken_over", { actor });
       case "returned_to_ai": return t("portal.inbox.activity.returned_to_ai", { actor });
+      case "auto_resolved": return t("portal.inbox.activity.auto_resolved", { hours: String(message.activity?.hours ?? "") });
       default: return message.content;
     }
   };

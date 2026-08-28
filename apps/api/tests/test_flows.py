@@ -746,6 +746,43 @@ def test_contact_message_reopens_a_resolved_conversation(authenticated_client: T
     assert not any("resolved" in m["content"] for m in sent if m["role"] != "system")
 
 
+def test_idle_ai_conversations_resolve_themselves_but_human_ones_wait(authenticated_client: TestClient):
+    from datetime import timedelta
+
+    from app.models import Conversation, now_utc
+    from app.services.conversation_state import resolve_idle_ai_conversations
+
+    client = authenticated_client
+    customer = client.post(
+        "/api/clients",
+        json={"name": "Idle Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+    ).json()
+    agent = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "name": "Host", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+    ).json()
+    ai_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    human_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    fresh_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    client.patch(f"/api/conversations/{human_id}/mode", json={"mode": "human"})
+
+    two_days_ago = now_utc() - timedelta(days=2)
+    with SessionLocal() as db:
+        for cid in (ai_id, human_id):
+            db.add(Message(conversation_id=uuid.UUID(cid), role="user", content="Hola", sender_type="visitor", created_at=two_days_ago))
+            db.get(Conversation, uuid.UUID(cid)).created_at = two_days_ago
+        db.add(Message(conversation_id=uuid.UUID(fresh_id), role="user", content="Hola", sender_type="visitor"))
+        db.commit()
+        assert resolve_idle_ai_conversations(db, hours=24) == 1
+        assert resolve_idle_ai_conversations(db, hours=24) == 0
+
+    idle = client.get(f"/api/conversations/{ai_id}").json()
+    assert idle["status"] == "resolved"
+    assert idle["messages"][-1]["activity"] == {"event": "auto_resolved", "hours": 24}
+    assert client.get(f"/api/conversations/{human_id}").json()["status"] == "open"
+    assert client.get(f"/api/conversations/{fresh_id}").json()["status"] == "open"
+
+
 def test_provider_test_returns_models(authenticated_client: TestClient, monkeypatch):
     authenticated_client.put("/api/providers/openai", json={"api_key": "secret"})
     fake = AsyncMock(return_value={"ok": True, "message": "Key verified. 2 models available.", "models": ["model-a", "model-b"]})
