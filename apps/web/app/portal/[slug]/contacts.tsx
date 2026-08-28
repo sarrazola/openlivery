@@ -107,7 +107,7 @@ export function ContactsView({ slug, openConversation }: { slug: string; openCon
             </div>
             <div className="thread-actions">
               <button className="button small" onClick={() => setEditing("edit")}><Pencil size={15} /> {t("portal.contacts.edit")}</button>
-              <button className="button small danger" onClick={remove} disabled={busy}><Trash2 size={15} /> {t("portal.contacts.delete")}</button>
+              <button className="icon-button danger" onClick={remove} disabled={busy} title={t("portal.contacts.delete")} aria-label={t("portal.contacts.delete")}><Trash2 size={16} /></button>
             </div>
           </header>
           {error && <Alert>{error}</Alert>}
