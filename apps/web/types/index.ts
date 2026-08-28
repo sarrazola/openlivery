@@ -155,6 +155,7 @@ export type Conversation = {
   channel: string;
   external_chat_id: string | null;
   contact_name: string | null;
+  contact_id?: string | null;
   created_at: string;
   updated_at: string;
   preview?: string;
@@ -197,6 +198,19 @@ export type WhatsAppCloudChannel = {
   last_connected_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type Contact = {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+  conversation_count: number;
+  open_count: number;
+  last_activity_at: string | null;
 };
 
 export type PortalPublic = {

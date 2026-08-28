@@ -2,7 +2,8 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { BadgeCheck, Bot, Building2, CheckCircle2, FlaskConical, Globe, Images, Inbox, LoaderCircle, LogOut, MessageCircle, MessageSquareText, RotateCcw, Search, Send, ShieldCheck, UserRound } from "lucide-react";
+import { BadgeCheck, Bot, Building2, CheckCircle2, Contact as ContactIcon, FlaskConical, Globe, Images, Inbox, LoaderCircle, LogOut, MessageCircle, MessageSquareText, RotateCcw, Search, Send, ShieldCheck, UserRound } from "lucide-react";
+import { ContactsView } from "./contacts";
 import { AttachButton, MessageAttachments, PendingAttachment, RecordButton, useFileDrop, type GalleryImage } from "@/components/attachments";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { MediaPanel } from "@/components/media-panel";
@@ -47,6 +48,16 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
   const [tab, setTab] = useState<"all" | "unread" | "human" | "ai">("all");
   const [status, setStatus] = useState<"open" | "resolved">("open");
   const [summary, setSummary] = useState<InboxSummary | null>(null);
+  const [view, setView] = useState<"inbox" | "contacts">("inbox");
+  async function openFromContact(conversation: Conversation) {
+    // Fetch first, then switch everything in one render: the selection is in
+    // place before the list reloads for the conversation's inbox.
+    const detail = await api<Conversation>(`/portal/${slug}/conversations/${conversation.id}`);
+    setSelected(detail);
+    setStatus(conversation.status === "resolved" ? "resolved" : "open");
+    setTab("all");
+    setView("inbox");
+  }
   function switchStatus(next: "open" | "resolved") {
     if (next === status) return;
     setStatus(next); setTab("all");
@@ -203,7 +214,7 @@ function PortalInbox({ slug, portal, logout }: { slug: string; portal: PortalPub
     ),
     [selected, attachmentUrl],
   );
-  return <main className="portal-app" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><aside className="portal-nav"><div className="portal-brand">{portal.client_logo_url || portal.agency_logo_url ? <img src={`${portal.client_logo_url || portal.agency_logo_url}`} alt="Logo" /> : <span>{portal.client_name.slice(0, 1)}</span>}<strong>{portal.client_name}</strong></div><nav><a className="active"><Inbox size={18} /> {t("portal.inbox.nav.inbox")}</a><a className="disabled"><Bot size={18} /> {t("portal.inbox.nav.agents")}</a></nav><LanguageSwitcher /><button onClick={logout}><LogOut size={17} /> {t("portal.inbox.nav.logout")}</button></aside><section className="portal-main"><header><div><small>{t("portal.inbox.header.eyebrow")}</small><h1>{portal.portal_title}</h1></div><span>{t("portal.inbox.header.conversationsCount", { count: items.length })}</span></header>{items.length || query || tab !== "all" || status !== "open" ? <div className="portal-inbox"><aside onScroll={onListScroll}>
+  return <main className="portal-app" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><aside className="portal-nav"><div className="portal-brand">{portal.client_logo_url || portal.agency_logo_url ? <img src={`${portal.client_logo_url || portal.agency_logo_url}`} alt="Logo" /> : <span>{portal.client_name.slice(0, 1)}</span>}<strong>{portal.client_name}</strong></div><nav><a className={view === "inbox" ? "active" : ""} onClick={() => setView("inbox")}><Inbox size={18} /> {t("portal.inbox.nav.inbox")}{summary && summary.unread > 0 && view !== "inbox" && <em className="nav-count">{summary.unread}</em>}</a><a className={view === "contacts" ? "active" : ""} onClick={() => setView("contacts")}><ContactIcon size={18} /> {t("portal.inbox.nav.contacts")}</a><a className="disabled"><Bot size={18} /> {t("portal.inbox.nav.agents")}</a></nav><LanguageSwitcher /><button onClick={logout}><LogOut size={17} /> {t("portal.inbox.nav.logout")}</button></aside><section className="portal-main"><header><div><small>{t("portal.inbox.header.eyebrow")}</small><h1>{view === "contacts" ? t("portal.inbox.nav.contacts") : portal.portal_title}</h1></div>{view === "inbox" && <span>{t("portal.inbox.header.conversationsCount", { count: items.length })}</span>}</header>{view === "contacts" ? <ContactsView slug={slug} openConversation={openFromContact} /> : items.length || query || tab !== "all" || status !== "open" ? <div className="portal-inbox"><aside onScroll={onListScroll}>
       <div className="inbox-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("inbox.searchPlaceholder")} /></div>
       <div className="segmented" role="tablist" aria-label={t("portal.inbox.status.open") + " / " + t("portal.inbox.status.resolved")}>
         <button role="tab" aria-selected={status === "open"} className={status === "open" ? "active" : ""} onClick={() => switchStatus("open")}><Inbox size={14} /> {t("portal.inbox.status.open")}</button>

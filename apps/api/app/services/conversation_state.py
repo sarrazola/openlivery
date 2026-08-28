@@ -77,6 +77,8 @@ def set_mode(db: Session, conversation: Conversation, mode: str, *, actor: str |
     if conversation.mode == mode:
         return False
     conversation.mode = mode
+    if mode == "human":
+        conversation.taken_over_at = now_utc()
     record_activity(db, conversation, "taken_over" if mode == "human" else "returned_to_ai", actor=actor)
     return True
 

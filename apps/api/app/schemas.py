@@ -300,11 +300,13 @@ class ConversationOut(ORMModel):
     channel: str
     external_chat_id: str | None = None
     contact_name: str | None = None
+    contact_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
     status: str = "open"
     resolved_at: datetime | None = None
     first_reply_at: datetime | None = None
+    taken_over_at: datetime | None = None
     waiting_since: datetime | None = None
     preview: str = ""
     unread: bool = False
@@ -371,6 +373,33 @@ class ConversationModeUpdate(BaseModel):
 
 class ConversationStatusUpdate(BaseModel):
     status: str = Field(pattern=r"^(open|resolved)$")
+
+
+class ContactCreate(BaseModel):
+    name: str = Field(default="", max_length=180)
+    phone: str = Field(min_length=7, max_length=40)
+    email: EmailStr | None = None
+    notes: str = Field(default="", max_length=5000)
+
+
+class ContactUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=180)
+    phone: str | None = Field(default=None, min_length=7, max_length=40)
+    email: EmailStr | None = None
+    notes: str | None = Field(default=None, max_length=5000)
+
+
+class ContactOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    phone: str | None = None
+    email: str | None = None
+    notes: str = ""
+    created_at: datetime
+    updated_at: datetime
+    conversation_count: int = 0
+    open_count: int = 0
+    last_activity_at: datetime | None = None
 
 
 class PortalInboxSummary(BaseModel):

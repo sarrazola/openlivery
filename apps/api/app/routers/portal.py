@@ -6,10 +6,13 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import Agency, Agent, Client, Conversation, Message, PortalUser, now_utc
+from ..models import Agency, Agent, Client, Contact, Conversation, Message, PortalUser, now_utc
 from ..ratelimit import login_rate_limit, public_asset_rate_limit
 from ..schemas import (
     AgentSummary,
+    ContactCreate,
+    ContactOut,
+    ContactUpdate,
     ConversationDetail,
     ConversationModeUpdate,
     ConversationStatusUpdate,
@@ -21,6 +24,7 @@ from ..schemas import (
     SendMessageRequest,
 )
 from ..security import create_portal_token, decode_portal_token, verify_password
+from ..services.contacts import display_name, normalize_phone, rename_conversations
 from ..services.conversation_state import note_reply, set_mode, set_status
 from ..services.attachments import attachment_response, conversation_attachment, logo_response
 from ..services.operator_media import store_operator_media_reply
@@ -291,6 +295,176 @@ def portal_mark_read(
     conversation.operator_read_at = now_utc()
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _contact_stats():
+    per_contact = (
+        select(
+            Conversation.contact_id.label("cid"),
+            func.count(Conversation.id).label("total"),
+            func.count(Conversation.id).filter(Conversation.status == "open").label("open"),
+            func.max(Conversation.updated_at).label("last_activity_at"),
+        )
+        .where(Conversation.contact_id.is_not(None))
+        .group_by(Conversation.contact_id)
+        .subquery()
+    )
+    return per_contact
+
+
+def _contact_out(contact: Contact, stats) -> ContactOut:
+    # Built by hand: the ORM object's ``conversations`` is the relationship,
+    # not the count the portal wants.
+    return ContactOut(
+        id=contact.id,
+        name=contact.name,
+        phone=contact.phone,
+        email=contact.email,
+        notes=contact.notes,
+        created_at=contact.created_at,
+        updated_at=contact.updated_at,
+        conversation_count=int((stats.total if stats is not None else None) or 0),
+        open_count=int((stats.open if stats is not None else None) or 0),
+        last_activity_at=stats.last_activity_at if stats is not None else None,
+    )
+
+
+def _portal_contact(db: Session, client: Client, contact_id: uuid.UUID) -> Contact:
+    contact = db.scalar(select(Contact).where(Contact.id == contact_id, Contact.client_id == client.id))
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return contact
+
+
+def _assert_phone_free(db: Session, client: Client, phone: str, *, except_id: uuid.UUID | None = None) -> None:
+    query = select(Contact.id).where(Contact.client_id == client.id, Contact.phone == phone)
+    if except_id:
+        query = query.where(Contact.id != except_id)
+    if db.scalar(query):
+        raise HTTPException(status_code=409, detail="A contact with this phone number already exists")
+
+
+@router.get("/{slug}/contacts", response_model=list[ContactOut])
+def portal_contacts(
+    slug: str,
+    search: str | None = None,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    stats = _contact_stats()
+    query = select(Contact, stats).outerjoin(stats, stats.c.cid == Contact.id).where(Contact.client_id == client.id)
+    if search and search.strip():
+        term = f"%{search.strip().lower()}%"
+        query = query.where(
+            or_(
+                func.lower(Contact.name).like(term),
+                func.coalesce(Contact.phone, "").like(term),
+                func.lower(func.coalesce(Contact.email, "")).like(term),
+            )
+        )
+    rows = db.execute(
+        query.order_by(func.coalesce(stats.c.last_activity_at, Contact.updated_at).desc()).limit(limit).offset(offset)
+    ).all()
+    return [_contact_out(row[0], row) for row in rows]
+
+
+@router.post("/{slug}/contacts", response_model=ContactOut, status_code=status.HTTP_201_CREATED)
+def portal_create_contact(
+    slug: str, payload: ContactCreate, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+):
+    phone = normalize_phone(payload.phone)
+    if not phone:
+        raise HTTPException(status_code=422, detail="Enter a phone number with its country code")
+    _assert_phone_free(db, client, phone)
+    contact = Contact(
+        client_id=client.id,
+        name=payload.name.strip(),
+        phone=phone,
+        email=(payload.email or None),
+        notes=payload.notes.strip(),
+    )
+    db.add(contact)
+    db.commit()
+    db.refresh(contact)
+    return _contact_out(contact, None)
+
+
+@router.get("/{slug}/contacts/{contact_id}", response_model=ContactOut)
+def portal_contact(slug: str, contact_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+    contact = _portal_contact(db, client, contact_id)
+    stats = _contact_stats()
+    row = db.execute(select(stats).where(stats.c.cid == contact.id)).first()
+    return _contact_out(contact, row)
+
+
+@router.patch("/{slug}/contacts/{contact_id}", response_model=ContactOut)
+def portal_update_contact(
+    slug: str,
+    contact_id: uuid.UUID,
+    payload: ContactUpdate,
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    contact = _portal_contact(db, client, contact_id)
+    if payload.phone is not None:
+        phone = normalize_phone(payload.phone)
+        if not phone:
+            raise HTTPException(status_code=422, detail="Enter a phone number with its country code")
+        _assert_phone_free(db, client, phone, except_id=contact.id)
+        contact.phone = phone
+    if payload.name is not None:
+        contact.name = payload.name.strip()
+    if "email" in payload.model_fields_set:
+        contact.email = payload.email or None
+    if payload.notes is not None:
+        contact.notes = payload.notes.strip()
+    contact.updated_at = now_utc()
+    rename_conversations(db, contact)
+    db.commit()
+    db.refresh(contact)
+    stats = _contact_stats()
+    row = db.execute(select(stats).where(stats.c.cid == contact.id)).first()
+    return _contact_out(contact, row)
+
+
+@router.delete("/{slug}/contacts/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
+def portal_delete_contact(
+    slug: str, contact_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+):
+    # Conversations stay; they just lose the link (ON DELETE SET NULL).
+    contact = _portal_contact(db, client, contact_id)
+    db.delete(contact)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{slug}/contacts/{contact_id}/conversations", response_model=list[ConversationOut])
+def portal_contact_conversations(
+    slug: str, contact_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+):
+    contact = _portal_contact(db, client, contact_id)
+    ranked = (
+        select(
+            Message.conversation_id.label("cid"),
+            Message.content.label("content"),
+            func.row_number().over(partition_by=Message.conversation_id, order_by=Message.created_at.desc()).label("rn"),
+        )
+        .where(Message.kind == "message")
+        .subquery()
+    )
+    last = select(ranked).where(ranked.c.rn == 1).subquery()
+    rows = db.execute(
+        select(Conversation, last.c.content)
+        .outerjoin(last, last.c.cid == Conversation.id)
+        .where(Conversation.contact_id == contact.id)
+        .order_by(Conversation.created_at.desc())
+    ).all()
+    return [
+        ConversationOut.model_validate(conv).model_copy(update={"preview": (content or "")[:140].strip()})
+        for conv, content in rows
+    ]
 
 
 @router.get("/{slug}/conversations/summary", response_model=PortalInboxSummary)

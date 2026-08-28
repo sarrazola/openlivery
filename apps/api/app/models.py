@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -318,13 +319,40 @@ class UsageRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
 
 
+class Contact(Base):
+    """A person the business talks to, one per client and phone number.
+
+    Created the first time a number writes in, or by hand from the portal.
+    A contact can have many conversations over time, one per case.
+    """
+
+    __tablename__ = "contacts"
+    __table_args__ = (
+        Index("uq_contacts_client_phone", "client_id", "phone", unique=True, postgresql_where=text("phone IS NOT NULL")),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(180), default="")
+    # Digits only, as WhatsApp reports it. None for people without a number.
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+    conversations: Mapped[list["Conversation"]] = relationship(back_populates="contact")
+
+
 class Conversation(Base):
+    """One case with a contact: it opens with their first message and ends
+    when resolved. The next message after that opens a new conversation, so
+    a chat id may appear here many times."""
+
     __tablename__ = "conversations"
     __table_args__ = (
-        UniqueConstraint("whatsapp_channel_id", "external_chat_id", name="uq_conversations_whatsapp_chat"),
-        UniqueConstraint(
-            "whatsapp_cloud_channel_id", "external_chat_id", name="uq_conversations_whatsapp_cloud_chat"
-        ),
+        Index("ix_conversations_whatsapp_chat", "whatsapp_channel_id", "external_chat_id"),
+        Index("ix_conversations_whatsapp_cloud_chat", "whatsapp_cloud_channel_id", "external_chat_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
@@ -342,6 +370,9 @@ class Conversation(Base):
     )
     external_chat_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     operator_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Where the case stands, independent of who answers (``mode``): open |
     # resolved. A contact writing to a resolved conversation reopens it.
@@ -350,6 +381,8 @@ class Conversation(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # First reply of any kind (AI or person) after the conversation opened.
     first_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When a person last took the conversation over from the AI.
+    taken_over_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Set by an inbound message, cleared by the next reply: how long the
     # contact has been waiting for an answer.
     waiting_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -357,6 +390,7 @@ class Conversation(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
     agent: Mapped[Agent] = relationship(back_populates="conversations")
+    contact: Mapped[Contact | None] = relationship(back_populates="conversations")
     whatsapp_channel: Mapped[WhatsAppChannel | None] = relationship(back_populates="conversations")
     whatsapp_cloud_channel: Mapped[WhatsAppCloudChannel | None] = relationship(back_populates="conversations")
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")

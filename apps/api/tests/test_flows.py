@@ -705,7 +705,7 @@ def test_portal_resolves_reopens_and_narrates_the_thread(authenticated_client: T
     assert detail["first_reply_at"] and detail["waiting_since"] is None
 
 
-def test_contact_message_reopens_a_resolved_conversation(authenticated_client: TestClient, monkeypatch):
+def test_activity_never_reaches_the_model_and_a_resolved_case_stays_closed(authenticated_client: TestClient, monkeypatch):
     client = authenticated_client
     customer = client.post(
         "/api/clients",
@@ -718,7 +718,8 @@ def test_contact_message_reopens_a_resolved_conversation(authenticated_client: T
     ).json()
     channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
     headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
-    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Hello!", input_tokens=1, output_tokens=1)))
+    completion = AsyncMock(return_value=ai_service.Completion(text="Hello!", input_tokens=1, output_tokens=1))
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", completion)
     monkeypatch.setattr(whatsapp_inbound_service.get_settings(), "reply_debounce_seconds", 0)
 
     def inbound(message_id: str, text: str):
@@ -734,16 +735,24 @@ def test_contact_message_reopens_a_resolved_conversation(authenticated_client: T
     detail = client.get(f"/api/conversations/{conversation_id}").json()
     assert detail["first_reply_at"] and detail["waiting_since"] is None
 
-    client.patch(f"/api/conversations/{conversation_id}/status", json={"status": "resolved"})
+    # Taking over and handing back leave activity lines in the thread...
+    client.patch(f"/api/conversations/{conversation_id}/mode", json={"mode": "human"})
+    client.patch(f"/api/conversations/{conversation_id}/mode", json={"mode": "ai"})
     inbound("m2", "Una cosa más")
     detail = client.get(f"/api/conversations/{conversation_id}").json()
-    assert detail["status"] == "open"
     events = [m["activity"]["event"] for m in detail["messages"] if m["kind"] == "activity"]
-    assert events == ["resolved", "reopened_by_contact"]
-    # The model only ever sees what was exchanged with the contact.
-    sent = whatsapp_inbound_service.run_completion.call_args.args[4]
-    assert all(m["role"] in ("system", "user", "assistant") for m in sent)
-    assert not any("resolved" in m["content"] for m in sent if m["role"] != "system")
+    assert events == ["taken_over", "returned_to_ai"]
+    # ...that the model never sees: it only gets what was exchanged.
+    sent = completion.call_args.args[4]
+    assert [m["role"] for m in sent if m["role"] != "system"] == ["user", "assistant", "user"]
+    assert not any("took over" in m["content"] for m in sent)
+
+    # Once resolved, a case stays resolved; the next message opens a new one.
+    client.patch(f"/api/conversations/{conversation_id}/status", json={"status": "resolved"})
+    third = inbound("m3", "Otra cosa").json()
+    assert third["conversation_id"] != conversation_id
+    assert client.get(f"/api/conversations/{conversation_id}").json()["status"] == "resolved"
+    assert client.get(f"/api/conversations/{third['conversation_id']}").json()["status"] == "open"
 
 
 def test_idle_ai_conversations_resolve_themselves_but_human_ones_wait(authenticated_client: TestClient):
