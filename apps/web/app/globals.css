@@ -1245,7 +1245,8 @@ button.composer-attach.record.recording svg { animation: record-pulse 1.2s ease-
 .portal-inbox > aside .inbox-search input { border: 0; background: transparent; box-shadow: none; padding: 0; }
 .portal-inbox > aside .inbox-tabs { gap: 6px; padding: 0 12px 14px; }
 .portal-inbox > aside .inbox-tabs { flex-wrap: nowrap; gap: 3px; padding: 0 10px 12px; }
-.portal-inbox > aside .inbox-tabs button { flex: 1 1 0; min-width: 0; width: auto; padding: 5px 4px; gap: 4px; justify-content: center; text-align: center; border-bottom: 0; border-radius: 20px; white-space: nowrap; font-size: 11.5px; letter-spacing: -.01em; }
+.portal-inbox > aside .inbox-tabs button { flex: 1 1 0; min-width: 0; width: auto; min-height: 28px; padding: 0 4px; gap: 4px; justify-content: center; text-align: center; border-bottom: 0; border-radius: 8px; white-space: nowrap; font-size: 11.5px; letter-spacing: -.01em; transition: background .12s, color .12s; }
+.portal-inbox > aside .inbox-tabs button:hover:not(.active) { background: #e9edf2; color: var(--ink); }
 .portal-inbox > aside .inbox-tabs button em { min-width: 15px; height: 15px; padding: 0 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; line-height: 1; }
 .portal-inbox > aside .inbox-tabs button.active { color: white; background: var(--ink); }
 .portal-channel-line { display: inline-flex; align-items: center; gap: 5px; }
