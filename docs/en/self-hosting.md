@@ -1,7 +1,9 @@
 # Self-hosting OpenLivery
 
+> Leer en español: [self-hosting.md](../es/self-hosting.md)
+
 Run and operate your own OpenLivery instance. For a feature overview see the
-[README](../README.md).
+[README](../../README.md).
 
 OpenLivery is orchestrated by Docker Compose, with a `Makefile` wrapping the
 common commands. A lightweight **gateway** (Caddy) is the single public entry
@@ -37,6 +39,7 @@ front of it (see [Go to production](#go-to-production-https)). One instance =
 - [Go to production (HTTPS)](#go-to-production-https)
 - [Environment variables](#environment-variables)
 - [Manage your install](#manage-your-install)
+- [Persistent data](#persistent-data)
 - [Backups](#backups)
 - [Upgrade](#upgrade)
 - [Uninstall](#uninstall)
@@ -44,6 +47,7 @@ front of it (see [Go to production](#go-to-production-https)). One instance =
 - [Connect WhatsApp](#connect-whatsapp)
 - [Tests](#tests)
 - [WhatsApp / Baileys caveats](#whatsapp--baileys-caveats)
+- [Troubleshooting](#troubleshooting)
 
 ## Before you begin
 
@@ -245,6 +249,19 @@ make down                 # stop and remove containers (keeps data volumes)
 
 Run `make help` for the full list.
 
+## Persistent data
+
+All state lives in named Docker volumes, so `make down` and upgrades keep it:
+
+| Volume | Contents |
+| --- | --- |
+| `postgres_data` | The PostgreSQL database — agencies, agents, conversations, encrypted provider keys and encrypted WhatsApp session state. |
+| `backend_storage` | Uploaded files (e.g. knowledge-base PDFs). |
+
+The `ENCRYPTION_KEY` decrypts the provider API keys and WhatsApp sessions.
+**Never change it** once secrets are stored, or they become unrecoverable —
+treat it as part of your backup.
+
 ## Backups
 
 Export PostgreSQL without stopping the app:
@@ -365,3 +382,17 @@ Cloud API, and this project is not affiliated with or endorsed by WhatsApp/Meta.
   groups, statuses, newsletters, documents, locations, reactions and calls.
 - One WhatsApp account belongs to one client; another client needs a different
   number. `apps/whatsapp/package.json` pins an exact Baileys version.
+
+## Troubleshooting
+
+- **Ports already in use.** Override them inline:
+  `API_PORT=8001 WEB_PORT=3001 DB_PORT=5433 make up`.
+- **A service is unhealthy.** Check its logs with `make logs SERVICE=api` (or
+  `web`, `whatsapp`, `db`) and `make ps` for status.
+- **Session does not persist, or login loops behind HTTPS.** Make sure
+  `COOKIE_SECURE=true` is set and you are reaching the app over TLS.
+- **Provider keys or the WhatsApp session stopped decrypting.** The
+  `ENCRYPTION_KEY` changed — restore the original value from your backup.
+- **WhatsApp asks for a new QR after a restart.** Normal only if WhatsApp ended
+  the session, the device was unlinked or `ENCRYPTION_KEY` changed; otherwise
+  the bridge reloads enabled sessions from PostgreSQL automatically.

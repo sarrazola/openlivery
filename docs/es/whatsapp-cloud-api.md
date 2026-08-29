@@ -1,6 +1,6 @@
 # Conectar la API de WhatsApp Business Cloud
 
-> Read in English: [whatsapp-cloud-api.md](whatsapp-cloud-api.md)
+> Read in English: [whatsapp-cloud-api.md](../en/whatsapp-cloud-api.md)
 
 Esta guía explica cómo conectar el número de WhatsApp de un cliente a
 OpenLivery usando la **API oficial de WhatsApp Business Cloud** (alojada por

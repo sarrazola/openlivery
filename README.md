@@ -9,9 +9,9 @@
 </p>
 
 <p align="center">
-  <a href="https://openlivery.com/docs"><strong>Documentation</strong></a> ·
-  <a href="https://openlivery.com/docs/getting-started">Quick start</a> ·
-  <a href="https://openlivery.com/docs/self-hosting">Self-hosting</a> ·
+  <a href="docs/"><strong>Documentation</strong></a> ·
+  <a href="docs/en/getting-started.md">Quick start</a> ·
+  <a href="docs/en/self-hosting.md">Self-hosting</a> ·
   <a href="https://github.com/sarrazola/openlivery/discussions">Discussions</a>
 </p>
 
@@ -31,45 +31,45 @@ keys and self-host the whole thing with one command.
 
 ## Documentation
 
-Full documentation lives at **[openlivery.com/docs](https://openlivery.com/docs)**.
+Full documentation lives in **[docs/](docs/)**, in English and Spanish.
 
 | Guide | What it covers |
 | --- | --- |
-| [Getting started](https://openlivery.com/docs/getting-started) | Run the stack with Docker and create your first agency |
-| [Configuration](https://openlivery.com/docs/configuration) | Environment variables, secrets, ports and the gateway |
-| [Architecture](https://openlivery.com/docs/architecture) | The services, the data model and tenant isolation |
-| [Self-hosting](https://openlivery.com/docs/self-hosting) | Deploy to a server, back up, upgrade and troubleshoot |
-| [Contributing](https://openlivery.com/docs/contributing) | Run the project locally, tests and conventions |
-| [Push notifications](docs/push-notifications.md) | Optional, provider-agnostic notifications for the mobile app |
-| [WhatsApp Cloud API](docs/connections/whatsapp-cloud-api.md) | Connect a number with the official Meta API, end to end ([en español](docs/connections/whatsapp-cloud-api.es.md)) |
+| [Getting started](docs/en/getting-started.md) | Run the stack with Docker and create your first agency |
+| [Configuration](docs/en/configuration.md) | Environment variables, secrets, ports and the gateway |
+| [Architecture](docs/en/architecture.md) | The services, the data model and tenant isolation |
+| [Self-hosting](docs/en/self-hosting.md) | Deploy to a server, back up, upgrade and troubleshoot |
+| [Contributing](docs/en/contributing.md) | Run the project locally, tests and conventions |
+| [Push notifications](docs/en/push-notifications.md) | Optional, provider-agnostic notifications for the mobile app |
+| [WhatsApp Cloud API](docs/en/whatsapp-cloud-api.md) | Connect a number with the official Meta API, end to end ([en español](docs/es/whatsapp-cloud-api.md)) |
 
 ## Features
 
-**Agents** — [docs](https://openlivery.com/docs/agents)
+**Agents** — [docs](docs/en/agents.md)
 - ✅ Instructions, personality, per-client & per-agent context, timezone, and temperature / max-tokens / memory controls
 - ✅ Multimodal capabilities: **image recognition** (vision) and **audio transcription** for incoming media
 - ✅ Creation wizard with a live token counter and industry starter templates
 
-**Knowledge base** — [docs](https://openlivery.com/docs/knowledge-base)
+**Knowledge base** — [docs](docs/en/knowledge-base.md)
 - ✅ Manual context, structured **Q&A pairs** and PDF upload, with embedding-based semantic retrieval (keyword fallback)
 - ✅ Portable JSON embeddings — no database extension required
 
-**AI providers** — [docs](https://openlivery.com/docs/ai-providers)
+**AI providers** — [docs](docs/en/ai-providers.md)
 - ✅ Bring-your-own **OpenAI** (Responses API) and **Anthropic** (Messages API) keys — agency-level, encrypted, and validated when saved
 - ✅ Any OpenAI-compatible endpoint via per-connection base URL + model
 
-**Custom tools** — [docs](https://openlivery.com/docs/custom-tools)
+**Custom tools** — [docs](docs/en/custom-tools.md)
 - ✅ Per-agent **HTTP tools**: any REST endpoint with path/query/body parameters, encrypted auth headers and an SSRF guard
 - ✅ **MCP servers** (Streamable HTTP or SSE) with test-before-save connection checks and cached tool discovery
 - ✅ Tool usage recorded per reply and surfaced in the playground, including failure details
 
-**Channels** — [WhatsApp](https://openlivery.com/docs/whatsapp) · [Web widget](https://openlivery.com/docs/web-widget)
+**Channels** — [WhatsApp](docs/en/whatsapp.md) · [Web widget](docs/en/web-widget.md)
 - ✅ **WhatsApp Cloud API** (official Meta API) — bring your own Meta app credentials, signed webhooks, per-client number
 - ✅ **WhatsApp QR** through Baileys — QR link, per-client number, encrypted persistent session
 - ✅ Embeddable **web chat widget** for any website
 - 🚧 Instagram DM, Facebook Messenger *(planned)*
 
-**Operations** — [Inbox](https://openlivery.com/docs/inbox) · [Client portal](https://openlivery.com/docs/client-portal) · [Dashboard](https://openlivery.com/docs/dashboard)
+**Operations** — [Inbox](docs/en/inbox.md) · [Client portal](docs/en/client-portal.md) · [Dashboard](docs/en/dashboard.md)
 - ✅ Unified **Inbox** with server-side search, filter tabs, unread tracking, pagination and human takeover
 - ✅ Per-client **portal** with its own login and Inbox, optionally served under the client's **own custom domain** (DNS-verified, automatic HTTPS)
 - ✅ **Dashboard** with activity, top agents, token usage by model and a date-range filter
@@ -90,7 +90,7 @@ at rest. Every query is scoped by `agency_id` for tenant isolation, and public
 endpoints (sign-in and the web widget) are rate-limited per client IP. A Caddy
 gateway serves the app and API from a single origin (`/api/*` → backend).
 
-Read more in the [architecture guide](https://openlivery.com/docs/architecture).
+Read more in the [architecture guide](docs/en/architecture.md).
 
 ## Quick start
 
@@ -108,9 +108,9 @@ Ports clashing? `API_PORT=8001 WEB_PORT=3001 DB_PORT=5433 make up`.
 Prefer not to build? `make pull` runs the prebuilt images published to GHCR.
 
 The full walkthrough — first agency, provider keys, agents, knowledge and
-channels — is in the **[getting started guide](https://openlivery.com/docs/getting-started)**.
+channels — is in the **[getting started guide](docs/en/getting-started.md)**.
 Deploying to a public server (reverse proxy, TLS, backups) is covered in
-**[self-hosting](https://openlivery.com/docs/self-hosting)**.
+**[self-hosting](docs/en/self-hosting.md)**.
 
 ## Community & support
 
@@ -148,7 +148,7 @@ checklist, including why you publish it rather than us, is in
 ## Contributing
 
 Run the project locally, the test suites and the conventions are documented in
-the **[contributing guide](https://openlivery.com/docs/contributing)**. In short:
+the **[contributing guide](docs/en/contributing.md)**. In short:
 all code, identifiers, comments and docs are in English; end-user UI is localized
 (English default, Spanish) through the typed i18n system in `apps/web/lib/i18n`.
 
