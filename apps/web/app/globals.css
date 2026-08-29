@@ -622,7 +622,7 @@ textarea { line-height: 1.55; }
 .portal-composer.window-closed { align-items: center; justify-content: space-between; gap: 16px; background: #fffbf0; }
 .portal-composer.window-closed > div { display: flex; flex-direction: column; gap: 2px; }
 .portal-composer.window-closed small { color: #7a6a3a; }
-.portal-composer.window-closed .button { display: inline-flex; align-items: center; gap: 6px; }
+.portal-composer.window-closed .button { width: auto; min-height: 38px; padding: 0 16px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex: 0 0 auto; }
 .portal-templates { padding: 4px 0; }
 .portal-templates-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .portal-templates-toolbar p { margin: 0; max-width: 64ch; color: #5b6774; }
