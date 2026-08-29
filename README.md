@@ -9,7 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="docs/"><strong>Documentation</strong></a> ·
+  <a href="docs/en/"><strong>Documentation</strong></a> ·
+  <a href="docs/es/"><strong>Documentación</strong></a> ·
   <a href="docs/en/getting-started.md">Quick start</a> ·
   <a href="docs/en/self-hosting.md">Self-hosting</a> ·
   <a href="https://github.com/sarrazola/openlivery/discussions">Discussions</a>
@@ -31,7 +32,8 @@ keys and self-host the whole thing with one command.
 
 ## Documentation
 
-Full documentation lives in **[docs/](docs/)**, in English and Spanish.
+Full documentation lives in **[docs/](docs/)**. Every guide is written twice:
+**[English](docs/en/)** and **[Spanish](docs/es/)**, same filename under each.
 
 | Guide | What it covers |
 | --- | --- |
@@ -41,7 +43,7 @@ Full documentation lives in **[docs/](docs/)**, in English and Spanish.
 | [Self-hosting](docs/en/self-hosting.md) | Deploy to a server, back up, upgrade and troubleshoot |
 | [Contributing](docs/en/contributing.md) | Run the project locally, tests and conventions |
 | [Push notifications](docs/en/push-notifications.md) | Optional, provider-agnostic notifications for the mobile app |
-| [WhatsApp Cloud API](docs/en/whatsapp-cloud-api.md) | Connect a number with the official Meta API, end to end ([en español](docs/es/whatsapp-cloud-api.md)) |
+| [WhatsApp Cloud API](docs/en/whatsapp-cloud-api.md) | Connect a number with the official Meta API, end to end |
 
 ## Features
 
@@ -63,7 +65,7 @@ Full documentation lives in **[docs/](docs/)**, in English and Spanish.
 - ✅ **MCP servers** (Streamable HTTP or SSE) with test-before-save connection checks and cached tool discovery
 - ✅ Tool usage recorded per reply and surfaced in the playground, including failure details
 
-**Channels** — [WhatsApp](docs/en/whatsapp.md) · [Web widget](docs/en/web-widget.md)
+**Channels** — [WhatsApp Cloud API](docs/en/whatsapp-cloud-api.md) · [WhatsApp QR](docs/en/whatsapp.md) · [Web widget](docs/en/web-widget.md)
 - ✅ **WhatsApp Cloud API** (official Meta API) — bring your own Meta app credentials, signed webhooks, per-client number
 - ✅ **WhatsApp QR** through Baileys — QR link, per-client number, encrypted persistent session
 - ✅ Embeddable **web chat widget** for any website
