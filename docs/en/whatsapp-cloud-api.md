@@ -1,6 +1,6 @@
 # Connecting the WhatsApp Business Cloud API
 
-> Leer en español: [whatsapp-cloud-api.es.md](whatsapp-cloud-api.es.md)
+> Leer en español: [whatsapp-cloud-api.md](../es/whatsapp-cloud-api.md)
 
 This guide walks through connecting a client's WhatsApp number to OpenLivery
 using the official **WhatsApp Business Cloud API** (hosted by Meta): from

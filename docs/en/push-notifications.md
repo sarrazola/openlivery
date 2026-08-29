@@ -1,5 +1,7 @@
 # Push notifications
 
+> Leer en español: [push-notifications.md](../es/push-notifications.md)
+
 OpenLivery ships the notification *plumbing* and no notification *provider*.
 There is no account to create, no third party involved, and nothing to pay for
 in a default install: `PUSH_PROVIDER` is `none` and the server sends nothing.
@@ -23,7 +25,7 @@ The practical consequence:
   published it. This is Apple's and Google's model, not a limitation we added.
 - **You build the app yourself** under your own bundle identifier and push
   credentials — which the white-label setup already supports, see
-  [`apps/mobile/WHITELABEL.md`](../apps/mobile/WHITELABEL.md). Now push is
+  [`apps/mobile/WHITELABEL.md`](../../apps/mobile/WHITELABEL.md). Now push is
   entirely yours: you pick the provider, you hold the keys, you pay whoever you
   chose (or nobody).
 
