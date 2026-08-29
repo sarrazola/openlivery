@@ -601,7 +601,7 @@ textarea { line-height: 1.55; }
 .portal-main > header { margin-bottom: 22px; display: flex; align-items: flex-end; justify-content: space-between; }
 .portal-main > header h1 { margin: 3px 0 0; font-size: 28px; }
 .portal-main > header small, .portal-main > header span { color: #737c8b; }
-.portal-inbox { height: calc(100vh - 125px); display: grid; grid-template-columns: 320px minmax(0,1fr); overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: white; }
+.portal-inbox { height: calc(100vh - 125px); display: grid; grid-template-columns: 360px minmax(0,1fr); overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: white; }
 .portal-inbox > aside { overflow: auto; border-right: 1px solid var(--line); background: #fafbfc; }
 .portal-inbox > aside button { width: 100%; padding: 14px; display: flex; gap: 10px; text-align: left; border: 0; border-bottom: 1px solid #edf0f3; background: transparent; }
 .portal-inbox > aside button.active { background: #f0efff; }
@@ -1244,10 +1244,12 @@ button.composer-attach.record.recording svg { animation: record-pulse 1.2s ease-
 .portal-inbox > aside .inbox-search { min-height: 64px; padding: 0 14px; }
 .portal-inbox > aside .inbox-search input { border: 0; background: transparent; box-shadow: none; padding: 0; }
 .portal-inbox > aside .inbox-tabs { gap: 6px; padding: 0 12px 14px; }
-.portal-inbox > aside .inbox-tabs { flex-wrap: nowrap; gap: 3px; padding: 0 10px 12px; }
-.portal-inbox > aside .inbox-tabs button { flex: 1 1 0; min-width: 0; width: auto; min-height: 28px; padding: 0 4px; gap: 4px; justify-content: center; text-align: center; border-bottom: 0; border-radius: 8px; white-space: nowrap; font-size: 11.5px; letter-spacing: -.01em; transition: background .12s, color .12s; }
+/* Folder chips: natural widths, one row, scroll sideways if a language runs long. */
+.portal-inbox > aside .inbox-tabs { flex-wrap: nowrap; gap: 4px; padding: 0 12px 12px; overflow-x: auto; scrollbar-width: none; }
+.portal-inbox > aside .inbox-tabs::-webkit-scrollbar { display: none; }
+.portal-inbox > aside .inbox-tabs button { flex: 0 0 auto; width: auto; min-height: 28px; padding: 0 10px; gap: 5px; justify-content: center; border-bottom: 0; border-radius: 8px; white-space: nowrap; font-size: 12px; transition: background .12s, color .12s; }
 .portal-inbox > aside .inbox-tabs button:hover:not(.active) { background: #e9edf2; color: var(--ink); }
-.portal-inbox > aside .inbox-tabs button em { min-width: 15px; height: 15px; padding: 0 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; line-height: 1; }
+.portal-inbox > aside .inbox-tabs button em { min-width: 16px; height: 16px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; line-height: 1; }
 .portal-inbox > aside .inbox-tabs button.active { color: white; background: var(--ink); }
 .portal-channel-line { display: inline-flex; align-items: center; gap: 5px; }
 .portal-channel-line svg { color: #8a93a3; }
