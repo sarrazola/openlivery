@@ -113,7 +113,7 @@ const en = {
     nav: {
       inbox: "Inbox",
       contacts: "Contacts",
-      templates: "Templates",
+      templates: "WhatsApp templates",
       agents: "Agents",
       logout: "Log out",
     },
@@ -297,7 +297,7 @@ const es: typeof en = {
     nav: {
       inbox: "Inbox",
       contacts: "Contactos",
-      templates: "Plantillas",
+      templates: "Plantillas de WhatsApp",
       agents: "Agentes",
       logout: "Cerrar sesión",
     },
