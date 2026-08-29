@@ -612,6 +612,10 @@ textarea { line-height: 1.55; }
 .mini-badge.resolved { display: inline-flex; align-items: center; gap: 3px; color: #2e7d4f; background: #e3f2e9; }
 .status-toggle { min-height: 35px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 7px; border: 1px solid #a9ddce; color: #087a5e; background: #eaf8f3; font-weight: 600; cursor: pointer; }
 .status-toggle.resolved { border-color: var(--line); color: var(--ink); background: white; }
+.ticks { display: inline-flex; align-items: center; margin-left: 4px; vertical-align: -2px; opacity: .8; }
+.ticks.read { color: #34b7f1; opacity: 1; }
+.ticks.failed { color: #ffb4b4; opacity: 1; }
+.portal-messages article.mine.ai .ticks.failed { color: #b23a3a; }
 .window-pill { display: inline-flex; align-items: center; gap: 4px; margin-left: 0; padding: 2px 8px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
 .window-pill.open { color: #2e7d4f; background: #e3f2e9; }
 .window-pill.closed { color: #9a6400; background: #fbf0d9; }

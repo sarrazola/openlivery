@@ -10,6 +10,7 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { MediaPanel } from "@/components/media-panel";
 import { RichText } from "@/components/rich-text";
 import { QuotedSnippet, ReactionBadge } from "@/components/message-gestures";
+import { DeliveryTicks } from "@/components/delivery-ticks";
 import { useToast } from "@/components/toast";
 import { Alert, EmptyState } from "@/components/ui";
 import { api, ApiError, apiUrl, messageFrom } from "@/lib/api";
@@ -314,7 +315,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
               return <article key={message.id} className={`${message.role}${mine ? " mine" : ""}${mine && message.sender_type === "ai" ? " ai" : ""}${grouped ? " grouped" : ""}`}>
                 {!grouped && <small>{message.sender_name || (message.role === "assistant" ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor"))}</small>}
                 <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={stamp} />
-                {message.content ? <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}</time></p>
+                {message.content ? <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}{mine && selected.channel === "whatsapp_cloud" && <DeliveryTicks status={message.delivery_status} error={message.delivery_error} />}</time></p>
                   : !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}
                 <ReactionBadge emoji={message.reaction} />
               </article>;

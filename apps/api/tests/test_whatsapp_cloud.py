@@ -281,6 +281,34 @@ def test_reply_quote_gesture_quotes_the_visitor_message(authenticated_client: Te
     assert assistant["quoted_message_id"] == visitor["id"]
 
 
+def test_receipts_land_on_the_outbound_message(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    _customer, _agent, channel = _setup_channel(client)
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Hi")))
+    monkeypatch.setattr(webhook_router, "send_text", AsyncMock(return_value="wamid.out-1"))
+    monkeypatch.setattr(whatsapp_inbound_service.get_settings(), "reply_debounce_seconds", 0)
+    _post_signed(client, channel["id"], _webhook_payload([{"from": "5730011", "id": "wamid.in-1", "type": "text", "text": {"body": "Hola"}}]))
+    conversation_id = client.get("/api/conversations/inbox").json()[0]["id"]
+
+    def receipt(state: str, **extra):
+        return {"object": "whatsapp_business_account", "entry": [{"changes": [{"field": "messages", "value": {"statuses": [{"id": "wamid.out-1", "status": state, **extra}]}}]}]}
+
+    def outbound():
+        return [m for m in client.get(f"/api/conversations/{conversation_id}").json()["messages"] if m["sender_type"] == "ai"][-1]
+
+    assert outbound()["delivery_status"] is None
+    _post_signed(client, channel["id"], receipt("delivered"))
+    assert outbound()["delivery_status"] == "delivered"
+    # A late "sent" never rolls the state back.
+    _post_signed(client, channel["id"], receipt("sent"))
+    assert outbound()["delivery_status"] == "delivered"
+    _post_signed(client, channel["id"], receipt("read"))
+    assert outbound()["delivery_status"] == "read"
+    _post_signed(client, channel["id"], receipt("failed", errors=[{"code": 131047, "message": "Re-engagement message"}]))
+    failed = outbound()
+    assert failed["delivery_status"] == "failed" and "131047" in failed["delivery_error"]
+
+
 def test_webhook_failed_status_surfaces_delivery_error(authenticated_client: TestClient):
     client = authenticated_client
     customer, _agent, channel = _setup_channel(client)

@@ -435,7 +435,11 @@ class Message(Base):
     portal_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True
     )
-    external_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    external_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    # For outbound messages on the WhatsApp Cloud API: sent | delivered |
+    # read | failed, as Meta's receipts report it. None until the first one.
+    delivery_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    delivery_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # The business's emoji reaction to this (visitor) message, mirrored in the
     # portal so operators see the same gesture the customer saw on WhatsApp.
     reaction: Mapped[str | None] = mapped_column(String(16), nullable=True)

@@ -14,10 +14,11 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Message, WhatsAppCloudChannel, now_utc
+from ..models import Conversation, Message, WhatsAppCloudChannel, now_utc
 from ..ratelimit import whatsapp_cloud_webhook_rate_limit
 from ..security import decrypt_secret
 from ..services.whatsapp_cloud import fetch_media, send_text
@@ -123,13 +124,37 @@ async def receive_webhook(channel_id: uuid.UUID, request: Request, db: Session =
     return {"status": "ok"}
 
 
+_DELIVERY_ORDER = {"sent": 1, "delivered": 2, "read": 3, "failed": 4}
+
+
+def _apply_delivery_status(db: Session, channel: WhatsAppCloudChannel, status: dict, error: str | None) -> None:
+    """Stamp the receipt on the message it concerns. Receipts can arrive out
+    of order, so a later stage is never downgraded by an earlier one."""
+    state = status.get("status")
+    wamid = status.get("id")
+    if state not in _DELIVERY_ORDER or not wamid:
+        return
+    message = db.scalar(
+        select(Message)
+        .join(Conversation, Conversation.id == Message.conversation_id)
+        .where(Message.external_message_id == wamid, Conversation.whatsapp_cloud_channel_id == channel.id)
+    )
+    if not message:
+        return
+    if _DELIVERY_ORDER[state] < _DELIVERY_ORDER.get(message.delivery_status or "", 0):
+        return
+    message.delivery_status = state
+    message.delivery_error = error
+    db.commit()
+
+
 def _record_status(db: Session, channel: WhatsAppCloudChannel, status: dict) -> None:
-    """Surface outbound delivery failures reported by Meta. Every outbound
-    message gets sent/delivered/read receipts here; only failures matter —
-    without this, a message Meta accepted (wamid returned) could be dropped
-    at delivery with no trace of the reason anywhere."""
+    """Keep each outbound message's delivery state, and surface failures on
+    the channel too, so a message Meta accepted (wamid returned) but dropped
+    at delivery leaves a trace of the reason."""
     state = status.get("status")
     if state in ("sent", "delivered", "read"):
+        _apply_delivery_status(db, channel, status, None)
         # A delivery error is transient state: clear it once traffic flows again
         # so the channel UI stops showing a stale failure.
         if channel.last_error and channel.last_error.startswith("Meta could not deliver"):
@@ -144,6 +169,7 @@ def _record_status(db: Session, channel: WhatsAppCloudChannel, status: dict) -> 
         detail = (error.get("error_data") or {}).get("details") or error.get("message") or error.get("title") or ""
         parts.append(f"{error.get('code')}: {detail}".strip(": "))
     summary = "; ".join(parts) or "no error detail provided"
+    _apply_delivery_status(db, channel, status, summary[:400])
     logger.warning(
         "WhatsApp Cloud delivery failed for %s: %s",
         status.get("id") or "unknown message",
