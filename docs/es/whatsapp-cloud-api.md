@@ -31,6 +31,12 @@ Antes de la configuración técnica, asegúrate de tener:
   WhatsApp/WhatsApp Business.
 - Una instancia de OpenLivery accesible por **HTTPS público** (Meta solo
   entrega webhooks a URLs HTTPS), con el cliente creado y un agente asignado.
+- **Una app de Meta por cliente.** Una app de Meta tiene una sola URL de
+  callback, y OpenLivery le da la suya a cada canal, así que una app no puede
+  servir a dos clientes: la URL que registres es la única que recibe. El tráfico
+  que llega de un número que no es el del canal se ignora en vez de contestarlo
+  con el agente equivocado, así que una app compartida se ve como mensajes que
+  nunca llegan.
 
 ## 2. Crear la app de Meta
 
@@ -137,8 +143,11 @@ En la misma página del canal, OpenLivery muestra una **URL de callback** y un
   callback debe ser accesible desde internet por HTTPS. En instancias
   self-hosted, revisa que `FRONTEND_URL` apunte a la dirección pública de la
   app.
-- **No llegan mensajes** — confirma la suscripción al campo de webhook
-  **`messages`** (paso 7) y que la app esté en modo **Live**; en modo
+- **No llegan mensajes** — confirma que el número del payload es el de este
+  canal: una app compartida entre dos clientes entrega todo a una sola URL de
+  callback, y el tráfico de otro número se descarta a propósito (mira
+  [Requisitos previos](#1-requisitos-previos)). Después confirma la suscripción
+  al campo de webhook **`messages`** (paso 7) y que la app esté en modo **Live**; en modo
   Development Meta solo entrega tráfico de números de prueba. La tarjeta del
   canal en OpenLivery muestra el último error del webhook, si lo hay.
 - **Llegan mensajes pero el agente no responde** — el canal está conectado

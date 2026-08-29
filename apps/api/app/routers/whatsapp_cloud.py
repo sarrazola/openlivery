@@ -77,6 +77,20 @@ def configure_channel(
     )
     if not agent:
         raise HTTPException(status_code=400, detail="Select an agent that belongs to this client")
+    # One number answers for one client. Saving the same one twice would give
+    # two agents the same inbox, and each channel's webhook would accept the
+    # other's traffic.
+    number = (payload.phone_number_id or "").strip()
+    if number and db.scalar(
+        select(WhatsAppCloudChannel).where(
+            WhatsAppCloudChannel.agency_id == user.agency_id,
+            WhatsAppCloudChannel.phone_number_id == number,
+            WhatsAppCloudChannel.client_id != client.id,
+        )
+    ):
+        raise HTTPException(
+            status_code=400, detail="That phone number is already connected to another client"
+        )
     channel = db.scalar(select(WhatsAppCloudChannel).where(WhatsAppCloudChannel.client_id == client.id))
     if not channel:
         channel = WhatsAppCloudChannel(
@@ -89,7 +103,7 @@ def configure_channel(
     channel.agent_id = agent.id
     channel.is_enabled = True
     if payload.phone_number_id is not None:
-        channel.phone_number_id = payload.phone_number_id.strip()
+        channel.phone_number_id = number
     if payload.waba_id is not None:
         channel.waba_id = payload.waba_id.strip() or None
     # Blank secrets keep the stored values, so the form can resubmit safely.

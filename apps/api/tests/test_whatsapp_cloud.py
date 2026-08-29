@@ -23,7 +23,9 @@ def _sign(raw: bytes, secret: str = APP_SECRET) -> str:
     return "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
 
 
-def _webhook_payload(messages: list[dict], contacts: list[dict] | None = None) -> dict:
+def _webhook_payload(
+    messages: list[dict], contacts: list[dict] | None = None, phone_number_id: str = "111"
+) -> dict:
     return {
         "object": "whatsapp_business_account",
         "entry": [
@@ -34,7 +36,7 @@ def _webhook_payload(messages: list[dict], contacts: list[dict] | None = None) -
                         "field": "messages",
                         "value": {
                             "messaging_product": "whatsapp",
-                            "metadata": {"phone_number_id": "111"},
+                            "metadata": {"phone_number_id": phone_number_id},
                             "contacts": contacts or [],
                             "messages": messages,
                         },
@@ -443,3 +445,69 @@ def test_webhook_image_uses_capability(authenticated_client: TestClient, monkeyp
     assert detail["messages"][0]["attachments"][0]["kind"] == "image"
     prompt_messages = fake_completion.await_args.args[4]
     assert any("a photo of the menu" in message["content"] for message in prompt_messages)
+
+
+def test_webhook_ignores_traffic_for_a_number_that_is_not_this_channels(
+    authenticated_client: TestClient, monkeypatch
+):
+    """One Meta app has one callback URL, so an app shared between channels
+    delivers every number's traffic to whichever channel registered it."""
+    client = authenticated_client
+    _customer, _agent, channel = _setup_channel(client)
+    fake_completion = AsyncMock(return_value=ai_service.Completion(text="Hi"))
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", fake_completion)
+    monkeypatch.setattr(webhook_router, "send_text", AsyncMock(return_value="wamid.out-1"))
+    monkeypatch.setattr(whatsapp_inbound_service, "mark_read_with_typing", AsyncMock())
+
+    other = _webhook_payload(
+        [{"from": "5730011", "id": "wamid.other", "type": "text", "text": {"body": "Hola"}}],
+        phone_number_id="999",
+    )
+    assert _post_signed(client, channel["id"], other).status_code == 200
+    assert fake_completion.await_count == 0
+    assert client.get("/api/conversations").json() == []
+
+    # The channel's own number still goes through.
+    mine = _webhook_payload(
+        [{"from": "5730011", "id": "wamid.mine", "type": "text", "text": {"body": "Hola"}}]
+    )
+    assert _post_signed(client, channel["id"], mine).status_code == 200
+    assert fake_completion.await_count == 1
+
+
+def test_configure_channel_refuses_a_number_another_client_uses(authenticated_client: TestClient):
+    client = authenticated_client
+    _setup_channel(client)
+
+    other = client.post(
+        "/api/clients",
+        json={"name": "Cafe", "industry": "", "description": "", "general_context": "", "is_active": True},
+    ).json()
+    agent = client.post(
+        "/api/agents",
+        json={
+            "client_id": other["id"],
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "name": "Host",
+            "description": "",
+            "instructions": "",
+            "personality": "",
+            "is_active": True,
+        },
+    ).json()
+
+    taken = client.put(
+        f"/api/whatsapp-cloud/channels/{other['id']}",
+        json={"agent_id": agent["id"], "phone_number_id": "111"},
+    )
+    assert taken.status_code == 400
+    assert "another client" in taken.json()["detail"]
+
+    # A different number is fine, and saving the same one again on its own
+    # client still is.
+    free = client.put(
+        f"/api/whatsapp-cloud/channels/{other['id']}",
+        json={"agent_id": agent["id"], "phone_number_id": "222"},
+    )
+    assert free.status_code == 200, free.text
