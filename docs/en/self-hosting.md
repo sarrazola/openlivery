@@ -3,7 +3,7 @@
 > Leer en español: [self-hosting.md](../es/self-hosting.md)
 
 Run and operate your own OpenLivery instance. For a feature overview see the
-[README](../README.md).
+[README](../../README.md).
 
 OpenLivery is orchestrated by Docker Compose, with a `Makefile` wrapping the
 common commands. A lightweight **gateway** (Caddy) is the single public entry
