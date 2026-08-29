@@ -612,6 +612,30 @@ textarea { line-height: 1.55; }
 .mini-badge.resolved { display: inline-flex; align-items: center; gap: 3px; color: #2e7d4f; background: #e3f2e9; }
 .status-toggle { min-height: 35px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 7px; border: 1px solid #a9ddce; color: #087a5e; background: #eaf8f3; font-weight: 600; cursor: pointer; }
 .status-toggle.resolved { border-color: var(--line); color: var(--ink); background: white; }
+.window-pill { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 2px 8px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
+.window-pill.open { color: #2e7d4f; background: #e3f2e9; }
+.window-pill.closed { color: #9a6400; background: #fbf0d9; }
+.portal-composer.window-closed { align-items: center; justify-content: space-between; gap: 16px; background: #fffbf0; }
+.portal-composer.window-closed > div { display: flex; flex-direction: column; gap: 2px; }
+.portal-composer.window-closed small { color: #7a6a3a; }
+.portal-composer.window-closed .button { display: inline-flex; align-items: center; gap: 6px; }
+.portal-templates { padding: 4px 0; }
+.portal-templates-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.portal-templates-toolbar p { margin: 0; max-width: 64ch; color: #5b6774; }
+.portal-template-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.portal-template-list article { padding: 16px 18px; border: 1px solid var(--line); border-radius: 10px; background: white; display: flex; flex-direction: column; gap: 8px; }
+.portal-template-list header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.portal-template-list header small { color: #7b8391; }
+.portal-template-list header .mini-badge { margin-left: auto; }
+.portal-template-list p { margin: 0; white-space: pre-wrap; }
+.portal-template-list small.muted { color: #9097aa; }
+.portal-template-list small.danger { color: #b23a3a; }
+.mini-badge.pending { display: inline-flex; align-items: center; gap: 3px; color: #9a6400; background: #fbf0d9; }
+.mini-badge.rejected { display: inline-flex; align-items: center; gap: 3px; color: #b23a3a; background: #f8e3e3; }
+.template-preview { padding: 12px 14px; border-radius: 8px; background: #f0f2f5; display: flex; flex-direction: column; gap: 6px; }
+.template-preview span { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #687082; font-weight: 700; }
+.template-preview p { margin: 0; white-space: pre-wrap; }
+.template-preview small { color: #7b8391; }
 .activity-line { align-self: center; max-width: 90%; display: inline-flex; align-items: baseline; gap: 8px; padding: 4px 12px; border-radius: 20px; background: #f0f2f5; color: #5b6774; font-size: 12.5px; }
 .activity-line time { color: #9aa3ad; font-size: 11px; }
 .portal-inbox > aside button.unread .portal-inbox-preview { color: var(--ink); }

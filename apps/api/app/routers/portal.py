@@ -6,13 +6,18 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import Agency, Agent, Client, Contact, Conversation, Message, PortalUser, now_utc
+from ..models import Agency, Agent, Client, Contact, Conversation, Message, PortalUser, WhatsAppChannel, WhatsAppCloudChannel, now_utc
 from ..ratelimit import login_rate_limit, public_asset_rate_limit
 from ..schemas import (
     AgentSummary,
     ContactCreate,
     ContactOut,
     ContactUpdate,
+    ConversationStart,
+    PortalChannelOut,
+    TemplateCreate,
+    TemplateOut,
+    TemplateSend,
     ConversationDetail,
     ConversationAssignmentUpdate,
     ConversationModeUpdate,
@@ -27,6 +32,17 @@ from ..schemas import (
 )
 from ..security import create_portal_token, decode_portal_token, verify_password
 from ..services.contacts import display_name, normalize_phone, rename_conversations
+from ..services.whatsapp_templates import (
+    create_template,
+    list_templates,
+    render,
+    send_template,
+    validate_template_name,
+    window_is_open,
+    window_open_until,
+)
+from ..services.conversation_state import record_activity
+from ..security import decrypt_secret
 from ..services.conversation_state import ConversationClosed, assign, note_reply, set_mode, set_status
 from ..services.notifications import notify_assigned
 from ..services.attachments import attachment_response, conversation_attachment, logo_response
@@ -114,10 +130,24 @@ def _sender_name(
     return client.name if client else "Support"
 
 
+def _last_inbound_at(conversation: Conversation):
+    stamps = [m.created_at for m in conversation.messages if m.kind == "message" and m.sender_type == "visitor"]
+    return max(stamps) if stamps else None
+
+
+def _window_fields(conversation: Conversation, last_inbound_at) -> dict:
+    if conversation.channel != "whatsapp_cloud":
+        return {"reply_window_until": None, "reply_window_open": True}
+    return {"reply_window_until": window_open_until(last_inbound_at), "reply_window_open": window_is_open(last_inbound_at)}
+
+
 def _present(conversation: Conversation) -> ConversationDetail:
     assignee = conversation.assignee
     return ConversationDetail.model_validate(conversation).model_copy(
-        update={"assignee_name": (assignee.name.strip() or assignee.email) if assignee else None}
+        update={
+            "assignee_name": (assignee.name.strip() or assignee.email) if assignee else None,
+            **_window_fields(conversation, _last_inbound_at(conversation)),
+        }
     )
 
 
@@ -286,11 +316,18 @@ def portal_conversations(
         else_=0,
     )
 
+    last_inbound = (
+        select(Message.conversation_id.label("cid"), func.max(Message.created_at).label("at"))
+        .where(Message.kind == "message", Message.sender_type == "visitor")
+        .group_by(Message.conversation_id)
+        .subquery()
+    )
     query = (
-        select(Conversation, last.c.content, unread_count.label("unread_count"), PortalUser.name.label("assignee_name"), PortalUser.email.label("assignee_email"))
+        select(Conversation, last.c.content, unread_count.label("unread_count"), PortalUser.name.label("assignee_name"), PortalUser.email.label("assignee_email"), last_inbound.c.at.label("last_inbound_at"))
         .outerjoin(last, last.c.cid == Conversation.id)
         .outerjoin(unread_counts, unread_counts.c.cid == Conversation.id)
         .outerjoin(PortalUser, PortalUser.id == Conversation.assignee_id)
+        .outerjoin(last_inbound, last_inbound.c.cid == Conversation.id)
         .where(Conversation.client_id == client.id)
     )
     if assignee == "me" and user:
@@ -322,9 +359,10 @@ def portal_conversations(
                 "unread": int(row_unread_count) > 0,
                 "unread_count": int(row_unread_count),
                 "assignee_name": ((assignee_name or "").strip() or assignee_email) if conv.assignee_id else None,
+                **_window_fields(conv, last_inbound_at),
             }
         )
-        for conv, content, row_unread_count, assignee_name, assignee_email in rows
+        for conv, content, row_unread_count, assignee_name, assignee_email, last_inbound_at in rows
     ]
 
 
@@ -519,6 +557,207 @@ def portal_contact_conversations(
     ]
 
 
+WINDOW_CLOSED = "The 24-hour reply window is closed. Send an approved template to reach this person."
+
+
+def _require_open_window(conversation: Conversation) -> None:
+    if conversation.channel == "whatsapp_cloud" and not window_is_open(_last_inbound_at(conversation)):
+        raise HTTPException(status_code=409, detail=WINDOW_CLOSED)
+
+
+def _cloud_channel(db: Session, client: Client) -> WhatsAppCloudChannel | None:
+    return db.scalar(select(WhatsAppCloudChannel).where(WhatsAppCloudChannel.client_id == client.id))
+
+
+def _qr_channel(db: Session, client: Client) -> WhatsAppChannel | None:
+    return db.scalar(select(WhatsAppChannel).where(WhatsAppChannel.client_id == client.id))
+
+
+def _template_credentials(channel: WhatsAppCloudChannel | None) -> tuple[str, str]:
+    if not channel or not channel.encrypted_access_token or not channel.waba_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Templates need the WhatsApp API channel with its access token and WhatsApp Business account id",
+        )
+    return decrypt_secret(channel.encrypted_access_token), channel.waba_id
+
+
+@router.get("/{slug}/channels", response_model=list[PortalChannelOut])
+def portal_channels(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+    """Which WhatsApp lines this business has, so the portal knows how it can
+    reach a contact first."""
+    out = []
+    cloud = _cloud_channel(db, client)
+    if cloud and cloud.is_enabled:
+        out.append({
+            "channel": "whatsapp_cloud", "status": cloud.status, "phone_number": cloud.phone_number,
+            "display_name": cloud.display_name, "supports_templates": bool(cloud.encrypted_access_token and cloud.waba_id),
+        })
+    qr = _qr_channel(db, client)
+    if qr and qr.is_enabled:
+        out.append({"channel": "whatsapp", "status": qr.status, "phone_number": qr.phone_number, "display_name": qr.display_name})
+    return out
+
+
+@router.get("/{slug}/templates", response_model=list[TemplateOut])
+async def portal_templates(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+    token, waba_id = _template_credentials(_cloud_channel(db, client))
+    return await list_templates(token, waba_id)
+
+
+@router.post("/{slug}/templates", response_model=TemplateOut, status_code=status.HTTP_201_CREATED)
+async def portal_create_template(
+    slug: str, payload: TemplateCreate, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+):
+    token, waba_id = _template_credentials(_cloud_channel(db, client))
+    return await create_template(
+        token,
+        waba_id,
+        name=validate_template_name(payload.name),
+        language=payload.language.strip(),
+        category=payload.category,
+        body=payload.body.strip(),
+        footer=payload.footer,
+        examples=payload.examples,
+    )
+
+
+async def _send_template_to(db: Session, client: Client, to: str, payload: TemplateSend) -> tuple[str | None, str]:
+    """Send the template and return (external id, text as the person reads it)."""
+    channel = _cloud_channel(db, client)
+    token, waba_id = _template_credentials(channel)
+    approved = next(
+        (t for t in await list_templates(token, waba_id)
+         if t["name"] == payload.name and t["language"] == payload.language and t["status"] == "APPROVED"),
+        None,
+    )
+    if not approved:
+        raise HTTPException(status_code=409, detail="That template is not approved for this language")
+    if len(payload.variables) != approved["variables"]:
+        raise HTTPException(status_code=422, detail=f"This template takes {approved['variables']} values")
+    external_id = await send_template(
+        token, channel.phone_number_id, to, name=payload.name, language=payload.language, variables=payload.variables
+    )
+    text = render(approved["body"], payload.variables)
+    if approved["footer"]:
+        text = f"{text}\n\n{approved['footer']}"
+    return external_id, text
+
+
+@router.post("/{slug}/contacts/{contact_id}/conversations", response_model=ConversationDetail, status_code=status.HTTP_201_CREATED)
+async def portal_start_conversation(
+    slug: str,
+    contact_id: uuid.UUID,
+    payload: ConversationStart,
+    client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
+    sender_name: str = Depends(_sender_name),
+    db: Session = Depends(get_db),
+):
+    """Write to a contact first. On the Cloud API that means an approved
+    template; on the QR line any text goes. The new conversation is the
+    sender's, so the AI does not answer when the person replies."""
+    contact = _portal_contact(db, client, contact_id)
+    if not contact.phone:
+        raise HTTPException(status_code=409, detail="This contact has no phone number")
+    cloud, qr = _cloud_channel(db, client), _qr_channel(db, client)
+    channel_name = payload.channel or ("whatsapp_cloud" if cloud and cloud.is_enabled else "whatsapp" if qr else None)
+    if channel_name == "whatsapp_cloud" and cloud and cloud.is_enabled:
+        if not payload.template:
+            raise HTTPException(status_code=422, detail="Starting a conversation on the WhatsApp API takes an approved template")
+        fk_field, channel_row, external_chat_id = "whatsapp_cloud_channel_id", cloud, contact.phone
+    elif channel_name == "whatsapp" and qr and qr.is_enabled:
+        if not (payload.text or "").strip():
+            raise HTTPException(status_code=422, detail="Write the message to send")
+        fk_field, channel_row, external_chat_id = "whatsapp_channel_id", qr, f"{contact.phone}@s.whatsapp.net"
+    else:
+        raise HTTPException(status_code=409, detail="This business has no WhatsApp line to send from")
+
+    fk_column = getattr(Conversation, fk_field)
+    existing = db.scalar(
+        select(Conversation).where(
+            fk_column == channel_row.id, Conversation.external_chat_id == external_chat_id, Conversation.status != "resolved"
+        )
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="This contact already has an open conversation on that line")
+
+    now = now_utc()
+    conversation = Conversation(
+        agency_id=channel_row.agency_id,
+        client_id=client.id,
+        agent_id=channel_row.agent_id,
+        channel=channel_name,
+        external_chat_id=external_chat_id,
+        contact_id=contact.id,
+        contact_name=contact.name or None,
+        title=display_name(contact)[:240],
+        mode="human",
+        taken_over_at=now,
+        assignee_id=user.id if user else None,
+        assigned_at=now if user else None,
+        **{fk_field: channel_row.id},
+    )
+    db.add(conversation)
+    db.flush()
+
+    if channel_name == "whatsapp_cloud":
+        external_message_id, text = await _send_template_to(db, client, contact.phone, payload.template)
+    else:
+        text = payload.text.strip()
+        external_message_id = await send_channel_message(db, conversation, text)
+    record_activity(db, conversation, "started", actor=sender_name)
+    db.add(
+        Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content=text,
+            sender_type="human",
+            sender_name=sender_name,
+            portal_user_id=user.id if user else None,
+            external_message_id=external_message_id,
+        )
+    )
+    note_reply(conversation)
+    conversation.updated_at = now_utc()
+    db.commit()
+    return _present(_detail(db, client, conversation.id))
+
+
+@router.post("/{slug}/conversations/{conversation_id}/reply-template", response_model=ConversationDetail)
+async def portal_reply_template(
+    slug: str,
+    conversation_id: uuid.UUID,
+    payload: TemplateSend,
+    client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
+    sender_name: str = Depends(_sender_name),
+    db: Session = Depends(get_db),
+):
+    """Reach a person again after the window closed."""
+    conversation = _detail(db, client, conversation_id)
+    if conversation.mode != "human":
+        raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
+    if conversation.channel != "whatsapp_cloud" or not conversation.external_chat_id:
+        raise HTTPException(status_code=409, detail="Templates only exist on the WhatsApp API line")
+    external_message_id, text = await _send_template_to(db, client, conversation.external_chat_id, payload)
+    db.add(
+        Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content=text,
+            sender_type="human",
+            sender_name=sender_name,
+            portal_user_id=user.id if user else None,
+            external_message_id=external_message_id,
+        )
+    )
+    note_reply(conversation)
+    conversation.updated_at = now_utc()
+    db.commit()
+    return _present(_detail(db, client, conversation_id))
+
+
 @router.get("/{slug}/conversations/summary", response_model=PortalInboxSummary)
 def portal_inbox_summary(
     slug: str,
@@ -661,6 +900,7 @@ async def portal_reply_media(
     conversation = _detail(db, client, conversation_id)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
+    _require_open_window(conversation)
     await store_operator_media_reply(
         db, conversation, file=file, caption=caption, sender_name=sender_name, portal_user_id=user.id if user else None
     )
@@ -680,6 +920,7 @@ async def portal_reply(
     conversation = _detail(db, client, conversation_id)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
+    _require_open_window(conversation)
     external_message_id = await send_channel_message(db, conversation, payload.content.strip())
     db.add(
         Message(

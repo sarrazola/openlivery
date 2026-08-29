@@ -1,16 +1,17 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Inbox, LoaderCircle, Pencil, Plus, Search, Trash2, UserRound } from "lucide-react";
+import { CheckCircle2, Inbox, LoaderCircle, MessageSquarePlus, Pencil, Plus, Search, Trash2, UserRound } from "lucide-react";
+import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { api, messageFrom } from "@/lib/api";
 import { formatWhen } from "@/lib/datetime";
 import { useLanguage, useT } from "@/lib/i18n";
-import type { Contact, Conversation } from "@/types";
+import type { Contact, Conversation, PortalChannel } from "@/types";
 
 const LIMIT = 50;
 
-export function ContactsView({ slug, openConversation }: { slug: string; openConversation: (conversation: Conversation) => void }) {
+export function ContactsView({ slug, channels, openConversation }: { slug: string; channels: PortalChannel[]; openConversation: (conversation: Conversation) => void }) {
   const t = useT();
   const { lang } = useLanguage();
   const [items, setItems] = useState<Contact[]>([]);
@@ -23,6 +24,25 @@ export function ContactsView({ slug, openConversation }: { slug: string; openCon
   const [editing, setEditing] = useState<"new" | "edit" | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [typed, setTyped] = useState("");
+  const cloudLine = channels.find((c) => c.channel === "whatsapp_cloud");
+  const qrLine = channels.find((c) => c.channel === "whatsapp");
+  const [starting, setStarting] = useState<"whatsapp_cloud" | "whatsapp" | null>(null);
+  async function startWithTemplate(payload: { name: string; language: string; variables: string[] }) {
+    if (!selected) return;
+    const conv = await api<Conversation>(`/portal/${slug}/contacts/${selected.id}/conversations`, { method: "POST", body: JSON.stringify({ channel: "whatsapp_cloud", template: payload }) });
+    openConversation(conv);
+  }
+  async function startWithText(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected) return;
+    const text = String(new FormData(event.currentTarget).get("text") || "").trim();
+    setBusy(true); setError("");
+    try {
+      const conv = await api<Conversation>(`/portal/${slug}/contacts/${selected.id}/conversations`, { method: "POST", body: JSON.stringify({ channel: "whatsapp", text }) });
+      setStarting(null);
+      openConversation(conv);
+    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+  }
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -112,6 +132,7 @@ export function ContactsView({ slug, openConversation }: { slug: string; openCon
               <small className="portal-channel-line">{phoneLabel(selected.phone)}{selected.email ? ` · ${selected.email}` : ""}</small>
             </div>
             <div className="thread-actions">
+              {(cloudLine || qrLine) && selected.phone && <button className="button primary small" onClick={() => setStarting(cloudLine ? "whatsapp_cloud" : "whatsapp")}><MessageSquarePlus size={15} /> {t("portal.contacts.startConversation")}</button>}
               <button className="button small" onClick={() => setEditing("edit")}><Pencil size={15} /> {t("portal.contacts.edit")}</button>
               <button className="icon-button danger" onClick={() => { setTyped(""); setDeleting(true); }} disabled={busy} title={t("portal.contacts.delete")} aria-label={t("portal.contacts.delete")}><Trash2 size={16} /></button>
             </div>
@@ -134,6 +155,14 @@ export function ContactsView({ slug, openConversation }: { slug: string; openCon
         </> : <EmptyState icon={<UserRound />} title={t("portal.contacts.selectTitle")} description={t("portal.contacts.selectDescription")} />}
       </section>
     </div>
+    <TemplatePicker slug={slug} open={starting === "whatsapp_cloud" && Boolean(selected)} title={t("portal.contacts.startTitle", { name: selected ? nameOf(selected) : "" })} onClose={() => setStarting(null)} onSend={startWithTemplate} />
+    <Modal open={starting === "whatsapp" && Boolean(selected)} title={t("portal.contacts.startQrTitle", { name: selected ? nameOf(selected) : "" })} description={t("portal.contacts.startQrDescription")} onClose={() => setStarting(null)}>
+      <form className="modal-form" onSubmit={startWithText}>
+        <label>{t("portal.contacts.startMessage")}<textarea name="text" rows={4} required autoFocus /></label>
+        {error && <Alert>{error}</Alert>}
+        <div className="modal-actions"><button type="button" className="button" onClick={() => setStarting(null)}>{t("portal.contacts.form.cancel")}</button><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={16} /> : t("portal.contacts.startSend")}</button></div>
+      </form>
+    </Modal>
     <Modal open={deleting && Boolean(selected)} title={t("portal.contacts.deleteTitle", { name: selected ? nameOf(selected) : "" })} onClose={() => setDeleting(false)}>
       <form className="modal-form" onSubmit={remove}>
         <Alert type="error">{t("portal.contacts.deleteWarning", { count: selected?.conversation_count ?? 0 })}</Alert>

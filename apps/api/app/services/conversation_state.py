@@ -42,6 +42,7 @@ _ACTIVITY_TEXT = {
     "assigned": "{actor} assigned the conversation to {assignee}",
     "transferred": "{actor} transferred the conversation to {assignee}",
     "unassigned": "{actor} released the conversation",
+    "started": "{actor} started the conversation",
 }
 
 

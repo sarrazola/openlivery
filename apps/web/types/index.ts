@@ -155,6 +155,8 @@ export type Conversation = {
   waiting_since?: string | null;
   assignee_id?: string | null;
   assignee_name?: string | null;
+  reply_window_until?: string | null;
+  reply_window_open?: boolean;
   channel: string;
   external_chat_id: string | null;
   contact_name: string | null;
@@ -201,6 +203,26 @@ export type WhatsAppCloudChannel = {
   last_connected_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type Template = {
+  id: string | null;
+  name: string;
+  language: string;
+  category: string;
+  status: "APPROVED" | "PENDING" | "REJECTED" | string;
+  body: string;
+  footer: string;
+  variables: number;
+  rejected_reason: string | null;
+};
+
+export type PortalChannel = {
+  channel: "whatsapp" | "whatsapp_cloud";
+  status: string;
+  phone_number: string | null;
+  display_name: string | null;
+  supports_templates: boolean;
 };
 
 export type Contact = {

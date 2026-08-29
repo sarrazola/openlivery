@@ -310,6 +310,11 @@ class ConversationOut(ORMModel):
     waiting_since: datetime | None = None
     assignee_id: uuid.UUID | None = None
     assignee_name: str | None = None
+    # WhatsApp Cloud API: free-form replies are allowed until this moment
+    # (24 h after the contact's last message). None on other channels or
+    # when the contact never wrote; ``reply_window_open`` says what applies.
+    reply_window_until: datetime | None = None
+    reply_window_open: bool = True
     preview: str = ""
     unread: bool = False
     unread_count: int = 0
@@ -387,6 +392,48 @@ class PortalMemberOut(BaseModel):
     id: uuid.UUID
     name: str
     email: str
+
+
+class PortalChannelOut(BaseModel):
+    channel: str
+    status: str
+    phone_number: str | None = None
+    display_name: str | None = None
+    supports_templates: bool = False
+
+
+class TemplateOut(BaseModel):
+    id: str | None = None
+    name: str
+    language: str
+    category: str
+    status: str
+    body: str
+    footer: str = ""
+    variables: int = 0
+    rejected_reason: str | None = None
+
+
+class TemplateCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=512)
+    language: str = Field(default="es", min_length=2, max_length=10)
+    category: str = Field(default="UTILITY", pattern=r"^(UTILITY|MARKETING)$")
+    body: str = Field(min_length=1, max_length=1024)
+    footer: str = Field(default="", max_length=60)
+    examples: list[str] = []
+
+
+class TemplateSend(BaseModel):
+    name: str = Field(min_length=1, max_length=512)
+    language: str = Field(min_length=2, max_length=10)
+    variables: list[str] = []
+
+
+class ConversationStart(BaseModel):
+    # whatsapp_cloud needs a template; whatsapp (QR) takes free text.
+    channel: str | None = Field(default=None, pattern=r"^(whatsapp|whatsapp_cloud)$")
+    template: TemplateSend | None = None
+    text: str | None = Field(default=None, max_length=4000)
 
 
 class ContactCreate(BaseModel):
