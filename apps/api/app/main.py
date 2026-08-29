@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .database import SessionLocal
+from .database import new_session
 from .services.conversation_state import resolve_idle_ai_conversations
 from .routers import (
     agency,
@@ -39,7 +39,7 @@ async def _auto_resolve_loop() -> None:
     while True:
         await asyncio.sleep(AUTO_RESOLVE_SWEEP_SECONDS)
         try:
-            with SessionLocal() as db:
+            with new_session() as db:
                 closed = resolve_idle_ai_conversations(db, hours=get_settings().auto_resolve_after_hours)
             if closed:
                 logger.info("Auto-resolved %d idle AI conversation(s)", closed)
