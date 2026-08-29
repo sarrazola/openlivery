@@ -378,7 +378,8 @@ class ConversationStatusUpdate(BaseModel):
 
 
 class ConversationAssignmentUpdate(BaseModel):
-    # A portal user id, or null to release the conversation.
+    # The portal user who takes the conversation. Letting go of it means
+    # returning it to the AI, not leaving it without an owner.
     assignee_id: uuid.UUID | None = None
 
 

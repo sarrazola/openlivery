@@ -56,17 +56,13 @@ def test_taking_over_assigns_and_the_thread_narrates_handoffs(authenticated_clie
     replied = client.post(f"{base}/{cid}/reply", json={"content": "On it"}).json()
     assert replied["messages"][-1]["sender_name"] == "Pablo"
 
-    # Release, then someone takes it themselves.
-    released = client.post(f"{base}/{cid}/assignment", json={"assignee_id": None}).json()
-    assert released["assignee_id"] is None and released["mode"] == "human"
-    assert released["messages"][-1]["activity"] == {"event": "unassigned"}
-    assert client.get(f"{base}/summary").json()["unassigned"] == 1
-    assert [row["id"] for row in client.get(f"{base}?assignee=none").json()] == [cid]
-    mine = client.post(f"{base}/{cid}/assignment", json={"assignee_id": pablo}).json()
-    assert mine["messages"][-1]["activity"] == {"event": "self_assigned", "assignee": "Pablo"}
-    # Doing it again changes nothing and adds no line.
+    # A conversation is never without an owner: letting go means the AI takes it.
+    assert client.post(f"{base}/{cid}/assignment", json={"assignee_id": None}).status_code == 422
+    assert client.get(f"{base}/{cid}").json()["assignee_name"] == "Pablo"
+    # Assigning to yourself what you already hold changes nothing and adds no line.
+    before = client.get(f"{base}/{cid}").json()
     again = client.post(f"{base}/{cid}/assignment", json={"assignee_id": pablo}).json()
-    assert len(again["messages"]) == len(mine["messages"])
+    assert len(again["messages"]) == len(before["messages"])
 
     # Handing back to the AI releases it.
     back = client.patch(f"{base}/{cid}/mode", json={"mode": "ai"}).json()

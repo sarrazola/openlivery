@@ -594,15 +594,17 @@ async def portal_assign(
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
-    assignee = None
-    if payload.assignee_id:
-        assignee = db.scalar(
-            select(PortalUser).where(
-                PortalUser.id == payload.assignee_id, PortalUser.client_id == client.id, PortalUser.is_active.is_(True)
-            )
+    if not payload.assignee_id:
+        # A conversation is either the AI's or a person's. To let go of it,
+        # hand it back to the AI rather than leaving it without an owner.
+        raise HTTPException(status_code=422, detail="Choose a person, or return the conversation to the AI")
+    assignee = db.scalar(
+        select(PortalUser).where(
+            PortalUser.id == payload.assignee_id, PortalUser.client_id == client.id, PortalUser.is_active.is_(True)
         )
-        if not assignee:
-            raise HTTPException(status_code=404, detail="That person is not part of this portal")
+    )
+    if not assignee:
+        raise HTTPException(status_code=404, detail="That person is not part of this portal")
     try:
         changed = assign(db, conversation, assignee, actor=sender_name, actor_user=user)
     except ConversationClosed as exc:

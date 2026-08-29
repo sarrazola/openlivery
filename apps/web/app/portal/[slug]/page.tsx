@@ -64,7 +64,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [tab, setTab] = useState<"all" | "unread" | "mine" | "unassigned" | "ai">("all");
+  const [tab, setTab] = useState<"all" | "unread" | "mine" | "ai">("all");
   const [members, setMembers] = useState<Member[]>([]);
   useEffect(() => { api<Member[]>(`/portal/${slug}/members`).then(setMembers).catch(() => {}); }, [slug]);
   const toast = useToast();
@@ -148,7 +148,6 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
     params.set("status", status);
     if (tab === "ai") params.set("mode", "ai");
     if (tab === "mine") params.set("assignee", "me");
-    if (tab === "unassigned") params.set("assignee", "none");
     if (tab === "unread") params.set("unread", "1");
     if (query) params.set("search", query);
     params.set("limit", String(LIMIT));
@@ -225,7 +224,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
     setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/status`, { method: "PATCH", body: JSON.stringify({ status: next }) }));
     await refresh();
   }
-  async function assignTo(assigneeId: string | null) {
+  async function assignTo(assigneeId: string) {
     if (!selected) return;
     setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/assignment`, { method: "POST", body: JSON.stringify({ assignee_id: assigneeId }) }));
     await refresh();
@@ -287,13 +286,12 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
         <button className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>{t("portal.inbox.folders.all")}</button>
         <button className={tab === "unread" ? "active" : ""} onClick={() => setTab("unread")}>{t("portal.inbox.folders.unread")}{summary && summary.unread > 0 && <em>{summary.unread > 99 ? "99+" : summary.unread}</em>}</button>
         <button className={tab === "mine" ? "active" : ""} onClick={() => setTab("mine")}>{t("portal.inbox.folders.mine")}{summary && summary.mine > 0 && <em className="soft">{summary.mine}</em>}</button>
-        <button className={tab === "unassigned" ? "active" : ""} onClick={() => setTab("unassigned")}>{t("portal.inbox.folders.unassigned")}{summary && summary.unassigned > 0 && <em className="soft">{summary.unassigned}</em>}</button>
         <button className={tab === "ai" ? "active" : ""} onClick={() => setTab("ai")}>{t("portal.inbox.folders.ai")}</button>
       </div>}
       {items.map((item) => <button key={item.id} onClick={() => choose(item)} className={`${selected?.id === item.id ? "active" : ""}${item.unread && selected?.id !== item.id ? " unread" : ""}`}><span className="entity-avatar tiny"><UserRound size={15} /></span><span><span className="portal-inbox-row-top"><strong>{item.title}</strong>{item.unread && selected?.id !== item.id ? <span className="inbox-unread-count" aria-label={t("inbox.unreadCount", { count: item.unread_count ?? 0 })}>{(item.unread_count ?? 0) > 99 ? "99+" : item.unread_count}</span> : <time>{formatWhen(item.updated_at, lang)}</time>}</span><small className="portal-inbox-preview">{item.preview || t("portal.inbox.list.noMessages")}</small><small className="inbox-row-meta"><span className={`channel-dot ${item.channel}`}>{channelIcon(item.channel)}</span> {channelLabel(item.channel)} <span className={`mini-badge ${item.mode}`}>{item.mode === "human" ? (item.assignee_name || t("portal.inbox.list.humanSupport")) : t("portal.inbox.list.aiAgent")}</span></small></span></button>)}
       {!items.length && <div className="no-conversations">{t("inbox.empty")}</div>}
       {loadingMore && <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>}
-    </aside><section className="drop-target" {...dropProps}>{overlay}{selected && <><header><div><strong>{selected.title}</strong><small className="portal-channel-line">{channelIcon(selected.channel)} {channelLabel(selected.channel)} <span className={`mini-badge ${selected.mode}`}>{selected.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span>{isResolved && <span className="mini-badge resolved"><CheckCircle2 size={11} /> {t("portal.inbox.conversation.resolvedBadge")}</span>}</small></div><div className="thread-actions">{!isResolved && selected.mode === "human" && <label className="assignee-picker"><span>{t("portal.inbox.assignment.label")}</span><select value={selected.assignee_id ?? ""} onChange={(e) => assignTo(e.target.value || null)}><option value="">{t("portal.inbox.assignment.nobody")}</option>{members.map((member) => <option key={member.id} value={member.id}>{memberLabel(member)}</option>)}</select></label>}<button className="icon-button" onClick={() => setMediaOpen(true)} title={t("chat.sharedContent")} aria-label={t("chat.sharedContent")}><Images size={16} /></button>{!isResolved && <><button className={`mode-toggle ${selected.mode}`} onClick={() => setMode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("portal.inbox.conversation.takeControl") : t("portal.inbox.conversation.returnToAi")}</button><button className="status-toggle open" onClick={() => setConversationStatus("resolved")}><CheckCircle2 size={15} /> {t("portal.inbox.conversation.resolve")}</button></>}</div></header><div className="portal-messages" ref={messagesRef}>{selected.messages?.map((message, index) => {
+    </aside><section className="drop-target" {...dropProps}>{overlay}{selected && <><header><div><strong>{selected.title}</strong><small className="portal-channel-line">{channelIcon(selected.channel)} {channelLabel(selected.channel)} <span className={`mini-badge ${selected.mode}`}>{selected.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span>{isResolved && <span className="mini-badge resolved"><CheckCircle2 size={11} /> {t("portal.inbox.conversation.resolvedBadge")}</span>}</small></div><div className="thread-actions">{!isResolved && selected.mode === "human" && <label className="assignee-picker"><span>{t("portal.inbox.assignment.label")}</span><select value={selected.assignee_id ?? ""} onChange={(e) => e.target.value && assignTo(e.target.value)}>{!selected.assignee_id && <option value="">{t("portal.inbox.assignment.pick")}</option>}{members.map((member) => <option key={member.id} value={member.id}>{memberLabel(member)}</option>)}</select></label>}<button className="icon-button" onClick={() => setMediaOpen(true)} title={t("chat.sharedContent")} aria-label={t("chat.sharedContent")}><Images size={16} /></button>{!isResolved && <><button className={`mode-toggle ${selected.mode}`} onClick={() => setMode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("portal.inbox.conversation.takeControl") : t("portal.inbox.conversation.returnToAi")}</button><button className="status-toggle open" onClick={() => setConversationStatus("resolved")}><CheckCircle2 size={15} /> {t("portal.inbox.conversation.resolve")}</button></>}</div></header><div className="portal-messages" ref={messagesRef}>{selected.messages?.map((message, index) => {
               if (message.kind === "activity") {
                 return <div key={message.id} className="activity-line"><span>{activityText(message)}</span><time>{formatTime(message.created_at, lang)}</time></div>;
               }
