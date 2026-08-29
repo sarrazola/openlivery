@@ -1247,7 +1247,7 @@ button.composer-attach.record.recording svg { animation: record-pulse 1.2s ease-
 /* Folder chips: natural widths, one row, scroll sideways if a language runs long. */
 .portal-inbox > aside .inbox-tabs { flex-wrap: nowrap; gap: 4px; padding: 0 12px 12px; overflow-x: auto; scrollbar-width: none; }
 .portal-inbox > aside .inbox-tabs::-webkit-scrollbar { display: none; }
-.portal-inbox > aside .inbox-tabs button { flex: 0 0 auto; width: auto; min-height: 28px; padding: 0 10px; gap: 5px; justify-content: center; border-bottom: 0; border-radius: 8px; white-space: nowrap; font-size: 12px; transition: background .12s, color .12s; }
+.portal-inbox > aside .inbox-tabs button { flex: 1 1 0; min-width: 0; width: auto; min-height: 30px; padding: 0 10px; gap: 5px; justify-content: center; border-bottom: 0; border-radius: 8px; white-space: nowrap; font-size: 12px; transition: background .12s, color .12s; }
 .portal-inbox > aside .inbox-tabs button:hover:not(.active) { background: #e9edf2; color: var(--ink); }
 .portal-inbox > aside .inbox-tabs button em { min-width: 16px; height: 16px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; line-height: 1; }
 .portal-inbox > aside .inbox-tabs button.active { color: white; background: var(--ink); }
