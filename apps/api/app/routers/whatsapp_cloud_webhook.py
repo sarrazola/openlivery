@@ -110,6 +110,19 @@ async def receive_webhook(channel_id: uuid.UUID, request: Request, db: Session =
             if change.get("field") != "messages":
                 continue
             value = change.get("value") or {}
+            # A Meta app has one callback URL, so an app serving several
+            # channels delivers all of their traffic to whichever one was
+            # registered. Without this the messages of one client would be
+            # answered as another: same agency, wrong number, wrong agent.
+            # Each channel needs its own Meta app.
+            delivered_to = (value.get("metadata") or {}).get("phone_number_id")
+            if channel.phone_number_id and delivered_to and delivered_to != channel.phone_number_id:
+                logger.warning(
+                    "channel %s received traffic for phone number %s, which belongs to another channel",
+                    channel.id,
+                    delivered_to,
+                )
+                continue
             for status in value.get("statuses") or []:
                 _record_status(db, channel, status)
             contacts = {
