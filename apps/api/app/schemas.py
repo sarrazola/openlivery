@@ -300,9 +300,24 @@ class ConversationOut(ORMModel):
     channel: str
     external_chat_id: str | None = None
     contact_name: str | None = None
+    contact_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
+    status: str = "open"
+    resolved_at: datetime | None = None
+    first_reply_at: datetime | None = None
+    taken_over_at: datetime | None = None
+    waiting_since: datetime | None = None
+    assignee_id: uuid.UUID | None = None
+    assignee_name: str | None = None
+    # WhatsApp Cloud API: free-form replies are allowed until this moment
+    # (24 h after the contact's last message). None on other channels or
+    # when the contact never wrote; ``reply_window_open`` says what applies.
+    reply_window_until: datetime | None = None
+    reply_window_open: bool = True
     preview: str = ""
+    unread: bool = False
+    unread_count: int = 0
 
 
 class SourceOut(BaseModel):
@@ -322,12 +337,16 @@ class AttachmentOut(ORMModel):
 class MessageOut(ORMModel):
     id: uuid.UUID
     role: str
+    kind: str = "message"
+    activity: dict | None = None
     content: str
     sources: list[dict] = []
     tool_calls: list[dict] | None = None
     sender_type: str
     sender_name: str | None
     external_message_id: str | None = None
+    delivery_status: str | None = None
+    delivery_error: str | None = None
     reaction: str | None = None
     quoted_message_id: uuid.UUID | None = None
     created_at: datetime
@@ -361,6 +380,101 @@ class ConversationModeUpdate(BaseModel):
     mode: str = Field(pattern=r"^(ai|human)$")
 
 
+class ConversationStatusUpdate(BaseModel):
+    status: str = Field(pattern=r"^(open|resolved)$")
+
+
+class ConversationAssignmentUpdate(BaseModel):
+    # The portal user who takes the conversation. Letting go of it means
+    # returning it to the AI, not leaving it without an owner.
+    assignee_id: uuid.UUID | None = None
+
+
+class PortalMemberOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: str
+
+
+class PortalChannelOut(BaseModel):
+    channel: str
+    status: str
+    phone_number: str | None = None
+    display_name: str | None = None
+    supports_templates: bool = False
+
+
+class TemplateOut(BaseModel):
+    id: str | None = None
+    name: str
+    language: str
+    category: str
+    status: str
+    body: str
+    footer: str = ""
+    variables: int = 0
+    rejected_reason: str | None = None
+
+
+class TemplateCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=512)
+    language: str = Field(default="es", min_length=2, max_length=10)
+    category: str = Field(default="UTILITY", pattern=r"^(UTILITY|MARKETING)$")
+    body: str = Field(min_length=1, max_length=1024)
+    footer: str = Field(default="", max_length=60)
+    examples: list[str] = []
+
+
+class TemplateSend(BaseModel):
+    name: str = Field(min_length=1, max_length=512)
+    language: str = Field(min_length=2, max_length=10)
+    variables: list[str] = []
+
+
+class ConversationStart(BaseModel):
+    # whatsapp_cloud needs a template; whatsapp (QR) takes free text.
+    channel: str | None = Field(default=None, pattern=r"^(whatsapp|whatsapp_cloud)$")
+    template: TemplateSend | None = None
+    text: str | None = Field(default=None, max_length=4000)
+
+
+class ContactCreate(BaseModel):
+    name: str = Field(default="", max_length=180)
+    phone: str = Field(min_length=7, max_length=40)
+    email: EmailStr | None = None
+    notes: str = Field(default="", max_length=5000)
+
+
+class ContactUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=180)
+    phone: str | None = Field(default=None, min_length=7, max_length=40)
+    email: EmailStr | None = None
+    notes: str | None = Field(default=None, max_length=5000)
+
+
+class ContactOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    phone: str | None = None
+    email: str | None = None
+    notes: str = ""
+    created_at: datetime
+    updated_at: datetime
+    conversation_count: int = 0
+    open_count: int = 0
+    last_activity_at: datetime | None = None
+
+
+class PortalInboxSummary(BaseModel):
+    open: int = 0
+    resolved: int = 0
+    human: int = 0
+    ai: int = 0
+    unread: int = 0
+    mine: int = 0
+    unassigned: int = 0
+
+
 class PortalLoginRequest(BaseModel):
     email: EmailStr
     password: str
@@ -381,6 +495,9 @@ class PortalSessionOut(BaseModel):
     client_name: str
     portal_slug: str
     agency_name: str
+    # The person behind the session; absent on sessions that predate portal users.
+    user_id: uuid.UUID | None = None
+    user_name: str | None = None
 
 
 class DashboardOut(BaseModel):

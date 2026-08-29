@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -318,13 +319,40 @@ class UsageRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
 
 
+class Contact(Base):
+    """A person the business talks to, one per client and phone number.
+
+    Created the first time a number writes in, or by hand from the portal.
+    A contact can have many conversations over time, one per case.
+    """
+
+    __tablename__ = "contacts"
+    __table_args__ = (
+        Index("uq_contacts_client_phone", "client_id", "phone", unique=True, postgresql_where=text("phone IS NOT NULL")),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(180), default="")
+    # Digits only, as WhatsApp reports it. None for people without a number.
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+    conversations: Mapped[list["Conversation"]] = relationship(back_populates="contact", passive_deletes=True)
+
+
 class Conversation(Base):
+    """One case with a contact: it opens with their first message and ends
+    when resolved. The next message after that opens a new conversation, so
+    a chat id may appear here many times."""
+
     __tablename__ = "conversations"
     __table_args__ = (
-        UniqueConstraint("whatsapp_channel_id", "external_chat_id", name="uq_conversations_whatsapp_chat"),
-        UniqueConstraint(
-            "whatsapp_cloud_channel_id", "external_chat_id", name="uq_conversations_whatsapp_cloud_chat"
-        ),
+        Index("ix_conversations_whatsapp_chat", "whatsapp_channel_id", "external_chat_id"),
+        Index("ix_conversations_whatsapp_cloud_chat", "whatsapp_cloud_channel_id", "external_chat_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
@@ -342,11 +370,34 @@ class Conversation(Base):
     )
     external_chat_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     operator_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Where the case stands, independent of who answers (``mode``): open |
+    # resolved. A contact writing to a resolved conversation reopens it.
+    status: Mapped[str] = mapped_column(String(20), default="open", server_default="open")
+    status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # First reply of any kind (AI or person) after the conversation opened.
+    first_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When a person last took the conversation over from the AI.
+    taken_over_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The portal user handling this conversation, when a person is. Cleared
+    # when it goes back to the AI or is released for someone else to take.
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set by an inbound message, cleared by the next reply: how long the
+    # contact has been waiting for an answer.
+    waiting_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
     agent: Mapped[Agent] = relationship(back_populates="conversations")
+    contact: Mapped[Contact | None] = relationship(back_populates="conversations")
+    assignee: Mapped["PortalUser | None"] = relationship(foreign_keys=[assignee_id])
     whatsapp_channel: Mapped[WhatsAppChannel | None] = relationship(back_populates="conversations")
     whatsapp_cloud_channel: Mapped[WhatsAppCloudChannel | None] = relationship(back_populates="conversations")
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")
@@ -361,6 +412,14 @@ class Message(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     conversation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(30))
+    # message: exchanged with the contact. activity: something that happened
+    # to the conversation (resolved, reopened, taken over), shown in the
+    # thread but never sent out nor fed to the model. See ``activity``.
+    kind: Mapped[str] = mapped_column(String(20), default="message", server_default="message")
+    # For kind=activity: {"event": "resolved" | "reopened" | "reopened_by_contact"
+    # | "taken_over" | "returned_to_ai"}. ``sender_name`` carries who did it
+    # and ``content`` an English sentence for clients that do not know the event.
+    activity: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     content: Mapped[str] = mapped_column(Text)
     # What the LLM sees for this message when it differs from the displayed
     # content (e.g. an image description or audio transcript for a media
@@ -371,7 +430,16 @@ class Message(Base):
     tool_calls: Mapped[list | None] = mapped_column(JSON, nullable=True)
     sender_type: Mapped[str] = mapped_column(String(30), default="visitor")
     sender_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
-    external_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # The portal user who wrote a human reply, when known. sender_name stays
+    # as the display text; this is the link reports count on.
+    portal_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True
+    )
+    external_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    # For outbound messages on the WhatsApp Cloud API: sent | delivered |
+    # read | failed, as Meta's receipts report it. None until the first one.
+    delivery_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    delivery_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # The business's emoji reaction to this (visitor) message, mirrored in the
     # portal so operators see the same gesture the customer saw on WhatsApp.
     reaction: Mapped[str | None] = mapped_column(String(16), nullable=True)

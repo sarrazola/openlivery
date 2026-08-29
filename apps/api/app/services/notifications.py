@@ -45,7 +45,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..models import Conversation, PushDevice
+from ..models import Conversation, PortalUser, PushDevice
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,7 @@ class Device:
     token: str
     provider: str = ""
     platform: str = ""
+    portal_user_id: Any = None
 
 
 @dataclass
@@ -175,7 +176,7 @@ def devices_for_client(db: Session, client_id) -> list[Device]:
     active = configured_provider()
     rows = db.scalars(select(PushDevice).where(PushDevice.client_id == client_id)).all()
     return [
-        Device(token=row.token, provider=row.provider, platform=row.platform)
+        Device(token=row.token, provider=row.provider, platform=row.platform, portal_user_id=row.portal_user_id)
         for row in rows
         if row.token and (not row.provider or row.provider == active)
     ]
@@ -212,6 +213,10 @@ async def notify_conversation(
     if not push_enabled():
         return 0
     devices = devices_for_client(db, conversation.client_id)
+    if conversation.assignee_id:
+        # Someone owns this conversation: their phone rings, not everyone's.
+        mine = [d for d in devices if d.portal_user_id == conversation.assignee_id]
+        devices = mine or devices
     if not devices:
         return 0
     if title is None:
@@ -225,6 +230,23 @@ async def notify_conversation(
                 "conversation_id": str(conversation.id),
                 "client_id": str(conversation.client_id),
             },
+        )
+    )
+
+
+async def notify_assigned(db: Session, conversation: Conversation, assignee: PortalUser, by: str) -> int:
+    """Tell the person a conversation was just handed to them."""
+    if not push_enabled():
+        return 0
+    devices = [d for d in devices_for_client(db, conversation.client_id) if d.portal_user_id == assignee.id]
+    if not devices:
+        return 0
+    return await notify_devices(
+        Notification(
+            title=conversation.title,
+            body=f"{by} assigned you this conversation",
+            devices=devices,
+            data={"conversation_id": str(conversation.id), "client_id": str(conversation.client_id)},
         )
     )
 

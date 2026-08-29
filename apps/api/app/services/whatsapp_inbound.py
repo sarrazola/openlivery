@@ -16,6 +16,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..config import get_settings
 from ..database import new_session
+from .contacts import display_name, phone_from_chat_id, previous_conversation_recap, rename_conversations, resolve_contact
+from .conversation_state import exchanged_only, note_inbound, note_reply
 from ..models import Agent, Conversation, Message, now_utc
 from ..security import decrypt_secret
 from .attachments import llm_text, store_attachment
@@ -123,22 +125,32 @@ async def process_inbound(
     if existing:
         return InboundResult(accepted=False, conversation_id=existing.conversation_id)
 
+    # A message joins the chat's open conversation; once that is resolved the
+    # next message starts a new case, so the same chat id can hold many.
     conversation = db.scalar(
         select(Conversation)
-        .options(selectinload(Conversation.messages))
         .where(
             fk_column == channel.id,
             Conversation.external_chat_id == inbound.external_chat_id,
+            Conversation.status != "resolved",
         )
+        .order_by(Conversation.created_at.desc())
+        .limit(1)
     )
     if not conversation:
-        title = (inbound.sender_name or inbound.external_chat_id.split("@")[0])[:240]
+        phone = phone_from_chat_id(inbound.external_chat_id)
+        contact = resolve_contact(db, channel.client_id, phone=phone, name=inbound.sender_name) if phone else None
+        if contact:
+            title = display_name(contact)[:240]
+        else:
+            title = (inbound.sender_name or inbound.external_chat_id.split("@")[0])[:240]
         conversation = Conversation(
             agency_id=channel.agency_id,
             client_id=channel.client_id,
             agent_id=channel.agent_id,
             external_chat_id=inbound.external_chat_id,
             contact_name=inbound.sender_name,
+            contact_id=contact.id if contact else None,
             title=title,
             channel=conversation_channel,
             **{channel_fk_field: channel.id},
@@ -147,6 +159,10 @@ async def process_inbound(
         db.flush()
     elif inbound.sender_name:
         conversation.contact_name = inbound.sender_name
+        contact = conversation.contact
+        if contact and not contact.name.strip():
+            contact.name = inbound.sender_name.strip()[:180]
+            rename_conversations(db, contact)
 
     display_content, llm_content = await resolve_inbound_content(db, channel.agent, inbound)
     visitor_message = Message(
@@ -159,6 +175,7 @@ async def process_inbound(
         external_message_id=inbound.external_message_id,
     )
     conversation.updated_at = now_utc()
+    note_inbound(db, conversation)
     db.add(visitor_message)
     if inbound.media_kind and inbound.media_bytes:
         db.flush()
@@ -280,14 +297,16 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     knowledge = await retrieve_knowledge(db, agent, retrieval_query)
     db.refresh(conversation)
     history = db.scalars(
-        select(Message)
-        .where(Message.conversation_id == conversation.id)
+        exchanged_only(select(Message).where(Message.conversation_id == conversation.id))
         .order_by(Message.created_at.desc())
         .limit(agent.memory_limit)
     ).all()
     history = list(reversed(history))
     burst = _trailing_visitor_burst(history)
     system_content = build_system_prompt(agent, knowledge.text)
+    recap = previous_conversation_recap(db, conversation)
+    if recap:
+        system_content += "\n\n" + recap
     if conversation.channel == "whatsapp_cloud":
         system_content += "\n\n" + _gesture_rules(burst)
     messages = [
@@ -321,6 +340,7 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
 
     outbound = None
     if reply_text:
+        note_reply(conversation)
         outbound = Message(
             conversation_id=conversation.id,
             role="assistant",
@@ -382,7 +402,7 @@ async def _debounced_reply(conversation_id: uuid.UUID) -> None:
             return
         last = db.scalar(
             select(Message)
-            .where(Message.conversation_id == conversation_id)
+            .where(Message.conversation_id == conversation_id, Message.kind == "message")
             .order_by(Message.created_at.desc())
             .limit(1)
         )
@@ -390,8 +410,7 @@ async def _debounced_reply(conversation_id: uuid.UUID) -> None:
             # A newer timer, another worker, or an operator already answered.
             return
         history = db.scalars(
-            select(Message)
-            .where(Message.conversation_id == conversation_id)
+            exchanged_only(select(Message).where(Message.conversation_id == conversation_id))
             .order_by(Message.created_at.desc())
             .limit(channel.agent.memory_limit)
         ).all()

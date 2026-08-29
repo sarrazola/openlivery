@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import uuid
 from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
@@ -10,6 +11,8 @@ from app.routers import providers as providers_router
 from app.routers import conversations as conversations_router
 from app.routers import widget as widget_router
 from app.config import get_settings
+from app.database import SessionLocal
+from app.models import Message
 from app.services import ai as ai_service
 from app.services import whatsapp_inbound as whatsapp_inbound_service
 
@@ -598,6 +601,198 @@ def test_white_label_portal_and_human_takeover(authenticated_client: TestClient)
     assert replied.json()["messages"][-1]["sender_type"] == "human"
     inbox_after = client.get(f"/api/portal/{customer['portal_slug']}/conversations")
     assert inbox_after.json()[0]["preview"] == "Hi, I'm part of the Luna team."
+
+
+def test_portal_inbox_pages_searches_and_tracks_unread(authenticated_client: TestClient):
+    client = authenticated_client
+    customer = client.post(
+        "/api/clients",
+        json={"name": "Paged Portal", "industry": "", "description": "", "general_context": "", "is_active": True},
+    ).json()
+    client.post(
+        f"/api/clients/{customer['id']}/portal-users",
+        json={"name": "Ana", "email": "ana@paged.com", "password": "secure-portal"},
+    )
+    client.patch(f"/api/clients/{customer['id']}/portal", json={"portal_enabled": True})
+    agent = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "name": "Pager", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+    ).json()
+    ids = [client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"] for _ in range(3)]
+    slug = customer["portal_slug"]
+    client.post(f"/api/portal/{slug}/login", json={"email": "ana@paged.com", "password": "secure-portal"})
+
+    page = client.get(f"/api/portal/{slug}/conversations?limit=2&offset=0").json()
+    assert len(page) == 2
+    page2 = client.get(f"/api/portal/{slug}/conversations?limit=2&offset=2").json()
+    assert len(page2) == 1
+    assert {row["id"] for row in page}.isdisjoint({row["id"] for row in page2})
+
+    assert len(client.get(f"/api/portal/{slug}/conversations?search=New").json()) == 3
+    assert client.get(f"/api/portal/{slug}/conversations?search=zzznomatch").json() == []
+
+    # A visitor message counts as unread until the portal marks the thread
+    # read, but only once a person holds the conversation: while the AI
+    # answers there is nothing for anyone to catch up on.
+    with SessionLocal() as db:
+        db.add(Message(conversation_id=uuid.UUID(ids[0]), role="user", content="Hola", sender_type="visitor"))
+        db.commit()
+    assert client.get(f"/api/portal/{slug}/conversations?unread=1").json() == []
+    client.patch(f"/api/portal/{slug}/conversations/{ids[0]}/mode", json={"mode": "human"})
+    assert client.get(f"/api/portal/{slug}/conversations/summary").json() == {"open": 3, "resolved": 0, "human": 1, "ai": 2, "unread": 1, "mine": 1, "unassigned": 0}
+    unread = client.get(f"/api/portal/{slug}/conversations?unread=1").json()
+    assert [row["id"] for row in unread] == [ids[0]]
+    assert unread[0]["unread_count"] == 1
+    assert client.post(f"/api/portal/{slug}/conversations/{ids[0]}/read").status_code == 204
+    assert client.get(f"/api/portal/{slug}/conversations?unread=1").json() == []
+    assert all(row["unread"] is False for row in client.get(f"/api/portal/{slug}/conversations").json())
+
+    # Mode filtering happens server-side, so tabs and paging agree.
+    client.patch(f"/api/portal/{slug}/conversations/{ids[1]}/mode", json={"mode": "human"})
+    assert {row["id"] for row in client.get(f"/api/portal/{slug}/conversations?mode=human").json()} == {ids[0], ids[1]}
+    assert [row["id"] for row in client.get(f"/api/portal/{slug}/conversations?mode=ai").json()] == [ids[2]]
+
+
+def test_portal_resolves_reopens_and_narrates_the_thread(authenticated_client: TestClient):
+    client = authenticated_client
+    customer = client.post(
+        "/api/clients",
+        json={"name": "Status Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+    ).json()
+    client.post(
+        f"/api/clients/{customer['id']}/portal-users",
+        json={"name": "Ana", "email": "ana@status.com", "password": "secure-portal"},
+    )
+    client.patch(f"/api/clients/{customer['id']}/portal", json={"portal_enabled": True})
+    agent = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "name": "Host", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+    ).json()
+    conversation_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    slug = customer["portal_slug"]
+    base = f"/api/portal/{slug}/conversations"
+    client.post(f"/api/portal/{slug}/login", json={"email": "ana@status.com", "password": "secure-portal"})
+
+    assert client.get(f"{base}/{conversation_id}").json()["status"] == "open"
+    assert [row["id"] for row in client.get(f"{base}?status=open").json()] == [conversation_id]
+    assert client.get(f"{base}?status=resolved").json() == []
+
+    resolved = client.patch(f"{base}/{conversation_id}/status", json={"status": "resolved"})
+    assert resolved.status_code == 200
+    body = resolved.json()
+    assert body["status"] == "resolved" and body["resolved_at"]
+    trail = body["messages"][-1]
+    assert trail["kind"] == "activity"
+    assert trail["activity"] == {"event": "resolved"}
+    assert trail["sender_name"] == "Ana"
+    assert client.get(f"{base}?status=open").json() == []
+    assert [row["id"] for row in client.get(f"{base}?status=resolved").json()] == [conversation_id]
+    # Pressing the button twice leaves a single line in the thread.
+    again = client.patch(f"{base}/{conversation_id}/status", json={"status": "resolved"}).json()
+    assert len([m for m in again["messages"] if m["kind"] == "activity"]) == 1
+    assert client.patch(f"{base}/{conversation_id}/status", json={"status": "snoozed"}).status_code == 422
+
+    # A resolved case is final: no reopening, no handing around.
+    assert client.patch(f"{base}/{conversation_id}/status", json={"status": "open"}).status_code == 409
+    assert client.patch(f"{base}/{conversation_id}/mode", json={"mode": "human"}).status_code == 409
+    assert client.get(f"{base}/{conversation_id}").json()["status"] == "resolved"
+
+    # Who answers is narrated too, and the preview never shows an activity line.
+    fresh_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    conversation_id = fresh_id
+    taken = client.patch(f"{base}/{conversation_id}/mode", json={"mode": "human"}).json()
+    assert taken["messages"][-1]["activity"] == {"event": "taken_over"}
+    assert client.get(base).json()[0]["preview"] == ""
+    client.post(f"{base}/{conversation_id}/reply", json={"content": "On it."})
+    detail = client.get(f"{base}/{conversation_id}").json()
+    assert detail["first_reply_at"] and detail["waiting_since"] is None
+
+
+def test_activity_never_reaches_the_model_and_a_resolved_case_stays_closed(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    customer = client.post(
+        "/api/clients",
+        json={"name": "Reopen Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+    ).json()
+    client.put("/api/providers/openai", json={"api_key": "secret"})
+    agent = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Host", "description": "", "instructions": "", "personality": "", "is_active": True},
+    ).json()
+    channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
+    headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
+    completion = AsyncMock(return_value=ai_service.Completion(text="Hello!", input_tokens=1, output_tokens=1))
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", completion)
+    monkeypatch.setattr(whatsapp_inbound_service.get_settings(), "reply_debounce_seconds", 0)
+
+    def inbound(message_id: str, text: str):
+        return client.post(
+            f"/api/internal/whatsapp/channels/{channel['id']}/inbound",
+            json={"external_message_id": message_id, "remote_jid": "573001112233@s.whatsapp.net", "sender_name": "Sam", "text": text},
+            headers=headers,
+        )
+
+    first = inbound("m1", "Hola")
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+    detail = client.get(f"/api/conversations/{conversation_id}").json()
+    assert detail["first_reply_at"] and detail["waiting_since"] is None
+
+    # Taking over and handing back leave activity lines in the thread...
+    client.patch(f"/api/conversations/{conversation_id}/mode", json={"mode": "human"})
+    client.patch(f"/api/conversations/{conversation_id}/mode", json={"mode": "ai"})
+    inbound("m2", "Una cosa más")
+    detail = client.get(f"/api/conversations/{conversation_id}").json()
+    events = [m["activity"]["event"] for m in detail["messages"] if m["kind"] == "activity"]
+    assert events == ["taken_over", "returned_to_ai"]
+    # ...that the model never sees: it only gets what was exchanged.
+    sent = completion.call_args.args[4]
+    assert [m["role"] for m in sent if m["role"] != "system"] == ["user", "assistant", "user"]
+    assert not any("took over" in m["content"] for m in sent)
+
+    # Once resolved, a case stays resolved; the next message opens a new one.
+    client.patch(f"/api/conversations/{conversation_id}/status", json={"status": "resolved"})
+    third = inbound("m3", "Otra cosa").json()
+    assert third["conversation_id"] != conversation_id
+    assert client.get(f"/api/conversations/{conversation_id}").json()["status"] == "resolved"
+    assert client.get(f"/api/conversations/{third['conversation_id']}").json()["status"] == "open"
+
+
+def test_idle_ai_conversations_resolve_themselves_but_human_ones_wait(authenticated_client: TestClient):
+    from datetime import timedelta
+
+    from app.models import Conversation, now_utc
+    from app.services.conversation_state import resolve_idle_ai_conversations
+
+    client = authenticated_client
+    customer = client.post(
+        "/api/clients",
+        json={"name": "Idle Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+    ).json()
+    agent = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "name": "Host", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+    ).json()
+    ai_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    human_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    fresh_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    client.patch(f"/api/conversations/{human_id}/mode", json={"mode": "human"})
+
+    two_days_ago = now_utc() - timedelta(days=2)
+    with SessionLocal() as db:
+        for cid in (ai_id, human_id):
+            db.add(Message(conversation_id=uuid.UUID(cid), role="user", content="Hola", sender_type="visitor", created_at=two_days_ago))
+            db.get(Conversation, uuid.UUID(cid)).created_at = two_days_ago
+        db.add(Message(conversation_id=uuid.UUID(fresh_id), role="user", content="Hola", sender_type="visitor"))
+        db.commit()
+        assert resolve_idle_ai_conversations(db, hours=24) == 1
+        assert resolve_idle_ai_conversations(db, hours=24) == 0
+
+    idle = client.get(f"/api/conversations/{ai_id}").json()
+    assert idle["status"] == "resolved"
+    assert idle["messages"][-1]["activity"] == {"event": "auto_resolved", "hours": 24}
+    assert client.get(f"/api/conversations/{human_id}").json()["status"] == "open"
+    assert client.get(f"/api/conversations/{fresh_id}").json()["status"] == "open"
 
 
 def test_provider_test_returns_models(authenticated_client: TestClient, monkeypatch):

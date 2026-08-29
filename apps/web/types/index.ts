@@ -126,7 +126,7 @@ export type ToolCallMeta = { name: string; arguments: Record<string, unknown>; r
 
 export type Source = { id: string; filename: string; excerpt: string };
 export type Attachment = { id: string; kind: "image" | "audio" | "video" | "file"; mime: string; filename: string | null; size_bytes: number };
-export type Message = { id: string; role: "user" | "assistant"; content: string; sources: Source[]; tool_calls?: ToolCallMeta[] | null; sender_type: "visitor" | "ai" | "human"; sender_name: string | null; reaction?: string | null; quoted_message_id?: string | null; created_at: string; attachments?: Attachment[] };
+export type Message = { id: string; role: "user" | "assistant" | "system"; kind?: "message" | "activity"; delivery_status?: "sent" | "delivered" | "read" | "failed" | null; delivery_error?: string | null; activity?: { event: string; hours?: number | string; assignee?: string; from?: string } | null; content: string; sources: Source[]; tool_calls?: ToolCallMeta[] | null; sender_type: "visitor" | "ai" | "human"; sender_name: string | null; reaction?: string | null; quoted_message_id?: string | null; created_at: string; attachments?: Attachment[] };
 
 export type ConversationInbox = {
   id: string;
@@ -148,12 +148,24 @@ export type Conversation = {
   agent_id: string;
   title: string;
   mode: "ai" | "human";
+  status?: "open" | "resolved";
+  resolved_at?: string | null;
+  first_reply_at?: string | null;
+  taken_over_at?: string | null;
+  waiting_since?: string | null;
+  assignee_id?: string | null;
+  assignee_name?: string | null;
+  reply_window_until?: string | null;
+  reply_window_open?: boolean;
   channel: string;
   external_chat_id: string | null;
   contact_name: string | null;
+  contact_id?: string | null;
   created_at: string;
   updated_at: string;
   preview?: string;
+  unread?: boolean;
+  unread_count?: number;
   messages?: Message[];
 };
 
@@ -191,6 +203,39 @@ export type WhatsAppCloudChannel = {
   last_connected_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type Template = {
+  id: string | null;
+  name: string;
+  language: string;
+  category: string;
+  status: "APPROVED" | "PENDING" | "REJECTED" | string;
+  body: string;
+  footer: string;
+  variables: number;
+  rejected_reason: string | null;
+};
+
+export type PortalChannel = {
+  channel: "whatsapp" | "whatsapp_cloud";
+  status: string;
+  phone_number: string | null;
+  display_name: string | null;
+  supports_templates: boolean;
+};
+
+export type Contact = {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+  conversation_count: number;
+  open_count: number;
+  last_activity_at: string | null;
 };
 
 export type PortalPublic = {

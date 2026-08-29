@@ -6,12 +6,14 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..database import get_db
 from ..deps import get_current_user
+from ..services.conversation_state import ConversationClosed, STATUSES, note_reply, set_mode, set_status
 from ..models import Agent, Conversation, Message, User, now_utc
 from ..schemas import (
     ConversationCreate,
     ConversationDetail,
     ConversationInboxOut,
     ConversationModeUpdate,
+    ConversationStatusUpdate,
     ConversationOut,
     SendMessageRequest,
 )
@@ -81,13 +83,17 @@ def inbox(
 ):
     # Latest message per conversation, resolved in SQL so we never load full
     # message histories just to build the list.
-    ranked = select(
-        Message.conversation_id.label("cid"),
-        Message.content.label("content"),
-        Message.sender_type.label("sender_type"),
-        Message.created_at.label("created_at"),
-        func.row_number().over(partition_by=Message.conversation_id, order_by=Message.created_at.desc()).label("rn"),
-    ).subquery()
+    ranked = (
+        select(
+            Message.conversation_id.label("cid"),
+            Message.content.label("content"),
+            Message.sender_type.label("sender_type"),
+            Message.created_at.label("created_at"),
+            func.row_number().over(partition_by=Message.conversation_id, order_by=Message.created_at.desc()).label("rn"),
+        )
+        .where(Message.kind == "message")
+        .subquery()
+    )
     last = select(ranked).where(ranked.c.rn == 1).subquery()
     unread_counts = (
         select(Message.conversation_id.label("cid"), func.count(Message.id).label("n"))
@@ -199,13 +205,15 @@ async def _generate_reply(
     """Run the agent over the current conversation and store the assistant reply."""
     knowledge = await retrieve_knowledge(db, agent, query)
     refreshed = _conversation(db, user, conversation.id)
-    recent = refreshed.messages[-agent.memory_limit:] if agent.memory_limit else []
+    exchanged = [item for item in refreshed.messages if item.kind == "message"]
+    recent = exchanged[-agent.memory_limit:] if agent.memory_limit else []
     history = [{"role": item.role, "content": llm_text(item)} for item in recent]
     messages = [{"role": "system", "content": build_system_prompt(agent, knowledge.text)}, *history]
     base_url, api_key = credentials
     completion = await run_completion(
         db, agent, base_url, api_key, messages, temperature=agent.temperature, max_tokens=agent.max_tokens
     )
+    note_reply(conversation)
     db.add(
         Message(
             conversation_id=conversation.id,
@@ -315,9 +323,29 @@ def set_conversation_mode(
     user: User = Depends(get_current_user),
 ):
     conversation = _conversation(db, user, conversation_id)
-    conversation.mode = payload.mode
-    conversation.updated_at = now_utc()
-    db.commit()
+    try:
+        changed = set_mode(db, conversation, payload.mode, actor=user.name)
+    except ConversationClosed as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if changed:
+        db.commit()
+    return _conversation(db, user, conversation_id)
+
+
+@router.patch("/{conversation_id}/status", response_model=ConversationDetail)
+def set_conversation_status(
+    conversation_id: uuid.UUID,
+    payload: ConversationStatusUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    conversation = _conversation(db, user, conversation_id)
+    try:
+        changed = set_status(db, conversation, payload.status, actor=user.name)
+    except ConversationClosed as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if changed:
+        db.commit()
     return _conversation(db, user, conversation_id)
 
 
@@ -342,6 +370,7 @@ async def reply_as_human(
             external_message_id=external_message_id,
         )
     )
+    note_reply(conversation)
     conversation.updated_at = now_utc()
     db.commit()
     return _conversation(db, user, conversation_id)

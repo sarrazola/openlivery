@@ -9,6 +9,7 @@ of what happened while a human was handling the conversation."""
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+from .conversation_state import note_reply
 from ..models import Agent, Conversation, Message, now_utc
 from .attachments import MAX_ATTACHMENT_BYTES, attachment_kind, store_attachment
 from .media import describe_image, transcribe_audio
@@ -68,6 +69,7 @@ async def store_operator_media_reply(
     file: UploadFile,
     caption: str,
     sender_name: str,
+    portal_user_id=None,
 ) -> None:
     """Caller must have verified the conversation is in human mode."""
     content_type = (file.content_type or "").lower() or "application/octet-stream"
@@ -92,10 +94,12 @@ async def store_operator_media_reply(
         llm_content=llm_content,
         sender_type="human",
         sender_name=sender_name,
+        portal_user_id=portal_user_id,
         external_message_id=external_message_id,
     )
     db.add(message)
     db.flush()
     store_attachment(db, message, data=data, mime=content_type, filename=file.filename, kind=kind)
+    note_reply(conversation)
     conversation.updated_at = now_utc()
     db.commit()
