@@ -9,9 +9,15 @@ and are released together.
 
 ## [Unreleased]
 
-Upgrading: this release adds a database migration (applied automatically by the
+## [0.4.0] - 2026-08-31
+
+Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups). The api image now
-bundles ffmpeg for voice-note transcoding.
+bundles ffmpeg for voice-note transcoding. The WhatsApp QR bridge is a new
+service (Go): existing Baileys sessions cannot be migrated, so each connected
+QR channel must scan the QR once after upgrading, and the bridge now needs a
+session store (`WHATSAPP_STORE_URL`; the bundled compose points it at the
+stack's Postgres).
 
 ### Changed
 
@@ -148,9 +154,9 @@ bundles ffmpeg for voice-note transcoding.
 
 ### Known issues
 
-- Voice notes sent through the WhatsApp QR channel may not be downloadable by
-  recipients due to a media upload issue in the pinned Baileys release
-  (7.0.0-rc14). The WhatsApp Cloud API channel is unaffected.
+- Resolved: voice notes through the WhatsApp QR channel are downloadable again.
+  The 0.3.0 issue was a media upload bug in the pinned Baileys release, and the
+  bridge no longer uses Baileys.
 
 ## [0.3.0] - 2026-08-20
 
@@ -259,6 +265,8 @@ First tagged release.
 - Custom per-client portal domains with on-demand TLS.
 - README and self-hosting guide.
 
-[Unreleased]: https://github.com/sarrazola/openlivery/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/sarrazola/openlivery/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/sarrazola/openlivery/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/sarrazola/openlivery/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/sarrazola/openlivery/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/sarrazola/openlivery/releases/tag/v0.1.0
