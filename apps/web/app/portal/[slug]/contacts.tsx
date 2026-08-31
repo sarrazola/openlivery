@@ -219,7 +219,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
       <form className="modal-form" onSubmit={save}>
         <div className="form-grid">
           <label>{t("portal.contacts.form.name")}<input name="name" defaultValue={editing === "edit" ? selected?.name : ""} placeholder={t("portal.contacts.form.namePlaceholder")} autoFocus /></label>
-          <label>{t("portal.contacts.form.phone")}<PhoneInput key={editing === "edit" ? selected?.id : "new"} name="phone" initial={editing === "edit" ? selected?.phone : ""} locale={lang} required placeholder="300 123 4567" /><span className="field-help">{t("portal.contacts.form.phoneHelp")}</span></label>
+          <label>{t("portal.contacts.form.phone")}<PhoneInput key={editing === "edit" ? selected?.id : "new"} name="phone" initial={editing === "edit" ? selected?.phone : ""} locale={lang} required placeholder="300 123 4567" searchPlaceholder={t("portal.contacts.form.searchCountry")} /><span className="field-help">{t("portal.contacts.form.phoneHelp")}</span></label>
         </div>
         <label>{t("portal.contacts.form.email")}<input name="email" type="email" defaultValue={editing === "edit" ? selected?.email ?? "" : ""} placeholder="name@company.com" /></label>
         <label>{t("portal.contacts.form.notes")}<textarea name="notes" rows={4} defaultValue={editing === "edit" ? selected?.notes : ""} placeholder={t("portal.contacts.form.notesPlaceholder")} /></label>
