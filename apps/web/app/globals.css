@@ -603,6 +603,8 @@ textarea { line-height: 1.55; }
 .portal-main > header small, .portal-main > header span { color: #737c8b; }
 .portal-inbox { height: calc(100vh - 125px); display: grid; grid-template-columns: 360px minmax(0,1fr); overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: white; }
 .portal-inbox > aside { overflow: auto; border-right: 1px solid var(--line); background: #fafbfc; }
+/* The search row and the thread header share their bottom line: same height. */
+.portal-inbox > aside .inbox-search { min-height: 64px; }
 .portal-inbox > aside button { width: 100%; padding: 14px; display: flex; gap: 10px; text-align: left; border: 0; border-bottom: 1px solid #edf0f3; background: transparent; }
 .portal-inbox > aside button.active { background: #f0efff; }
 .portal-inbox > aside button.unread strong { font-weight: 700; }
@@ -658,6 +660,11 @@ textarea { line-height: 1.55; }
 .portal-inbox > section > header .portal-channel-line > * { white-space: nowrap; }
 .portal-inbox > section > header .thread-actions { flex: 0 0 auto; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
 .portal-inbox > section > header .thread-actions button { white-space: nowrap; }
+/* Keep the header a single 64px row even with the assignment picker: the
+   select already shows who it is, so the label is dropped and the value can
+   truncate instead of wrapping the whole header taller than the search row. */
+.portal-inbox > section > header .assignee-picker span { display: none; }
+.portal-inbox > section > header .assignee-picker select { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
 .portal-inbox > section > header .mode-toggle, .portal-inbox > section > header .status-toggle { flex: 0 0 auto; }
 .portal-inbox > section > header div { display: flex; flex-direction: column; }
 .portal-inbox > section > header small { color: #7d8594; }

@@ -277,10 +277,10 @@ export default function InboxPage() {
                   <div key={message.id} className={`inbox-message ${message.role}${grouped ? " grouped" : ""}`}>
                     {!grouped && <small>{message.sender_name || (message.role === "assistant" ? t("inbox.senderAgent") : t("inbox.senderVisitor"))}</small>}
                     <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={stamp} />
-                    {message.content ? <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}</time></p>
-                      : !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}
+                    {message.content && <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}</time></p>}
                     <ReactionBadge emoji={message.reaction} />
                     <ReactionBadge emoji={message.incoming_reaction} incoming />
+                    {!message.content && !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}
                   </div>
                 );
               })}
