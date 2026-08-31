@@ -115,7 +115,6 @@ export function PhoneInput({
               >
                 <span aria-hidden="true">{flagOf(entry.iso)}</span>
                 <span className="phone-menu-name">{entry.label}</span>
-                <small>+{entry.code}</small>
               </button>
             ))}
           </span>
