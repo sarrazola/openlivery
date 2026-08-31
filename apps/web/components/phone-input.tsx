@@ -77,15 +77,17 @@ export function PhoneInput({
       >
         <span aria-hidden="true">{flagOf(iso)}</span>
       </button>
-      <span className="phone-dial">+{dial}</span>
-      <input
-        inputMode="tel"
-        autoComplete="tel-national"
-        required={required}
-        value={national}
-        placeholder={placeholder}
-        onChange={(event) => setNational(event.target.value.replace(/[^0-9]/g, ""))}
-      />
+      <span className="phone-field">
+        <span className="phone-dial" aria-hidden="true">+{dial}</span>
+        <input
+          inputMode="tel"
+          autoComplete="tel-national"
+          required={required}
+          value={national}
+          placeholder={placeholder}
+          onChange={(event) => setNational(event.target.value.replace(/[^0-9]/g, ""))}
+        />
+      </span>
       <input type="hidden" name={name} value={national ? dial + national : ""} />
       {open && (
         <span className="phone-menu">

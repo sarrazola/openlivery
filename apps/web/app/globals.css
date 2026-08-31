@@ -717,8 +717,12 @@ textarea { line-height: 1.55; }
 .phone-input { position: relative; display: flex; align-items: stretch; gap: 0; }
 .phone-country { flex: 0 0 auto; display: flex; align-items: center; gap: 5px; padding: 0 8px 0 10px; border: 1px solid var(--line); border-right: 0; border-radius: 8px 0 0 8px; background: #fafbfc; font-size: 16px; cursor: pointer; }
 .phone-country::after { content: ""; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #7b8391; }
-.phone-input .phone-dial { display: flex; align-items: center; padding: 0 6px 0 8px; color: var(--muted); border: 1px solid var(--line); border-left: 0; border-right: 0; background: #fafbfc; font-size: 13.5px; }
-.phone-input > input { flex: 1; min-width: 0; border-radius: 0 8px 8px 0; }
+/* One visual field: the dial code sits inside it as a fixed prefix and the
+   number is typed right after. */
+.phone-field { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--line); border-left: 0; border-radius: 0 8px 8px 0; background: white; }
+.phone-field:focus-within { border-color: var(--brand, #4f6bed); }
+.phone-field .phone-dial { color: var(--muted); font-size: 13.5px; white-space: nowrap; }
+.phone-field input { flex: 1; min-width: 0; border: 0; outline: none; box-shadow: none; background: transparent; padding-left: 0; padding-right: 0; }
 .phone-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; display: flex; flex-direction: column; width: min(320px, 88vw); background: white; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 32px rgba(10, 14, 29, .16); overflow: hidden; }
 .phone-menu-search { display: flex; align-items: center; gap: 7px; padding: 9px 11px; color: var(--muted); border-bottom: 1px solid var(--line); background: #fafbfc; }
 .phone-menu-search input { flex: 1; min-width: 0; border: 0; background: transparent; font-size: 13.5px; outline: none; }
