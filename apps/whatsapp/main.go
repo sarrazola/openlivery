@@ -59,11 +59,34 @@ func loadDotEnv() {
 	}
 }
 
-// openStore opens the whatsmeow session store. A postgres:// URL uses
-// Postgres (the search_path query parameter selects the schema, which is
-// created when missing); anything else is treated as a SQLite path.
+var postgresScheme = regexp.MustCompile(`^postgres(ql)?(\+[a-z0-9]+)?://`)
+
+// normalizeStoreURL turns any postgres-family URL into one lib/pq accepts:
+// SQLAlchemy-style schemes like postgresql+psycopg:// are common when the DSN
+// is shared with the backend. A non-empty schema lands in search_path unless
+// the URL already picked one.
+func normalizeStoreURL(storeURL, schema string) string {
+	if !postgresScheme.MatchString(storeURL) {
+		return storeURL
+	}
+	normalized := postgresScheme.ReplaceAllString(storeURL, "postgres://")
+	if schema != "" && !strings.Contains(normalized, "search_path=") {
+		separator := "?"
+		if strings.Contains(normalized, "?") {
+			separator = "&"
+		}
+		normalized += separator + "search_path=" + schema
+	}
+	return normalized
+}
+
+// openStore opens the whatsmeow session store. A postgres-family URL uses
+// Postgres (the search_path query parameter, or WHATSAPP_STORE_SCHEMA,
+// selects the schema, which is created when missing); anything else is
+// treated as a SQLite path.
 func openStore(ctx context.Context, storeURL string, log waLog.Logger) (*sqlstore.Container, error) {
-	if strings.HasPrefix(storeURL, "postgres://") || strings.HasPrefix(storeURL, "postgresql://") {
+	if postgresScheme.MatchString(storeURL) {
+		storeURL = normalizeStoreURL(storeURL, getenv("WHATSAPP_STORE_SCHEMA", ""))
 		ensureSchema(storeURL, log)
 		return sqlstore.New(ctx, "postgres", storeURL, log)
 	}
