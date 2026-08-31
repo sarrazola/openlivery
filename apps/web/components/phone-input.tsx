@@ -32,17 +32,23 @@ export function PhoneInput({
   const dial = dialCodeOf(iso);
   return (
     <span className="phone-input">
-      <select
-        aria-label={countryName(iso, locale)}
-        value={iso}
-        onChange={(event) => setIso(event.target.value)}
-      >
-        {options.map((entry) => (
-          <option key={entry.iso} value={entry.iso}>
-            {flagOf(entry.iso)} {entry.label} (+{entry.code})
-          </option>
-        ))}
-      </select>
+      {/* Closed it shows only the flag; the native dropdown carries the full
+          names so the country stays searchable by typing. */}
+      <span className="phone-country">
+        <span aria-hidden="true">{flagOf(iso)}</span>
+        <select
+          aria-label={countryName(iso, locale)}
+          title={countryName(iso, locale)}
+          value={iso}
+          onChange={(event) => setIso(event.target.value)}
+        >
+          {options.map((entry) => (
+            <option key={entry.iso} value={entry.iso}>
+              {flagOf(entry.iso)} {entry.label} (+{entry.code})
+            </option>
+          ))}
+        </select>
+      </span>
       <span className="phone-dial">+{dial}</span>
       <input
         inputMode="tel"

@@ -712,10 +712,14 @@ textarea { line-height: 1.55; }
 .composer-quote button { display: grid; place-items: center; width: 24px; height: 24px; color: #5a6272; background: none; border: 0; border-radius: 999px; cursor: pointer; }
 .composer-quote button:hover { background: rgba(10, 14, 29, .08); }
 
-/* Phone entry: country picker, fixed dial code, digits-only national number. */
+/* Phone entry: country picker (flag only when closed), fixed dial code,
+   digits-only national number. The transparent select on top keeps the
+   native dropdown with full country names and its type-to-search. */
 .phone-input { display: flex; align-items: stretch; gap: 0; }
-.phone-input select { flex: 0 0 auto; max-width: 96px; padding: 0 4px; border: 1px solid var(--line); border-right: 0; border-radius: 8px 0 0 8px; background: #fafbfc; font-size: 13px; }
-.phone-input .phone-dial { display: flex; align-items: center; padding: 0 6px 0 10px; color: var(--muted); border: 1px solid var(--line); border-left: 0; border-right: 0; background: #fafbfc; font-size: 13.5px; }
+.phone-country { position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 10px; border: 1px solid var(--line); border-right: 0; border-radius: 8px 0 0 8px; background: #fafbfc; font-size: 16px; cursor: pointer; }
+.phone-country::after { content: ""; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #7b8391; }
+.phone-country select { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
+.phone-input .phone-dial { display: flex; align-items: center; padding: 0 6px 0 8px; color: var(--muted); border: 1px solid var(--line); border-left: 0; border-right: 0; background: #fafbfc; font-size: 13.5px; }
 .phone-input input { flex: 1; min-width: 0; border-radius: 0 8px 8px 0; }
 /* Candidate list of the contact merge dialog. */
 .merge-candidates { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow: auto; }
