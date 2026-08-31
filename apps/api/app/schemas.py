@@ -318,6 +318,9 @@ class ConversationOut(ORMModel):
     preview: str = ""
     unread: bool = False
     unread_count: int = 0
+    # When the contact last wrote; the inbox shows this so the row's time
+    # means "waiting since", not "our last activity".
+    last_inbound_at: datetime | None = None
 
 
 class SourceOut(BaseModel):
@@ -371,6 +374,7 @@ class ConversationInboxOut(BaseModel):
     unread: bool = False
     unread_count: int = 0
     updated_at: datetime
+    last_inbound_at: datetime | None = None
 
 
 class SendMessageRequest(BaseModel):

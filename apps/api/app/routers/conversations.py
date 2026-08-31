@@ -106,12 +106,19 @@ def inbox(
         .group_by(Message.conversation_id)
     ).subquery()
     unread_count = func.coalesce(unread_counts.c.n, 0)
+    last_inbound = (
+        select(Message.conversation_id.label("cid"), func.max(Message.created_at).label("at"))
+        .where(Message.kind == "message", Message.sender_type == "visitor")
+        .group_by(Message.conversation_id)
+        .subquery()
+    )
 
     query = (
-        select(Conversation, Agent.name, last.c.content, unread_count.label("unread_count"))
+        select(Conversation, Agent.name, last.c.content, unread_count.label("unread_count"), last_inbound.c.at.label("last_inbound_at"))
         .join(Agent, Agent.id == Conversation.agent_id)
         .outerjoin(last, last.c.cid == Conversation.id)
         .outerjoin(unread_counts, unread_counts.c.cid == Conversation.id)
+        .outerjoin(last_inbound, last_inbound.c.cid == Conversation.id)
         .where(Conversation.agency_id == user.agency_id)
     )
     if agent_id:
@@ -146,8 +153,9 @@ def inbox(
             "unread": int(row_unread_count) > 0,
             "unread_count": int(row_unread_count),
             "updated_at": conv.updated_at,
+            "last_inbound_at": last_inbound_at,
         }
-        for conv, agent_name, content, row_unread_count in rows
+        for conv, agent_name, content, row_unread_count, last_inbound_at in rows
     ]
 
 

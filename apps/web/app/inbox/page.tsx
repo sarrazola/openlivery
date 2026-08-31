@@ -245,7 +245,7 @@ export default function InboxPage() {
                   <span className={`channel-badge ${item.channel}`} title={channelLabel(item.channel)}>{channelIcon(item.channel)}</span>
                 </span>
                 <span className="inbox-row-body">
-                  <span className="inbox-row-top"><strong>{item.contact_name || item.title}</strong><time>{formatWhen(item.updated_at, lang)}</time></span>
+                  <span className="inbox-row-top"><strong>{item.contact_name || item.title}</strong><time>{formatWhen(item.last_inbound_at ?? item.updated_at, lang)}</time></span>
                   <small className="inbox-row-preview">{item.preview || t("inbox.noMessages")}</small>
                   <small className="inbox-row-meta">{item.agent_name} · {channelLabel(item.channel)} <span className={`mini-badge ${item.mode}`}>{item.mode === "human" ? t("inbox.modeHuman") : t("inbox.modeAi")}</span></small>
                 </span>

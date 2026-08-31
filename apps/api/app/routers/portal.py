@@ -360,6 +360,7 @@ def portal_conversations(
                 "unread": int(row_unread_count) > 0,
                 "unread_count": int(row_unread_count),
                 "assignee_name": ((assignee_name or "").strip() or assignee_email) if conv.assignee_id else None,
+                "last_inbound_at": last_inbound_at,
                 **_window_fields(conv, last_inbound_at),
             }
         )

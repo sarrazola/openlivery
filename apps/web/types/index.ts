@@ -141,6 +141,7 @@ export type ConversationInbox = {
   unread: boolean;
   unread_count: number;
   updated_at: string;
+  last_inbound_at?: string | null;
 };
 export type Conversation = {
   id: string;
@@ -163,6 +164,7 @@ export type Conversation = {
   contact_id?: string | null;
   created_at: string;
   updated_at: string;
+  last_inbound_at?: string | null;
   preview?: string;
   unread?: boolean;
   unread_count?: number;
