@@ -15,6 +15,15 @@ bundles ffmpeg for voice-note transcoding.
 
 ### Changed
 
+- The WhatsApp QR bridge (`apps/whatsapp`) was rewritten in Go on top of
+  [whatsmeow](https://github.com/tulir/whatsmeow), replacing the Node.js
+  service built on Baileys. The HTTP contract with the API, the port and the
+  token auth are unchanged; sessions now live in whatsmeow's own SQL store
+  (`WHATSAPP_STORE_URL`, SQLite by default or Postgres) instead of an
+  encrypted blob in the backend database, reconnection is handled by the
+  library, and the image ships a single static binary. Existing Baileys
+  sessions cannot be migrated: after upgrading, each channel must scan the QR
+  once more.
 - Agent guidance moved from `CLAUDE.md` to `AGENTS.md`, with `CLAUDE.md`
   kept as a one-line pointer. Same pairing already used in `apps/web`, so
   contributors get the repo's conventions whichever coding agent they use.

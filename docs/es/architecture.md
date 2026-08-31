@@ -12,7 +12,7 @@ El stack son cuatro contenedores orquestados por Docker Compose. Tres de ellos s
 | --- | --- | --- | --- |
 | Backend | `apps/api/` | FastAPI (Python 3.12), SQLAlchemy, Alembic | API REST, autenticación, orquestación de IA, recuperación de conocimiento |
 | Frontend | `apps/web/` | Next.js (App Router), React, TypeScript, Tailwind | Panel, playground, portal del cliente, widget web |
-| Puente de WhatsApp | `apps/whatsapp/` | Node.js sobre Baileys | Mantiene las sesiones vivas de WhatsApp y retransmite mensajes |
+| Puente de WhatsApp | `apps/whatsapp/` | Go sobre whatsmeow | Mantiene las sesiones vivas de WhatsApp y retransmite mensajes |
 | Base de datos | — | PostgreSQL | Fuente única de verdad para todo el estado |
 
 ## La puerta de enlace
@@ -56,10 +56,10 @@ La agencia es la frontera del tenant. Las tablas `Agency`, `User`, `Client`, `Ag
 
 ## Cifrado en reposo
 
-Los valores sensibles nunca llegan a la base de datos en texto plano. Las claves de API de los proveedores de IA (`ProviderCredential.encrypted_api_key`) y el estado de sesión de WhatsApp (`WhatsAppChannel.encrypted_auth_state`, `encrypted_qr`) se cifran con Fernet, usando una clave derivada de `ENCRYPTION_KEY` (`apps/api/app/security.py`). Este valor nunca debe cambiar una vez que se han almacenado secretos, o dejarán de poder descifrarse. Las contraseñas se hashean con bcrypt. Consulta [Configuración](configuration.md).
+Los valores sensibles nunca llegan a la base de datos en texto plano. Las claves de API de los proveedores de IA (`ProviderCredential.encrypted_api_key`) y el marcador de sesión y el QR de WhatsApp (`WhatsAppChannel.encrypted_auth_state`, `encrypted_qr`) se cifran con Fernet, usando una clave derivada de `ENCRYPTION_KEY` (`apps/api/app/security.py`). Este valor nunca debe cambiar una vez que se han almacenado secretos, o dejarán de poder descifrarse. Las contraseñas se hashean con bcrypt. Consulta [Configuración](configuration.md).
 
 ## Comportamiento en tiempo de ejecución
 
 - **Migraciones al arrancar** — el backend ejecuta `alembic upgrade head` antes de aceptar tráfico, de modo que el esquema siempre está actualizado. Los cambios de esquema requieren una nueva migración de Alembic.
-- **Puente con estado** — el puente de WhatsApp (`apps/whatsapp/src/manager.ts`) mantiene en memoria los sockets vivos de Baileys y recarga al arrancar las sesiones habilitadas desde el estado cifrado en PostgreSQL. El backend y el puente se autentican entre sí con `WHATSAPP_BRIDGE_TOKEN`. Consulta [WhatsApp](whatsapp.md).
+- **Puente con estado** — el puente de WhatsApp (`apps/whatsapp/manager.go`) mantiene en memoria los clientes vivos de whatsmeow; las claves de sesión viven en el almacén SQL propio de whatsmeow (`WHATSAPP_STORE_URL`) y el backend guarda un pequeño marcador cifrado por canal, de modo que las sesiones habilitadas se reconectan al arrancar. El backend y el puente se autentican entre sí con `WHATSAPP_BRIDGE_TOKEN`. Consulta [WhatsApp](whatsapp.md).
 - **Límite de tasa** — los endpoints públicos y no autenticados se limitan por IP con un limitador en memoria (`apps/api/app/ratelimit.py`), usando como clave la dirección del cliente obtenida de `X-Forwarded-For`.

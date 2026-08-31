@@ -6,9 +6,9 @@ OpenLivery conecta un número real de WhatsApp a cada cliente para que su agente
 
 ## El servicio puente
 
-El soporte de WhatsApp corre en un servicio dedicado, el **puente** (`apps/whatsapp/`), un proceso de Node.js con estado construido sobre [Baileys](https://github.com/WhiskeySockets/Baileys), el protocolo de WhatsApp Web. El puente mantiene un socket activo por cada cliente conectado y se comunica con el backend a través de una API interna.
+El soporte de WhatsApp corre en un servicio dedicado, el **puente** (`apps/whatsapp/`), un proceso de Go con estado construido sobre [whatsmeow](https://github.com/tulir/whatsmeow), una biblioteca del protocolo multidispositivo de WhatsApp Web. El puente mantiene una conexión activa por cada cliente conectado y se comunica con el backend a través de una API interna.
 
-Como tiene estado, el puente no guarda las sesiones solo en memoria: el estado de sesión y autenticación se almacena cifrado a través del backend en PostgreSQL. Al arrancar, el puente pide al backend la lista de canales habilitados que ya tienen una sesión guardada y los recarga, de modo que los números se reconectan solos tras un reinicio.
+Como tiene estado, el puente no guarda las sesiones solo en memoria: whatsmeow persiste las claves de sesión en su propio almacén SQL, configurado con `WHATSAPP_STORE_URL` (un archivo SQLite local por defecto; también soporta PostgreSQL). El backend guarda un pequeño marcador cifrado por canal que registra a qué dispositivo vinculado pertenece la sesión. Al arrancar, el puente pide al backend la lista de canales habilitados que ya tienen una sesión guardada y los recarga, de modo que los números se reconectan solos tras un reinicio.
 
 ## Conectar un número
 
@@ -19,7 +19,7 @@ Una sesión de WhatsApp pertenece a un solo cliente. Para conectarla:
 3. En el teléfono dueño del número, abre WhatsApp y ve a **Ajustes → Dispositivos vinculados → Vincular un dispositivo**.
 4. Escanea el código QR. Cuando el teléfono lo confirme, el canal cambia a **conectado** y muestra el número vinculado.
 
-A partir de ahí la sesión sobrevive a los reinicios. Si el número se desvincula desde el teléfono (o la sesión se invalida), el puente borra el estado de autenticación guardado y el canal vuelve a desconectado. También puedes desconectar desde la misma página, lo que cierra la sesión del dispositivo y elimina la sesión guardada.
+A partir de ahí la sesión sobrevive a los reinicios. Si el número se desvincula desde el teléfono (o la sesión se invalida), el puente borra la sesión guardada y el canal vuelve a desconectado. También puedes desconectar desde la misma página, lo que cierra la sesión del dispositivo y elimina la sesión guardada.
 
 ## Cómo fluyen los mensajes
 

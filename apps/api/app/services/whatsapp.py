@@ -26,7 +26,7 @@ async def bridge_command(method: str, path: str, payload: dict | None = None, ti
     except httpx.RequestError as exc:
         raise HTTPException(
             status_code=503,
-            detail="The local WhatsApp service is not available. Start it with npm run dev inside whatsapp/.",
+            detail="The local WhatsApp service is not available. Start it with go run . inside apps/whatsapp/.",
         ) from exc
     if response.status_code >= 400:
         try:

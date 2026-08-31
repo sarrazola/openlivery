@@ -12,7 +12,7 @@ The stack is four containers orchestrated by Docker Compose. Three of them are a
 | --- | --- | --- | --- |
 | Backend | `apps/api/` | FastAPI (Python 3.12), SQLAlchemy, Alembic | REST API, auth, AI orchestration, knowledge retrieval |
 | Frontend | `apps/web/` | Next.js (App Router), React, TypeScript, Tailwind | Dashboard, playground, client portal, web widget |
-| WhatsApp bridge | `apps/whatsapp/` | Node.js over Baileys | Holds live WhatsApp sessions, relays messages |
+| WhatsApp bridge | `apps/whatsapp/` | Go over whatsmeow | Holds live WhatsApp sessions, relays messages |
 | Database | — | PostgreSQL | Single source of truth for all state |
 
 ## The gateway
@@ -56,10 +56,10 @@ The agency is the tenant boundary. `Agency`, `User`, `Client`, `Agent`, `WhatsAp
 
 ## Encryption at rest
 
-Sensitive values never hit the database in plaintext. AI provider API keys (`ProviderCredential.encrypted_api_key`) and WhatsApp session state (`WhatsAppChannel.encrypted_auth_state`, `encrypted_qr`) are encrypted with Fernet, using a key derived from `ENCRYPTION_KEY` (`apps/api/app/security.py`). This value must never change once secrets are stored, or they can no longer be decrypted. Passwords are hashed with bcrypt. See [Configuration](configuration.md).
+Sensitive values never hit the database in plaintext. AI provider API keys (`ProviderCredential.encrypted_api_key`) and the WhatsApp session marker and QR (`WhatsAppChannel.encrypted_auth_state`, `encrypted_qr`) are encrypted with Fernet, using a key derived from `ENCRYPTION_KEY` (`apps/api/app/security.py`). This value must never change once secrets are stored, or they can no longer be decrypted. Passwords are hashed with bcrypt. See [Configuration](configuration.md).
 
 ## Runtime behavior
 
 - **Migrations on start** — the backend runs `alembic upgrade head` before accepting traffic, so the schema is always current. Schema changes require a new Alembic migration.
-- **Stateful bridge** — the WhatsApp bridge (`apps/whatsapp/src/manager.ts`) keeps live Baileys sockets in memory and reloads enabled sessions on startup from the encrypted state in PostgreSQL. Backend and bridge authenticate to each other with `WHATSAPP_BRIDGE_TOKEN`. See [WhatsApp](whatsapp.md).
+- **Stateful bridge** — the WhatsApp bridge (`apps/whatsapp/manager.go`) keeps live whatsmeow clients in memory; the session keys live in whatsmeow's own SQL store (`WHATSAPP_STORE_URL`) and the backend keeps a small encrypted marker per channel, so enabled sessions reconnect on startup. Backend and bridge authenticate to each other with `WHATSAPP_BRIDGE_TOKEN`. See [WhatsApp](whatsapp.md).
 - **Rate limiting** — public, unauthenticated endpoints are throttled per IP by an in-memory limiter (`apps/api/app/ratelimit.py`), keyed on the client address from `X-Forwarded-For`.

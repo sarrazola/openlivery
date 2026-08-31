@@ -14,7 +14,7 @@ cd openlivery
 git config core.hooksPath .githooks
 ```
 
-El guard (`.githooks/pre-commit`) impide commitear archivos locales y cualquier contenido preparado marcado como interno. Necesitas Python 3.12, Node.js y una instancia de PostgreSQL en ejecución a la que el backend pueda conectarse.
+El guard (`.githooks/pre-commit`) impide commitear archivos locales y cualquier contenido preparado marcado como interno. Necesitas Python 3.12, Node.js, Go 1.27+ y una instancia de PostgreSQL en ejecución a la que el backend pueda conectarse.
 
 ## Backend (apps/api)
 
@@ -43,11 +43,10 @@ Usa `npm run lint` antes de commitear y `npm run build` para verificar un build 
 
 ```bash
 cd apps/whatsapp
-npm install
-npm run dev                     # tsx watch, escucha en :3101
+go run .                        # escucha en :3101
 ```
 
-Ejecuta `npm test` para la suite de pruebas y `npm run build` para hacer typecheck con `tsc`.
+El puente es un único binario de Go (Go 1.27+); no hay paso de instalación. Ejecuta `go test ./...` para la suite de pruebas y `go vet ./...` para verificar el build.
 
 ## Pruebas
 
@@ -85,9 +84,9 @@ Todo el código, los identificadores, los comentarios, los mensajes de commit y 
 | Frontend | `npm run dev` | Ejecuta el servidor de desarrollo en :3000 |
 | Frontend | `npm run lint` | Analiza con ESLint |
 | Frontend | `npm run build` | Build de producción |
-| WhatsApp | `npm run dev` | Ejecuta el puente en :3101 |
-| WhatsApp | `npm test` | Ejecuta la suite de pruebas |
-| WhatsApp | `npm run build` | Typecheck con tsc |
+| WhatsApp | `go run .` | Ejecuta el puente en :3101 |
+| WhatsApp | `go test ./...` | Ejecuta la suite de pruebas |
+| WhatsApp | `go vet ./...` | Verifica el build |
 
 ## Próximos pasos
 

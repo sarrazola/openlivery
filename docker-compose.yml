@@ -82,13 +82,17 @@ services:
       BACKEND_URL: http://api:8000
       WHATSAPP_BRIDGE_HOST: 0.0.0.0
       WHATSAPP_BRIDGE_PORT: 3101
+      # whatsmeow session store: its own schema in the shared Postgres.
+      WHATSAPP_STORE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable&search_path=whatsmeow
     expose:
       - "3101"
     depends_on:
       api:
         condition: service_healthy
+      db:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3101/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      test: ["CMD", "/app/bridge", "-healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 12

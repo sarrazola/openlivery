@@ -28,7 +28,7 @@ Everything you need to build, brand and operate AI agents for your clients.
 
 **Channels**
 
-- [WhatsApp](en/whatsapp.md) — Link a number per client through the Baileys bridge and hand off to a human.
+- [WhatsApp](en/whatsapp.md) — Link a number per client through the whatsmeow bridge and hand off to a human.
 - [WhatsApp Cloud API](en/whatsapp-cloud-api.md) — Connect a number through Meta's official Cloud API: app, token, webhook and going live.
 - [Web chat widget](en/web-widget.md) — Embed an agent on any website with a single snippet.
 
@@ -66,7 +66,7 @@ Todo lo que necesitas para construir, marcar y operar agentes de IA para tus cli
 
 **Canales**
 
-- [WhatsApp](es/whatsapp.md) — Vincula un número por cliente con el puente de Baileys y pasa a control humano.
+- [WhatsApp](es/whatsapp.md) — Vincula un número por cliente con el puente de whatsmeow y pasa a control humano.
 - [API de WhatsApp Cloud](es/whatsapp-cloud-api.md) — Conecta un número por la API Cloud oficial de Meta: app, token, webhook y salida a producción.
 - [Widget de chat web](es/web-widget.md) — Integra un agente en cualquier sitio web con un único snippet.
 

@@ -10,7 +10,7 @@ OpenLivery is a multi-tenant platform where agencies create and manage AI agents
 
 - `apps/api/` — FastAPI (Python 3.12) + SQLAlchemy + Alembic
 - `apps/web/` — Next.js 16 (App Router) + React 19 + TypeScript + Tailwind
-- `apps/whatsapp/` — Node.js bridge over Baileys (WhatsApp Web protocol)
+- `apps/whatsapp/` — Go bridge over whatsmeow (WhatsApp Web protocol)
 
 **Language convention (always follow):** all code — routes, identifiers, comments, commit messages, and docs — is written in English, always. The only thing that is localized is the end-user UI, through a typed i18n system (`apps/web/lib/i18n`): English (default) and Spanish for now. Never introduce non-English in code or docs; put user-facing copy behind i18n keys instead. (The system prompt sent to the LLM in `apps/api/app/services/knowledge.py` is a deliberate exception, kept in the customer's language.)
 
@@ -46,9 +46,9 @@ npm run lint                                 # eslint
 npm run build
 
 # WhatsApp bridge
-cd apps/whatsapp && npm install && npm run dev    # tsx watch, listens on :3101
-npm test                                     # node test runner via tsx
-npm run build                                # tsc typecheck
+cd apps/whatsapp && go run .                 # listens on :3101
+go test ./...                                # unit tests
+go vet ./...                                 # static checks
 ```
 
 ### Backend tests
@@ -80,7 +80,7 @@ Everything is agency-scoped: `Agency → Users, Clients, AIConnections`; `Client
 
 ### WhatsApp flow
 
-The bridge (`apps/whatsapp/src/manager.ts`) holds live Baileys sessions and is stateful — encrypted session/auth state lives in PostgreSQL (via the backend), and the bridge reloads enabled sessions on startup. Incoming messages: bridge → `POST /api/whatsapp/channels/{channel_id}/inbound` on the backend → AI reply sent back through the bridge. Replies are debounced (`REPLY_DEBOUNCE_SECONDS`, default 8s): the shared pipeline in `app/services/whatsapp_inbound.py` waits for a quiet window that restarts on each new visitor message, then answers the whole burst with one reply delivered via `send_channel_message()`; with the window at 0 the reply returns synchronously in the inbound response instead. Backend↔bridge calls authenticate with `WHATSAPP_BRIDGE_TOKEN`. Conversations have a `mode` field: switching to `"human"` pauses the AI so an operator answers from the portal.
+The bridge (`apps/whatsapp/manager.go`) holds live whatsmeow clients, one per channel. Session keys live in whatsmeow's own SQL store (`WHATSAPP_STORE_URL`, SQLite or Postgres); the backend only stores a small marker with the device JID through the internal auth endpoints, which is what makes a channel restorable on startup. Incoming messages: bridge → `POST /api/whatsapp/channels/{channel_id}/inbound` on the backend → AI reply sent back through the bridge. Replies are debounced (`REPLY_DEBOUNCE_SECONDS`, default 8s): the shared pipeline in `app/services/whatsapp_inbound.py` waits for a quiet window that restarts on each new visitor message, then answers the whole burst with one reply delivered via `send_channel_message()`; with the window at 0 the reply returns synchronously in the inbound response instead. Backend↔bridge calls authenticate with `WHATSAPP_BRIDGE_TOKEN`. Conversations have a `mode` field: switching to `"human"` pauses the AI so an operator answers from the portal.
 
 ### Frontend
 
