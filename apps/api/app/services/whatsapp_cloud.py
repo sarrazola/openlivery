@@ -78,13 +78,26 @@ async def send_text(
 
 
 async def send_reaction(access_token: str, phone_number_id: str, to: str, message_id: str, emoji: str) -> None:
-    """React with an emoji to one of the customer's messages. Best-effort: a
-    reaction is a gesture, never worth failing the reply over."""
+    """React with an emoji to a message; an empty emoji removes the reaction.
+    Raises on failure so the caller decides whether the gesture matters."""
     payload = {
         "messaging_product": "whatsapp",
         "to": to,
         "type": "reaction",
         "reaction": {"message_id": message_id, "emoji": emoji},
+    }
+    response = await _graph_request("POST", _graph_url(f"{phone_number_id}/messages"), access_token, json=payload)
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"WhatsApp could not send the reaction: {_graph_error(response)}")
+
+
+async def mark_read(access_token: str, phone_number_id: str, message_id: str) -> None:
+    """Mark the conversation as read up to ``message_id`` (blue ticks) without
+    the typing indicator. Best-effort, like the fused variant below."""
+    payload = {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": message_id,
     }
     try:
         await _graph_request("POST", _graph_url(f"{phone_number_id}/messages"), access_token, json=payload)

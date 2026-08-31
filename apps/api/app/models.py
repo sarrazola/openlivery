@@ -443,6 +443,8 @@ class Message(Base):
     # The business's emoji reaction to this (visitor) message, mirrored in the
     # portal so operators see the same gesture the customer saw on WhatsApp.
     reaction: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # The customer's emoji reaction to this message, as reported by WhatsApp.
+    incoming_reaction: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Set when this reply quotes a specific earlier message (swipe-to-reply).
     quoted_message_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("messages.id", ondelete="SET NULL"), nullable=True

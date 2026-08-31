@@ -2,14 +2,14 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { BadgeCheck, Bot, Building2, CheckCircle2, Clock, Contact as ContactIcon, FileText, FlaskConical, Globe, Images, Inbox, LoaderCircle, LogOut, MessageCircle, MessageSquareText, Search, Send, ShieldCheck, UserRound } from "lucide-react";
+import { BadgeCheck, Bot, Building2, CheckCircle2, Clock, Contact as ContactIcon, FileText, FlaskConical, Globe, Images, Inbox, LoaderCircle, LogOut, MessageCircle, MessageSquareText, Reply, Search, Send, ShieldCheck, SmilePlus, UserRound, X } from "lucide-react";
 import { ContactsView } from "./contacts";
 import { TemplatePicker, TemplatesView } from "./templates";
 import { AttachButton, MessageAttachments, PendingAttachment, RecordButton, useFileDrop, type GalleryImage } from "@/components/attachments";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { MediaPanel } from "@/components/media-panel";
 import { RichText } from "@/components/rich-text";
-import { QuotedSnippet, ReactionBadge } from "@/components/message-gestures";
+import { QuotedSnippet, ReactionBadge, ReactionPicker } from "@/components/message-gestures";
 import { DeliveryTicks } from "@/components/delivery-ticks";
 import { useToast } from "@/components/toast";
 import { Alert, EmptyState } from "@/components/ui";
@@ -66,6 +66,8 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [quoting, setQuoting] = useState<Message | null>(null);
+  const [reactingTo, setReactingTo] = useState<string | null>(null);
   const [tab, setTab] = useState<"all" | "unread" | "mine" | "ai">("all");
   const [members, setMembers] = useState<Member[]>([]);
   useEffect(() => { api<Member[]>(`/portal/${slug}/members`).then(setMembers).catch(() => {}); }, [slug]);
@@ -221,8 +223,18 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
 
   async function choose(item: Conversation) {
     selectedIdRef.current = item.id;
+    setQuoting(null);
+    setReactingTo(null);
     markRead(item.id);
     setSelected(await api<Conversation>(`/portal/${slug}/conversations/${item.id}`));
+  }
+  async function sendReaction(message: Message, emoji: string) {
+    if (!selected) return;
+    setReactingTo(null);
+    setError("");
+    try {
+      setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/messages/${message.id}/reaction`, { method: "POST", body: JSON.stringify({ emoji }) }));
+    } catch (err) { setError(messageFrom(err)); }
   }
   async function setMode(mode: "ai" | "human") { if (!selected) return; setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/mode`, { method: "PATCH", body: JSON.stringify({ mode }) })); await refresh(); }
   async function setConversationStatus(next: "open" | "resolved") {
@@ -260,7 +272,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
       default: return message.content;
     }
   };
-  async function reply(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected) return; if (pendingFile) { const file = pendingFile; setPendingFile(null); await sendAttachment(file); return; } const form = event.currentTarget; const data = new FormData(form); setBusy(true); setError(""); try { setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply`, { method: "POST", body: JSON.stringify({ content: data.get("content") }) })); form.reset(); await refresh(); } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); } }
+  async function reply(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected) return; if (pendingFile) { const file = pendingFile; setPendingFile(null); await sendAttachment(file); return; } const form = event.currentTarget; const data = new FormData(form); setBusy(true); setError(""); try { setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply`, { method: "POST", body: JSON.stringify({ content: data.get("content"), quoted_message_id: quoting?.id ?? null }) })); form.reset(); setQuoting(null); await refresh(); } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); } }
   const replyInputRef = useRef<HTMLInputElement>(null);
   async function sendAttachment(file?: File) {
     if (!file || !selected || !canReply || busy) return;
@@ -314,10 +326,16 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
               const mine = message.role === "assistant";
               return <article key={message.id} className={`${message.role}${mine ? " mine" : ""}${mine && message.sender_type === "ai" ? " ai" : ""}${grouped ? " grouped" : ""}`}>
                 {!grouped && <small>{message.sender_name || (message.role === "assistant" ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor"))}</small>}
+                {canReply && <span className="bubble-actions">
+                  {message.role === "user" && <button type="button" title={t("portal.inbox.conversation.react")} aria-label={t("portal.inbox.conversation.react")} onClick={() => setReactingTo(reactingTo === message.id ? null : message.id)}><SmilePlus size={14} /></button>}
+                  <button type="button" title={t("portal.inbox.conversation.reply")} aria-label={t("portal.inbox.conversation.reply")} onClick={() => { setQuoting(message); replyInputRef.current?.focus(); }}><Reply size={14} /></button>
+                </span>}
                 <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={stamp} />
                 {message.content ? <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}{mine && selected.channel === "whatsapp_cloud" && <DeliveryTicks status={message.delivery_status} error={message.delivery_error} />}</time></p>
                   : !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}
                 <ReactionBadge emoji={message.reaction} />
+                <ReactionBadge emoji={message.incoming_reaction} incoming />
+                {reactingTo === message.id && <ReactionPicker current={message.reaction} removeLabel={t("portal.inbox.conversation.removeReaction")} onPick={(emoji) => sendReaction(message, emoji)} />}
               </article>;
-            })}</div>{error && <Alert>{error}</Alert>}{pendingFile && <PendingAttachment file={pendingFile} onCancel={() => setPendingFile(null)} />}{windowClosed && !isResolved && selected.mode === "human" ? <div className="portal-composer window-closed"><div><strong>{selected.reply_window_until ? t("portal.inbox.window.closed") : t("portal.inbox.window.neverWrote")}</strong><small>{t("portal.inbox.window.closedHint")}</small></div><button type="button" className="button primary" onClick={() => setTemplateOpen(true)} disabled={!templatesSupported}><FileText size={16} /> {t("portal.inbox.window.sendTemplate")}</button></div> : <form onSubmit={reply} className="portal-composer"><AttachButton onFile={setPendingFile} disabled={!canReply || busy} title={t("chat.attachFile")} /><RecordButton onRecorded={sendAttachment} onError={() => setError(t("chat.micDenied"))} disabled={!canReply || busy} title={t("chat.recordAudio")} titleStop={t("chat.stopRecording")} /><input ref={replyInputRef} name="content" required={!pendingFile} disabled={!canReply || busy} placeholder={isResolved ? t("portal.inbox.conversation.resolvedLocked") : selected.mode === "human" ? t("portal.inbox.conversation.replyPlaceholder") : t("portal.inbox.conversation.takeControlToReply")} /><button disabled={!canReply || busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}</button></form>}<MediaPanel open={mediaOpen} onClose={() => setMediaOpen(false)} messages={selected.messages ?? []} urlFor={attachmentUrl} /><TemplatePicker slug={slug} open={templateOpen} title={t("portal.inbox.window.sendTemplate")} onClose={() => setTemplateOpen(false)} onSend={replyWithTemplate} /></>}</section></div>}</section></main>;
+            })}</div>{error && <Alert>{error}</Alert>}{pendingFile && <PendingAttachment file={pendingFile} onCancel={() => setPendingFile(null)} />}{quoting && <div className="composer-quote"><Reply size={14} /><span><strong>{t("portal.inbox.conversation.replyingTo", { name: quoting.sender_name || (quoting.role === "assistant" ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor")) })}</strong><small>{(quoting.content || "").slice(0, 140)}</small></span><button type="button" onClick={() => setQuoting(null)} aria-label={t("portal.inbox.conversation.cancelReply")} title={t("portal.inbox.conversation.cancelReply")}><X size={14} /></button></div>}{windowClosed && !isResolved && selected.mode === "human" ? <div className="portal-composer window-closed"><div><strong>{selected.reply_window_until ? t("portal.inbox.window.closed") : t("portal.inbox.window.neverWrote")}</strong><small>{t("portal.inbox.window.closedHint")}</small></div><button type="button" className="button primary" onClick={() => setTemplateOpen(true)} disabled={!templatesSupported}><FileText size={16} /> {t("portal.inbox.window.sendTemplate")}</button></div> : <form onSubmit={reply} className="portal-composer"><AttachButton onFile={setPendingFile} disabled={!canReply || busy} title={t("chat.attachFile")} /><RecordButton onRecorded={sendAttachment} onError={() => setError(t("chat.micDenied"))} disabled={!canReply || busy} title={t("chat.recordAudio")} titleStop={t("chat.stopRecording")} /><input ref={replyInputRef} name="content" required={!pendingFile} disabled={!canReply || busy} placeholder={isResolved ? t("portal.inbox.conversation.resolvedLocked") : selected.mode === "human" ? t("portal.inbox.conversation.replyPlaceholder") : t("portal.inbox.conversation.takeControlToReply")} /><button disabled={!canReply || busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}</button></form>}<MediaPanel open={mediaOpen} onClose={() => setMediaOpen(false)} messages={selected.messages ?? []} urlFor={attachmentUrl} /><TemplatePicker slug={slug} open={templateOpen} title={t("portal.inbox.window.sendTemplate")} onClose={() => setTemplateOpen(false)} onSend={replyWithTemplate} /></>}</section></div>}</section></main>;
 }

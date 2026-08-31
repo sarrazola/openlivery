@@ -280,6 +280,7 @@ export default function InboxPage() {
                     {message.content ? <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}</time></p>
                       : !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}
                     <ReactionBadge emoji={message.reaction} />
+                    <ReactionBadge emoji={message.incoming_reaction} incoming />
                   </div>
                 );
               })}

@@ -67,8 +67,11 @@ def _parse_message(message: dict, contacts: dict[str, str]) -> InboundMessage | 
     }
     if not base["external_message_id"] or not sender:
         return None
+    quoted_external_id = (message.get("context") or {}).get("id")
     if kind == "text":
-        return InboundMessage(**base, text=message.get("text", {}).get("body") or "")
+        return InboundMessage(
+            **base, text=message.get("text", {}).get("body") or "", quoted_external_id=quoted_external_id
+        )
     if kind in {"image", "audio", "video"}:
         media = message.get(kind) or {}
         return InboundMessage(
@@ -76,8 +79,31 @@ def _parse_message(message: dict, contacts: dict[str, str]) -> InboundMessage | 
             text=media.get("caption") or "",
             media_kind=kind,
             media_mime=(media.get("mime_type") or "").split(";")[0] or None,
+            quoted_external_id=quoted_external_id,
         )
     return None
+
+
+def _apply_incoming_reaction(db: Session, channel: WhatsAppCloudChannel, message: dict) -> None:
+    """The customer reacted to a message (or removed the reaction)."""
+    reaction = message.get("reaction") or {}
+    target_id = reaction.get("message_id")
+    sender = message.get("from") or ""
+    if not target_id or not sender:
+        return
+    target = db.scalar(
+        select(Message)
+        .join(Conversation, Conversation.id == Message.conversation_id)
+        .where(
+            Conversation.whatsapp_cloud_channel_id == channel.id,
+            Conversation.external_chat_id == sender,
+            Message.external_message_id == target_id,
+        )
+    )
+    if not target:
+        return
+    target.incoming_reaction = (reaction.get("emoji") or "")[:16] or None
+    db.commit()
 
 
 @public_router.post(
@@ -130,6 +156,9 @@ async def receive_webhook(channel_id: uuid.UUID, request: Request, db: Session =
                 for contact in value.get("contacts") or []
             }
             for raw_message in value.get("messages") or []:
+                if raw_message.get("type") == "reaction":
+                    _apply_incoming_reaction(db, channel, raw_message)
+                    continue
                 inbound = _parse_message(raw_message, contacts)
                 if not inbound:
                     continue

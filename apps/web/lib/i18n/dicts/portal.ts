@@ -160,6 +160,11 @@ const en = {
       visitor: "Visitor",
       replyPlaceholder: "Write a reply…",
       takeControlToReply: "Take control to reply",
+      reply: "Reply",
+      react: "React",
+      removeReaction: "Remove",
+      replyingTo: "Replying to {name}",
+      cancelReply: "Cancel the quoted reply",
       resolvedLocked: "This conversation is resolved. The contact's next message opens a new one.",
     },
     activity: {
@@ -344,6 +349,11 @@ const es: typeof en = {
       visitor: "Visitante",
       replyPlaceholder: "Escribe una respuesta…",
       takeControlToReply: "Toma el control para responder",
+      reply: "Responder",
+      react: "Reaccionar",
+      removeReaction: "Quitar",
+      replyingTo: "Respondiendo a {name}",
+      cancelReply: "Cancelar la respuesta citada",
       resolvedLocked: "Esta conversación está resuelta. El próximo mensaje del contacto abre una nueva.",
     },
     activity: {

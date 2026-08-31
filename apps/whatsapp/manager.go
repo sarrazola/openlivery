@@ -53,6 +53,7 @@ type inboundResult struct {
 	Accepted          bool    `json:"accepted"`
 	Reply             *string `json:"reply"`
 	OutboundMessageID *string `json:"outbound_message_id"`
+	QuoteExternalID   *string `json:"quote_external_id"`
 }
 
 type outboundMedia struct {
@@ -87,6 +88,7 @@ type manager struct {
 	api       *backendClient
 	container *sqlstore.Container
 	log       waLog.Logger
+	cache     *messageCache
 
 	mu       sync.Mutex
 	runtimes map[string]*channelRuntime
@@ -97,6 +99,7 @@ func newManager(api *backendClient, container *sqlstore.Container, log waLog.Log
 		api:       api,
 		container: container,
 		log:       log,
+		cache:     newMessageCache(),
 		runtimes:  make(map[string]*channelRuntime),
 	}
 }
@@ -262,6 +265,7 @@ func (m *manager) handleEvent(runtime *channelRuntime, rawEvt any) {
 			return
 		}
 		m.dropRuntime(runtime)
+		m.cache.drop(runtime.channelID)
 		if err := m.api.call(ctx, http.MethodDelete, "/channels/"+runtime.channelID+"/auth", nil, nil, 0); err != nil {
 			m.log.Errorf("channel %s: could not clear the session after logout: %v", runtime.channelID, err)
 		}
@@ -292,8 +296,21 @@ func (m *manager) remoteJIDFor(ctx context.Context, runtime *channelRuntime, cha
 }
 
 func (m *manager) processIncoming(ctx context.Context, runtime *channelRuntime, evt *events.Message) error {
+	// Remember every direct-chat message (own ones included) so later quotes
+	// and reactions can address it faithfully, even in anonymous @lid chats.
+	if !evt.Info.IsGroup && evt.Info.ID != "" {
+		m.cache.put(runtime.channelID, evt.Info.ID, cachedMessage{
+			raw:    evt.Message,
+			chat:   evt.Info.Chat,
+			sender: evt.Info.Sender,
+			fromMe: evt.Info.IsFromMe,
+		})
+	}
 	if !isDirectIncoming(evt.Info) {
 		return nil
+	}
+	if targetID, emoji, ok := incomingReaction(evt.Message); ok {
+		return m.forwardIncomingReaction(ctx, runtime, evt, targetID, emoji)
 	}
 	text := incomingText(evt.Message)
 	media := incomingMedia(evt.Message)
@@ -306,6 +323,9 @@ func (m *manager) processIncoming(ctx context.Context, runtime *channelRuntime, 
 		"external_message_id": evt.Info.ID,
 		"remote_jid":          remoteJID,
 		"text":                text,
+	}
+	if quotedID := incomingQuotedID(evt.Message); quotedID != "" {
+		body["quoted_external_id"] = quotedID
 	}
 	if evt.Info.PushName != "" {
 		body["sender_name"] = evt.Info.PushName
@@ -329,7 +349,11 @@ func (m *manager) processIncoming(ctx context.Context, runtime *channelRuntime, 
 	if result.Reply == nil || *result.Reply == "" {
 		return nil
 	}
-	sentID, err := m.sendMessage(ctx, runtime.channelID, remoteJID, *result.Reply, nil)
+	quote := ""
+	if result.QuoteExternalID != nil {
+		quote = *result.QuoteExternalID
+	}
+	sentID, err := m.sendMessage(ctx, runtime.channelID, remoteJID, *result.Reply, nil, quote)
 	if err != nil {
 		return err
 	}
@@ -342,7 +366,7 @@ func (m *manager) processIncoming(ctx context.Context, runtime *channelRuntime, 
 	return nil
 }
 
-func (m *manager) sendMessage(ctx context.Context, channelID, remoteJID, text string, media *outboundMedia) (string, error) {
+func (m *manager) sendMessage(ctx context.Context, channelID, remoteJID, text string, media *outboundMedia, quoteExternalID string) (string, error) {
 	runtime := m.runtime(channelID)
 	if runtime == nil || runtime.stopped() {
 		return "", errors.New("WhatsApp is not connected")
@@ -358,10 +382,18 @@ func (m *manager) sendMessage(ctx context.Context, channelID, remoteJID, text st
 		if err != nil {
 			return "", err
 		}
+	} else if quoteExternalID != "" {
+		message = &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+			Text:        proto.String(text),
+			ContextInfo: m.quoteContext(runtime, channelID, jid, quoteExternalID),
+		}}
 	}
 	sent, err := runtime.client.SendMessage(ctx, jid, message)
 	if err != nil {
 		return "", err
+	}
+	if ownJID := runtime.client.Store.ID; ownJID != nil {
+		m.cache.put(channelID, sent.ID, cachedMessage{raw: message, chat: jid, sender: *ownJID, fromMe: true})
 	}
 	// Audio messages have no caption on WhatsApp; deliver it as a follow-up text.
 	if media != nil && media.kind == "audio" && text != "" {
@@ -461,10 +493,110 @@ func (m *manager) buildMediaMessage(ctx context.Context, runtime *channelRuntime
 	return message, nil
 }
 
+// quoteContext builds the ContextInfo that renders a quoted reply. The cache
+// gives a faithful preview and the real addressing; a message the bridge no
+// longer remembers still quotes, just with an empty preview.
+func (m *manager) quoteContext(runtime *channelRuntime, channelID string, chat types.JID, quoteExternalID string) *waE2E.ContextInfo {
+	participant := chat.ToNonAD()
+	quoted := &waE2E.Message{Conversation: proto.String("")}
+	if cached, ok := m.cache.get(channelID, quoteExternalID); ok {
+		quoted = cached.raw
+		if cached.fromMe {
+			if ownJID := runtime.client.Store.ID; ownJID != nil {
+				participant = ownJID.ToNonAD()
+			}
+		} else if !cached.sender.IsEmpty() {
+			participant = cached.sender.ToNonAD()
+		}
+	}
+	return &waE2E.ContextInfo{
+		StanzaID:      proto.String(quoteExternalID),
+		Participant:   proto.String(participant.String()),
+		QuotedMessage: quoted,
+	}
+}
+
+// forwardIncomingReaction relays a visitor's reaction (or its removal) to the
+// backend so the portal mirrors it.
+func (m *manager) forwardIncomingReaction(ctx context.Context, runtime *channelRuntime, evt *events.Message, targetID, emoji string) error {
+	if targetID == "" {
+		return nil
+	}
+	body := map[string]any{
+		"remote_jid":         m.remoteJIDFor(ctx, runtime, evt.Info.Chat),
+		"target_external_id": targetID,
+		"emoji":              emoji,
+	}
+	return m.api.call(ctx, http.MethodPost, "/channels/"+runtime.channelID+"/reaction", body, nil, 0)
+}
+
+// addressFor recovers the original chat and sender of a message from the
+// cache; a forgotten message falls back to the backend's remote JID.
+func (m *manager) addressFor(channelID, remoteJID, messageID string) (chat, sender types.JID, err error) {
+	if cached, ok := m.cache.get(channelID, messageID); ok {
+		return cached.chat, cached.sender, nil
+	}
+	chat, err = types.ParseJID(remoteJID)
+	if err != nil {
+		return chat, sender, fmt.Errorf("invalid destination: %w", err)
+	}
+	return chat, chat, nil
+}
+
+// signalRead blue-ticks the given messages and optionally shows "typing...";
+// WhatsApp clears the indicator when the reply is sent or after a while.
+func (m *manager) signalRead(ctx context.Context, channelID, remoteJID string, messageIDs []string, typing bool) error {
+	runtime := m.runtime(channelID)
+	if runtime == nil || runtime.stopped() {
+		return errors.New("WhatsApp is not connected")
+	}
+	if len(messageIDs) == 0 {
+		return nil
+	}
+	chat, sender, err := m.addressFor(channelID, remoteJID, messageIDs[len(messageIDs)-1])
+	if err != nil {
+		return err
+	}
+	ids := make([]types.MessageID, len(messageIDs))
+	copy(ids, messageIDs)
+	if err := runtime.client.MarkRead(ctx, ids, time.Now(), chat, sender); err != nil {
+		return err
+	}
+	if typing {
+		if err := runtime.client.SendChatPresence(ctx, chat, types.ChatPresenceComposing, types.ChatPresenceMediaText); err != nil {
+			m.log.Errorf("channel %s: could not send the typing indicator: %v", channelID, err)
+		}
+	}
+	return nil
+}
+
+// sendReaction reacts to a message with an emoji; an empty emoji removes it.
+func (m *manager) sendReaction(ctx context.Context, channelID, remoteJID, targetID string, targetFromMe bool, emoji string) error {
+	runtime := m.runtime(channelID)
+	if runtime == nil || runtime.stopped() {
+		return errors.New("WhatsApp is not connected")
+	}
+	chat, sender, err := m.addressFor(channelID, remoteJID, targetID)
+	if err != nil {
+		return err
+	}
+	if targetFromMe {
+		ownJID := runtime.client.Store.ID
+		if ownJID == nil {
+			return errors.New("WhatsApp is not connected")
+		}
+		sender = *ownJID
+	}
+	reaction := runtime.client.BuildReaction(chat, sender, targetID, emoji)
+	_, err = runtime.client.SendMessage(ctx, chat, reaction)
+	return err
+}
+
 // disconnectChannel unlinks the device from the phone and clears the session
 // on the backend, matching the previous bridge's semantics.
 func (m *manager) disconnectChannel(ctx context.Context, channelID string) error {
 	runtime := m.runtime(channelID)
+	m.cache.drop(channelID)
 	if runtime != nil {
 		runtime.requestStop()
 		m.dropRuntime(runtime)

@@ -28,6 +28,7 @@ from ..schemas import (
     PortalMemberOut,
     PortalPublicOut,
     PortalSessionOut,
+    ReactionRequest,
     SendMessageRequest,
 )
 from ..security import create_portal_token, decode_portal_token, verify_password
@@ -47,7 +48,7 @@ from ..services.conversation_state import ConversationClosed, assign, note_reply
 from ..services.notifications import notify_assigned
 from ..services.attachments import attachment_response, conversation_attachment, logo_response
 from ..services.operator_media import store_operator_media_reply
-from ..services.whatsapp import send_channel_message
+from ..services.whatsapp import deliver_reaction, resolve_quote, send_channel_message, signal_channel_read
 
 
 router = APIRouter(prefix="/portal", tags=["Client portal"])
@@ -367,7 +368,7 @@ def portal_conversations(
 
 
 @router.post("/{slug}/conversations/{conversation_id}/read", status_code=status.HTTP_204_NO_CONTENT)
-def portal_mark_read(
+async def portal_mark_read(
     slug: str,
     conversation_id: uuid.UUID,
     client: Client = Depends(_portal_client),
@@ -380,6 +381,20 @@ def portal_mark_read(
         raise HTTPException(status_code=404, detail="Conversation not found")
     conversation.operator_read_at = now_utc()
     db.commit()
+    # Opening the thread is the operator reading it: blue-tick the latest
+    # visitor message on WhatsApp too. Best-effort by design.
+    latest_external = db.scalar(
+        select(Message.external_message_id)
+        .where(
+            Message.conversation_id == conversation.id,
+            Message.role == "user",
+            Message.external_message_id.is_not(None),
+        )
+        .order_by(Message.created_at.desc())
+        .limit(1)
+    )
+    if latest_external:
+        await signal_channel_read(db, conversation, [latest_external], typing=False)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -921,7 +936,10 @@ async def portal_reply(
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
     _require_open_window(conversation)
-    external_message_id = await send_channel_message(db, conversation, payload.content.strip())
+    quoted_id, quoted_external = resolve_quote(db, conversation, payload.quoted_message_id)
+    external_message_id = await send_channel_message(
+        db, conversation, payload.content.strip(), quoted_external_id=quoted_external
+    )
     db.add(
         Message(
             conversation_id=conversation.id,
@@ -931,9 +949,36 @@ async def portal_reply(
             sender_name=sender_name,
             portal_user_id=user.id if user else None,
             external_message_id=external_message_id,
+            quoted_message_id=quoted_id,
         )
     )
     note_reply(conversation)
     conversation.updated_at = now_utc()
+    db.commit()
+    return _present(_detail(db, client, conversation_id))
+
+
+@router.post(
+    "/{slug}/conversations/{conversation_id}/messages/{message_id}/reaction", response_model=ConversationDetail
+)
+async def portal_react(
+    slug: str,
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
+    payload: ReactionRequest,
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    conversation = _detail(db, client, conversation_id)
+    if conversation.mode != "human":
+        raise HTTPException(status_code=409, detail="Take control of the conversation before reacting")
+    target = db.scalar(select(Message).where(Message.id == message_id, Message.conversation_id == conversation.id))
+    if not target:
+        raise HTTPException(status_code=404, detail="Message not found")
+    if target.role != "user":
+        raise HTTPException(status_code=409, detail="Reactions go on the customer's messages")
+    emoji = payload.emoji.strip()
+    await deliver_reaction(db, conversation, target, emoji)
+    target.reaction = emoji or None
     db.commit()
     return _present(_detail(db, client, conversation_id))

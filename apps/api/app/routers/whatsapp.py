@@ -17,6 +17,7 @@ from ..schemas import (
     WhatsAppChannelOut,
     WhatsAppChannelUpdate,
     WhatsAppInbound,
+    WhatsAppInboundReaction,
     WhatsAppInboundResult,
     WhatsAppInternalAuth,
     WhatsAppInternalStatus,
@@ -234,11 +235,30 @@ async def inbound_message(channel_id: uuid.UUID, payload: WhatsAppInbound, db: S
             media_kind=payload.media_kind,
             media_bytes=media_bytes,
             media_mime=payload.media_mime,
+            quoted_external_id=payload.quoted_external_id,
         ),
         conversation_channel="whatsapp",
         channel_fk_field="whatsapp_channel_id",
     )
     return asdict(result)
+
+
+@internal_router.post("/channels/{channel_id}/reaction", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(_require_bridge)])
+def inbound_reaction(channel_id: uuid.UUID, payload: WhatsAppInboundReaction, db: Session = Depends(get_db)):
+    """The visitor reacted to a message (or removed the reaction)."""
+    message = db.scalar(
+        select(Message)
+        .join(Conversation)
+        .where(
+            Conversation.whatsapp_channel_id == channel_id,
+            Conversation.external_chat_id == payload.remote_jid,
+            Message.external_message_id == payload.target_external_id,
+        )
+    )
+    if not message:
+        return
+    message.incoming_reaction = payload.emoji or None
+    db.commit()
 
 
 @internal_router.post("/channels/{channel_id}/outbound-confirm", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(_require_bridge)])

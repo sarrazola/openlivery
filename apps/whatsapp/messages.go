@@ -82,6 +82,43 @@ func incomingMedia(msg *waE2E.Message) *incomingMediaInfo {
 	return nil
 }
 
+// incomingReaction extracts a reaction: the id of the message it targets and
+// the emoji (empty string when the reaction was removed).
+func incomingReaction(msg *waE2E.Message) (targetID, emoji string, ok bool) {
+	content := unwrapMessage(msg)
+	if content == nil {
+		return "", "", false
+	}
+	if reaction := content.GetReactionMessage(); reaction != nil {
+		return reaction.GetKey().GetID(), reaction.GetText(), true
+	}
+	return "", "", false
+}
+
+// incomingQuotedID returns the external id of the message this one replies to
+// (swipe-to-reply), or an empty string.
+func incomingQuotedID(msg *waE2E.Message) string {
+	content := unwrapMessage(msg)
+	if content == nil {
+		return ""
+	}
+	switch {
+	case content.GetExtendedTextMessage() != nil:
+		return content.GetExtendedTextMessage().GetContextInfo().GetStanzaID()
+	case content.GetImageMessage() != nil:
+		return content.GetImageMessage().GetContextInfo().GetStanzaID()
+	case content.GetVideoMessage() != nil:
+		return content.GetVideoMessage().GetContextInfo().GetStanzaID()
+	case content.GetAudioMessage() != nil:
+		return content.GetAudioMessage().GetContextInfo().GetStanzaID()
+	case content.GetDocumentMessage() != nil:
+		return content.GetDocumentMessage().GetContextInfo().GetStanzaID()
+	case content.GetButtonsResponseMessage() != nil:
+		return content.GetButtonsResponseMessage().GetContextInfo().GetStanzaID()
+	}
+	return ""
+}
+
 // isDirectIncoming keeps only person-to-person messages: no own echoes, no
 // groups, no status broadcast, no newsletters.
 func isDirectIncoming(info types.MessageInfo) bool {

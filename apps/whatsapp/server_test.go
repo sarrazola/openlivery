@@ -16,6 +16,12 @@ type fakeActions struct {
 	sentJID      string
 	sentText     string
 	sentMedia    *outboundMedia
+	sentQuote    string
+	readIDs      []string
+	readTyping   bool
+	reactedID    string
+	reactedEmoji string
+	reactedOwn   bool
 }
 
 func (f *fakeActions) connect(_ context.Context, channelID string) error {
@@ -28,9 +34,19 @@ func (f *fakeActions) disconnect(_ context.Context, channelID string) error {
 	return nil
 }
 
-func (f *fakeActions) send(_ context.Context, channelID, remoteJID, text string, media *outboundMedia) (string, error) {
-	f.sentChannel, f.sentJID, f.sentText, f.sentMedia = channelID, remoteJID, text, media
+func (f *fakeActions) send(_ context.Context, channelID, remoteJID, text string, media *outboundMedia, quoteExternalID string) (string, error) {
+	f.sentChannel, f.sentJID, f.sentText, f.sentMedia, f.sentQuote = channelID, remoteJID, text, media, quoteExternalID
 	return "WAMID1", nil
+}
+
+func (f *fakeActions) read(_ context.Context, _, _ string, messageIDs []string, typing bool) error {
+	f.readIDs, f.readTyping = messageIDs, typing
+	return nil
+}
+
+func (f *fakeActions) react(_ context.Context, _, _, targetID string, targetFromMe bool, emoji string) error {
+	f.reactedID, f.reactedOwn, f.reactedEmoji = targetID, targetFromMe, emoji
+	return nil
 }
 
 const testToken = "test-token"
@@ -118,5 +134,34 @@ func TestSendValidatesAndDispatches(t *testing.T) {
 	}
 	if actions.sentMedia.mime != "application/octet-stream" {
 		t.Fatalf("default mime: %q", actions.sentMedia.mime)
+	}
+
+	res = request(t, handler, http.MethodPost, "/channels/abc/send", testToken,
+		`{"remote_jid": "1@s.whatsapp.net", "text": "quoting you", "quote_external_id": "MSGX"}`)
+	if res.Code != http.StatusOK || actions.sentQuote != "MSGX" {
+		t.Fatalf("quoted send: code %d quote %q", res.Code, actions.sentQuote)
+	}
+}
+
+func TestReadAndReactDispatch(t *testing.T) {
+	actions := &fakeActions{}
+	handler := newHandler(actions, testToken)
+
+	res := request(t, handler, http.MethodPost, "/channels/abc/read", testToken,
+		`{"remote_jid": "1@s.whatsapp.net", "message_ids": ["A", "B"], "typing": true}`)
+	if res.Code != http.StatusOK || len(actions.readIDs) != 2 || !actions.readTyping {
+		t.Fatalf("read: code %d actions %+v", res.Code, actions)
+	}
+	if res := request(t, handler, http.MethodPost, "/channels/abc/read", testToken, `{"remote_jid": "1@s.whatsapp.net", "message_ids": []}`); res.Code != http.StatusBadRequest {
+		t.Fatalf("read without ids: got %d", res.Code)
+	}
+
+	res = request(t, handler, http.MethodPost, "/channels/abc/react", testToken,
+		`{"remote_jid": "1@s.whatsapp.net", "external_message_id": "MSGY", "emoji": "❤️", "target_from_me": true}`)
+	if res.Code != http.StatusOK || actions.reactedID != "MSGY" || actions.reactedEmoji != "❤️" || !actions.reactedOwn {
+		t.Fatalf("react: code %d actions %+v", res.Code, actions)
+	}
+	if res := request(t, handler, http.MethodPost, "/channels/abc/react", testToken, `{"remote_jid": "1@s.whatsapp.net"}`); res.Code != http.StatusBadRequest {
+		t.Fatalf("react without target: got %d", res.Code)
 	}
 }

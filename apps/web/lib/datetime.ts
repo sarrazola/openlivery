@@ -21,7 +21,10 @@ export function isSameOpenThread(prev: Conversation | null, next: Conversation):
   const prevMessages = prev.messages ?? [];
   const nextMessages = next.messages ?? [];
   if (prevMessages.length !== nextMessages.length) return false;
-  return prevMessages.at(-1)?.id === nextMessages.at(-1)?.id;
+  // Reactions and delivery ticks mutate in place, so the id alone is not enough.
+  const fingerprint = (list: typeof prevMessages) =>
+    list.map((m) => `${m.id}|${m.reaction ?? ""}|${m.incoming_reaction ?? ""}|${m.delivery_status ?? ""}`).join(",");
+  return fingerprint(prevMessages) === fingerprint(nextMessages);
 }
 
 /** True when the scroll container is near the bottom (within a threshold). */

@@ -186,7 +186,7 @@ def test_webhook_text_message_creates_conversation_and_replies(authenticated_cli
     fake_send = AsyncMock(return_value="wamid.out-1")
     monkeypatch.setattr(webhook_router, "send_text", fake_send)
     fake_read = AsyncMock()
-    monkeypatch.setattr(whatsapp_inbound_service, "mark_read_with_typing", fake_read)
+    monkeypatch.setattr(whatsapp_service, "mark_read_with_typing", fake_read)
 
     payload = _webhook_payload(
         [{"from": "5730011", "id": "wamid.in-1", "type": "text", "text": {"body": "Are you open?"}}],
@@ -246,8 +246,8 @@ def test_reply_react_gesture_sends_reaction_without_text(authenticated_client: T
     fake_send = AsyncMock(return_value="wamid.out-1")
     monkeypatch.setattr(webhook_router, "send_text", fake_send)
     fake_react = AsyncMock()
-    monkeypatch.setattr(whatsapp_inbound_service, "send_reaction", fake_react)
-    monkeypatch.setattr(whatsapp_inbound_service, "mark_read_with_typing", AsyncMock())
+    monkeypatch.setattr(whatsapp_service, "send_reaction", fake_react)
+    monkeypatch.setattr(whatsapp_service, "mark_read_with_typing", AsyncMock())
 
     payload = _webhook_payload([{"from": "5730011", "id": "wamid.in-1", "type": "text", "text": {"body": "gracias!"}}])
     assert _post_signed(client, channel["id"], payload).status_code == 200
@@ -268,7 +268,7 @@ def test_reply_quote_gesture_quotes_the_visitor_message(authenticated_client: Te
     monkeypatch.setattr(whatsapp_inbound_service, "run_completion", fake_completion)
     fake_send = AsyncMock(return_value="wamid.out-1")
     monkeypatch.setattr(webhook_router, "send_text", fake_send)
-    monkeypatch.setattr(whatsapp_inbound_service, "mark_read_with_typing", AsyncMock())
+    monkeypatch.setattr(whatsapp_service, "mark_read_with_typing", AsyncMock())
 
     payload = _webhook_payload([{"from": "5730011", "id": "wamid.in-1", "type": "text", "text": {"body": "¿hasta qué hora abren?"}}])
     assert _post_signed(client, channel["id"], payload).status_code == 200
@@ -457,7 +457,7 @@ def test_webhook_ignores_traffic_for_a_number_that_is_not_this_channels(
     fake_completion = AsyncMock(return_value=ai_service.Completion(text="Hi"))
     monkeypatch.setattr(whatsapp_inbound_service, "run_completion", fake_completion)
     monkeypatch.setattr(webhook_router, "send_text", AsyncMock(return_value="wamid.out-1"))
-    monkeypatch.setattr(whatsapp_inbound_service, "mark_read_with_typing", AsyncMock())
+    monkeypatch.setattr(whatsapp_service, "mark_read_with_typing", AsyncMock())
 
     other = _webhook_payload(
         [{"from": "5730011", "id": "wamid.other", "type": "text", "text": {"body": "Hola"}}],
@@ -511,3 +511,57 @@ def test_configure_channel_refuses_a_number_another_client_uses(authenticated_cl
         json={"agent_id": agent["id"], "phone_number_id": "222"},
     )
     assert free.status_code == 200, free.text
+
+
+def test_cloud_incoming_reaction_and_quoted_reply(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    _customer, _agent, channel = _setup_channel(client)
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Hi")))
+    monkeypatch.setattr(webhook_router, "send_text", AsyncMock(side_effect=["wamid.out-1", "wamid.out-2"]))
+    monkeypatch.setattr(whatsapp_service, "mark_read_with_typing", AsyncMock())
+
+    _post_signed(client, channel["id"], _webhook_payload([{"from": "5730011", "id": "wamid.in-1", "type": "text", "text": {"body": "Hola"}}]))
+    conversation_id = client.get("/api/conversations").json()[0]["id"]
+    assistant = client.get(f"/api/conversations/{conversation_id}").json()["messages"][-1]
+
+    # The customer reacts to the reply; the portal mirrors it, and no new
+    # message or AI turn happens.
+    reaction = {"from": "5730011", "id": "wamid.react-1", "type": "reaction", "reaction": {"message_id": "wamid.out-1", "emoji": "😂"}}
+    assert _post_signed(client, channel["id"], _webhook_payload([reaction])).status_code == 200
+    detail = client.get(f"/api/conversations/{conversation_id}").json()
+    assert detail["messages"][-1]["id"] == assistant["id"]
+    assert detail["messages"][-1]["incoming_reaction"] == "😂"
+
+    removal = {"from": "5730011", "id": "wamid.react-2", "type": "reaction", "reaction": {"message_id": "wamid.out-1"}}
+    _post_signed(client, channel["id"], _webhook_payload([removal]))
+    assert client.get(f"/api/conversations/{conversation_id}").json()["messages"][-1]["incoming_reaction"] is None
+
+    # The customer replies quoting the business's message (swipe-to-reply).
+    quoted = {"from": "5730011", "id": "wamid.in-2", "type": "text", "text": {"body": "jaja"}, "context": {"id": "wamid.out-1"}}
+    _post_signed(client, channel["id"], _webhook_payload([quoted]))
+    detail = client.get(f"/api/conversations/{conversation_id}").json()
+    visitor = next(item for item in detail["messages"] if item["external_message_id"] == "wamid.in-2")
+    assert visitor["quoted_message_id"] == assistant["id"]
+
+
+def test_operator_quoted_reply_on_the_cloud_channel(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    _customer, _agent, channel = _setup_channel(client)
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Hi")))
+    monkeypatch.setattr(webhook_router, "send_text", AsyncMock(return_value="wamid.out-1"))
+    monkeypatch.setattr(whatsapp_service, "mark_read_with_typing", AsyncMock())
+    _post_signed(client, channel["id"], _webhook_payload([{"from": "5730011", "id": "wamid.in-1", "type": "text", "text": {"body": "¿abren hoy?"}}]))
+    conversation_id = client.get("/api/conversations").json()[0]["id"]
+    visitor = client.get(f"/api/conversations/{conversation_id}").json()["messages"][0]
+    client.patch(f"/api/conversations/{conversation_id}/mode", json={"mode": "human"})
+
+    operator_send = AsyncMock(return_value="wamid.out-9")
+    monkeypatch.setattr(whatsapp_service, "send_text", operator_send)
+    reply = client.post(
+        f"/api/conversations/{conversation_id}/reply",
+        json={"content": "Sí, hasta las 10pm", "quoted_message_id": visitor["id"]},
+    )
+    assert reply.status_code == 200, reply.text
+    outbound = reply.json()["messages"][-1]
+    assert outbound["quoted_message_id"] == visitor["id"]
+    assert operator_send.await_args.kwargs.get("context_message_id") == "wamid.in-1"
