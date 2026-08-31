@@ -14,7 +14,7 @@ cd openlivery
 git config core.hooksPath .githooks
 ```
 
-The guard (`.githooks/pre-commit`) blocks committing local-only files and any staged content flagged as internal. You need Python 3.12, Node.js, and a running PostgreSQL instance the backend can connect to.
+The guard (`.githooks/pre-commit`) blocks committing local-only files and any staged content flagged as internal. You need Python 3.12, Node.js, Go 1.27+, and a running PostgreSQL instance the backend can connect to.
 
 ## Backend (apps/api)
 
@@ -43,11 +43,10 @@ Use `npm run lint` before committing and `npm run build` to verify a production 
 
 ```bash
 cd apps/whatsapp
-npm install
-npm run dev                     # tsx watch, listens on :3101
+go run .                        # listens on :3101
 ```
 
-Run `npm test` for the test suite and `npm run build` to typecheck with `tsc`.
+The bridge is a single Go binary (Go 1.27+); there is no install step. Run `go test ./...` for the test suite and `go vet ./...` to check the build.
 
 ## Tests
 
@@ -85,9 +84,9 @@ All code, identifiers, comments, commit messages and docs are written in **Engli
 | Frontend | `npm run dev` | Run the dev server on :3000 |
 | Frontend | `npm run lint` | Lint with ESLint |
 | Frontend | `npm run build` | Production build |
-| WhatsApp | `npm run dev` | Run the bridge on :3101 |
-| WhatsApp | `npm test` | Run the test suite |
-| WhatsApp | `npm run build` | Typecheck with tsc |
+| WhatsApp | `go run .` | Run the bridge on :3101 |
+| WhatsApp | `go test ./...` | Run the test suite |
+| WhatsApp | `go vet ./...` | Check the build |
 
 ## Next steps
 

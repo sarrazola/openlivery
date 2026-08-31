@@ -15,6 +15,7 @@ from ..schemas import (
     ConversationModeUpdate,
     ConversationStatusUpdate,
     ConversationOut,
+    ReactionRequest,
     SendMessageRequest,
 )
 from ..services.attachments import (
@@ -30,7 +31,7 @@ from ..services.knowledge import build_system_prompt, retrieve_knowledge
 from ..services.operator_media import store_operator_media_reply
 from ..services.providers import resolve_agent_credentials
 from ..services.usage import record_usage
-from ..services.whatsapp import send_channel_message
+from ..services.whatsapp import deliver_reaction, resolve_quote, send_channel_message, signal_channel_read
 from ..services.whatsapp_inbound import InboundMessage, resolve_inbound_content
 
 
@@ -105,12 +106,19 @@ def inbox(
         .group_by(Message.conversation_id)
     ).subquery()
     unread_count = func.coalesce(unread_counts.c.n, 0)
+    last_inbound = (
+        select(Message.conversation_id.label("cid"), func.max(Message.created_at).label("at"))
+        .where(Message.kind == "message", Message.sender_type == "visitor")
+        .group_by(Message.conversation_id)
+        .subquery()
+    )
 
     query = (
-        select(Conversation, Agent.name, last.c.content, unread_count.label("unread_count"))
+        select(Conversation, Agent.name, last.c.content, unread_count.label("unread_count"), last_inbound.c.at.label("last_inbound_at"))
         .join(Agent, Agent.id == Conversation.agent_id)
         .outerjoin(last, last.c.cid == Conversation.id)
         .outerjoin(unread_counts, unread_counts.c.cid == Conversation.id)
+        .outerjoin(last_inbound, last_inbound.c.cid == Conversation.id)
         .where(Conversation.agency_id == user.agency_id)
     )
     if agent_id:
@@ -145,8 +153,9 @@ def inbox(
             "unread": int(row_unread_count) > 0,
             "unread_count": int(row_unread_count),
             "updated_at": conv.updated_at,
+            "last_inbound_at": last_inbound_at,
         }
-        for conv, agent_name, content, row_unread_count in rows
+        for conv, agent_name, content, row_unread_count, last_inbound_at in rows
     ]
 
 
@@ -166,10 +175,24 @@ def create_conversation(payload: ConversationCreate, db: Session = Depends(get_d
 
 
 @router.post("/{conversation_id}/read", status_code=status.HTTP_204_NO_CONTENT)
-def mark_read(conversation_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+async def mark_read(conversation_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     conversation = _conversation(db, user, conversation_id)
     conversation.operator_read_at = now_utc()
     db.commit()
+    # Opening the thread is the operator reading it: blue-tick the latest
+    # visitor message on WhatsApp too. Best-effort by design.
+    latest_external = db.scalar(
+        select(Message.external_message_id)
+        .where(
+            Message.conversation_id == conversation.id,
+            Message.role == "user",
+            Message.external_message_id.is_not(None),
+        )
+        .order_by(Message.created_at.desc())
+        .limit(1)
+    )
+    if latest_external:
+        await signal_channel_read(db, conversation, [latest_external], typing=False)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -359,7 +382,10 @@ async def reply_as_human(
     conversation = _conversation(db, user, conversation_id)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
-    external_message_id = await send_channel_message(db, conversation, payload.content.strip())
+    quoted_id, quoted_external = resolve_quote(db, conversation, payload.quoted_message_id)
+    external_message_id = await send_channel_message(
+        db, conversation, payload.content.strip(), quoted_external_id=quoted_external
+    )
     db.add(
         Message(
             conversation_id=conversation.id,
@@ -368,10 +394,34 @@ async def reply_as_human(
             sender_type="human",
             sender_name=user.name,
             external_message_id=external_message_id,
+            quoted_message_id=quoted_id,
         )
     )
     note_reply(conversation)
     conversation.updated_at = now_utc()
+    db.commit()
+    return _conversation(db, user, conversation_id)
+
+
+@router.post("/{conversation_id}/messages/{message_id}/reaction", response_model=ConversationDetail)
+async def react_to_message(
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
+    payload: ReactionRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    conversation = _conversation(db, user, conversation_id)
+    if conversation.mode != "human":
+        raise HTTPException(status_code=409, detail="Take control of the conversation before reacting")
+    target = db.scalar(select(Message).where(Message.id == message_id, Message.conversation_id == conversation.id))
+    if not target:
+        raise HTTPException(status_code=404, detail="Message not found")
+    if target.role != "user":
+        raise HTTPException(status_code=409, detail="Reactions go on the customer's messages")
+    emoji = payload.emoji.strip()
+    await deliver_reaction(db, conversation, target, emoji)
+    target.reaction = emoji or None
     db.commit()
     return _conversation(db, user, conversation_id)
 

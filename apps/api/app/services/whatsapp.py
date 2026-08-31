@@ -5,11 +5,13 @@ import httpx
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from sqlalchemy import select
+
 from ..config import get_settings
-from ..models import Conversation, WhatsAppCloudChannel
+from ..models import Conversation, Message, WhatsAppCloudChannel
 from ..security import decrypt_secret
 from .audio import audio_duration_seconds, to_whatsapp_voice
-from .whatsapp_cloud import send_media, send_text, upload_media
+from .whatsapp_cloud import mark_read, mark_read_with_typing, send_media, send_reaction, send_text, upload_media
 from .whatsapp_format import markdown_to_whatsapp
 
 
@@ -26,7 +28,7 @@ async def bridge_command(method: str, path: str, payload: dict | None = None, ti
     except httpx.RequestError as exc:
         raise HTTPException(
             status_code=503,
-            detail="The local WhatsApp service is not available. Start it with npm run dev inside whatsapp/.",
+            detail="The local WhatsApp service is not available. Start it with go run . inside apps/whatsapp/.",
         ) from exc
     if response.status_code >= 400:
         try:
@@ -45,14 +47,17 @@ async def send_channel_message(
     """Deliver an operator message through the conversation's channel. Returns
     the external message id, or None for channels without outbound delivery.
 
-    ``quoted_external_id`` sends it as a quoted reply (Cloud API only)."""
+    ``quoted_external_id`` sends it as a quoted reply."""
     if conversation.channel == "whatsapp":
         if not conversation.whatsapp_channel_id or not conversation.external_chat_id:
             raise HTTPException(status_code=409, detail="This conversation does not have a valid WhatsApp destination")
+        payload = {"remote_jid": conversation.external_chat_id, "text": markdown_to_whatsapp(content)}
+        if quoted_external_id:
+            payload["quote_external_id"] = quoted_external_id
         result = await bridge_command(
             "POST",
             f"/channels/{conversation.whatsapp_channel_id}/send",
-            {"remote_jid": conversation.external_chat_id, "text": markdown_to_whatsapp(content)},
+            payload,
         )
         return result.get("external_message_id")
     if conversation.channel == "whatsapp_cloud":
@@ -138,3 +143,86 @@ async def send_channel_media(
             await send_text(access_token, channel.phone_number_id, conversation.external_chat_id, caption)
         return external_id
     return None
+
+
+def resolve_quote(
+    db: Session, conversation: Conversation, quoted_message_id: uuid.UUID | None
+) -> tuple[uuid.UUID | None, str | None]:
+    """Validate that the quoted message belongs to the conversation and return
+    ``(quoted_message_id, quoted_external_id)`` for storing and delivery. A
+    message without an external id can still be quoted in the portal, it just
+    cannot be rendered as a quote on WhatsApp."""
+    if not quoted_message_id:
+        return None, None
+    quoted = db.scalar(
+        select(Message).where(Message.id == quoted_message_id, Message.conversation_id == conversation.id)
+    )
+    if not quoted:
+        raise HTTPException(status_code=404, detail="The quoted message is not part of this conversation")
+    return quoted.id, quoted.external_message_id
+
+
+async def signal_channel_read(
+    db: Session, conversation: Conversation, message_external_ids: list[str], *, typing: bool
+) -> None:
+    """Blue-tick the given visitor messages on WhatsApp, optionally showing the
+    typing indicator afterwards. Best-effort on both channels: reading is a
+    gesture, never worth failing the caller over."""
+    ids = [item for item in message_external_ids if item]
+    if not ids or not conversation.external_chat_id:
+        return
+    if conversation.channel == "whatsapp" and conversation.whatsapp_channel_id:
+        try:
+            await bridge_command(
+                "POST",
+                f"/channels/{conversation.whatsapp_channel_id}/read",
+                {"remote_jid": conversation.external_chat_id, "message_ids": ids, "typing": typing},
+            )
+        except HTTPException:
+            pass
+        return
+    if conversation.channel == "whatsapp_cloud" and conversation.whatsapp_cloud_channel_id:
+        channel = db.get(WhatsAppCloudChannel, conversation.whatsapp_cloud_channel_id)
+        if not channel or not channel.encrypted_access_token or not channel.phone_number_id:
+            return
+        access_token = decrypt_secret(channel.encrypted_access_token)
+        # Meta reads "up to" a message, so the newest id covers the burst.
+        if typing:
+            await mark_read_with_typing(access_token, channel.phone_number_id, ids[-1])
+        else:
+            await mark_read(access_token, channel.phone_number_id, ids[-1])
+
+
+async def deliver_reaction(db: Session, conversation: Conversation, target, emoji: str) -> None:
+    """Send an emoji reaction to ``target`` (a Message with an external id)
+    through the conversation's channel; empty emoji removes it. Raises when the
+    channel cannot deliver it."""
+    if not target.external_message_id or not conversation.external_chat_id:
+        raise HTTPException(status_code=409, detail="This message cannot receive a reaction")
+    if conversation.channel == "whatsapp":
+        if not conversation.whatsapp_channel_id:
+            raise HTTPException(status_code=409, detail="This conversation does not have a valid WhatsApp destination")
+        await bridge_command(
+            "POST",
+            f"/channels/{conversation.whatsapp_channel_id}/react",
+            {
+                "remote_jid": conversation.external_chat_id,
+                "external_message_id": target.external_message_id,
+                "emoji": emoji,
+                "target_from_me": target.role != "user",
+            },
+        )
+        return
+    if conversation.channel == "whatsapp_cloud":
+        channel = db.get(WhatsAppCloudChannel, conversation.whatsapp_cloud_channel_id)
+        if not channel or not channel.encrypted_access_token or not channel.phone_number_id:
+            raise HTTPException(status_code=409, detail="The WhatsApp API channel is not configured")
+        await send_reaction(
+            decrypt_secret(channel.encrypted_access_token),
+            channel.phone_number_id,
+            conversation.external_chat_id,
+            target.external_message_id,
+            emoji,
+        )
+        return
+    raise HTTPException(status_code=409, detail="This channel does not support reactions")

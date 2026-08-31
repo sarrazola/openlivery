@@ -19,7 +19,6 @@ from ..database import new_session
 from .contacts import display_name, phone_from_chat_id, previous_conversation_recap, rename_conversations, resolve_contact
 from .conversation_state import exchanged_only, note_inbound, note_reply
 from ..models import Agent, Conversation, Message, now_utc
-from ..security import decrypt_secret
 from .attachments import llm_text, store_attachment
 from .knowledge import build_system_prompt, retrieve_knowledge
 from .media import describe_image, transcribe_audio
@@ -27,8 +26,7 @@ from .notifications import notify_needs_human
 from .providers import resolve_agent_credentials, resolve_provider_credentials
 from .tools import run_completion
 from .usage import record_usage
-from .whatsapp import send_channel_message
-from .whatsapp_cloud import mark_read_with_typing, send_reaction
+from .whatsapp import deliver_reaction, send_channel_message, signal_channel_read
 from .whatsapp_format import parse_reply_directives
 
 
@@ -41,6 +39,8 @@ class InboundMessage:
     media_kind: str | None = None
     media_bytes: bytes | None = None
     media_mime: str | None = None
+    # External id of the message the visitor replied to (swipe-to-reply).
+    quoted_external_id: str | None = None
 
 
 @dataclass
@@ -174,6 +174,15 @@ async def process_inbound(
         sender_name=inbound.sender_name or "WhatsApp contact",
         external_message_id=inbound.external_message_id,
     )
+    if inbound.quoted_external_id:
+        quoted = db.scalar(
+            select(Message).where(
+                Message.conversation_id == conversation.id,
+                Message.external_message_id == inbound.quoted_external_id,
+            )
+        )
+        if quoted:
+            visitor_message.quoted_message_id = quoted.id
     conversation.updated_at = now_utc()
     note_inbound(db, conversation)
     db.add(visitor_message)
@@ -197,13 +206,14 @@ async def process_inbound(
         schedule_debounced_reply(conversation.id)
         return InboundResult(accepted=True, conversation_id=conversation.id, mode="ai")
 
-    await _signal_read_and_typing(channel, conversation, inbound.external_message_id)
+    await _signal_read_and_typing(db, conversation, [inbound.external_message_id])
     return await _reply_with_ai(db, channel, conversation, llm_content)
 
 
-# Injected into the system prompt for Cloud API conversations (kept in the
-# customer's language, like the rest of the LLM-facing scaffolding). The model
-# decides IF and WHEN with conversational judgment; the code only executes.
+# Injected into the system prompt for WhatsApp conversations on both channels
+# (kept in the customer's language, like the rest of the LLM-facing
+# scaffolding). The model decides IF and WHEN with conversational judgment; the
+# code only executes.
 WHATSAPP_GESTURE_RULES = (
     "GESTOS DE WHATSAPP (opcionales; úsalos con moderación y criterio, como lo haría una persona):\n"
     "- Cuando el último mensaje del cliente no necesite una respuesta en texto y un gesto baste — en cualquier "
@@ -241,25 +251,21 @@ def _gesture_rules(burst: list[Message]) -> str:
 
 
 async def _apply_gestures(
-    db: Session, channel, conversation: Conversation, completion_text: str, burst: list[Message]
+    db: Session, conversation: Conversation, completion_text: str, burst: list[Message]
 ) -> tuple[str, uuid.UUID | None, str | None]:
     """Execute the reply's leading gesture directives (react/quote) and strip
     them. Returns ``(clean_text, quoted_message_id, quote_external_id)``."""
     clean_text, emoji, quote_index = parse_reply_directives(completion_text)
     quoted_id: uuid.UUID | None = None
     quote_external: str | None = None
-    if not channel.encrypted_access_token or not channel.phone_number_id:
-        return clean_text, None, None
     if emoji and burst and burst[-1].external_message_id:
         target = burst[-1]
-        await send_reaction(
-            decrypt_secret(channel.encrypted_access_token),
-            channel.phone_number_id,
-            conversation.external_chat_id,
-            target.external_message_id,
-            emoji,
-        )
-        target.reaction = emoji
+        try:
+            await deliver_reaction(db, conversation, target, emoji)
+            target.reaction = emoji
+        except HTTPException:
+            # A reaction is a gesture, never worth failing the reply over.
+            pass
     if quote_index and 1 <= quote_index <= len(burst) and burst[quote_index - 1].external_message_id:
         quoted = burst[quote_index - 1]
         quoted_id = quoted.id
@@ -267,17 +273,11 @@ async def _apply_gestures(
     return clean_text, quoted_id, quote_external
 
 
-async def _signal_read_and_typing(channel, conversation: Conversation, message_external_id: str | None) -> None:
+async def _signal_read_and_typing(db: Session, conversation: Conversation, message_external_ids: list[str]) -> None:
     """Blue-tick the visitor's burst and show "typing..." while the AI reply is
     generated — the moment the quiet window closes is when a human would have
-    read the messages. Cloud API only; the bridge has no such signal yet."""
-    if conversation.channel != "whatsapp_cloud" or not message_external_id:
-        return
-    if not channel.encrypted_access_token or not channel.phone_number_id:
-        return
-    await mark_read_with_typing(
-        decrypt_secret(channel.encrypted_access_token), channel.phone_number_id, message_external_id
-    )
+    read the messages. Works on both WhatsApp channels; best-effort."""
+    await signal_channel_read(db, conversation, message_external_ids, typing=True)
 
 
 async def _reply_with_ai(db: Session, channel, conversation: Conversation, retrieval_query: str) -> InboundResult:
@@ -307,7 +307,7 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     recap = previous_conversation_recap(db, conversation)
     if recap:
         system_content += "\n\n" + recap
-    if conversation.channel == "whatsapp_cloud":
+    if conversation.channel in ("whatsapp", "whatsapp_cloud"):
         system_content += "\n\n" + _gesture_rules(burst)
     messages = [
         {"role": "system", "content": system_content},
@@ -333,9 +333,9 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     reply_text = completion.text
     quoted_message_id: uuid.UUID | None = None
     quote_external_id: str | None = None
-    if conversation.channel == "whatsapp_cloud":
+    if conversation.channel in ("whatsapp", "whatsapp_cloud"):
         reply_text, quoted_message_id, quote_external_id = await _apply_gestures(
-            db, channel, conversation, completion.text, burst
+            db, conversation, completion.text, burst
         )
 
     outbound = None
@@ -415,11 +415,15 @@ async def _debounced_reply(conversation_id: uuid.UUID) -> None:
             .limit(channel.agent.memory_limit)
         ).all()
         burst: list[str] = []
+        burst_external_ids: list[str] = []
         for item in history:
             if item.role != "user":
                 break
             burst.append(llm_text(item))
-        await _signal_read_and_typing(channel, conversation, last.external_message_id)
+            if item.external_message_id:
+                burst_external_ids.append(item.external_message_id)
+        # The loop walks newest-first; read receipts go oldest-first.
+        await _signal_read_and_typing(db, conversation, list(reversed(burst_external_ids)))
         try:
             result = await _reply_with_ai(db, channel, conversation, "\n".join(reversed(burst)))
         except Exception as exc:

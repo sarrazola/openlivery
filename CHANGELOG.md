@@ -15,12 +15,36 @@ bundles ffmpeg for voice-note transcoding.
 
 ### Changed
 
+- The WhatsApp QR bridge (`apps/whatsapp`) was rewritten in Go on top of
+  [whatsmeow](https://github.com/tulir/whatsmeow), replacing the Node.js
+  service built on Baileys. The HTTP contract with the API, the port and the
+  token auth are unchanged; sessions now live in whatsmeow's own SQL store
+  (`WHATSAPP_STORE_URL`, SQLite by default or Postgres) instead of an
+  encrypted blob in the backend database, reconnection is handled by the
+  library, and the image ships a single static binary. Existing Baileys
+  sessions cannot be migrated: after upgrading, each channel must scan the QR
+  once more.
 - Agent guidance moved from `CLAUDE.md` to `AGENTS.md`, with `CLAUDE.md`
   kept as a one-line pointer. Same pairing already used in `apps/web`, so
   contributors get the repo's conventions whichever coding agent they use.
 
 ### Added
 
+- WhatsApp gestures on both channels (QR bridge and Cloud API), for the AI and
+  for operators. The assistant's read receipts, typing indicator, emoji
+  reactions and quoted replies, previously Cloud API only, now work on the QR
+  bridge too. Operators get the same from the portal: hover a message to react
+  with an emoji or to reply quoting it, and opening a thread blue-ticks the
+  visitor's latest message. The customer's own reactions and quoted replies now
+  reach the portal instead of being dropped (`messages.incoming_reaction`,
+  migration 0027).
+- Contact merge in the portal: fold a duplicate profile into a primary one.
+  Conversations move over, empty fields fill in from the merged profile with
+  the primary winning conflicts, notes combine, and the duplicate is deleted.
+- Country-aware phone entry for contacts: a searchable country picker (emoji
+  flag, localized names) with the dial code as a fixed prefix, storing digits
+  only. Stored numbers render with flag, dial code and grouped digits, and the
+  duplicate-number rejection now surfaces as a localized message.
 - Debounced WhatsApp replies: instead of answering every message the moment it
   arrives, the assistant now waits for a quiet window (8 seconds by default,
   `REPLY_DEBOUNCE_SECONDS`) that restarts with each new visitor message, then
@@ -103,6 +127,15 @@ bundles ffmpeg for voice-note transcoding.
 
 ### Fixed
 
+- An empty portal inbox keeps the normal layout (search, status control,
+  folder tabs, thread pane) instead of replacing the whole interface with the
+  empty-state card.
+- The inbox row time now shows when the contact last wrote instead of the
+  conversation's last activity, which moved whenever the AI or an operator
+  acted; sorting stays by activity.
+- The reaction badge on media-only bubbles hangs off the bubble like WhatsApp
+  instead of overlapping the timestamp, and the thread header keeps a single
+  64px row in human mode so its divider lines up with the search row.
 - The inbox closes a conversation gracefully when it no longer exists (deleted
   by another operator or a cleanup) instead of erroring on click or polling the
   stale thread forever.

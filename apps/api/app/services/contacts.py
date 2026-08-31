@@ -61,6 +61,30 @@ def rename_conversations(db: Session, contact: Contact) -> None:
     )
 
 
+def merge_contacts(db: Session, primary: Contact, merged: Contact) -> None:
+    """Fold ``merged`` into ``primary``: its conversations move over, empty
+    fields on the primary fill in from the merged profile (the primary wins
+    every conflict), notes are combined, and the merged contact is deleted.
+
+    When both contacts have a phone the primary keeps its own; a later
+    message from the dropped number starts a fresh contact, which is the
+    honest behaviour until per-channel identities exist.
+    """
+    if not primary.name.strip() and merged.name.strip():
+        primary.name = merged.name.strip()[:180]
+    if not primary.phone and merged.phone:
+        primary.phone = merged.phone
+    if not primary.email and merged.email:
+        primary.email = merged.email
+    if merged.notes.strip() and merged.notes.strip() not in primary.notes:
+        primary.notes = f"{primary.notes.strip()}\n{merged.notes.strip()}".strip()
+    primary.updated_at = now_utc()
+    db.execute(update(Conversation).where(Conversation.contact_id == merged.id).values(contact_id=primary.id))
+    db.delete(merged)
+    db.flush()
+    rename_conversations(db, primary)
+
+
 def previous_conversation_recap(db: Session, conversation: Conversation, *, limit: int = 8) -> str:
     """A compact recap of the contact's latest resolved conversation, for the
     model to carry context into a new case. Empty when there is none."""

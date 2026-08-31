@@ -245,7 +245,7 @@ export default function InboxPage() {
                   <span className={`channel-badge ${item.channel}`} title={channelLabel(item.channel)}>{channelIcon(item.channel)}</span>
                 </span>
                 <span className="inbox-row-body">
-                  <span className="inbox-row-top"><strong>{item.contact_name || item.title}</strong><time>{formatWhen(item.updated_at, lang)}</time></span>
+                  <span className="inbox-row-top"><strong>{item.contact_name || item.title}</strong><time>{formatWhen(item.last_inbound_at ?? item.updated_at, lang)}</time></span>
                   <small className="inbox-row-preview">{item.preview || t("inbox.noMessages")}</small>
                   <small className="inbox-row-meta">{item.agent_name} · {channelLabel(item.channel)} <span className={`mini-badge ${item.mode}`}>{item.mode === "human" ? t("inbox.modeHuman") : t("inbox.modeAi")}</span></small>
                 </span>
@@ -277,9 +277,10 @@ export default function InboxPage() {
                   <div key={message.id} className={`inbox-message ${message.role}${grouped ? " grouped" : ""}`}>
                     {!grouped && <small>{message.sender_name || (message.role === "assistant" ? t("inbox.senderAgent") : t("inbox.senderVisitor"))}</small>}
                     <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={stamp} />
-                    {message.content ? <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}</time></p>
-                      : !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}
+                    {message.content && <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}</time></p>}
                     <ReactionBadge emoji={message.reaction} />
+                    <ReactionBadge emoji={message.incoming_reaction} incoming />
+                    {!message.content && !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}
                   </div>
                 );
               })}

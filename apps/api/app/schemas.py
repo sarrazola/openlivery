@@ -318,6 +318,9 @@ class ConversationOut(ORMModel):
     preview: str = ""
     unread: bool = False
     unread_count: int = 0
+    # When the contact last wrote; the inbox shows this so the row's time
+    # means "waiting since", not "our last activity".
+    last_inbound_at: datetime | None = None
 
 
 class SourceOut(BaseModel):
@@ -348,6 +351,7 @@ class MessageOut(ORMModel):
     delivery_status: str | None = None
     delivery_error: str | None = None
     reaction: str | None = None
+    incoming_reaction: str | None = None
     quoted_message_id: uuid.UUID | None = None
     created_at: datetime
     attachments: list[AttachmentOut] = []
@@ -370,10 +374,18 @@ class ConversationInboxOut(BaseModel):
     unread: bool = False
     unread_count: int = 0
     updated_at: datetime
+    last_inbound_at: datetime | None = None
 
 
 class SendMessageRequest(BaseModel):
     content: str = Field(min_length=1, max_length=50000)
+    # Reply quoting this earlier message of the conversation (swipe-to-reply).
+    quoted_message_id: uuid.UUID | None = None
+
+
+class ReactionRequest(BaseModel):
+    # Empty string removes the reaction.
+    emoji: str = Field(default="", max_length=16)
 
 
 class ConversationModeUpdate(BaseModel):
@@ -463,6 +475,12 @@ class ContactOut(BaseModel):
     conversation_count: int = 0
     open_count: int = 0
     last_activity_at: datetime | None = None
+
+
+class ContactMergeRequest(BaseModel):
+    # The surviving contact; the one addressed by the URL is folded into it
+    # and deleted.
+    primary_contact_id: uuid.UUID
 
 
 class PortalInboxSummary(BaseModel):
@@ -611,6 +629,16 @@ class WhatsAppInbound(BaseModel):
     media_kind: str | None = Field(default=None, pattern=r"^(image|audio|video)$")
     media_base64: str | None = None
     media_mime: str | None = Field(default=None, max_length=100)
+    # External id of the message the visitor replied to (swipe-to-reply).
+    quoted_external_id: str | None = Field(default=None, max_length=255)
+
+
+class WhatsAppInboundReaction(BaseModel):
+    remote_jid: str = Field(min_length=1, max_length=255)
+    # External id of the message the visitor reacted to.
+    target_external_id: str = Field(min_length=1, max_length=255)
+    # Empty string removes the reaction.
+    emoji: str = Field(default="", max_length=16)
 
 
 class WhatsAppInboundResult(BaseModel):
@@ -619,6 +647,8 @@ class WhatsAppInboundResult(BaseModel):
     conversation_id: uuid.UUID | None = None
     mode: str | None = None
     outbound_message_id: uuid.UUID | None = None
+    # External id of the visitor message the reply quotes (swipe-to-reply).
+    quote_external_id: str | None = None
 
 
 class WhatsAppOutboundConfirm(BaseModel):

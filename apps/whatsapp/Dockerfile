@@ -1,27 +1,27 @@
-FROM node:22.18.0-bookworm-slim AS builder
+FROM golang:1.27-bookworm AS builder
 
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
-RUN npm test && npm run build
+RUN go vet ./... && go test ./... && CGO_ENABLED=0 go build -trimpath -o bridge .
 
-FROM node:22.18.0-bookworm-slim AS runner
+FROM debian:bookworm-slim AS runner
 
-ENV NODE_ENV=production \
-    WHATSAPP_BRIDGE_HOST=0.0.0.0 \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 bridge \
+    && useradd --uid 10001 --gid bridge --create-home bridge
+
+ENV WHATSAPP_BRIDGE_HOST=0.0.0.0 \
     WHATSAPP_BRIDGE_PORT=3101
 
-RUN groupadd --gid 10001 nodejs \
-    && useradd --uid 10001 --gid nodejs --create-home baileys
-
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
-COPY --from=builder --chown=baileys:nodejs /app/dist ./dist
+COPY --from=builder --chown=bridge:bridge /app/bridge ./bridge
 
-USER baileys
+USER bridge
 
 EXPOSE 3101
 
-CMD ["node", "dist/src/index.js"]
+CMD ["/app/bridge"]

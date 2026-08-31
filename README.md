@@ -20,7 +20,7 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-black" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/backend-FastAPI-009688" alt="FastAPI" />
   <img src="https://img.shields.io/badge/frontend-Next.js-black" alt="Next.js" />
-  <img src="https://img.shields.io/badge/bridge-Baileys-25D366" alt="Baileys" />
+  <img src="https://img.shields.io/badge/bridge-whatsmeow-25D366" alt="whatsmeow" />
 </p>
 
 ---
@@ -67,7 +67,7 @@ Full documentation lives in **[docs/](docs/)**. Every guide is written twice:
 
 **Channels** — [WhatsApp Cloud API](docs/en/whatsapp-cloud-api.md) · [WhatsApp QR](docs/en/whatsapp.md) · [Web widget](docs/en/web-widget.md)
 - ✅ **WhatsApp Cloud API** (official Meta API) — bring your own Meta app credentials, signed webhooks, per-client number
-- ✅ **WhatsApp QR** through Baileys — QR link, per-client number, encrypted persistent session
+- ✅ **WhatsApp QR** through whatsmeow — QR link, per-client number, persistent session that reconnects on its own
 - ✅ Embeddable **web chat widget** for any website
 - 🚧 Instagram DM, Facebook Messenger *(planned)*
 
@@ -85,7 +85,7 @@ Three services plus PostgreSQL, orchestrated by Docker Compose:
 | --- | --- | --- |
 | `apps/api` | FastAPI · SQLAlchemy · Alembic | REST API, data model, AI/knowledge/provider services |
 | `apps/web` | Next.js · React · TypeScript · Tailwind | Agency dashboard, client portal, playground, widget |
-| `apps/whatsapp` | Node.js · Baileys | WhatsApp Web bridge (stateful sessions) |
+| `apps/whatsapp` | Go · whatsmeow | WhatsApp Web bridge (stateful sessions) |
 
 All data lives in PostgreSQL; provider keys and WhatsApp sessions are encrypted
 at rest. Every query is scoped by `agency_id` for tenant isolation, and public
@@ -125,7 +125,7 @@ Deploying to a public server (reverse proxy, TLS, backups) is covered in
 apps/
   api/         FastAPI backend (app/, migrations/, tests/)
   web/         Next.js frontend (app/, components/, lib/, types/)
-  whatsapp/    Baileys WhatsApp bridge (src/)
+  whatsapp/    whatsmeow WhatsApp bridge (Go)
   mobile/      Optional Expo app for the businesses you serve (unbranded)
 docs/          Self-hosting and operations guide
 scripts/       Helper scripts (generate-docker-env.sh)
