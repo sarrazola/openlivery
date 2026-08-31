@@ -128,3 +128,24 @@ export function defaultCountry(): string {
 export function dialCodeOf(iso: string): string {
   return COUNTRIES.find((c) => c.iso === iso)?.code ?? "";
 }
+
+/** Groups a national number for reading: 3043682170 becomes 304 368 2170. */
+function groupNational(digits: string): string {
+  const groups: string[] = [];
+  let rest = digits;
+  while (rest.length > 4) {
+    groups.push(rest.slice(0, 3));
+    rest = rest.slice(3);
+  }
+  if (rest) groups.push(rest);
+  return groups.join(" ");
+}
+
+/** Human display of a stored digits-only number: flag, dial code and grouped
+ * national part. Numbers no dial code matches fall back to +digits. */
+export function formatPhone(digits: string | null | undefined): string {
+  if (!digits) return "";
+  const parts = splitPhone(digits);
+  if (!parts) return `+${digits}`;
+  return `${flagOf(parts.iso)} +${dialCodeOf(parts.iso)} ${groupNational(parts.national)}`.trim();
+}

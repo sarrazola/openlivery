@@ -5,6 +5,7 @@ import { CheckCircle2, Inbox, LoaderCircle, Merge, MessageSquarePlus, Pencil, Pl
 import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { PhoneInput } from "@/components/phone-input";
+import { formatPhone } from "@/lib/dial-codes";
 import { api, ApiError, messageFrom } from "@/lib/api";
 import { formatWhen } from "@/lib/datetime";
 import { useLanguage, useT } from "@/lib/i18n";
@@ -72,7 +73,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
     setHistory(await api<Conversation[]>(`/portal/${slug}/contacts/${contact.id}/conversations`));
   }, [slug]);
 
-  const phoneLabel = (phone: string | null) => (phone ? `+${phone}` : "");
+  const phoneLabel = (phone: string | null) => formatPhone(phone);
   const nameOf = (contact: Contact) => contact.name.trim() || phoneLabel(contact.phone) || t("portal.contacts.unnamed");
 
   async function save(event: FormEvent<HTMLFormElement>) {
