@@ -712,6 +712,19 @@ textarea { line-height: 1.55; }
 .composer-quote button { display: grid; place-items: center; width: 24px; height: 24px; color: #5a6272; background: none; border: 0; border-radius: 999px; cursor: pointer; }
 .composer-quote button:hover { background: rgba(10, 14, 29, .08); }
 
+/* Phone entry: country picker, fixed dial code, digits-only national number. */
+.phone-input { display: flex; align-items: stretch; gap: 0; }
+.phone-input select { flex: 0 0 auto; max-width: 96px; padding: 0 4px; border: 1px solid var(--line); border-right: 0; border-radius: 8px 0 0 8px; background: #fafbfc; font-size: 13px; }
+.phone-input .phone-dial { display: flex; align-items: center; padding: 0 6px 0 10px; color: var(--muted); border: 1px solid var(--line); border-left: 0; border-right: 0; background: #fafbfc; font-size: 13.5px; }
+.phone-input input { flex: 1; min-width: 0; border-radius: 0 8px 8px 0; }
+/* Candidate list of the contact merge dialog. */
+.merge-candidates { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow: auto; }
+.merge-candidates button { display: flex; align-items: center; gap: 10px; padding: 9px 10px; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: white; }
+.merge-candidates button.active { border-color: var(--brand, #4f6bed); background: #f4f6ff; }
+.merge-candidates button > span:nth-child(2) { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.merge-candidates button strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.merge-candidates button small { color: #7b8391; }
+
 .portal-composer { padding: 14px 16px; display: flex; gap: 8px; border-top: 1px solid var(--line); }
 .portal-composer input { flex: 1; }
 .portal-composer button { width: 42px; display: grid; place-items: center; color: white; border: 0; border-radius: 7px; background: var(--portal-color); }

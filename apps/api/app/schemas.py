@@ -477,6 +477,12 @@ class ContactOut(BaseModel):
     last_activity_at: datetime | None = None
 
 
+class ContactMergeRequest(BaseModel):
+    # The surviving contact; the one addressed by the URL is folded into it
+    # and deleted.
+    primary_contact_id: uuid.UUID
+
+
 class PortalInboxSummary(BaseModel):
     open: int = 0
     resolved: int = 0

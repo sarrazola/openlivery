@@ -1,10 +1,11 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Inbox, LoaderCircle, MessageSquarePlus, Pencil, Plus, Search, Trash2, UserRound } from "lucide-react";
+import { CheckCircle2, Inbox, LoaderCircle, Merge, MessageSquarePlus, Pencil, Plus, Search, Trash2, UserRound } from "lucide-react";
 import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
-import { api, messageFrom } from "@/lib/api";
+import { PhoneInput } from "@/components/phone-input";
+import { api, ApiError, messageFrom } from "@/lib/api";
 import { formatWhen } from "@/lib/datetime";
 import { useLanguage, useT } from "@/lib/i18n";
 import type { Contact, Conversation, PortalChannel } from "@/types";
@@ -24,6 +25,9 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const [editing, setEditing] = useState<"new" | "edit" | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [typed, setTyped] = useState("");
+  const [merging, setMerging] = useState(false);
+  const [mergeQuery, setMergeQuery] = useState("");
+  const [mergePrimary, setMergePrimary] = useState<Contact | null>(null);
   const cloudLine = channels.find((c) => c.channel === "whatsapp_cloud");
   const qrLine = channels.find((c) => c.channel === "whatsapp");
   const [starting, setStarting] = useState<"whatsapp_cloud" | "whatsapp" | null>(null);
@@ -88,6 +92,23 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
       setEditing(null);
       await load();
       await choose(saved);
+    } catch (err) {
+      setError(err instanceof ApiError && err.status === 409 ? t("portal.contacts.form.duplicatePhone") : messageFrom(err));
+    } finally { setBusy(false); }
+  }
+
+  async function merge(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected || !mergePrimary) return;
+    setBusy(true); setError("");
+    try {
+      const primary = await api<Contact>(`/portal/${slug}/contacts/${selected.id}/merge`, {
+        method: "POST",
+        body: JSON.stringify({ primary_contact_id: mergePrimary.id }),
+      });
+      setMerging(false); setMergePrimary(null); setMergeQuery("");
+      await load();
+      await choose(primary);
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
 
@@ -134,6 +155,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
             <div className="thread-actions">
               {(cloudLine || qrLine) && selected.phone && <button className="button primary small" onClick={() => setStarting(cloudLine ? "whatsapp_cloud" : "whatsapp")}><MessageSquarePlus size={15} /> {t("portal.contacts.startConversation")}</button>}
               <button className="button small" onClick={() => setEditing("edit")}><Pencil size={15} /> {t("portal.contacts.edit")}</button>
+              <button className="button small" onClick={() => { setMergePrimary(null); setMergeQuery(""); setMerging(true); }}><Merge size={15} /> {t("portal.contacts.merge")}</button>
               <button className="icon-button danger" onClick={() => { setTyped(""); setDeleting(true); }} disabled={busy} title={t("portal.contacts.delete")} aria-label={t("portal.contacts.delete")}><Trash2 size={16} /></button>
             </div>
           </header>
@@ -172,11 +194,31 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
         <div className="modal-actions"><button type="button" className="button" onClick={() => setDeleting(false)}>{t("portal.contacts.form.cancel")}</button><button className="button danger" disabled={!confirmed || busy}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Trash2 size={15} /> {t("portal.contacts.deleteConfirm")}</>}</button></div>
       </form>
     </Modal>
+    <Modal open={merging && Boolean(selected)} title={t("portal.contacts.mergeTitle", { name: selected ? nameOf(selected) : "" })} description={t("portal.contacts.mergeDescription")} onClose={() => setMerging(false)}>
+      <form className="modal-form" onSubmit={merge}>
+        <label>{t("portal.contacts.mergePrimaryLabel")}<input value={mergeQuery} onChange={(e) => setMergeQuery(e.target.value)} placeholder={t("portal.contacts.searchPlaceholder")} autoFocus /></label>
+        <div className="merge-candidates">
+          {items
+            .filter((contact) => contact.id !== selected?.id)
+            .filter((contact) => !mergeQuery.trim() || `${contact.name} ${contact.phone ?? ""} ${contact.email ?? ""}`.toLowerCase().includes(mergeQuery.trim().toLowerCase()))
+            .slice(0, 8)
+            .map((contact) => <button type="button" key={contact.id} className={mergePrimary?.id === contact.id ? "active" : ""} onClick={() => setMergePrimary(contact)}>
+              <span className="entity-avatar tiny"><UserRound size={15} /></span>
+              <span><strong>{nameOf(contact)}</strong><small>{phoneLabel(contact.phone)}{contact.email ? ` · ${contact.email}` : ""}</small></span>
+              {mergePrimary?.id === contact.id && <CheckCircle2 size={16} />}
+            </button>)}
+          {items.filter((contact) => contact.id !== selected?.id).length === 0 && <p className="muted">{t("portal.contacts.mergeNoCandidates")}</p>}
+        </div>
+        {mergePrimary && <Alert type="error">{t("portal.contacts.mergeWarning", { merged: selected ? nameOf(selected) : "", primary: nameOf(mergePrimary) })}</Alert>}
+        {error && <Alert>{error}</Alert>}
+        <div className="modal-actions"><button type="button" className="button" onClick={() => setMerging(false)}>{t("portal.contacts.form.cancel")}</button><button className="button primary" disabled={!mergePrimary || busy}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Merge size={15} /> {t("portal.contacts.mergeConfirm")}</>}</button></div>
+      </form>
+    </Modal>
     <Modal open={editing !== null} title={editing === "new" ? t("portal.contacts.newTitle") : t("portal.contacts.editTitle")} onClose={() => setEditing(null)}>
       <form className="modal-form" onSubmit={save}>
         <div className="form-grid">
           <label>{t("portal.contacts.form.name")}<input name="name" defaultValue={editing === "edit" ? selected?.name : ""} placeholder={t("portal.contacts.form.namePlaceholder")} autoFocus /></label>
-          <label>{t("portal.contacts.form.phone")}<input name="phone" required defaultValue={editing === "edit" ? phoneLabel(selected?.phone ?? null) : ""} placeholder="+57 300 123 4567" /><span className="field-help">{t("portal.contacts.form.phoneHelp")}</span></label>
+          <label>{t("portal.contacts.form.phone")}<PhoneInput key={editing === "edit" ? selected?.id : "new"} name="phone" initial={editing === "edit" ? selected?.phone : ""} locale={lang} required placeholder="300 123 4567" /><span className="field-help">{t("portal.contacts.form.phoneHelp")}</span></label>
         </div>
         <label>{t("portal.contacts.form.email")}<input name="email" type="email" defaultValue={editing === "edit" ? selected?.email ?? "" : ""} placeholder="name@company.com" /></label>
         <label>{t("portal.contacts.form.notes")}<textarea name="notes" rows={4} defaultValue={editing === "edit" ? selected?.notes : ""} placeholder={t("portal.contacts.form.notesPlaceholder")} /></label>

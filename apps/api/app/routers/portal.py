@@ -11,6 +11,7 @@ from ..ratelimit import login_rate_limit, public_asset_rate_limit
 from ..schemas import (
     AgentSummary,
     ContactCreate,
+    ContactMergeRequest,
     ContactOut,
     ContactUpdate,
     ConversationStart,
@@ -32,7 +33,7 @@ from ..schemas import (
     SendMessageRequest,
 )
 from ..security import create_portal_token, decode_portal_token, verify_password
-from ..services.contacts import display_name, normalize_phone, rename_conversations
+from ..services.contacts import display_name, merge_contacts, normalize_phone, rename_conversations
 from ..services.whatsapp_templates import (
     create_template,
     list_templates,
@@ -529,6 +530,28 @@ def portal_update_contact(
     stats = _contact_stats()
     row = db.execute(select(stats).where(stats.c.cid == contact.id)).first()
     return _contact_out(contact, row)
+
+
+@router.post("/{slug}/contacts/{contact_id}/merge", response_model=ContactOut)
+def portal_merge_contact(
+    slug: str,
+    contact_id: uuid.UUID,
+    payload: ContactMergeRequest,
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    """Fold the addressed contact into the primary one; the addressed contact
+    is deleted and its conversations move over."""
+    merged = _portal_contact(db, client, contact_id)
+    if payload.primary_contact_id == merged.id:
+        raise HTTPException(status_code=409, detail="Pick a different contact to merge into")
+    primary = _portal_contact(db, client, payload.primary_contact_id)
+    merge_contacts(db, primary, merged)
+    db.commit()
+    db.refresh(primary)
+    stats = _contact_stats()
+    row = db.execute(select(stats).where(stats.c.cid == primary.id)).first()
+    return _contact_out(primary, row)
 
 
 @router.delete("/{slug}/contacts/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)

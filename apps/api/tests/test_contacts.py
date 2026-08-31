@@ -105,3 +105,46 @@ def test_inbound_creates_the_contact_and_a_new_case_after_resolution(authenticat
     assert client.get(f"/api/conversations/{first_id}").status_code == 404
     assert client.get(f"/api/conversations/{second_id}").status_code == 404
     assert client.get(f"/api/portal/{slug}/conversations").json() == []
+
+
+def test_merge_contacts_moves_conversations_and_fills_blanks(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    customer = _portal(client, "Merge Co")
+    slug = customer["portal_slug"]
+    client.put("/api/providers/openai", json={"api_key": "secret"})
+    agent = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto", "description": "", "instructions": "", "personality": "", "is_active": True},
+    ).json()
+    channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
+    headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Hola!", input_tokens=1, output_tokens=1)))
+    monkeypatch.setattr(whatsapp_inbound_service.get_settings(), "reply_debounce_seconds", 0)
+
+    # The person wrote in by WhatsApp (that contact has the phone), and someone
+    # also created a manual profile for them with the email.
+    conversation_id = client.post(
+        f"/api/internal/whatsapp/channels/{channel['id']}/inbound",
+        json={"external_message_id": "m1", "remote_jid": "573001112233@s.whatsapp.net", "sender_name": "Sam", "text": "Hola"},
+        headers=headers,
+    ).json()["conversation_id"]
+    base = f"/api/portal/{slug}/contacts"
+    whatsapp_contact = client.get(base).json()[0]
+    manual = client.post(base, json={"name": "Samuel Pérez", "phone": "+57 311 999 8877", "email": "sam@example.com", "notes": "VIP"}).json()
+
+    # Merging into yourself or into another client's contact is refused.
+    assert client.post(f"{base}/{manual['id']}/merge", json={"primary_contact_id": manual["id"]}).status_code == 409
+    assert client.post(f"{base}/{manual['id']}/merge", json={"primary_contact_id": str(uuid.uuid4())}).status_code == 404
+
+    # The manual profile folds into the WhatsApp contact, which stays primary.
+    merged = client.post(f"{base}/{manual['id']}/merge", json={"primary_contact_id": whatsapp_contact["id"]})
+    assert merged.status_code == 200, merged.text
+    primary = merged.json()
+    assert primary["id"] == whatsapp_contact["id"]
+    assert primary["phone"] == "573001112233"
+    assert primary["email"] == "sam@example.com"
+    assert "VIP" in primary["notes"]
+
+    assert client.get(f"{base}/{manual['id']}").status_code == 404
+    assert client.get(f"/api/conversations/{conversation_id}").json()["contact_id"] == primary["id"]
+    assert len(client.get(base).json()) == 1
