@@ -155,7 +155,7 @@ h1, h2, h3, .brand { font-family: var(--font-display); letter-spacing: -.015em; 
 .modal-form label, .stack-form label, .settings-fields label, .knowledge-context label, .playground-selectors label { display: flex; flex-direction: column; gap: 7px; color: #39415b; font-size: 12px; font-weight: 700; }
 input, textarea, select { width: 100%; color: var(--ink); border: 1px solid #dfe3eb; border-radius: 9px; background: white; outline: none; transition: .15s; }
 input, select { height: 42px; padding: 0 12px; } textarea { padding: 11px 12px; line-height: 1.55; resize: vertical; }
-input:focus, textarea:focus, select:focus { border-color: #a99fff; box-shadow: 0 0 0 3px #f0eeff; }
+input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-color: #a99fff; box-shadow: 0 0 0 3px #f0eeff; }
 input::placeholder, textarea::placeholder { color: #adb3c2; font-weight: 400; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .field-help { color: #9097aa; font-size: 12px; font-weight: 500; }
@@ -264,7 +264,7 @@ h1, h2, h3, .brand { font-family: var(--font-display); }
 .filter-select select { height: 44px; min-width: 190px; }
 label { color: #343b4d; font-size: 14px; font-weight: 600; }
 input, textarea, select { min-height: 43px; padding: 10px 12px; color: #202638; border: 1px solid #cfd6df; border-radius: 7px; background: white; font-size: 14px; }
-input:focus, textarea:focus, select:focus { outline: 0; border-color: #7770ff; box-shadow: 0 0 0 3px rgba(99,91,255,.13); }
+input:focus, textarea:focus, select:focus, .phone-input:focus-within { outline: 0; border-color: #7770ff; box-shadow: 0 0 0 3px rgba(99,91,255,.13); }
 textarea { line-height: 1.55; }
 .field-help { margin-top: 6px; color: #7d8593; font-size: 12px; font-weight: 400; }
 .status { min-height: 25px; padding: 0 9px; font-size: 12px; }
@@ -717,7 +717,6 @@ textarea { line-height: 1.55; }
 /* One bordered control holding flag, dial prefix and number; the focus ring
    wraps it whole. The inner pieces never draw borders of their own. */
 .phone-input { position: relative; display: flex; align-items: stretch; gap: 0; border: 1px solid var(--line); border-radius: 8px; background: white; }
-.phone-input:focus-within { border-color: #7770ff; box-shadow: 0 0 0 3px rgba(99, 91, 255, .13); }
 .phone-country { flex: 0 0 auto; display: flex; align-items: center; gap: 5px; padding: 0 8px 0 10px; border: 0; border-right: 1px solid var(--line); border-radius: 7px 0 0 7px; background: #fafbfc; font-size: 16px; cursor: pointer; }
 .phone-country::after { content: ""; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #7b8391; }
 .phone-field { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 0; background: transparent; }
@@ -1086,7 +1085,7 @@ textarea { line-height: 1.55; }
 .channel-card-live .button.primary { color: white; border-color: #075985; background: #075985; }
 .button.secondary { color: #075985; border-color: #c9dce4; background: #f5f9fa; }
 .text-link, .table-link, .text-button, .url-preview button, .url-preview a { color: #075985; }
-input:focus, textarea:focus, select:focus { border-color: #3b8ca0; box-shadow: 0 0 0 3px rgba(0, 166, 125, .12); }
+input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-color: #3b8ca0; box-shadow: 0 0 0 3px rgba(0, 166, 125, .12); }
 .switch-row input[type="checkbox"]:checked { background: #00866b; }
 
 .entity-avatar, .agent-avatar { color: #075985; border-color: #cee0e5; background: #edf5f6; }
