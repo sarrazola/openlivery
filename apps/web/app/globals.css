@@ -818,14 +818,14 @@ textarea { line-height: 1.55; }
 
 .portal-composer { position: relative; padding: 14px 16px; display: flex; gap: 8px; border-top: 1px solid var(--line); }
 .canned-popup { position: absolute; bottom: calc(100% + 4px); left: 12px; right: 12px; z-index: 30; display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 10px 32px rgba(10, 14, 29, .16); }
-.canned-popup > button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 7px 9px; text-align: left; border: 0; border-radius: 7px; background: transparent; cursor: pointer; }
-.canned-popup > button.active { background: #f0f3f7; }
-.canned-popup > button strong { color: #4f46d4; font-size: 13px; }
-.canned-popup > button small { max-width: 100%; overflow: hidden; color: #5b6774; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.portal-composer .canned-popup > button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; height: auto; padding: 7px 9px; text-align: left; color: inherit; border: 0; border-radius: 7px; background: transparent; cursor: pointer; }
+.portal-composer .canned-popup > button.active { background: #f0f3f7; }
+.portal-composer .canned-popup > button strong { color: #4f46d4; font-size: 13px; }
+.portal-composer .canned-popup > button small { max-width: 100%; overflow: hidden; color: #5b6774; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
 .canned-popup > p { margin: 4px 8px; font-size: 13px; }
 .canned-popup footer { margin-top: 2px; padding-top: 6px; border-top: 1px solid var(--line); }
-.canned-popup footer button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 0; border-radius: 7px; background: transparent; color: #4f46d4; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-.canned-popup footer button:hover { background: #efeeff; }
+.portal-composer .canned-popup footer button { display: inline-flex; align-items: center; gap: 6px; width: auto; height: auto; padding: 5px 9px; white-space: nowrap; color: #4f46d4; border: 0; border-radius: 7px; background: transparent; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.portal-composer .canned-popup footer button:hover { background: #efeeff; }
 .canned-manage-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow: auto; }
 .canned-manage-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; }
 .canned-manage-row > div:first-child { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
