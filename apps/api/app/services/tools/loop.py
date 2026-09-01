@@ -18,6 +18,8 @@ RESULT_PREVIEW_CHARS = 500
 
 
 async def _execute(spec: ToolSpec, args: dict) -> tuple[str, bool]:
+    if spec.handler is not None:
+        return spec.handler(args)
     if spec.mcp_tool_name is not None:
         result, is_error = await call_mcp_tool(spec.tool, spec.mcp_tool_name, args)
     else:

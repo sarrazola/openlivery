@@ -294,6 +294,9 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
       case "assigned": return t("portal.inbox.activity.assigned", { actor, assignee: String(message.activity?.assignee ?? "") });
       case "transferred": return t("portal.inbox.activity.transferred", { actor, assignee: String(message.activity?.assignee ?? "") });
       case "unassigned": return t("portal.inbox.activity.unassigned", { actor });
+      case "team_assigned": return t("portal.inbox.activity.team_assigned", { actor, team: String(message.activity?.team ?? "") });
+      case "team_removed": return t("portal.inbox.activity.team_removed", { actor, team: String(message.activity?.team ?? "") });
+      case "escalated": return t("portal.inbox.activity.escalated", { actor, target: String(message.activity?.target ?? ""), reason: String(message.activity?.reason ?? "") });
       default: return message.content;
     }
   };

@@ -234,6 +234,9 @@ const en = {
       assigned: "{actor} assigned the conversation to {assignee}",
       transferred: "{actor} transferred the conversation to {assignee}",
       unassigned: "{actor} released the conversation",
+      team_assigned: "{actor} moved the conversation to {team}",
+      team_removed: "{actor} took the conversation out of {team}",
+      escalated: "{actor} escalated the conversation to {target}: {reason}",
       someone: "Someone",
     },
     empty: {
@@ -479,6 +482,9 @@ const es: typeof en = {
       assigned: "{actor} asignó la conversación a {assignee}",
       transferred: "{actor} transfirió la conversación a {assignee}",
       unassigned: "{actor} liberó la conversación",
+      team_assigned: "{actor} movió la conversación a {team}",
+      team_removed: "{actor} sacó la conversación de {team}",
+      escalated: "{actor} escaló la conversación a {target}: {reason}",
       someone: "Alguien",
     },
     empty: {

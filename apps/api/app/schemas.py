@@ -465,6 +465,22 @@ class EscalationRuleOut(BaseModel):
     broken: bool = False
 
 
+class EscalationConfigIn(BaseModel):
+    # Destination of the built-in triggers; at most one of the two. Both empty
+    # falls back to the channel's tray, then the default tray.
+    default_team_id: uuid.UUID | None = None
+    default_assignee_id: uuid.UUID | None = None
+    rules: list[EscalationRuleIn] = []
+
+
+class EscalationConfigOut(BaseModel):
+    default_team_id: uuid.UUID | None = None
+    default_team_name: str | None = None
+    default_assignee_id: uuid.UUID | None = None
+    default_assignee_name: str | None = None
+    rules: list[EscalationRuleOut] = []
+
+
 class PortalAvailabilityUpdate(BaseModel):
     availability: str = Field(pattern=r"^(online|away)$")
 

@@ -13,6 +13,11 @@ type Rule = {
   is_active: boolean;
   broken?: boolean;
 };
+type Config = {
+  default_team_id: string | null;
+  default_assignee_id: string | null;
+  rules: Rule[];
+};
 type Option = { id: string; name: string };
 
 /** The bot's escalation rules: WHEN in the business's words (the model reads
@@ -21,6 +26,7 @@ type Option = { id: string; name: string };
 export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; clientId: string }) {
   const t = useT();
   const [rules, setRules] = useState<Rule[]>([]);
+  const [defaultDest, setDefaultDest] = useState("");
   const [teams, setTeams] = useState<Option[]>([]);
   const [people, setPeople] = useState<Option[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,12 +35,13 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
   const [saved, setSaved] = useState(false);
 
   const load = useCallback(async () => {
-    const [ruleRows, teamRows, peopleRows] = await Promise.all([
-      api<Rule[]>(`/agents/${agentId}/escalation-rules`),
+    const [config, teamRows, peopleRows] = await Promise.all([
+      api<Config>(`/agents/${agentId}/escalation-rules`),
       api<Option[]>(`/clients/${clientId}/teams`),
       api<{ id: string; name: string; email: string }[]>(`/clients/${clientId}/portal-users`),
     ]);
-    setRules(ruleRows);
+    setRules(config.rules);
+    setDefaultDest(config.default_team_id ? `team:${config.default_team_id}` : config.default_assignee_id ? `user:${config.default_assignee_id}` : "");
     setTeams(teamRows);
     setPeople(peopleRows.map((row) => ({ id: row.id, name: row.name.trim() || row.email })));
   }, [agentId, clientId]);
@@ -59,14 +66,21 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
   async function save() {
     setBusy(true); setError(""); setSaved(false);
     try {
-      const payload = rules
+      const ruleRows = rules
         .filter((rule) => rule.condition.trim())
         .map((rule) => ({ condition: rule.condition.trim(), team_id: rule.team_id, assignee_id: rule.assignee_id, is_active: rule.is_active }));
-      if (payload.some((rule) => !rule.team_id && !rule.assignee_id)) {
+      if (ruleRows.some((rule) => !rule.team_id && !rule.assignee_id)) {
         setError(t("agents.escalation.missingDestination"));
         return;
       }
-      setRules(await api<Rule[]>(`/agents/${agentId}/escalation-rules`, { method: "PUT", body: JSON.stringify(payload) }));
+      const [defaultKind, defaultId] = defaultDest.split(":");
+      const payload = {
+        default_team_id: defaultKind === "team" ? defaultId : null,
+        default_assignee_id: defaultKind === "user" ? defaultId : null,
+        rules: ruleRows,
+      };
+      const saved = await api<Config>(`/agents/${agentId}/escalation-rules`, { method: "PUT", body: JSON.stringify(payload) });
+      setRules(saved.rules);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
@@ -80,8 +94,22 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
       </div>
       <div className="settings-fields">
         {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div> : <>
-          {rules.length === 0 && <p className="muted">{t("agents.escalation.empty")}</p>}
           <div className="escalation-rules">
+            <div className="escalation-rule general">
+              <span className="escalation-when">{t("agents.escalation.when")}</span>
+              <span className="escalation-general-text">{t("agents.escalation.generalCondition")}</span>
+              <span className="escalation-then">{t("agents.escalation.sendTo")}</span>
+              <select value={defaultDest} onChange={(e) => setDefaultDest(e.target.value)} aria-label={t("agents.escalation.generalLabel")}>
+                <option value="">{t("agents.escalation.generalFallback")}</option>
+                {teams.length > 0 && <optgroup label={t("agents.escalation.groupTeams")}>
+                  {teams.map((team) => <option key={team.id} value={`team:${team.id}`}>{team.name}</option>)}
+                </optgroup>}
+                {people.length > 0 && <optgroup label={t("agents.escalation.groupPeople")}>
+                  {people.map((person) => <option key={person.id} value={`user:${person.id}`}>{person.name}</option>)}
+                </optgroup>}
+              </select>
+              <span className="mini-badge ai">{t("agents.escalation.alwaysOn")}</span>
+            </div>
             {rules.map((rule, index) => (
               <div key={index} className={`escalation-rule${rule.is_active ? "" : " inactive"}`}>
                 <span className="escalation-when">{t("agents.escalation.when")}</span>

@@ -742,6 +742,8 @@ textarea { line-height: 1.55; }
 .escalation-rules { display: flex; flex-direction: column; gap: 8px; }
 .escalation-rule { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: #fafbfc; }
 .escalation-rule.inactive { opacity: .55; }
+.escalation-rule.general { border-style: dashed; background: #f4f7ff; }
+.escalation-general-text { flex: 1 1 auto; min-width: 0; color: #39415b; font-size: 13px; }
 .escalation-rule input[type="text"], .escalation-rule input:not([type]) { flex: 1 1 auto; min-width: 0; }
 .escalation-rule select { flex: 0 1 220px; min-width: 140px; }
 .escalation-when, .escalation-then { flex: 0 0 auto; color: #687082; font-size: 12px; font-weight: 700; text-transform: lowercase; }

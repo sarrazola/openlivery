@@ -146,26 +146,32 @@ def test_escalation_rules_replace_and_validate(authenticated_client: TestClient)
     ).json()
     base = f"/api/agents/{agent['id']}/escalation-rules"
 
-    # A rule needs exactly one destination, and it must belong to the client.
-    assert client.put(base, json=[{"condition": "cotizaciones"}]).status_code == 422
-    assert client.put(base, json=[{"condition": "x", "team_id": team["id"], "assignee_id": members[0]["id"]}]).status_code == 422
-    assert client.put(base, json=[{"condition": "x", "team_id": str(uuid.uuid4())}]).status_code == 422
+    # A rule needs exactly one destination, and destinations must belong to the client.
+    assert client.put(base, json={"rules": [{"condition": "cotizaciones"}]}).status_code == 422
+    assert client.put(base, json={"rules": [{"condition": "x", "team_id": team["id"], "assignee_id": members[0]["id"]}]}).status_code == 422
+    assert client.put(base, json={"rules": [{"condition": "x", "team_id": str(uuid.uuid4())}]}).status_code == 422
+    assert client.put(base, json={"default_team_id": team["id"], "default_assignee_id": members[0]["id"], "rules": []}).status_code == 422
 
-    saved = client.put(base, json=[
-        {"condition": "Preguntas por cotizaciones o precios corporativos", "team_id": team["id"]},
-        {"condition": "Reclamos de facturacion", "assignee_id": members[0]["id"], "is_active": False},
-    ])
+    saved = client.put(base, json={
+        "default_team_id": team["id"],
+        "rules": [
+            {"condition": "Preguntas por cotizaciones o precios corporativos", "team_id": team["id"]},
+            {"condition": "Reclamos de facturacion", "assignee_id": members[0]["id"], "is_active": False},
+        ],
+    })
     assert saved.status_code == 200, saved.text
-    rules = saved.json()
+    config = saved.json()
+    assert config["default_team_name"] == "Ventas"
+    rules = config["rules"]
     assert [rule["position"] for rule in rules] == [0, 1]
     assert rules[0]["team_name"] == "Ventas" and rules[0]["broken"] is False
     assert rules[1]["assignee_name"] == "Ana" and rules[1]["is_active"] is False
 
     # Replacing converges to the new list.
-    saved = client.put(base, json=[{"condition": "Solo esta", "team_id": team["id"]}]).json()
-    assert len(saved) == 1
-    assert client.get(base).json() == saved
+    config = client.put(base, json={"rules": [{"condition": "Solo esta", "team_id": team["id"]}]}).json()
+    assert len(config["rules"]) == 1 and config["default_team_id"] is None
+    assert client.get(base).json() == config
 
     # Deleting the destination team leaves the rule visibly broken.
     client.delete(f"/api/portal/{slug}/teams/{team['id']}")
-    assert client.get(base).json()[0]["broken"] is True
+    assert client.get(base).json()["rules"][0]["broken"] is True

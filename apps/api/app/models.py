@@ -124,6 +124,15 @@ class Agent(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     instructions: Mapped[str] = mapped_column(Text, default="")
     personality: Mapped[str] = mapped_column(Text, default="")
+    # Where the built-in escalation triggers (frustration, explicit request
+    # for a human, unsolvable) send the conversation. One of the two at most;
+    # both empty falls back to the channel's tray or the default tray.
+    escalation_team_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"), nullable=True
+    )
+    escalation_assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True
+    )
     # Structured business brief. Optional guided fields that compose into the
     # system prompt alongside the free-form instructions.
     brief_summary: Mapped[str] = mapped_column(Text, default="", server_default="")
@@ -406,6 +415,10 @@ class Conversation(Base):
     contact: Mapped[Contact | None] = relationship(back_populates="conversations")
     assignee: Mapped["PortalUser | None"] = relationship(foreign_keys=[assignee_id])
     team: Mapped["Team | None"] = relationship(foreign_keys=[team_id])
+
+    @property
+    def team_name(self) -> str | None:
+        return self.team.name if self.team else None
     whatsapp_channel: Mapped[WhatsAppChannel | None] = relationship(back_populates="conversations")
     whatsapp_cloud_channel: Mapped[WhatsAppCloudChannel | None] = relationship(back_populates="conversations")
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")

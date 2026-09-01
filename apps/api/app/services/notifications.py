@@ -208,8 +208,14 @@ async def notify_conversation(
     *,
     title: str | None = None,
     sender: str | None = None,
+    member_ids: set | None = None,
 ) -> int:
-    """Ring the installs registered for this conversation's client."""
+    """Ring the installs registered for this conversation's client.
+
+    ``member_ids`` narrows the fan-out to a team: the conversation landed in
+    a tray with nobody assigned, so that tray's people ring, not everyone.
+    Falls back to everyone when none of them has a device.
+    """
     if not push_enabled():
         return 0
     devices = devices_for_client(db, conversation.client_id)
@@ -217,6 +223,9 @@ async def notify_conversation(
         # Someone owns this conversation: their phone rings, not everyone's.
         mine = [d for d in devices if d.portal_user_id == conversation.assignee_id]
         devices = mine or devices
+    elif member_ids:
+        team_devices = [d for d in devices if d.portal_user_id in member_ids]
+        devices = team_devices or devices
     if not devices:
         return 0
     if title is None:
@@ -251,15 +260,17 @@ async def notify_assigned(db: Session, conversation: Conversation, assignee: Por
     )
 
 
-async def notify_needs_human(db: Session, conversation: Conversation, body: str) -> int:
+async def notify_needs_human(db: Session, conversation: Conversation, body: str, *, team=None) -> int:
     """Notify only when a person is the one expected to answer.
 
     While the assistant is handling a conversation there is nothing for anyone
     to do, and a phone that buzzes on every customer message is a phone whose
-    notifications get switched off.
+    notifications get switched off. When the conversation sits unassigned in a
+    tray, that tray's members are the ones who ring.
     """
     if conversation.mode != "human":
         return 0
+    member_ids = {member.portal_user_id for member in team.members} if team is not None else None
     return await notify_conversation(
-        db, conversation, body, sender=conversation.contact_name or None
+        db, conversation, body, sender=conversation.contact_name or None, member_ids=member_ids
     )

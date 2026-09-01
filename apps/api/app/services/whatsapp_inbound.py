@@ -26,6 +26,13 @@ from .notifications import notify_needs_human
 from .providers import resolve_agent_credentials, resolve_provider_credentials
 from .tools import run_completion
 from .usage import record_usage
+from .escalation import (
+    active_rules as escalation_active_rules,
+    apply_escalation,
+    build_escalation_spec,
+    escalation_enabled,
+    escalation_prompt,
+)
 from .whatsapp import deliver_reaction, send_channel_message, signal_channel_read
 from .whatsapp_format import parse_reply_directives
 
@@ -307,8 +314,14 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     recap = previous_conversation_recap(db, conversation)
     if recap:
         system_content += "\n\n" + recap
+    escalation_specs = None
+    escalation_holder: list = []
     if conversation.channel in ("whatsapp", "whatsapp_cloud"):
         system_content += "\n\n" + _gesture_rules(burst)
+        rules = escalation_active_rules(db, agent)
+        if escalation_enabled(db, agent, rules):
+            system_content += "\n\n" + escalation_prompt(rules)
+            escalation_specs = [build_escalation_spec(rules, escalation_holder)]
     messages = [
         {"role": "system", "content": system_content},
         *[{"role": item.role, "content": llm_text(item)} for item in history],
@@ -323,6 +336,7 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
             messages,
             temperature=agent.temperature,
             max_tokens=agent.max_tokens,
+            extra_specs=escalation_specs,
         )
     except Exception as exc:
         channel.last_error = f"Message received, but the agent could not reply: {str(exc)[:400]}"
@@ -356,11 +370,15 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     conversation.updated_at = now_utc()
     channel.last_error = None
     db.commit()
+    if escalation_holder:
+        # After the farewell is stored, so the thread reads chronologically:
+        # the AI says goodbye, then the hand-over happens.
+        await apply_escalation(db, conversation, agent, escalation_holder[-1])
     return InboundResult(
         accepted=True,
         reply=reply_text or None,
         conversation_id=conversation.id,
-        mode="ai",
+        mode=conversation.mode,
         outbound_message_id=outbound.id if outbound else None,
         quote_external_id=quote_external_id,
     )

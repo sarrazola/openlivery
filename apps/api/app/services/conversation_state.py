@@ -45,7 +45,7 @@ _ACTIVITY_TEXT = {
     "started": "{actor} started the conversation",
     "team_assigned": "{actor} moved the conversation to {team}",
     "team_removed": "{actor} took the conversation out of {team}",
-    "escalated": "{actor} escalated the conversation to {team}: {reason}",
+    "escalated": "{actor} escalated the conversation to {target}: {reason}",
 }
 
 

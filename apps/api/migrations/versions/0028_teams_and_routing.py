@@ -70,8 +70,18 @@ def upgrade() -> None:
     )
     op.create_index("ix_escalation_rules_agent_id", "escalation_rules", ["agent_id"])
 
+    op.add_column(
+        "agents", sa.Column("escalation_team_id", sa.Uuid(), sa.ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
+    )
+    op.add_column(
+        "agents",
+        sa.Column("escalation_assignee_id", sa.Uuid(), sa.ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True),
+    )
+
 
 def downgrade() -> None:
+    op.drop_column("agents", "escalation_assignee_id")
+    op.drop_column("agents", "escalation_team_id")
     op.drop_index("ix_escalation_rules_agent_id", table_name="escalation_rules")
     op.drop_table("escalation_rules")
     op.drop_column("portal_users", "last_seen_at")

@@ -12,7 +12,7 @@ from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_user
 from ..models import Agent, AgentQA, Client, EscalationRule, KnowledgeDocument, PortalUser, Team, User, WhatsAppChannel
-from ..schemas import AgentCreate, AgentOut, AgentUpdate, DocumentOut, EscalationRuleIn, EscalationRuleOut, ManualContextRequest, QAPairCreate, QAPairOut
+from ..schemas import AgentCreate, AgentOut, AgentUpdate, DocumentOut, EscalationConfigIn, EscalationConfigOut, ManualContextRequest, QAPairCreate, QAPairOut
 from ..services.knowledge import embed_document_chunks
 
 
@@ -217,19 +217,30 @@ def _rule_out(rule: EscalationRule) -> dict:
     }
 
 
-@router.get("/{agent_id}/escalation-rules", response_model=list[EscalationRuleOut])
-def list_escalation_rules(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    agent = _agent(db, user, agent_id)
+def _escalation_out(db: Session, agent: Agent) -> dict:
     rules = db.scalars(
         select(EscalationRule).where(EscalationRule.agent_id == agent.id).order_by(EscalationRule.position)
     ).all()
-    return [_rule_out(rule) for rule in rules]
+    default_team = db.get(Team, agent.escalation_team_id) if agent.escalation_team_id else None
+    default_person = db.get(PortalUser, agent.escalation_assignee_id) if agent.escalation_assignee_id else None
+    return {
+        "default_team_id": agent.escalation_team_id,
+        "default_team_name": default_team.name if default_team else None,
+        "default_assignee_id": agent.escalation_assignee_id,
+        "default_assignee_name": (default_person.name.strip() or default_person.email) if default_person else None,
+        "rules": [_rule_out(rule) for rule in rules],
+    }
 
 
-@router.put("/{agent_id}/escalation-rules", response_model=list[EscalationRuleOut])
-def replace_escalation_rules(
+@router.get("/{agent_id}/escalation-rules", response_model=EscalationConfigOut)
+def get_escalation_config(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return _escalation_out(db, _agent(db, user, agent_id))
+
+
+@router.put("/{agent_id}/escalation-rules", response_model=EscalationConfigOut)
+def replace_escalation_config(
     agent_id: uuid.UUID,
-    payload: list[EscalationRuleIn],
+    config: EscalationConfigIn,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -237,8 +248,17 @@ def replace_escalation_rules(
     server converges to it. Every destination must be a team or person of the
     agent's client, and exactly one of the two."""
     agent = _agent(db, user, agent_id)
+    payload = config.rules
     team_ids = {row for row in db.scalars(select(Team.id).where(Team.client_id == agent.client_id))}
     person_ids = {row for row in db.scalars(select(PortalUser.id).where(PortalUser.client_id == agent.client_id))}
+    if config.default_team_id and config.default_assignee_id:
+        raise HTTPException(status_code=422, detail="The general destination is a team or a person, not both")
+    if config.default_team_id and config.default_team_id not in team_ids:
+        raise HTTPException(status_code=422, detail="The destination team does not belong to this client")
+    if config.default_assignee_id and config.default_assignee_id not in person_ids:
+        raise HTTPException(status_code=422, detail="The destination person does not belong to this client")
+    agent.escalation_team_id = config.default_team_id
+    agent.escalation_assignee_id = config.default_assignee_id
     for rule in payload:
         if (rule.team_id is None) == (rule.assignee_id is None):
             raise HTTPException(status_code=422, detail="Each rule needs exactly one destination: a team or a person")
@@ -260,7 +280,4 @@ def replace_escalation_rules(
             )
         )
     db.commit()
-    rules = db.scalars(
-        select(EscalationRule).where(EscalationRule.agent_id == agent.id).order_by(EscalationRule.position)
-    ).all()
-    return [_rule_out(rule) for rule in rules]
+    return _escalation_out(db, agent)
