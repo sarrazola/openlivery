@@ -228,6 +228,7 @@ def _escalation_out(db: Session, agent: Agent) -> dict:
         "default_team_name": default_team.name if default_team else None,
         "default_assignee_id": agent.escalation_assignee_id,
         "default_assignee_name": (default_person.name.strip() or default_person.email) if default_person else None,
+        "builtin_enabled": agent.escalation_builtin_enabled,
         "rules": [_rule_out(rule) for rule in rules],
     }
 
@@ -259,6 +260,7 @@ def replace_escalation_config(
         raise HTTPException(status_code=422, detail="The destination person does not belong to this client")
     agent.escalation_team_id = config.default_team_id
     agent.escalation_assignee_id = config.default_assignee_id
+    agent.escalation_builtin_enabled = config.builtin_enabled
     for rule in payload:
         if (rule.team_id is None) == (rule.assignee_id is None):
             raise HTTPException(status_code=422, detail="Each rule needs exactly one destination: a team or a person")

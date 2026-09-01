@@ -1,21 +1,29 @@
 import uuid
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Cookie, Depends, Header, File, Form, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import Interval, and_, case, func, literal, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import Agency, Agent, Client, Contact, Conversation, Message, PortalUser, Team, TeamMember, WhatsAppChannel, WhatsAppCloudChannel, now_utc
+from ..models import Agency, Agent, CannedResponse, Client, Contact, Conversation, Message, PortalUser, Team, TeamMember, WhatsAppChannel, WhatsAppCloudChannel, now_utc
 from ..ratelimit import login_rate_limit, public_asset_rate_limit
 from ..schemas import (
     AgentSummary,
+    CannedResponseCreate,
+    CannedResponseOut,
+    CannedResponseUpdate,
     ContactCreate,
     ContactMergeRequest,
     ContactOut,
     ContactUpdate,
     ConversationStart,
     PortalChannelOut,
+    PortalReport,
+    ReportAgentRow,
+    ReportChannelRow,
+    ReportDay,
     TemplateCreate,
     TemplateOut,
     TemplateSend,
@@ -40,6 +48,7 @@ from ..security import create_portal_token, decode_portal_token, verify_password
 from ..services.contacts import display_name, merge_contacts, normalize_phone, rename_conversations
 from ..services.whatsapp_templates import (
     create_template,
+    delete_template,
     list_templates,
     render,
     send_template,
@@ -821,6 +830,262 @@ async def portal_create_template(
     )
 
 
+@router.delete("/{slug}/templates/{name}", status_code=status.HTTP_204_NO_CONTENT)
+async def portal_delete_template(
+    slug: str,
+    name: str,
+    hsm_id: str | None = Query(default=None, max_length=64),
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    """Remove a template from the business account. Meta offers no way to
+    disable one, so deletion is how a template is retired."""
+    token, waba_id = _template_credentials(_cloud_channel(db, client))
+    await delete_template(token, waba_id, name=validate_template_name(name), hsm_id=hsm_id)
+
+
+def _canned_response(db: Session, client: Client, canned_id: uuid.UUID) -> CannedResponse:
+    canned = db.scalar(
+        select(CannedResponse).where(CannedResponse.id == canned_id, CannedResponse.client_id == client.id)
+    )
+    if not canned:
+        raise HTTPException(status_code=404, detail="Saved reply not found")
+    return canned
+
+
+def _require_free_shortcut(db: Session, client: Client, shortcut: str, but: uuid.UUID | None = None) -> None:
+    clash = db.scalar(
+        select(CannedResponse).where(
+            CannedResponse.client_id == client.id, CannedResponse.shortcut == shortcut, CannedResponse.id != but
+        )
+    )
+    if clash:
+        raise HTTPException(status_code=409, detail="A saved reply already uses that shortcut")
+
+
+@router.get("/{slug}/canned-responses", response_model=list[CannedResponseOut])
+def portal_canned_responses(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+    """The saved replies the composer offers when the operator types a slash."""
+    return db.scalars(
+        select(CannedResponse).where(CannedResponse.client_id == client.id).order_by(CannedResponse.shortcut)
+    ).all()
+
+
+@router.post("/{slug}/canned-responses", response_model=CannedResponseOut, status_code=status.HTTP_201_CREATED)
+def portal_create_canned_response(
+    slug: str, payload: CannedResponseCreate, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+):
+    _require_free_shortcut(db, client, payload.shortcut)
+    canned = CannedResponse(client_id=client.id, shortcut=payload.shortcut, content=payload.content.strip())
+    db.add(canned)
+    db.commit()
+    db.refresh(canned)
+    return canned
+
+
+@router.patch("/{slug}/canned-responses/{canned_id}", response_model=CannedResponseOut)
+def portal_update_canned_response(
+    slug: str,
+    canned_id: uuid.UUID,
+    payload: CannedResponseUpdate,
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    canned = _canned_response(db, client, canned_id)
+    if payload.shortcut is not None:
+        _require_free_shortcut(db, client, payload.shortcut, but=canned.id)
+        canned.shortcut = payload.shortcut
+    if payload.content is not None:
+        canned.content = payload.content.strip()
+    db.commit()
+    db.refresh(canned)
+    return canned
+
+
+@router.delete("/{slug}/canned-responses/{canned_id}", status_code=status.HTTP_204_NO_CONTENT)
+def portal_delete_canned_response(
+    slug: str, canned_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+):
+    db.delete(_canned_response(db, client, canned_id))
+    db.commit()
+
+
+@router.get("/{slug}/reports", response_model=PortalReport)
+def portal_report(
+    slug: str,
+    from_: date = Query(alias="from"),
+    to: date = Query(),
+    tz_offset: int = Query(default=0, ge=-840, le=840),
+    channel: str | None = Query(default=None, max_length=40),
+    assignee_id: uuid.UUID | None = Query(default=None),
+    team_id: uuid.UUID | None = Query(default=None),
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    """Basic activity metrics over a local-day range. ``tz_offset`` is the
+    viewer's UTC offset in minutes as JavaScript reports it (positive west),
+    so days group the way the operator's clock reads them. ``channel``,
+    ``assignee_id`` and ``team_id`` narrow every conversation-based number."""
+    if to < from_ or (to - from_).days > 366:
+        raise HTTPException(status_code=422, detail="Pick a range of at most a year, oldest day first")
+    shift = timedelta(minutes=tz_offset)
+    start = datetime.combine(from_, time.min, tzinfo=timezone.utc) + shift
+    end = datetime.combine(to, time.min, tzinfo=timezone.utc) + shift + timedelta(days=1)
+    conv_filters = [Conversation.client_id == client.id]
+    if channel:
+        conv_filters.append(Conversation.channel == channel)
+    if assignee_id:
+        conv_filters.append(Conversation.assignee_id == assignee_id)
+    if team_id:
+        conv_filters.append(Conversation.team_id == team_id)
+
+    def local_day(column):
+        return func.date(column - literal(shift, Interval))
+
+    started_day = local_day(Conversation.created_at)
+    started_rows = db.execute(
+        select(started_day, func.count())
+        .where(*conv_filters, Conversation.created_at >= start, Conversation.created_at < end)
+        .group_by(started_day)
+    ).all()
+    resolved_day = local_day(Conversation.resolved_at)
+    resolved_rows = db.execute(
+        select(resolved_day, func.count())
+        .where(*conv_filters, Conversation.resolved_at >= start, Conversation.resolved_at < end)
+        .group_by(resolved_day)
+    ).all()
+    days = {from_ + timedelta(days=i): ReportDay(date=from_ + timedelta(days=i)) for i in range((to - from_).days + 1)}
+    for day, count in started_rows:
+        if day in days:
+            days[day].started = count
+    for day, count in resolved_rows:
+        if day in days:
+            days[day].resolved = count
+
+    channel_rows = db.execute(
+        select(Conversation.channel, func.count())
+        .where(*conv_filters, Conversation.created_at >= start, Conversation.created_at < end)
+        .group_by(Conversation.channel)
+        .order_by(func.count().desc())
+    ).all()
+
+    human_reply = and_(Message.role == "assistant", Message.sender_type == "human")
+    inbound, human_replies, ai_replies = db.execute(
+        select(
+            func.count().filter(Message.role == "user"),
+            func.count().filter(human_reply),
+            func.count().filter(Message.role == "assistant", Message.sender_type != "human"),
+        )
+        .select_from(Message)
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .where(
+            *conv_filters,
+            Message.kind == "message",
+            Message.created_at >= start,
+            Message.created_at < end,
+        )
+    ).one()
+
+    active_contacts = db.scalar(
+        select(func.count(func.distinct(Conversation.contact_id))).where(
+            *conv_filters,
+            Conversation.contact_id.is_not(None),
+            Conversation.created_at >= start,
+            Conversation.created_at < end,
+        )
+    )
+    open_now = db.scalar(
+        select(func.count()).select_from(Conversation).where(*conv_filters, Conversation.status != "resolved")
+    )
+    avg_first_reply = db.scalar(
+        select(func.avg(func.extract("epoch", Conversation.first_reply_at - Conversation.created_at))).where(
+            *conv_filters,
+            Conversation.first_reply_at.is_not(None),
+            Conversation.created_at >= start,
+            Conversation.created_at < end,
+        )
+    )
+    avg_resolution = db.scalar(
+        select(func.avg(func.extract("epoch", Conversation.resolved_at - Conversation.created_at))).where(
+            *conv_filters,
+            Conversation.resolved_at >= start,
+            Conversation.resolved_at < end,
+        )
+    )
+
+    users = db.execute(
+        select(PortalUser.id, PortalUser.name, PortalUser.availability).where(PortalUser.client_id == client.id)
+    ).all()
+    replies_by_user = dict(
+        db.execute(
+            select(Message.portal_user_id, func.count())
+            .join(Conversation, Message.conversation_id == Conversation.id)
+            .where(
+                *conv_filters,
+                Message.kind == "message",
+                human_reply,
+                Message.portal_user_id.is_not(None),
+                Message.created_at >= start,
+                Message.created_at < end,
+            )
+            .group_by(Message.portal_user_id)
+        ).all()
+    )
+    assigned_by_user = dict(
+        db.execute(
+            select(Conversation.assignee_id, func.count())
+            .where(
+                *conv_filters,
+                Conversation.assignee_id.is_not(None),
+                Conversation.assigned_at >= start,
+                Conversation.assigned_at < end,
+            )
+            .group_by(Conversation.assignee_id)
+        ).all()
+    )
+    open_by_user = dict(
+        db.execute(
+            select(Conversation.assignee_id, func.count())
+            .where(
+                *conv_filters,
+                Conversation.assignee_id.is_not(None),
+                Conversation.status != "resolved",
+            )
+            .group_by(Conversation.assignee_id)
+        ).all()
+    )
+    agents = sorted(
+        (
+            ReportAgentRow(
+                name=name or "",
+                availability=availability,
+                replies=replies_by_user.get(user_id, 0),
+                assigned=assigned_by_user.get(user_id, 0),
+                open_now=open_by_user.get(user_id, 0),
+            )
+            for user_id, name, availability in users
+            if not assignee_id or user_id == assignee_id
+        ),
+        key=lambda row: (-row.replies, -row.assigned, row.name),
+    )
+
+    return PortalReport(
+        started=sum(d.started for d in days.values()),
+        resolved=sum(d.resolved for d in days.values()),
+        open_now=open_now or 0,
+        inbound_messages=inbound,
+        human_replies=human_replies,
+        ai_replies=ai_replies,
+        active_contacts=active_contacts or 0,
+        agents_online=sum(1 for _, _, availability in users if availability == "online"),
+        avg_first_reply_seconds=float(avg_first_reply) if avg_first_reply is not None else None,
+        avg_resolution_seconds=float(avg_resolution) if avg_resolution is not None else None,
+        by_day=list(days.values()),
+        by_channel=[ReportChannelRow(channel=channel, started=count) for channel, count in channel_rows],
+        by_agent=agents,
+    )
+
+
 async def _send_template_to(db: Session, client: Client, to: str, payload: TemplateSend) -> tuple[str | None, str]:
     """Send the template and return (external id, text as the person reads it)."""
     channel = _cloud_channel(db, client)
@@ -860,7 +1125,7 @@ async def portal_start_conversation(
     if not contact.phone:
         raise HTTPException(status_code=409, detail="This contact has no phone number")
     cloud, qr = _cloud_channel(db, client), _qr_channel(db, client)
-    channel_name = payload.channel or ("whatsapp_cloud" if cloud and cloud.is_enabled else "whatsapp" if qr else None)
+    channel_name = payload.channel or ("whatsapp_cloud" if cloud and cloud.is_enabled else "whatsapp" if qr and qr.is_enabled else None)
     if channel_name == "whatsapp_cloud" and cloud and cloud.is_enabled:
         if not payload.template:
             raise HTTPException(status_code=422, detail="Starting a conversation on the WhatsApp API takes an approved template")

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -470,6 +470,8 @@ class EscalationConfigIn(BaseModel):
     # falls back to the channel's tray, then the default tray.
     default_team_id: uuid.UUID | None = None
     default_assignee_id: uuid.UUID | None = None
+    # The built-in triggers themselves; off leaves only the business rules.
+    builtin_enabled: bool = True
     rules: list[EscalationRuleIn] = []
 
 
@@ -478,6 +480,7 @@ class EscalationConfigOut(BaseModel):
     default_team_name: str | None = None
     default_assignee_id: uuid.UUID | None = None
     default_assignee_name: str | None = None
+    builtin_enabled: bool = True
     rules: list[EscalationRuleOut] = []
 
 
@@ -518,6 +521,58 @@ class TemplateSend(BaseModel):
     name: str = Field(min_length=1, max_length=512)
     language: str = Field(min_length=2, max_length=10)
     variables: list[str] = []
+
+
+class ReportDay(BaseModel):
+    date: date
+    started: int = 0
+    resolved: int = 0
+
+
+class ReportChannelRow(BaseModel):
+    channel: str
+    started: int
+
+
+class ReportAgentRow(BaseModel):
+    name: str
+    availability: str
+    replies: int = 0
+    assigned: int = 0
+    open_now: int = 0
+
+
+class PortalReport(BaseModel):
+    started: int
+    resolved: int
+    open_now: int
+    inbound_messages: int
+    human_replies: int
+    ai_replies: int
+    active_contacts: int
+    agents_online: int
+    avg_first_reply_seconds: float | None = None
+    avg_resolution_seconds: float | None = None
+    by_day: list[ReportDay]
+    by_channel: list[ReportChannelRow]
+    by_agent: list[ReportAgentRow]
+
+
+class CannedResponseOut(ORMModel):
+    id: uuid.UUID
+    shortcut: str
+    content: str
+    updated_at: datetime
+
+
+class CannedResponseCreate(BaseModel):
+    shortcut: str = Field(min_length=1, max_length=60, pattern=r"^[a-z0-9_-]+$")
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class CannedResponseUpdate(BaseModel):
+    shortcut: str | None = Field(default=None, min_length=1, max_length=60, pattern=r"^[a-z0-9_-]+$")
+    content: str | None = Field(default=None, min_length=1, max_length=4000)
 
 
 class ConversationStart(BaseModel):

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Inbox, LoaderCircle, Merge, MessageSquarePlus, Pencil, Plus, Search, Trash2, UserRound } from "lucide-react";
+import { BadgeCheck, CheckCircle2, ChevronDown, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, Pencil, Plus, Search, Trash2, UserRound } from "lucide-react";
 import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { PhoneInput } from "@/components/phone-input";
@@ -31,7 +31,10 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const [mergePrimary, setMergePrimary] = useState<Contact | null>(null);
   const cloudLine = channels.find((c) => c.channel === "whatsapp_cloud");
   const qrLine = channels.find((c) => c.channel === "whatsapp");
+  const lines = [cloudLine, qrLine].filter((line): line is PortalChannel => Boolean(line));
   const [starting, setStarting] = useState<"whatsapp_cloud" | "whatsapp" | null>(null);
+  const [choosingLine, setChoosingLine] = useState(false);
+  const lineDetail = (line: PortalChannel) => [line.display_name, formatPhone(line.phone_number)].filter(Boolean).join(" · ");
   async function startWithTemplate(payload: { name: string; language: string; variables: string[] }) {
     if (!selected) return;
     const conv = await api<Conversation>(`/portal/${slug}/contacts/${selected.id}/conversations`, { method: "POST", body: JSON.stringify({ channel: "whatsapp_cloud", template: payload }) });
@@ -154,7 +157,19 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
               <small className="portal-channel-line">{phoneLabel(selected.phone)}{selected.email ? ` · ${selected.email}` : ""}</small>
             </div>
             <div className="thread-actions">
-              {(cloudLine || qrLine) && selected.phone && <button className="button primary small" onClick={() => setStarting(cloudLine ? "whatsapp_cloud" : "whatsapp")}><MessageSquarePlus size={15} /> {t("portal.contacts.startConversation")}</button>}
+              {lines.length > 0 && selected.phone && <div className="start-line-wrap">
+                <button className="button primary small" onClick={() => (lines.length === 1 ? setStarting(lines[0].channel) : setChoosingLine((v) => !v))}><MessageSquarePlus size={15} /> {t("portal.contacts.startConversation")}{lines.length > 1 && <ChevronDown size={14} />}</button>
+                {choosingLine && <>
+                  <div className="menu-backdrop" onClick={() => setChoosingLine(false)} />
+                  <div className="start-line-menu" role="menu">
+                    <small>{t("portal.contacts.startLine")}</small>
+                    {lines.map((line) => <button type="button" key={line.channel} role="menuitem" onClick={() => { setChoosingLine(false); setStarting(line.channel); }}>
+                      <span className={`channel-dot ${line.channel}`}>{line.channel === "whatsapp_cloud" ? <BadgeCheck size={14} /> : <MessageCircle size={14} />}</span>
+                      <span><strong>{line.channel === "whatsapp_cloud" ? t("inbox.channelWhatsappCloud") : t("inbox.channelWhatsapp")}</strong>{lineDetail(line) && <small>{lineDetail(line)}</small>}</span>
+                    </button>)}
+                  </div>
+                </>}
+              </div>}
               <button className="button small" onClick={() => setEditing("edit")}><Pencil size={15} /> {t("portal.contacts.edit")}</button>
               <button className="button small" onClick={() => { setMergePrimary(null); setMergeQuery(""); setMerging(true); }}><Merge size={15} /> {t("portal.contacts.merge")}</button>
               <button className="icon-button danger" onClick={() => { setTyped(""); setDeleting(true); }} disabled={busy} title={t("portal.contacts.delete")} aria-label={t("portal.contacts.delete")}><Trash2 size={16} /></button>

@@ -234,6 +234,29 @@ export type Template = {
   rejected_reason: string | null;
 };
 
+export type PortalReport = {
+  started: number;
+  resolved: number;
+  open_now: number;
+  inbound_messages: number;
+  human_replies: number;
+  ai_replies: number;
+  active_contacts: number;
+  agents_online: number;
+  avg_first_reply_seconds: number | null;
+  avg_resolution_seconds: number | null;
+  by_day: { date: string; started: number; resolved: number }[];
+  by_channel: { channel: string; started: number }[];
+  by_agent: { name: string; availability: string; replies: number; assigned: number; open_now: number }[];
+};
+
+export type CannedResponse = {
+  id: string;
+  shortcut: string;
+  content: string;
+  updated_at: string;
+};
+
 export type PortalChannel = {
   channel: "whatsapp" | "whatsapp_cloud";
   status: string;

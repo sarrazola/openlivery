@@ -133,6 +133,8 @@ class Agent(Base):
     escalation_assignee_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True
     )
+    # The built-in triggers can be switched off; business rules keep working.
+    escalation_builtin_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     # Structured business brief. Optional guided fields that compose into the
     # system prompt alongside the free-form instructions.
     brief_summary: Mapped[str] = mapped_column(Text, default="", server_default="")
@@ -528,6 +530,24 @@ class PortalUser(Base):
     team_memberships: Mapped[list["TeamMember"]] = relationship(back_populates="portal_user", cascade="all, delete-orphan")
 
     __table_args__ = (UniqueConstraint("client_id", "email", name="uq_portal_users_client_email"),)
+
+
+class CannedResponse(Base):
+    """A saved reply the portal composer inserts through /shortcut.
+
+    Placeholders such as ``{contact_name}`` are filled by the portal when
+    the reply is inserted, so the operator can still edit before sending.
+    """
+
+    __tablename__ = "canned_responses"
+    __table_args__ = (UniqueConstraint("client_id", "shortcut", name="uq_canned_responses_client_shortcut"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    shortcut: Mapped[str] = mapped_column(String(60))
+    content: Mapped[str] = mapped_column(String(4000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
 
 class Team(Base):
