@@ -88,17 +88,23 @@ def build_escalation_spec(rules: list[EscalationRule], holder: list[EscalationRe
     numbered = [rule for rule in rules if rule.team_id or rule.assignee_id]
 
     def handler(args: dict) -> tuple[str, bool]:
-        rule_number = args.get("rule")
-        trigger = args.get("trigger")
+        # Models happily fill every optional argument, so be forgiving: take
+        # the rule when it resolves, otherwise fall back to a valid trigger,
+        # and only refuse when neither means anything.
         reason = str(args.get("reason") or "").strip()[:300]
+        trigger = str(args.get("trigger") or "").strip().lower() or None
+        if trigger not in TRIGGERS:
+            trigger = None
         matched: EscalationRule | None = None
-        if rule_number is not None:
+        rule_number = args.get("rule")
+        if rule_number is not None and numbered:
             try:
-                matched = numbered[int(rule_number) - 1]
+                index = int(rule_number) - 1
+                matched = numbered[index] if index >= 0 else None
             except (ValueError, TypeError, IndexError):
-                return ("Unknown rule number; use one of the numbered business rules or a trigger.", True)
-        elif trigger not in TRIGGERS:
-            return ("Provide either rule (a business rule number) or a valid trigger.", True)
+                matched = None
+        if matched is None and trigger is None:
+            return ("Provide a valid trigger (frustration, human_request, cannot_solve) or a listed rule number.", True)
         holder.clear()
         holder.append(EscalationRequest(reason=reason, trigger=trigger if matched is None else None, rule=matched))
         return (
@@ -107,20 +113,23 @@ def build_escalation_spec(rules: list[EscalationRule], holder: list[EscalationRe
             False,
         )
 
+    properties: dict = {
+        "trigger": {"type": "string", "enum": list(TRIGGERS)},
+        "reason": {"type": "string", "description": "One short sentence on why, in the customer's language"},
+    }
+    if numbered:
+        # Only offered when business rules exist, so the model cannot invent
+        # rule numbers on installs that have none.
+        properties["rule"] = {"type": "integer", "description": "Number of the matched business rule"}
     return ToolSpec(
         name="escalate_to_human",
         description=(
             "Hand this conversation to a person or a specialised team. Use it when a business rule matches "
             "(rule=N), or with a trigger: frustration, human_request, cannot_solve."
+            if numbered
+            else "Hand this conversation to a person or a specialised team, with a trigger: frustration, human_request, cannot_solve."
         ),
-        input_schema={
-            "type": "object",
-            "properties": {
-                "rule": {"type": "integer", "description": "Number of the matched business rule"},
-                "trigger": {"type": "string", "enum": list(TRIGGERS)},
-                "reason": {"type": "string", "description": "One short sentence on why, in the customer's language"},
-            },
-        },
+        input_schema={"type": "object", "properties": properties},
         handler=handler,
     )
 

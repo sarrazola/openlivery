@@ -138,3 +138,21 @@ def test_without_anywhere_to_land_the_tool_is_not_offered(authenticated_client: 
     assert body["mode"] == "ai"
     assert captured["extra_specs"] is None
     assert "ESCALAMIENTO" not in captured["system"]
+
+
+def test_handler_forgives_a_bogus_rule_number_when_the_trigger_is_valid():
+    from app.services.escalation import EscalationRequest, build_escalation_spec
+
+    holder: list[EscalationRequest] = []
+    spec = build_escalation_spec([], holder)
+    # No business rules: the schema must not even offer "rule"...
+    assert "rule" not in spec.input_schema["properties"]
+    # ...and a model that sends one anyway still escalates via the trigger.
+    result, is_error = spec.handler({"rule": 1, "trigger": "frustration", "reason": "molesto"})
+    assert not is_error, result
+    assert holder and holder[0].trigger == "frustration" and holder[0].rule is None
+    # Case sloppiness is tolerated; pure nonsense is not.
+    _, is_error = spec.handler({"trigger": "Frustration"})
+    assert not is_error
+    result, is_error = spec.handler({"trigger": "whatever"})
+    assert is_error
