@@ -2,8 +2,9 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { BadgeCheck, Bot, Building2, CheckCircle2, Clock, Contact as ContactIcon, FileText, FlaskConical, Globe, Images, Inbox, LoaderCircle, LogOut, MessageCircle, MessageSquareText, Reply, Search, Send, ShieldCheck, SmilePlus, UserRound, X } from "lucide-react";
+import { BadgeCheck, Bot, Building2, CheckCircle2, Clock, Contact as ContactIcon, FileText, FlaskConical, Globe, Images, Inbox, LoaderCircle, LogOut, MessageCircle, MessageSquareText, Reply, Search, Send, ShieldCheck, SmilePlus, UserRound, Users, X } from "lucide-react";
 import { ContactsView } from "./contacts";
+import { TeamsView } from "./teams";
 import { TemplatePicker, TemplatesView } from "./templates";
 import { AttachButton, MessageAttachments, PendingAttachment, RecordButton, useFileDrop, type GalleryImage } from "@/components/attachments";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -16,7 +17,7 @@ import { Alert, EmptyState } from "@/components/ui";
 import { api, ApiError, apiUrl, messageFrom } from "@/lib/api";
 import { formatTime, formatWhen, isNearBottom, isSameOpenThread } from "@/lib/datetime";
 import { useLanguage, useT } from "@/lib/i18n";
-import type { Attachment, Conversation, Message, PortalChannel, PortalPublic } from "@/types";
+import type { Attachment, Conversation, Message, PortalChannel, PortalPublic, Team } from "@/types";
 
 const POLL_MS = 8000;
 
@@ -70,6 +71,21 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   const [reactingTo, setReactingTo] = useState<string | null>(null);
   const [tab, setTab] = useState<"all" | "unread" | "mine" | "ai">("all");
   const [members, setMembers] = useState<Member[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [teamFilter, setTeamFilter] = useState("");
+  const [availability, setAvailability] = useState<"online" | "away">("online");
+  useEffect(() => {
+    if (!session.user_id) return;
+    api<{ id: string; availability: "online" | "away" }[]>(`/portal/${slug}/members`)
+      .then((rows) => { const mine = rows.find((row) => row.id === session.user_id); if (mine) setAvailability(mine.availability); })
+      .catch(() => {});
+  }, [slug, session.user_id]);
+  async function toggleAvailability() {
+    const next = availability === "online" ? "away" : "online";
+    setAvailability(next);
+    try { await api(`/portal/${slug}/me`, { method: "PATCH", body: JSON.stringify({ availability: next }) }); }
+    catch { setAvailability(availability); }
+  }
   useEffect(() => { api<Member[]>(`/portal/${slug}/members`).then(setMembers).catch(() => {}); }, [slug]);
   const toast = useToast();
   // Conversations handed to me: the first poll only learns what is mine,
@@ -102,7 +118,10 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   }, []);
   const [status, setStatus] = useState<"open" | "resolved">("open");
   const [summary, setSummary] = useState<InboxSummary | null>(null);
-  const [view, setView] = useState<"inbox" | "contacts" | "templates">("inbox");
+  const [view, setView] = useState<"inbox" | "contacts" | "templates" | "teams">("inbox");
+  useEffect(() => {
+    if (view === "inbox" || view === "teams") api<Team[]>(`/portal/${slug}/teams`).then(setTeams).catch(() => {});
+  }, [slug, view]);
   const [channels, setChannels] = useState<PortalChannel[]>([]);
   useEffect(() => { api<PortalChannel[]>(`/portal/${slug}/channels`).then(setChannels).catch(() => {}); }, [slug]);
   const templatesSupported = channels.some((c) => c.channel === "whatsapp_cloud" && c.supports_templates);
@@ -157,11 +176,12 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
     if (tab === "ai") params.set("mode", "ai");
     if (tab === "mine") params.set("assignee", "me");
     if (tab === "unread") params.set("unread", "1");
+    if (teamFilter) params.set("team", teamFilter);
     if (query) params.set("search", query);
     params.set("limit", String(LIMIT));
     params.set("offset", String(offsetValue));
     return params.toString();
-  }, [tab, status, query]);
+  }, [tab, status, query, teamFilter]);
   const messagesRef = useRef<HTMLDivElement>(null);
   useEffect(() => { selectedIdRef.current = selected?.id ?? null; }, [selected]);
   const wasNearBottomRef = useRef(true);
@@ -242,6 +262,11 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
     setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/status`, { method: "PATCH", body: JSON.stringify({ status: next }) }));
     await refresh();
   }
+  async function setConversationTeam(teamId: string) {
+    if (!selected) return;
+    setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/team`, { method: "PATCH", body: JSON.stringify({ team_id: teamId || null }) }));
+    await refresh();
+  }
   async function assignTo(assigneeId: string) {
     if (!selected) return;
     setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/assignment`, { method: "POST", body: JSON.stringify({ assignee_id: assigneeId }) }));
@@ -269,6 +294,9 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
       case "assigned": return t("portal.inbox.activity.assigned", { actor, assignee: String(message.activity?.assignee ?? "") });
       case "transferred": return t("portal.inbox.activity.transferred", { actor, assignee: String(message.activity?.assignee ?? "") });
       case "unassigned": return t("portal.inbox.activity.unassigned", { actor });
+      case "team_assigned": return t("portal.inbox.activity.team_assigned", { actor, team: String(message.activity?.team ?? "") });
+      case "team_removed": return t("portal.inbox.activity.team_removed", { actor, team: String(message.activity?.team ?? "") });
+      case "escalated": return t("portal.inbox.activity.escalated", { actor, target: String(message.activity?.target ?? ""), reason: String(message.activity?.reason ?? "") });
       default: return message.content;
     }
   };
@@ -300,22 +328,23 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
     ),
     [selected, attachmentUrl],
   );
-  return <main className="portal-app" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><aside className="portal-nav"><div className="portal-brand">{portal.client_logo_url || portal.agency_logo_url ? <img src={`${portal.client_logo_url || portal.agency_logo_url}`} alt="Logo" /> : <span>{portal.client_name.slice(0, 1)}</span>}<strong>{portal.client_name}</strong></div><nav><a className={view === "inbox" ? "active" : ""} onClick={() => setView("inbox")}><Inbox size={18} /> {t("portal.inbox.nav.inbox")}{summary && summary.unread > 0 && view !== "inbox" && <em className="nav-count">{summary.unread}</em>}</a><a className={view === "contacts" ? "active" : ""} onClick={() => setView("contacts")}><ContactIcon size={18} /> {t("portal.inbox.nav.contacts")}</a><a className={view === "templates" ? "active" : ""} onClick={() => setView("templates")}><FileText size={18} /> {t("portal.inbox.nav.templates")}</a><a className="disabled"><Bot size={18} /> {t("portal.inbox.nav.agents")}</a></nav><LanguageSwitcher /><button onClick={logout}><LogOut size={17} /> {t("portal.inbox.nav.logout")}</button></aside><section className="portal-main"><header><div><small>{t("portal.inbox.header.eyebrow")}</small><h1>{view === "contacts" ? t("portal.inbox.nav.contacts") : view === "templates" ? t("portal.inbox.nav.templates") : portal.portal_title}</h1></div>{view === "inbox" && <span>{t("portal.inbox.header.conversationsCount", { count: items.length })}</span>}</header>{view === "templates" ? <TemplatesView slug={slug} supported={templatesSupported} /> : view === "contacts" ? <ContactsView slug={slug} channels={channels} openConversation={openFromContact} /> : <div className="portal-inbox"><aside onScroll={onListScroll}>
+  return <main className="portal-app" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><aside className="portal-nav"><div className="portal-brand">{portal.client_logo_url || portal.agency_logo_url ? <img src={`${portal.client_logo_url || portal.agency_logo_url}`} alt="Logo" /> : <span>{portal.client_name.slice(0, 1)}</span>}<strong>{portal.client_name}</strong></div><nav><a className={view === "inbox" ? "active" : ""} onClick={() => setView("inbox")}><Inbox size={18} /> {t("portal.inbox.nav.inbox")}{summary && summary.unread > 0 && view !== "inbox" && <em className="nav-count">{summary.unread}</em>}</a><a className={view === "contacts" ? "active" : ""} onClick={() => setView("contacts")}><ContactIcon size={18} /> {t("portal.inbox.nav.contacts")}</a><a className={view === "teams" ? "active" : ""} onClick={() => setView("teams")}><Users size={18} /> {t("portal.inbox.nav.teams")}</a><a className={view === "templates" ? "active" : ""} onClick={() => setView("templates")}><FileText size={18} /> {t("portal.inbox.nav.templates")}</a><a className="disabled"><Bot size={18} /> {t("portal.inbox.nav.agents")}</a></nav>{session.user_id && <button className={`availability-toggle ${availability}`} onClick={toggleAvailability} title={t("portal.availability.hint")}><i /><span className="availability-name"><strong>{session.user_name}</strong><small>{availability === "online" ? t("portal.availability.online") : t("portal.availability.away")}</small></span></button>}<LanguageSwitcher /><button onClick={logout}><LogOut size={17} /> {t("portal.inbox.nav.logout")}</button></aside><section className="portal-main"><header><div><small>{t("portal.inbox.header.eyebrow")}</small><h1>{view === "contacts" ? t("portal.inbox.nav.contacts") : view === "teams" ? t("portal.inbox.nav.teams") : view === "templates" ? t("portal.inbox.nav.templates") : portal.portal_title}</h1></div>{view === "inbox" && <span>{t("portal.inbox.header.conversationsCount", { count: items.length })}</span>}</header>{view === "templates" ? <TemplatesView slug={slug} supported={templatesSupported} /> : view === "teams" ? <TeamsView slug={slug} /> : view === "contacts" ? <ContactsView slug={slug} channels={channels} openConversation={openFromContact} /> : <div className="portal-inbox"><aside onScroll={onListScroll}>
       <div className="inbox-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("inbox.searchPlaceholder")} /></div>
       <div className="segmented" role="tablist" aria-label={t("portal.inbox.status.open") + " / " + t("portal.inbox.status.resolved")}>
         <button role="tab" aria-selected={status === "open"} className={status === "open" ? "active" : ""} onClick={() => switchStatus("open")}><Inbox size={14} /> {t("portal.inbox.status.open")}</button>
         <button role="tab" aria-selected={status === "resolved"} className={status === "resolved" ? "active" : ""} onClick={() => switchStatus("resolved")}><CheckCircle2 size={14} /> {t("portal.inbox.status.resolved")}</button>
       </div>
+      {teams.length > 0 && <div className="inbox-team-filter"><Users size={14} /><select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} aria-label={t("portal.inbox.nav.teams")}><option value="">{t("portal.teams.filterAll")}</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.unassigned_count > 0 ? ` (${team.unassigned_count})` : ""}</option>)}</select></div>}
       {status === "open" && <div className="inbox-tabs">
         <button className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>{t("portal.inbox.folders.all")}</button>
         <button className={tab === "unread" ? "active" : ""} onClick={() => setTab("unread")}>{t("portal.inbox.folders.unread")}{summary && summary.unread > 0 && <em>{summary.unread > 99 ? "99+" : summary.unread}</em>}</button>
         <button className={tab === "mine" ? "active" : ""} onClick={() => setTab("mine")}>{t("portal.inbox.folders.mine")}{summary && summary.mine > 0 && <em className="soft">{summary.mine}</em>}</button>
         <button className={tab === "ai" ? "active" : ""} onClick={() => setTab("ai")}>{t("portal.inbox.folders.ai")}</button>
       </div>}
-      {items.map((item) => <button key={item.id} onClick={() => choose(item)} className={`${selected?.id === item.id ? "active" : ""}${item.unread && selected?.id !== item.id ? " unread" : ""}`}><span className="entity-avatar tiny"><UserRound size={15} /></span><span><span className="portal-inbox-row-top"><strong>{item.title}</strong>{item.unread && selected?.id !== item.id ? <span className="inbox-unread-count" aria-label={t("inbox.unreadCount", { count: item.unread_count ?? 0 })}>{(item.unread_count ?? 0) > 99 ? "99+" : item.unread_count}</span> : <time>{formatWhen(item.last_inbound_at ?? item.updated_at, lang)}</time>}</span><small className="portal-inbox-preview">{item.preview || t("portal.inbox.list.noMessages")}</small><small className="inbox-row-meta"><span className={`channel-dot ${item.channel}`}>{channelIcon(item.channel)}</span> {channelLabel(item.channel)} <span className={`mini-badge ${item.mode}`}>{item.mode === "human" ? (item.assignee_name || t("portal.inbox.list.humanSupport")) : t("portal.inbox.list.aiAgent")}</span></small></span></button>)}
+      {items.map((item) => <button key={item.id} onClick={() => choose(item)} className={`${selected?.id === item.id ? "active" : ""}${item.unread && selected?.id !== item.id ? " unread" : ""}`}><span className="entity-avatar tiny"><UserRound size={15} /></span><span><span className="portal-inbox-row-top"><strong>{item.title}</strong>{item.unread && selected?.id !== item.id ? <span className="inbox-unread-count" aria-label={t("inbox.unreadCount", { count: item.unread_count ?? 0 })}>{(item.unread_count ?? 0) > 99 ? "99+" : item.unread_count}</span> : <time>{formatWhen(item.last_inbound_at ?? item.updated_at, lang)}</time>}</span><small className="portal-inbox-preview">{item.preview || t("portal.inbox.list.noMessages")}</small><small className="inbox-row-meta"><span className={`channel-dot ${item.channel}`}>{channelIcon(item.channel)}</span> {channelLabel(item.channel)} <span className={`mini-badge ${item.mode}`}>{item.mode === "human" ? (item.assignee_name || t("portal.inbox.list.humanSupport")) : t("portal.inbox.list.aiAgent")}</span>{item.team_name && <span className="mini-badge team">{item.team_name}</span>}</small></span></button>)}
       {!items.length && <div className="no-conversations">{t("inbox.empty")}</div>}
       {loadingMore && <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>}
-    </aside><section className="drop-target" {...dropProps}>{overlay}{!selected && <EmptyState icon={<Inbox />} title={t("portal.inbox.empty.title")} description={t("portal.inbox.empty.description")} />}{selected && <><header><div><strong>{selected.title}</strong><small className="portal-channel-line">{channelIcon(selected.channel)} {channelLabel(selected.channel)} <span className={`mini-badge ${selected.mode}`}>{selected.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span>{isResolved && <span className="mini-badge resolved"><CheckCircle2 size={11} /> {t("portal.inbox.conversation.resolvedBadge")}</span>}{selected.channel === "whatsapp_cloud" && !isResolved && !selected.reply_window_open && <span className="window-pill closed"><Clock size={11} /> {selected.reply_window_until ? t("portal.inbox.window.closed") : t("portal.inbox.window.neverWrote")}</span>}</small></div><div className="thread-actions">{!isResolved && selected.mode === "human" && <label className="assignee-picker"><span>{t("portal.inbox.assignment.label")}</span><select aria-label={t("portal.inbox.assignment.label")} title={t("portal.inbox.assignment.label")} value={selected.assignee_id ?? ""} onChange={(e) => e.target.value && assignTo(e.target.value)}>{!selected.assignee_id && <option value="">{t("portal.inbox.assignment.pick")}</option>}{members.map((member) => <option key={member.id} value={member.id}>{memberLabel(member)}</option>)}</select></label>}<button className="icon-button" onClick={() => setMediaOpen(true)} title={t("chat.sharedContent")} aria-label={t("chat.sharedContent")}><Images size={16} /></button>{!isResolved && <><button className={`mode-toggle ${selected.mode}`} onClick={() => setMode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("portal.inbox.conversation.takeControl") : t("portal.inbox.conversation.returnToAi")}</button><button className="status-toggle open" onClick={() => setConversationStatus("resolved")}><CheckCircle2 size={15} /> {t("portal.inbox.conversation.resolve")}</button></>}</div></header><div className="portal-messages" ref={messagesRef}>{selected.messages?.map((message, index) => {
+    </aside><section className="drop-target" {...dropProps}>{overlay}{!selected && <EmptyState icon={<Inbox />} title={t("portal.inbox.empty.title")} description={t("portal.inbox.empty.description")} />}{selected && <><header><div><strong>{selected.title}</strong><small className="portal-channel-line">{channelIcon(selected.channel)} {channelLabel(selected.channel)} <span className={`mini-badge ${selected.mode}`}>{selected.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span>{isResolved && <span className="mini-badge resolved"><CheckCircle2 size={11} /> {t("portal.inbox.conversation.resolvedBadge")}</span>}{selected.channel === "whatsapp_cloud" && !isResolved && !selected.reply_window_open && <span className="window-pill closed"><Clock size={11} /> {selected.reply_window_until ? t("portal.inbox.window.closed") : t("portal.inbox.window.neverWrote")}</span>}</small></div><div className="thread-actions">{!isResolved && teams.length > 0 && <label className="assignee-picker team-picker"><span>{t("portal.teams.picker")}</span><select aria-label={t("portal.teams.picker")} title={t("portal.teams.picker")} value={selected.team_id ?? ""} onChange={(e) => setConversationTeam(e.target.value)}><option value="">{t("portal.teams.pickerNone")}</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>}{!isResolved && selected.mode === "human" && <label className="assignee-picker"><span>{t("portal.inbox.assignment.label")}</span><select aria-label={t("portal.inbox.assignment.label")} title={t("portal.inbox.assignment.label")} value={selected.assignee_id ?? ""} onChange={(e) => e.target.value && assignTo(e.target.value)}>{!selected.assignee_id && <option value="">{t("portal.inbox.assignment.pick")}</option>}{members.map((member) => <option key={member.id} value={member.id}>{memberLabel(member)}</option>)}</select></label>}<button className="icon-button" onClick={() => setMediaOpen(true)} title={t("chat.sharedContent")} aria-label={t("chat.sharedContent")}><Images size={16} /></button>{!isResolved && <><button className={`mode-toggle ${selected.mode}`} onClick={() => setMode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("portal.inbox.conversation.takeControl") : t("portal.inbox.conversation.returnToAi")}</button><button className="status-toggle open" onClick={() => setConversationStatus("resolved")}><CheckCircle2 size={15} /> {t("portal.inbox.conversation.resolve")}</button></>}</div></header><div className="portal-messages" ref={messagesRef}>{selected.messages?.map((message, index) => {
               if (message.kind === "activity") {
                 return <div key={message.id} className="activity-line"><span>{activityText(message)}</span><time>{formatTime(message.created_at, lang)}</time></div>;
               }

@@ -42,10 +42,11 @@ async def run_completion(
     *,
     temperature: float | None = None,
     max_tokens: int | None = None,
+    extra_specs: list | None = None,
 ) -> Completion:
     model = agent.model.strip()
     rows = db.scalars(select(AgentTool).where(AgentTool.agent_id == agent.id, AgentTool.enabled.is_(True))).all()
-    specs = build_tool_specs(list(rows))
+    specs = build_tool_specs(list(rows)) + list(extra_specs or [])
     if not specs:
         return await chat_completion(agent.provider, base_url, api_key, model, messages, temperature=temperature, max_tokens=max_tokens)
     messages = _with_tool_rules(messages)

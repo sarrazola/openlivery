@@ -43,6 +43,9 @@ _ACTIVITY_TEXT = {
     "transferred": "{actor} transferred the conversation to {assignee}",
     "unassigned": "{actor} released the conversation",
     "started": "{actor} started the conversation",
+    "team_assigned": "{actor} moved the conversation to {team}",
+    "team_removed": "{actor} took the conversation out of {team}",
+    "escalated": "{actor} escalated the conversation to {target}: {reason}",
 }
 
 
@@ -151,6 +154,41 @@ def assign(
     else:
         event, details = "assigned", {"assignee": assignee.name}
     record_activity(db, conversation, event, actor=actor, details=details)
+    return True
+
+
+def set_team(
+    db: Session,
+    conversation: Conversation,
+    team,
+    *,
+    actor: str | None = None,
+) -> bool:
+    """Move the conversation into ``team`` (None takes it out of its tray).
+
+    Moving trays does not by itself touch mode or assignee; the routing
+    service decides who picks it up. It does drop an assignee who is not a
+    member of the new team, the way a physical tray would.
+    """
+    new_id = team.id if team else None
+    if conversation.team_id == new_id:
+        return False
+    ensure_open(conversation)
+    previous = conversation.team
+    # Assign the relationship, not the id: callers keep reading
+    # ``conversation.team`` in the same transaction (routing does).
+    conversation.team = team
+    if team is None:
+        record_activity(
+            db, conversation, "team_removed", actor=actor, details={"team": previous.name if previous else ""}
+        )
+        return True
+    if conversation.assignee_id and conversation.assignee_id not in {
+        member.portal_user_id for member in team.members
+    }:
+        conversation.assignee_id = None
+        conversation.assigned_at = None
+    record_activity(db, conversation, "team_assigned", actor=actor, details={"team": team.name})
     return True
 
 

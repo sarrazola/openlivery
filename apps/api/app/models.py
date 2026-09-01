@@ -92,6 +92,7 @@ class Client(Base):
     portal_users: Mapped[list["PortalUser"]] = relationship(
         back_populates="client", cascade="all, delete-orphan"
     )
+    teams: Mapped[list["Team"]] = relationship(back_populates="client", cascade="all, delete-orphan")
 
     @property
     def logo_url(self) -> str | None:
@@ -123,6 +124,15 @@ class Agent(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     instructions: Mapped[str] = mapped_column(Text, default="")
     personality: Mapped[str] = mapped_column(Text, default="")
+    # Where the built-in escalation triggers (frustration, explicit request
+    # for a human, unsolvable) send the conversation. One of the two at most;
+    # both empty falls back to the channel's tray or the default tray.
+    escalation_team_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"), nullable=True
+    )
+    escalation_assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True
+    )
     # Structured business brief. Optional guided fields that compose into the
     # system prompt alongside the free-form instructions.
     brief_summary: Mapped[str] = mapped_column(Text, default="", server_default="")
@@ -389,6 +399,12 @@ class Conversation(Base):
         ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The tray this conversation sits in, set by a person or by the AI when it
+    # escalates. Independent of assignee: a conversation can wait in a team
+    # with nobody assigned yet.
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # Set by an inbound message, cleared by the next reply: how long the
     # contact has been waiting for an answer.
     waiting_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -398,6 +414,11 @@ class Conversation(Base):
     agent: Mapped[Agent] = relationship(back_populates="conversations")
     contact: Mapped[Contact | None] = relationship(back_populates="conversations")
     assignee: Mapped["PortalUser | None"] = relationship(foreign_keys=[assignee_id])
+    team: Mapped["Team | None"] = relationship(foreign_keys=[team_id])
+
+    @property
+    def team_name(self) -> str | None:
+        return self.team.name if self.team else None
     whatsapp_channel: Mapped[WhatsAppChannel | None] = relationship(back_populates="conversations")
     whatsapp_cloud_channel: Mapped[WhatsAppCloudChannel | None] = relationship(back_populates="conversations")
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")
@@ -495,13 +516,98 @@ class PortalUser(Base):
     email: Mapped[str] = mapped_column(String(320), index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # online | away: whether routing may hand this person new conversations.
+    # Deliberately manual; last_seen_at records real activity beside it.
+    availability: Mapped[str] = mapped_column(String(10), default="online", server_default="online")
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
     client: Mapped["Client"] = relationship(back_populates="portal_users")
     devices: Mapped[list["PushDevice"]] = relationship(back_populates="portal_user", cascade="all, delete-orphan")
+    team_memberships: Mapped[list["TeamMember"]] = relationship(back_populates="portal_user", cascade="all, delete-orphan")
 
     __table_args__ = (UniqueConstraint("client_id", "email", name="uq_portal_users_client_email"),)
+
+
+class Team(Base):
+    """A named tray of people (sales, support, urgent) a conversation can be
+    routed to, by a person or by the AI when it escalates.
+
+    ``strategy`` decides who gets the next unassigned conversation:
+    ``round_robin`` picks the member who has waited longest since their last
+    assignment, ``least_busy`` the one holding the fewest open human
+    conversations. ``channels`` optionally marks which channels default into
+    this tray when an escalation names no team.
+    """
+
+    __tablename__ = "teams"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(String(500), default="")
+    strategy: Mapped[str] = mapped_column(String(20), default="round_robin")
+    channels: Mapped[list] = mapped_column(JSON, default=list)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+    client: Mapped["Client"] = relationship(back_populates="teams")
+    members: Mapped[list["TeamMember"]] = relationship(
+        back_populates="team", cascade="all, delete-orphan", order_by="TeamMember.created_at"
+    )
+
+    __table_args__ = (UniqueConstraint("client_id", "name", name="uq_teams_client_name"),)
+
+
+class EscalationRule(Base):
+    """A business decision about where the AI sends a conversation: WHEN is a
+    condition in natural language the model evaluates contextually, WHERE is a
+    hard reference to a team or a person - never guessed from prose. Rules are
+    ordered; the built-in triggers (frustration, explicit request for a human)
+    exist without any rule and land in the default tray."""
+
+    __tablename__ = "escalation_rules"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    condition: Mapped[str] = mapped_column(Text, default="")
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"), nullable=True
+    )
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+    agent: Mapped["Agent"] = relationship()
+    team: Mapped["Team | None"] = relationship()
+    assignee: Mapped["PortalUser | None"] = relationship()
+
+
+class TeamMember(Base):
+    """Membership of a portal user in a team. ``last_assigned_at`` is the
+    round-robin state: the eligible member with the oldest value receives the
+    next conversation, so absences never distort the rotation. ``weight`` is
+    reserved for proportional distribution."""
+
+    __tablename__ = "team_members"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"), index=True)
+    portal_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("portal_users.id", ondelete="CASCADE"), index=True)
+    weight: Mapped[int] = mapped_column(Integer, default=1)
+    last_assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+    team: Mapped["Team"] = relationship(back_populates="members")
+    portal_user: Mapped["PortalUser"] = relationship(back_populates="team_memberships")
+
+    __table_args__ = (UniqueConstraint("team_id", "portal_user_id", name="uq_team_members_team_user"),)
 
 
 class PushDevice(Base):

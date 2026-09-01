@@ -7,6 +7,7 @@ consecutive underscores, so the "__" separator is unambiguous.
 
 import re
 from dataclasses import dataclass, field
+from typing import Callable
 
 from ...models import AgentTool
 
@@ -20,8 +21,12 @@ class ToolSpec:
     name: str            # name exposed to the LLM (prefixed for MCP tools)
     description: str
     input_schema: dict
-    tool: AgentTool      # backing row
+    tool: AgentTool | None = None      # backing row; None for built-in tools
     mcp_tool_name: str | None = None  # unprefixed name on the MCP server
+    # Built-in tools run in-process: the handler takes the arguments and
+    # returns (result_text, is_error). It must not do I/O; side effects are
+    # recorded and applied by the caller after the loop finishes.
+    handler: Callable[[dict], tuple[str, bool]] | None = None
 
 
 def path_placeholders(url: str) -> list[str]:

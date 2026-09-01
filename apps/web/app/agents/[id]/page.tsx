@@ -11,6 +11,7 @@ import { FormSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { ChatPlayground } from "@/components/chat-playground";
 import { AgentToolsTab } from "@/components/agent-tools/agent-tools-tab";
+import { EscalationRulesEditor } from "@/components/escalation-rules";
 import { Combobox } from "@/components/combobox";
 import { PROVIDERS, modelsFor, defaultModelFor, estimateTokens, modelContextWindow, AUDIO_MODELS, IMAGE_MODELS } from "@/lib/providers";
 import { TIMEZONES } from "@/lib/timezones";
@@ -140,6 +141,7 @@ export default function AgentDetailPage() {
     {tab === "details" && <form className="settings-form" onSubmit={saveConfig}>
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.generalHeading")}</h3><p>{t("agents.detail.generalCopy")}</p></div><div className="settings-fields"><div className="form-grid"><label>{t("agents.detail.clientLabel")}<select name="client_id" defaultValue={agent.client_id}>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><label>{t("agents.detail.nameLabel")}<input name="name" required defaultValue={agent.name} /></label></div><label>{t("agents.detail.descriptionLabel")}<textarea name="description" rows={3} defaultValue={agent.description} /></label></div></section>
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.behaviorHeading")}</h3><p>{t("agents.detail.behaviorCopy")}</p></div><div className="settings-fields"><label>{t("agents.detail.instructionsLabel")}<textarea name="instructions" rows={8} defaultValue={agent.instructions} placeholder={t("agents.detail.instructionsPlaceholder")} /></label><label>{t("agents.detail.personalityLabel")}<textarea name="personality" rows={4} defaultValue={agent.personality} placeholder={t("agents.detail.personalityPlaceholder")} /></label></div></section>
+      <EscalationRulesEditor agentId={agent.id} clientId={agent.client_id} />
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.briefHeading")}</h3><p>{t("agents.detail.briefCopy")}</p></div><div className="settings-fields">
         <label>{t("agents.detail.briefSummaryLabel")}<textarea name="brief_summary" rows={2} defaultValue={agent.brief_summary} placeholder={t("agents.detail.briefSummaryPlaceholder")} /></label>
         <div className="form-grid">
@@ -177,6 +179,7 @@ export default function AgentDetailPage() {
       </div></section>
       <div className="sticky-save"><span>{t("agents.detail.stickyNote")}</span><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} {t("agents.detail.saveConfig")}</button></div>
     </form>}
+
 
     {tab === "knowledge" && <><div className="knowledge-layout">
       <form className="panel knowledge-context" onSubmit={saveContext}><div className="panel-head"><div><h3>{t("agents.detail.manualContextHeading")}</h3><p>{t("agents.detail.manualContextCopy")}</p></div></div><textarea name="manual_context" rows={12} defaultValue={agent.manual_context} placeholder={t("agents.detail.manualContextPlaceholder")} /><div className="knowledge-actions"><small>{t("agents.detail.charsSaved", { count: agent.manual_context.length.toLocaleString("es") })}</small><button className="button secondary" disabled={busy}><Save size={16} /> {t("agents.detail.saveContext")}</button></div></form>

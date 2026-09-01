@@ -126,7 +126,7 @@ export type ToolCallMeta = { name: string; arguments: Record<string, unknown>; r
 
 export type Source = { id: string; filename: string; excerpt: string };
 export type Attachment = { id: string; kind: "image" | "audio" | "video" | "file"; mime: string; filename: string | null; size_bytes: number };
-export type Message = { id: string; role: "user" | "assistant" | "system"; kind?: "message" | "activity"; delivery_status?: "sent" | "delivered" | "read" | "failed" | null; delivery_error?: string | null; activity?: { event: string; hours?: number | string; assignee?: string; from?: string } | null; content: string; sources: Source[]; tool_calls?: ToolCallMeta[] | null; sender_type: "visitor" | "ai" | "human"; sender_name: string | null; reaction?: string | null; incoming_reaction?: string | null; quoted_message_id?: string | null; created_at: string; attachments?: Attachment[] };
+export type Message = { id: string; role: "user" | "assistant" | "system"; kind?: "message" | "activity"; delivery_status?: "sent" | "delivered" | "read" | "failed" | null; delivery_error?: string | null; activity?: { event: string; hours?: number | string; assignee?: string; from?: string; team?: string; target?: string; reason?: string } | null; content: string; sources: Source[]; tool_calls?: ToolCallMeta[] | null; sender_type: "visitor" | "ai" | "human"; sender_name: string | null; reaction?: string | null; incoming_reaction?: string | null; quoted_message_id?: string | null; created_at: string; attachments?: Attachment[] };
 
 export type ConversationInbox = {
   id: string;
@@ -143,6 +143,19 @@ export type ConversationInbox = {
   updated_at: string;
   last_inbound_at?: string | null;
 };
+export type PortalMember = { id: string; name: string; email: string; availability: "online" | "away" };
+export type TeamMember = { id: string; name: string; email: string; availability: "online" | "away" };
+export type Team = {
+  id: string;
+  name: string;
+  description: string;
+  strategy: "round_robin" | "least_busy";
+  channels: string[];
+  is_default: boolean;
+  members: TeamMember[];
+  open_count: number;
+  unassigned_count: number;
+};
 export type Conversation = {
   id: string;
   client_id: string;
@@ -156,6 +169,8 @@ export type Conversation = {
   waiting_since?: string | null;
   assignee_id?: string | null;
   assignee_name?: string | null;
+  team_id?: string | null;
+  team_name?: string | null;
   reply_window_until?: string | null;
   reply_window_open?: boolean;
   channel: string;

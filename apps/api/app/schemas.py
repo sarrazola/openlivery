@@ -310,6 +310,8 @@ class ConversationOut(ORMModel):
     waiting_since: datetime | None = None
     assignee_id: uuid.UUID | None = None
     assignee_name: str | None = None
+    team_id: uuid.UUID | None = None
+    team_name: str | None = None
     # WhatsApp Cloud API: free-form replies are allowed until this moment
     # (24 h after the contact's last message). None on other channels or
     # when the contact never wrote; ``reply_window_open`` says what applies.
@@ -406,6 +408,81 @@ class PortalMemberOut(BaseModel):
     id: uuid.UUID
     name: str
     email: str
+    availability: str = "online"
+
+
+class TeamMemberOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: str
+    availability: str = "online"
+
+
+class TeamOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str = ""
+    strategy: str = "round_robin"
+    channels: list[str] = []
+    is_default: bool = False
+    members: list[TeamMemberOut] = []
+    open_count: int = 0
+    unassigned_count: int = 0
+
+
+class TeamUpsert(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=500)
+    strategy: str = Field(default="round_robin", pattern=r"^(round_robin|least_busy)$")
+    channels: list[str] = []
+    is_default: bool = False
+    member_ids: list[uuid.UUID] = []
+
+
+class ConversationTeamUpdate(BaseModel):
+    team_id: uuid.UUID | None = None
+
+
+class EscalationRuleIn(BaseModel):
+    # WHEN, in the business's words; the model evaluates it contextually.
+    condition: str = Field(min_length=1, max_length=2000)
+    # WHERE, a hard reference: exactly one of these two.
+    team_id: uuid.UUID | None = None
+    assignee_id: uuid.UUID | None = None
+    is_active: bool = True
+
+
+class EscalationRuleOut(BaseModel):
+    id: uuid.UUID
+    position: int
+    condition: str
+    team_id: uuid.UUID | None = None
+    team_name: str | None = None
+    assignee_id: uuid.UUID | None = None
+    assignee_name: str | None = None
+    is_active: bool = True
+    # The destination was deleted; the rule no longer routes anywhere.
+    broken: bool = False
+
+
+class EscalationConfigIn(BaseModel):
+    # Destination of the built-in triggers; at most one of the two. Both empty
+    # falls back to the channel's tray, then the default tray.
+    default_team_id: uuid.UUID | None = None
+    default_assignee_id: uuid.UUID | None = None
+    rules: list[EscalationRuleIn] = []
+
+
+class EscalationConfigOut(BaseModel):
+    default_team_id: uuid.UUID | None = None
+    default_team_name: str | None = None
+    default_assignee_id: uuid.UUID | None = None
+    default_assignee_name: str | None = None
+    rules: list[EscalationRuleOut] = []
+
+
+class PortalAvailabilityUpdate(BaseModel):
+    availability: str = Field(pattern=r"^(online|away)$")
 
 
 class PortalChannelOut(BaseModel):
