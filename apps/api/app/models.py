@@ -124,11 +124,6 @@ class Agent(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     instructions: Mapped[str] = mapped_column(Text, default="")
     personality: Mapped[str] = mapped_column(Text, default="")
-    # When and where the AI should hand a conversation to people, written by
-    # the client in natural language and injected next to the instructions.
-    # The built-in triggers (frustration, explicit request for a human) apply
-    # even when this is empty.
-    escalation_rules: Mapped[str] = mapped_column(Text, default="")
     # Structured business brief. Optional guided fields that compose into the
     # system prompt alongside the free-form instructions.
     brief_summary: Mapped[str] = mapped_column(Text, default="", server_default="")
@@ -551,6 +546,34 @@ class Team(Base):
     )
 
     __table_args__ = (UniqueConstraint("client_id", "name", name="uq_teams_client_name"),)
+
+
+class EscalationRule(Base):
+    """A business decision about where the AI sends a conversation: WHEN is a
+    condition in natural language the model evaluates contextually, WHERE is a
+    hard reference to a team or a person - never guessed from prose. Rules are
+    ordered; the built-in triggers (frustration, explicit request for a human)
+    exist without any rule and land in the default tray."""
+
+    __tablename__ = "escalation_rules"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    condition: Mapped[str] = mapped_column(Text, default="")
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"), nullable=True
+    )
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+    agent: Mapped["Agent"] = relationship()
+    team: Mapped["Team | None"] = relationship()
+    assignee: Mapped["PortalUser | None"] = relationship()
 
 
 class TeamMember(Base):

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import Client, PortalUser, PushDevice, User, new_domain_token
+from ..models import Client, PortalUser, PushDevice, User, new_domain_token, Team
 from ..schemas import (
     ClientCreate,
     ClientDomainOut,
@@ -244,6 +244,14 @@ def list_portal_users(
         select(PortalUser).where(PortalUser.client_id == client.id).order_by(PortalUser.created_at)
     ).all()
     return [_portal_user_out(db, row) for row in rows]
+
+
+@router.get("/{client_id}/teams")
+def client_teams(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """The client's trays, for pickers like the escalation rule editor."""
+    client = _client(db, user, client_id)
+    teams = db.scalars(select(Team).where(Team.client_id == client.id).order_by(Team.name)).all()
+    return [{"id": str(team.id), "name": team.name, "is_default": team.is_default} for team in teams]
 
 
 @router.post("/{client_id}/portal-users", response_model=PortalUserOut, status_code=status.HTTP_201_CREATED)

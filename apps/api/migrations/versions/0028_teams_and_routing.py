@@ -56,11 +56,24 @@ def upgrade() -> None:
     )
     op.add_column("portal_users", sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=True))
 
-    op.add_column("agents", sa.Column("escalation_rules", sa.Text(), nullable=False, server_default=""))
+    op.create_table(
+        "escalation_rules",
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column("agent_id", sa.Uuid(), sa.ForeignKey("agents.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("position", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("condition", sa.Text(), nullable=False, server_default=""),
+        sa.Column("team_id", sa.Uuid(), sa.ForeignKey("teams.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("assignee_id", sa.Uuid(), sa.ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    op.create_index("ix_escalation_rules_agent_id", "escalation_rules", ["agent_id"])
 
 
 def downgrade() -> None:
-    op.drop_column("agents", "escalation_rules")
+    op.drop_index("ix_escalation_rules_agent_id", table_name="escalation_rules")
+    op.drop_table("escalation_rules")
     op.drop_column("portal_users", "last_seen_at")
     op.drop_column("portal_users", "availability")
     op.drop_index("ix_conversations_team_id", table_name="conversations")

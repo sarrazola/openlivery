@@ -443,6 +443,28 @@ class ConversationTeamUpdate(BaseModel):
     team_id: uuid.UUID | None = None
 
 
+class EscalationRuleIn(BaseModel):
+    # WHEN, in the business's words; the model evaluates it contextually.
+    condition: str = Field(min_length=1, max_length=2000)
+    # WHERE, a hard reference: exactly one of these two.
+    team_id: uuid.UUID | None = None
+    assignee_id: uuid.UUID | None = None
+    is_active: bool = True
+
+
+class EscalationRuleOut(BaseModel):
+    id: uuid.UUID
+    position: int
+    condition: str
+    team_id: uuid.UUID | None = None
+    team_name: str | None = None
+    assignee_id: uuid.UUID | None = None
+    assignee_name: str | None = None
+    is_active: bool = True
+    # The destination was deleted; the rule no longer routes anywhere.
+    broken: bool = False
+
+
 class PortalAvailabilityUpdate(BaseModel):
     availability: str = Field(pattern=r"^(online|away)$")
 
