@@ -234,6 +234,13 @@ export type Template = {
   rejected_reason: string | null;
 };
 
+export type CannedResponse = {
+  id: string;
+  shortcut: string;
+  content: string;
+  updated_at: string;
+};
+
 export type PortalChannel = {
   channel: "whatsapp" | "whatsapp_cloud";
   status: string;

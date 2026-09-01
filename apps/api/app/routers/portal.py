@@ -6,10 +6,13 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import Agency, Agent, Client, Contact, Conversation, Message, PortalUser, Team, TeamMember, WhatsAppChannel, WhatsAppCloudChannel, now_utc
+from ..models import Agency, Agent, CannedResponse, Client, Contact, Conversation, Message, PortalUser, Team, TeamMember, WhatsAppChannel, WhatsAppCloudChannel, now_utc
 from ..ratelimit import login_rate_limit, public_asset_rate_limit
 from ..schemas import (
     AgentSummary,
+    CannedResponseCreate,
+    CannedResponseOut,
+    CannedResponseUpdate,
     ContactCreate,
     ContactMergeRequest,
     ContactOut,
@@ -834,6 +837,72 @@ async def portal_delete_template(
     disable one, so deletion is how a template is retired."""
     token, waba_id = _template_credentials(_cloud_channel(db, client))
     await delete_template(token, waba_id, name=validate_template_name(name), hsm_id=hsm_id)
+
+
+def _canned_response(db: Session, client: Client, canned_id: uuid.UUID) -> CannedResponse:
+    canned = db.scalar(
+        select(CannedResponse).where(CannedResponse.id == canned_id, CannedResponse.client_id == client.id)
+    )
+    if not canned:
+        raise HTTPException(status_code=404, detail="Saved reply not found")
+    return canned
+
+
+def _require_free_shortcut(db: Session, client: Client, shortcut: str, but: uuid.UUID | None = None) -> None:
+    clash = db.scalar(
+        select(CannedResponse).where(
+            CannedResponse.client_id == client.id, CannedResponse.shortcut == shortcut, CannedResponse.id != but
+        )
+    )
+    if clash:
+        raise HTTPException(status_code=409, detail="A saved reply already uses that shortcut")
+
+
+@router.get("/{slug}/canned-responses", response_model=list[CannedResponseOut])
+def portal_canned_responses(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+    """The saved replies the composer offers when the operator types a slash."""
+    return db.scalars(
+        select(CannedResponse).where(CannedResponse.client_id == client.id).order_by(CannedResponse.shortcut)
+    ).all()
+
+
+@router.post("/{slug}/canned-responses", response_model=CannedResponseOut, status_code=status.HTTP_201_CREATED)
+def portal_create_canned_response(
+    slug: str, payload: CannedResponseCreate, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+):
+    _require_free_shortcut(db, client, payload.shortcut)
+    canned = CannedResponse(client_id=client.id, shortcut=payload.shortcut, content=payload.content.strip())
+    db.add(canned)
+    db.commit()
+    db.refresh(canned)
+    return canned
+
+
+@router.patch("/{slug}/canned-responses/{canned_id}", response_model=CannedResponseOut)
+def portal_update_canned_response(
+    slug: str,
+    canned_id: uuid.UUID,
+    payload: CannedResponseUpdate,
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    canned = _canned_response(db, client, canned_id)
+    if payload.shortcut is not None:
+        _require_free_shortcut(db, client, payload.shortcut, but=canned.id)
+        canned.shortcut = payload.shortcut
+    if payload.content is not None:
+        canned.content = payload.content.strip()
+    db.commit()
+    db.refresh(canned)
+    return canned
+
+
+@router.delete("/{slug}/canned-responses/{canned_id}", status_code=status.HTTP_204_NO_CONTENT)
+def portal_delete_canned_response(
+    slug: str, canned_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+):
+    db.delete(_canned_response(db, client, canned_id))
+    db.commit()
 
 
 async def _send_template_to(db: Session, client: Client, to: str, payload: TemplateSend) -> tuple[str | None, str]:

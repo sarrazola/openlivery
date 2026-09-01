@@ -816,7 +816,27 @@ textarea { line-height: 1.55; }
 .availability-name small { color: #7b8391; font-size: 11.5px; }
 .assignee-picker.team-picker select { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 
-.portal-composer { padding: 14px 16px; display: flex; gap: 8px; border-top: 1px solid var(--line); }
+.portal-composer { position: relative; padding: 14px 16px; display: flex; gap: 8px; border-top: 1px solid var(--line); }
+.canned-popup { position: absolute; bottom: calc(100% + 4px); left: 12px; right: 12px; z-index: 30; display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 10px 32px rgba(10, 14, 29, .16); }
+.canned-popup > button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 7px 9px; text-align: left; border: 0; border-radius: 7px; background: transparent; cursor: pointer; }
+.canned-popup > button.active { background: #f0f3f7; }
+.canned-popup > button strong { color: #4f46d4; font-size: 13px; }
+.canned-popup > button small { max-width: 100%; overflow: hidden; color: #5b6774; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.canned-popup > p { margin: 4px 8px; font-size: 13px; }
+.canned-popup footer { margin-top: 2px; padding-top: 6px; border-top: 1px solid var(--line); }
+.canned-popup footer button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 0; border-radius: 7px; background: transparent; color: #4f46d4; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.canned-popup footer button:hover { background: #efeeff; }
+.canned-manage-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow: auto; }
+.canned-manage-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; }
+.canned-manage-row > div:first-child { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.canned-manage-row strong { color: #4f46d4; font-size: 13px; }
+.canned-manage-row small { overflow: hidden; color: #5b6774; text-overflow: ellipsis; white-space: nowrap; }
+.canned-row-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
+.canned-vars { display: flex; gap: 6px; flex-wrap: wrap; }
+.canned-vars code { padding: 2px 7px; border-radius: 6px; color: #5149c9; background: #f2f0ff; font-size: 12px; }
+.canned-shortcut-field { display: flex; align-items: center; }
+.canned-shortcut-field span { display: grid; place-items: center; height: 43px; padding: 0 10px; color: #687082; border: 1px solid #cfd6df; border-right: 0; border-radius: 7px 0 0 7px; background: #f7f8fa; font-weight: 600; }
+.canned-shortcut-field input { border-radius: 0 7px 7px 0; }
 .portal-composer input { flex: 1; }
 .portal-composer button { width: 42px; display: grid; place-items: center; color: white; border: 0; border-radius: 7px; background: var(--portal-color); }
 

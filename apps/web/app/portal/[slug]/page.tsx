@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { BadgeCheck, Bot, Building2, CheckCircle2, Clock, Contact as ContactIcon, FileText, FlaskConical, Globe, Images, Inbox, LoaderCircle, LogOut, MessageCircle, MessageSquareText, Reply, Search, Send, ShieldCheck, SmilePlus, UserRound, Users, X } from "lucide-react";
+import { useCannedReplies } from "./canned";
 import { ContactsView } from "./contacts";
 import { TeamsView } from "./teams";
 import { TemplatePicker, TemplatesView } from "./templates";
@@ -300,8 +301,21 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
       default: return message.content;
     }
   };
-  async function reply(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected) return; if (pendingFile) { const file = pendingFile; setPendingFile(null); await sendAttachment(file); return; } const form = event.currentTarget; const data = new FormData(form); setBusy(true); setError(""); try { setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply`, { method: "POST", body: JSON.stringify({ content: data.get("content"), quoted_message_id: quoting?.id ?? null }) })); form.reset(); setQuoting(null); await refresh(); } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); } }
+  async function reply(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected) return; if (pendingFile) { const file = pendingFile; setPendingFile(null); await sendAttachment(file); return; } const form = event.currentTarget; const data = new FormData(form); setBusy(true); setError(""); try { setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply`, { method: "POST", body: JSON.stringify({ content: data.get("content"), quoted_message_id: quoting?.id ?? null }) })); form.reset(); canned.reset(); setQuoting(null); await refresh(); } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); } }
   const replyInputRef = useRef<HTMLInputElement>(null);
+  const canned = useCannedReplies({
+    slug,
+    vars: {
+      contact_name: selected?.contact_name || selected?.title || "",
+      contact_phone: (selected?.external_chat_id || "").split("@")[0],
+      my_name: session.user_name || "",
+      business_name: portal.client_name,
+    },
+    onInsert: (text) => {
+      const el = replyInputRef.current;
+      if (el) { el.value = text; el.focus(); }
+    },
+  });
   async function sendAttachment(file?: File) {
     if (!file || !selected || !canReply || busy) return;
     setBusy(true); setError("");
@@ -312,6 +326,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
       if (caption) data.append("caption", caption);
       setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply-media`, { method: "POST", body: data }));
       if (replyInputRef.current) replyInputRef.current.value = "";
+      canned.reset();
       await refresh();
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
@@ -366,5 +381,5 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
                 {!message.content && !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}
                 {reactingTo === message.id && <ReactionPicker current={message.reaction} removeLabel={t("portal.inbox.conversation.removeReaction")} onPick={(emoji) => sendReaction(message, emoji)} />}
               </article>;
-            })}</div>{error && <Alert>{error}</Alert>}{pendingFile && <PendingAttachment file={pendingFile} onCancel={() => setPendingFile(null)} />}{quoting && <div className="composer-quote"><Reply size={14} /><span><strong>{t("portal.inbox.conversation.replyingTo", { name: quoting.sender_name || (quoting.role === "assistant" ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor")) })}</strong><small>{(quoting.content || "").slice(0, 140)}</small></span><button type="button" onClick={() => setQuoting(null)} aria-label={t("portal.inbox.conversation.cancelReply")} title={t("portal.inbox.conversation.cancelReply")}><X size={14} /></button></div>}{windowClosed && !isResolved && selected.mode === "human" ? <div className="portal-composer window-closed"><div><strong>{selected.reply_window_until ? t("portal.inbox.window.closed") : t("portal.inbox.window.neverWrote")}</strong><small>{t("portal.inbox.window.closedHint")}</small></div><button type="button" className="button primary" onClick={() => setTemplateOpen(true)} disabled={!templatesSupported}><FileText size={16} /> {t("portal.inbox.window.sendTemplate")}</button></div> : <form onSubmit={reply} className="portal-composer"><AttachButton onFile={setPendingFile} disabled={!canReply || busy} title={t("chat.attachFile")} /><RecordButton onRecorded={sendAttachment} onError={() => setError(t("chat.micDenied"))} disabled={!canReply || busy} title={t("chat.recordAudio")} titleStop={t("chat.stopRecording")} /><input ref={replyInputRef} name="content" required={!pendingFile} disabled={!canReply || busy} placeholder={isResolved ? t("portal.inbox.conversation.resolvedLocked") : selected.mode === "human" ? t("portal.inbox.conversation.replyPlaceholder") : t("portal.inbox.conversation.takeControlToReply")} /><button disabled={!canReply || busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}</button></form>}<MediaPanel open={mediaOpen} onClose={() => setMediaOpen(false)} messages={selected.messages ?? []} urlFor={attachmentUrl} /><TemplatePicker slug={slug} open={templateOpen} title={t("portal.inbox.window.sendTemplate")} onClose={() => setTemplateOpen(false)} onSend={replyWithTemplate} /></>}</section></div>}</section></main>;
+            })}</div>{error && <Alert>{error}</Alert>}{pendingFile && <PendingAttachment file={pendingFile} onCancel={() => setPendingFile(null)} />}{quoting && <div className="composer-quote"><Reply size={14} /><span><strong>{t("portal.inbox.conversation.replyingTo", { name: quoting.sender_name || (quoting.role === "assistant" ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor")) })}</strong><small>{(quoting.content || "").slice(0, 140)}</small></span><button type="button" onClick={() => setQuoting(null)} aria-label={t("portal.inbox.conversation.cancelReply")} title={t("portal.inbox.conversation.cancelReply")}><X size={14} /></button></div>}{windowClosed && !isResolved && selected.mode === "human" ? <div className="portal-composer window-closed"><div><strong>{selected.reply_window_until ? t("portal.inbox.window.closed") : t("portal.inbox.window.neverWrote")}</strong><small>{t("portal.inbox.window.closedHint")}</small></div><button type="button" className="button primary" onClick={() => setTemplateOpen(true)} disabled={!templatesSupported}><FileText size={16} /> {t("portal.inbox.window.sendTemplate")}</button></div> : <form onSubmit={reply} className="portal-composer">{canned.popup}<AttachButton onFile={setPendingFile} disabled={!canReply || busy} title={t("chat.attachFile")} /><RecordButton onRecorded={sendAttachment} onError={() => setError(t("chat.micDenied"))} disabled={!canReply || busy} title={t("chat.recordAudio")} titleStop={t("chat.stopRecording")} /><input ref={replyInputRef} name="content" autoComplete="off" onChange={(e) => canned.onChange(e.target.value)} onKeyDown={canned.onKeyDown} required={!pendingFile} disabled={!canReply || busy} placeholder={isResolved ? t("portal.inbox.conversation.resolvedLocked") : selected.mode === "human" ? t("portal.inbox.conversation.replyPlaceholder") : t("portal.inbox.conversation.takeControlToReply")} /><button disabled={!canReply || busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}</button></form>}<MediaPanel open={mediaOpen} onClose={() => setMediaOpen(false)} messages={selected.messages ?? []} urlFor={attachmentUrl} /><TemplatePicker slug={slug} open={templateOpen} title={t("portal.inbox.window.sendTemplate")} onClose={() => setTemplateOpen(false)} onSend={replyWithTemplate} />{canned.manager}</>}</section></div>}</section></main>;
 }

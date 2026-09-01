@@ -530,6 +530,24 @@ class PortalUser(Base):
     __table_args__ = (UniqueConstraint("client_id", "email", name="uq_portal_users_client_email"),)
 
 
+class CannedResponse(Base):
+    """A saved reply the portal composer inserts through /shortcut.
+
+    Placeholders such as ``{contact_name}`` are filled by the portal when
+    the reply is inserted, so the operator can still edit before sending.
+    """
+
+    __tablename__ = "canned_responses"
+    __table_args__ = (UniqueConstraint("client_id", "shortcut", name="uq_canned_responses_client_shortcut"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    shortcut: Mapped[str] = mapped_column(String(60))
+    content: Mapped[str] = mapped_column(String(4000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
 class Team(Base):
     """A named tray of people (sales, support, urgent) a conversation can be
     routed to, by a person or by the AI when it escalates.

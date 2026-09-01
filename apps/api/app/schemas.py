@@ -520,6 +520,23 @@ class TemplateSend(BaseModel):
     variables: list[str] = []
 
 
+class CannedResponseOut(ORMModel):
+    id: uuid.UUID
+    shortcut: str
+    content: str
+    updated_at: datetime
+
+
+class CannedResponseCreate(BaseModel):
+    shortcut: str = Field(min_length=1, max_length=60, pattern=r"^[a-z0-9_-]+$")
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class CannedResponseUpdate(BaseModel):
+    shortcut: str | None = Field(default=None, min_length=1, max_length=60, pattern=r"^[a-z0-9_-]+$")
+    content: str | None = Field(default=None, min_length=1, max_length=4000)
+
+
 class ConversationStart(BaseModel):
     # whatsapp_cloud needs a template; whatsapp (QR) takes free text.
     channel: str | None = Field(default=None, pattern=r"^(whatsapp|whatsapp_cloud)$")
