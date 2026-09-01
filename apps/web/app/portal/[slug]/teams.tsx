@@ -127,7 +127,7 @@ export function TeamsView({ slug }: { slug: string }) {
         <label>{t("portal.teams.form.members")}</label>
         <div className="merge-candidates">
           {members.map((member) => <button type="button" key={member.id} className={selectedMembers.includes(member.id) ? "active" : ""} onClick={() => setSelectedMembers((list) => toggle(list, member.id))}>
-            <span className={`team-member ${member.availability}`}><i /></span>
+            <i className={`presence-dot ${member.availability}`} />
             <span><strong>{member.name}</strong><small>{member.email}</small></span>
           </button>)}
           {!members.length && <p className="muted">{t("portal.teams.form.noPeople")}</p>}

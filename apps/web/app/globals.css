@@ -743,6 +743,9 @@ textarea { line-height: 1.55; }
 .escalation-rule { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: #fafbfc; }
 .escalation-rule.inactive { opacity: .55; }
 .escalation-rule.general { border-style: dashed; background: #f4f7ff; }
+.escalation-rule .mini-badge { flex: 0 0 auto; white-space: nowrap; }
+.presence-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 999px; background: #22a06b; }
+.presence-dot.away { background: #c2c9d4; }
 .escalation-general-text { flex: 1 1 auto; min-width: 0; color: #39415b; font-size: 13px; }
 .escalation-rule input[type="text"], .escalation-rule input:not([type]) { flex: 1 1 auto; min-width: 0; }
 .escalation-rule select { flex: 0 1 220px; min-width: 140px; }
@@ -769,10 +772,13 @@ textarea { line-height: 1.55; }
 .mini-badge.team { color: #4a5568; border-color: #d7dce4; background: #eef1f5; }
 .inbox-team-filter { margin: 0 12px 10px; display: flex; align-items: center; gap: 7px; color: #687082; }
 .inbox-team-filter select { flex: 1; min-height: 34px; font-size: 13px; }
-.availability-toggle { margin: 0 0 6px; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: white; font-size: 13px; cursor: pointer; }
-.availability-toggle i { width: 9px; height: 9px; border-radius: 999px; background: #22a06b; }
+.availability-toggle { margin: 0 0 6px; display: flex; align-items: center; gap: 9px; padding: 8px 12px; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: white; font-size: 13px; cursor: pointer; }
+.availability-toggle i { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 999px; background: #22a06b; }
 .availability-toggle.away i { background: #c2c9d4; }
 .availability-toggle.away { color: #7b8391; }
+.availability-name { min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.availability-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.availability-name small { color: #7b8391; font-size: 11.5px; }
 .assignee-picker.team-picker select { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 
 .portal-composer { padding: 14px 16px; display: flex; gap: 8px; border-top: 1px solid var(--line); }
