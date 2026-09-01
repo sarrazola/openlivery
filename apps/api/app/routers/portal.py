@@ -1,7 +1,8 @@
 import uuid
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Cookie, Depends, Header, File, Form, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import Interval, and_, case, func, literal, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
@@ -19,6 +20,10 @@ from ..schemas import (
     ContactUpdate,
     ConversationStart,
     PortalChannelOut,
+    PortalReport,
+    ReportAgentRow,
+    ReportChannelRow,
+    ReportDay,
     TemplateCreate,
     TemplateOut,
     TemplateSend,
@@ -903,6 +908,172 @@ def portal_delete_canned_response(
 ):
     db.delete(_canned_response(db, client, canned_id))
     db.commit()
+
+
+@router.get("/{slug}/reports", response_model=PortalReport)
+def portal_report(
+    slug: str,
+    from_: date = Query(alias="from"),
+    to: date = Query(),
+    tz_offset: int = Query(default=0, ge=-840, le=840),
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    """Basic activity metrics over a local-day range. ``tz_offset`` is the
+    viewer's UTC offset in minutes as JavaScript reports it (positive west),
+    so days group the way the operator's clock reads them."""
+    if to < from_ or (to - from_).days > 366:
+        raise HTTPException(status_code=422, detail="Pick a range of at most a year, oldest day first")
+    shift = timedelta(minutes=tz_offset)
+    start = datetime.combine(from_, time.min, tzinfo=timezone.utc) + shift
+    end = datetime.combine(to, time.min, tzinfo=timezone.utc) + shift + timedelta(days=1)
+
+    def local_day(column):
+        return func.date(column - literal(shift, Interval))
+
+    started_day = local_day(Conversation.created_at)
+    started_rows = db.execute(
+        select(started_day, func.count())
+        .where(Conversation.client_id == client.id, Conversation.created_at >= start, Conversation.created_at < end)
+        .group_by(started_day)
+    ).all()
+    resolved_day = local_day(Conversation.resolved_at)
+    resolved_rows = db.execute(
+        select(resolved_day, func.count())
+        .where(Conversation.client_id == client.id, Conversation.resolved_at >= start, Conversation.resolved_at < end)
+        .group_by(resolved_day)
+    ).all()
+    days = {from_ + timedelta(days=i): ReportDay(date=from_ + timedelta(days=i)) for i in range((to - from_).days + 1)}
+    for day, count in started_rows:
+        if day in days:
+            days[day].started = count
+    for day, count in resolved_rows:
+        if day in days:
+            days[day].resolved = count
+
+    channel_rows = db.execute(
+        select(Conversation.channel, func.count())
+        .where(Conversation.client_id == client.id, Conversation.created_at >= start, Conversation.created_at < end)
+        .group_by(Conversation.channel)
+        .order_by(func.count().desc())
+    ).all()
+
+    human_reply = and_(Message.role == "assistant", Message.sender_type == "human")
+    inbound, human_replies, ai_replies = db.execute(
+        select(
+            func.count().filter(Message.role == "user"),
+            func.count().filter(human_reply),
+            func.count().filter(Message.role == "assistant", Message.sender_type != "human"),
+        )
+        .select_from(Message)
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .where(
+            Conversation.client_id == client.id,
+            Message.kind == "message",
+            Message.created_at >= start,
+            Message.created_at < end,
+        )
+    ).one()
+
+    active_contacts = db.scalar(
+        select(func.count(func.distinct(Conversation.contact_id))).where(
+            Conversation.client_id == client.id,
+            Conversation.contact_id.is_not(None),
+            Conversation.created_at >= start,
+            Conversation.created_at < end,
+        )
+    )
+    open_now = db.scalar(
+        select(func.count()).select_from(Conversation).where(
+            Conversation.client_id == client.id, Conversation.status != "resolved"
+        )
+    )
+    avg_first_reply = db.scalar(
+        select(func.avg(func.extract("epoch", Conversation.first_reply_at - Conversation.created_at))).where(
+            Conversation.client_id == client.id,
+            Conversation.first_reply_at.is_not(None),
+            Conversation.created_at >= start,
+            Conversation.created_at < end,
+        )
+    )
+    avg_resolution = db.scalar(
+        select(func.avg(func.extract("epoch", Conversation.resolved_at - Conversation.created_at))).where(
+            Conversation.client_id == client.id,
+            Conversation.resolved_at >= start,
+            Conversation.resolved_at < end,
+        )
+    )
+
+    users = db.execute(
+        select(PortalUser.id, PortalUser.name, PortalUser.availability).where(PortalUser.client_id == client.id)
+    ).all()
+    replies_by_user = dict(
+        db.execute(
+            select(Message.portal_user_id, func.count())
+            .join(Conversation, Message.conversation_id == Conversation.id)
+            .where(
+                Conversation.client_id == client.id,
+                Message.kind == "message",
+                human_reply,
+                Message.portal_user_id.is_not(None),
+                Message.created_at >= start,
+                Message.created_at < end,
+            )
+            .group_by(Message.portal_user_id)
+        ).all()
+    )
+    assigned_by_user = dict(
+        db.execute(
+            select(Conversation.assignee_id, func.count())
+            .where(
+                Conversation.client_id == client.id,
+                Conversation.assignee_id.is_not(None),
+                Conversation.assigned_at >= start,
+                Conversation.assigned_at < end,
+            )
+            .group_by(Conversation.assignee_id)
+        ).all()
+    )
+    open_by_user = dict(
+        db.execute(
+            select(Conversation.assignee_id, func.count())
+            .where(
+                Conversation.client_id == client.id,
+                Conversation.assignee_id.is_not(None),
+                Conversation.status != "resolved",
+            )
+            .group_by(Conversation.assignee_id)
+        ).all()
+    )
+    agents = sorted(
+        (
+            ReportAgentRow(
+                name=name or "",
+                availability=availability,
+                replies=replies_by_user.get(user_id, 0),
+                assigned=assigned_by_user.get(user_id, 0),
+                open_now=open_by_user.get(user_id, 0),
+            )
+            for user_id, name, availability in users
+        ),
+        key=lambda row: (-row.replies, -row.assigned, row.name),
+    )
+
+    return PortalReport(
+        started=sum(d.started for d in days.values()),
+        resolved=sum(d.resolved for d in days.values()),
+        open_now=open_now or 0,
+        inbound_messages=inbound,
+        human_replies=human_replies,
+        ai_replies=ai_replies,
+        active_contacts=active_contacts or 0,
+        agents_online=sum(1 for _, _, availability in users if availability == "online"),
+        avg_first_reply_seconds=float(avg_first_reply) if avg_first_reply is not None else None,
+        avg_resolution_seconds=float(avg_resolution) if avg_resolution is not None else None,
+        by_day=list(days.values()),
+        by_channel=[ReportChannelRow(channel=channel, started=count) for channel, count in channel_rows],
+        by_agent=agents,
+    )
 
 
 async def _send_template_to(db: Session, client: Client, to: str, payload: TemplateSend) -> tuple[str | None, str]:

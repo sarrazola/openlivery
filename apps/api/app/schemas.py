@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -518,6 +518,41 @@ class TemplateSend(BaseModel):
     name: str = Field(min_length=1, max_length=512)
     language: str = Field(min_length=2, max_length=10)
     variables: list[str] = []
+
+
+class ReportDay(BaseModel):
+    date: date
+    started: int = 0
+    resolved: int = 0
+
+
+class ReportChannelRow(BaseModel):
+    channel: str
+    started: int
+
+
+class ReportAgentRow(BaseModel):
+    name: str
+    availability: str
+    replies: int = 0
+    assigned: int = 0
+    open_now: int = 0
+
+
+class PortalReport(BaseModel):
+    started: int
+    resolved: int
+    open_now: int
+    inbound_messages: int
+    human_replies: int
+    ai_replies: int
+    active_contacts: int
+    agents_online: int
+    avg_first_reply_seconds: float | None = None
+    avg_resolution_seconds: float | None = None
+    by_day: list[ReportDay]
+    by_channel: list[ReportChannelRow]
+    by_agent: list[ReportAgentRow]
 
 
 class CannedResponseOut(ORMModel):
