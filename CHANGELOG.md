@@ -9,6 +9,30 @@ and are released together.
 
 ## [Unreleased]
 
+Upgrading: this release adds database migrations (applied automatically by the
+Docker stack; run `alembic upgrade head` on local setups).
+
+### Added
+
+- Teams in the client portal: named trays of portal users with an assignment
+  strategy (round robin or least busy), an optional default tray per channel
+  and a client-wide default tray. Conversations can be moved between trays
+  from the thread, the inbox filters by tray, and moving an open, unassigned
+  human conversation into a tray routes it to a member automatically.
+- Member availability: each portal user toggles between available and away
+  from the sidebar. Away members are skipped by routing without losing their
+  turn; assigning someone directly still works regardless.
+- AI escalation: agents get an `escalate_to_human` tool with built-in
+  triggers (frustration, explicit request for a person, cannot solve) plus an
+  ordered list of business rules where the condition is natural language the
+  model evaluates in context and the destination is always a hard-picked team
+  or person. The AI writes its own varied farewell, the conversation switches
+  to human mode, lands in the destination tray and is routed; the thread
+  records the escalation as an activity line. Rules are edited on the agent's
+  page under the behavior section; destinations never reach the prompt.
+- Team fan-out for notifications: a conversation that needs a person rings
+  the members of its tray instead of every portal device.
+
 ## [0.4.0] - 2026-08-31
 
 Upgrading: this release adds database migrations (applied automatically by the
