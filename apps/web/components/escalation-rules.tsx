@@ -16,6 +16,7 @@ type Rule = {
 type Config = {
   default_team_id: string | null;
   default_assignee_id: string | null;
+  builtin_enabled: boolean;
   rules: Rule[];
 };
 type Option = { id: string; name: string };
@@ -26,6 +27,7 @@ type Option = { id: string; name: string };
 export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; clientId: string }) {
   const t = useT();
   const [rules, setRules] = useState<Rule[]>([]);
+  const [builtinOn, setBuiltinOn] = useState(true);
   const [defaultDest, setDefaultDest] = useState("");
   const [teams, setTeams] = useState<Option[]>([]);
   const [people, setPeople] = useState<Option[]>([]);
@@ -41,6 +43,7 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
       api<{ id: string; name: string; email: string }[]>(`/clients/${clientId}/portal-users`),
     ]);
     setRules(config.rules);
+    setBuiltinOn(config.builtin_enabled ?? true);
     setDefaultDest(config.default_team_id ? `team:${config.default_team_id}` : config.default_assignee_id ? `user:${config.default_assignee_id}` : "");
     setTeams(teamRows);
     setPeople(peopleRows.map((row) => ({ id: row.id, name: row.name.trim() || row.email })));
@@ -77,10 +80,12 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
       const payload = {
         default_team_id: defaultKind === "team" ? defaultId : null,
         default_assignee_id: defaultKind === "user" ? defaultId : null,
+        builtin_enabled: builtinOn,
         rules: ruleRows,
       };
       const saved = await api<Config>(`/agents/${agentId}/escalation-rules`, { method: "PUT", body: JSON.stringify(payload) });
       setRules(saved.rules);
+      setBuiltinOn(saved.builtin_enabled ?? true);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
@@ -95,11 +100,11 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
       <div className="settings-fields">
         {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div> : <>
           <div className="escalation-rules">
-            <div className="escalation-rule general">
+            <div className={`escalation-rule general${builtinOn ? "" : " inactive"}`}>
               <span className="escalation-when">{t("agents.escalation.when")}</span>
               <span className="escalation-general-text">{t("agents.escalation.generalCondition")}</span>
               <span className="escalation-then">{t("agents.escalation.sendTo")}</span>
-              <select value={defaultDest} onChange={(e) => setDefaultDest(e.target.value)} aria-label={t("agents.escalation.generalLabel")}>
+              <select value={defaultDest} disabled={!builtinOn} onChange={(e) => setDefaultDest(e.target.value)} aria-label={t("agents.escalation.generalLabel")}>
                 <option value="">{t("agents.escalation.generalFallback")}</option>
                 {teams.length > 0 && <optgroup label={t("agents.escalation.groupTeams")}>
                   {teams.map((team) => <option key={team.id} value={`team:${team.id}`}>{team.name}</option>)}
@@ -108,7 +113,9 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
                   {people.map((person) => <option key={person.id} value={`user:${person.id}`}>{person.name}</option>)}
                 </optgroup>}
               </select>
-              <span className="mini-badge ai">{t("agents.escalation.alwaysOn")}</span>
+              <label className="escalation-active" title={t("agents.escalation.builtinToggle")}>
+                <input type="checkbox" checked={builtinOn} onChange={(e) => setBuiltinOn(e.target.checked)} />
+              </label>
             </div>
             {rules.map((rule, index) => (
               <div key={index} className={`escalation-rule${rule.is_active ? "" : " inactive"}`}>
@@ -153,7 +160,7 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
             {saved && <span className="escalation-saved">{t("agents.escalation.savedNote")}</span>}
           </div>
           {error && <Alert>{error}</Alert>}
-          <span className="field-help">{t("agents.escalation.builtinNote")}</span>
+          <span className="field-help">{builtinOn ? t("agents.escalation.builtinNote") : t("agents.escalation.builtinOffNote")}</span>
         </>}
       </div>
     </section>

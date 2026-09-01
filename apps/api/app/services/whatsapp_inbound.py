@@ -320,8 +320,10 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
         system_content += "\n\n" + _gesture_rules(burst)
         rules = escalation_active_rules(db, agent)
         if escalation_enabled(db, agent, rules):
-            system_content += "\n\n" + escalation_prompt(rules)
-            escalation_specs = [build_escalation_spec(rules, escalation_holder)]
+            system_content += "\n\n" + escalation_prompt(rules, builtin_enabled=agent.escalation_builtin_enabled)
+            escalation_specs = [
+                build_escalation_spec(rules, escalation_holder, builtin_enabled=agent.escalation_builtin_enabled)
+            ]
     messages = [
         {"role": "system", "content": system_content},
         *[{"role": item.role, "content": llm_text(item)} for item in history],

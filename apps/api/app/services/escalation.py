@@ -36,6 +36,11 @@ ESCALATION_RULES_INTRO = (
 ESCALATION_BUSINESS_INTRO = (
     "Además, decisiones del negocio (si el último mensaje coincide con una en contexto, escala con rule=N):\n"
 )
+# The built-in triggers are switched off: the tool exists only for the rules.
+ESCALATION_RULES_ONLY_INTRO = (
+    "ESCALAMIENTO A PERSONAS: dispones de la herramienta escalate_to_human. Úsala únicamente cuando el último "
+    "mensaje coincida en contexto con una de estas decisiones del negocio (escala con rule=N):\n"
+)
 ESCALATION_CLOSING = (
     "Al escalar, la herramienta registra el traslado; tu respuesta debe despedirte con calidez y naturalidad "
     "diciendo que una persona o un equipo especializado continúa la conversación. Redáctala tú, variada, sin "
@@ -59,20 +64,26 @@ def active_rules(db: Session, agent: Agent) -> list[EscalationRule]:
 
 def escalation_enabled(db: Session, agent: Agent, rules: list[EscalationRule]) -> bool:
     """Escalation only enters the prompt when it can land somewhere: a rule
-    with a destination, the agent's default, or any team of the client."""
+    with a destination, the agent's default, or any team of the client. With
+    the built-in triggers switched off, only the rules count."""
     if any(rule.team_id or rule.assignee_id for rule in rules):
         return True
+    if not agent.escalation_builtin_enabled:
+        return False
     if agent.escalation_team_id or agent.escalation_assignee_id:
         return True
     return db.scalar(select(Team.id).where(Team.client_id == agent.client_id).limit(1)) is not None
 
 
-def escalation_prompt(rules: list[EscalationRule]) -> str:
-    parts = [ESCALATION_RULES_INTRO]
+def escalation_prompt(rules: list[EscalationRule], *, builtin_enabled: bool = True) -> str:
     numbered = [rule for rule in rules if rule.team_id or rule.assignee_id]
-    if numbered:
-        parts.append(ESCALATION_BUSINESS_INTRO)
-        parts.extend(f"[{index}] {rule.condition.strip()}\n" for index, rule in enumerate(numbered, start=1))
+    if builtin_enabled:
+        parts = [ESCALATION_RULES_INTRO]
+        if numbered:
+            parts.append(ESCALATION_BUSINESS_INTRO)
+    else:
+        parts = [ESCALATION_RULES_ONLY_INTRO]
+    parts.extend(f"[{index}] {rule.condition.strip()}\n" for index, rule in enumerate(numbered, start=1))
     parts.append(ESCALATION_CLOSING)
     return "".join(parts)
 
@@ -84,7 +95,9 @@ class EscalationRequest:
     rule: EscalationRule | None = None
 
 
-def build_escalation_spec(rules: list[EscalationRule], holder: list[EscalationRequest]) -> ToolSpec:
+def build_escalation_spec(
+    rules: list[EscalationRule], holder: list[EscalationRequest], *, builtin_enabled: bool = True
+) -> ToolSpec:
     numbered = [rule for rule in rules if rule.team_id or rule.assignee_id]
 
     def handler(args: dict) -> tuple[str, bool]:
@@ -93,7 +106,7 @@ def build_escalation_spec(rules: list[EscalationRule], holder: list[EscalationRe
         # and only refuse when neither means anything.
         reason = str(args.get("reason") or "").strip()[:300]
         trigger = str(args.get("trigger") or "").strip().lower() or None
-        if trigger not in TRIGGERS:
+        if trigger not in TRIGGERS or not builtin_enabled:
             trigger = None
         matched: EscalationRule | None = None
         rule_number = args.get("rule")
@@ -104,7 +117,12 @@ def build_escalation_spec(rules: list[EscalationRule], holder: list[EscalationRe
             except (ValueError, TypeError, IndexError):
                 matched = None
         if matched is None and trigger is None:
-            return ("Provide a valid trigger (frustration, human_request, cannot_solve) or a listed rule number.", True)
+            return (
+                "Provide a valid trigger (frustration, human_request, cannot_solve) or a listed rule number."
+                if builtin_enabled
+                else "Provide a listed rule number.",
+                True,
+            )
         holder.clear()
         holder.append(EscalationRequest(reason=reason, trigger=trigger if matched is None else None, rule=matched))
         return (
@@ -114,21 +132,26 @@ def build_escalation_spec(rules: list[EscalationRule], holder: list[EscalationRe
         )
 
     properties: dict = {
-        "trigger": {"type": "string", "enum": list(TRIGGERS)},
         "reason": {"type": "string", "description": "One short sentence on why, in the customer's language"},
     }
+    if builtin_enabled:
+        properties["trigger"] = {"type": "string", "enum": list(TRIGGERS)}
     if numbered:
         # Only offered when business rules exist, so the model cannot invent
         # rule numbers on installs that have none.
         properties["rule"] = {"type": "integer", "description": "Number of the matched business rule"}
-    return ToolSpec(
-        name="escalate_to_human",
-        description=(
+    if builtin_enabled:
+        description = (
             "Hand this conversation to a person or a specialised team. Use it when a business rule matches "
             "(rule=N), or with a trigger: frustration, human_request, cannot_solve."
             if numbered
             else "Hand this conversation to a person or a specialised team, with a trigger: frustration, human_request, cannot_solve."
-        ),
+        )
+    else:
+        description = "Hand this conversation to a person or a specialised team when a business rule matches (rule=N)."
+    return ToolSpec(
+        name="escalate_to_human",
+        description=description,
         input_schema={"type": "object", "properties": properties},
         handler=handler,
     )

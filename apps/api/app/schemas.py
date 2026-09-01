@@ -470,6 +470,8 @@ class EscalationConfigIn(BaseModel):
     # falls back to the channel's tray, then the default tray.
     default_team_id: uuid.UUID | None = None
     default_assignee_id: uuid.UUID | None = None
+    # The built-in triggers themselves; off leaves only the business rules.
+    builtin_enabled: bool = True
     rules: list[EscalationRuleIn] = []
 
 
@@ -478,6 +480,7 @@ class EscalationConfigOut(BaseModel):
     default_team_name: str | None = None
     default_assignee_id: uuid.UUID | None = None
     default_assignee_name: str | None = None
+    builtin_enabled: bool = True
     rules: list[EscalationRuleOut] = []
 
 

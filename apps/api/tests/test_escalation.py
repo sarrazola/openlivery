@@ -156,3 +156,43 @@ def test_handler_forgives_a_bogus_rule_number_when_the_trigger_is_valid():
     assert not is_error
     result, is_error = spec.handler({"trigger": "whatever"})
     assert is_error
+
+
+def test_builtin_triggers_can_be_switched_off(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    customer, slug, members, agent, channel = _setup(client, "Toggle Co", ["Ana"])
+    team = client.post(f"/api/portal/{slug}/teams", json={"name": "SoporteT", "is_default": True, "member_ids": [members[0]["id"]]}).json()
+    base = f"/api/agents/{agent['id']}/escalation-rules"
+    assert client.get(base).json()["builtin_enabled"] is True
+
+    # Off with no business rules: the tool disappears from the prompt entirely.
+    assert client.put(base, json={"builtin_enabled": False, "rules": []}).json()["builtin_enabled"] is False
+    monkeypatch.setattr(whatsapp_service, "bridge_command", AsyncMock(return_value={}))
+    captured: dict = {}
+
+    async def fake(db, agent_row, base_url, api_key, messages, temperature=None, max_tokens=None, extra_specs=None):
+        captured["extra_specs"] = extra_specs
+        captured["system"] = messages[0]["content"]
+        return ai_service.Completion(text="Con gusto te ayudo.", input_tokens=1, output_tokens=1)
+
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", fake)
+    body = _inbound(client, channel["id"], "hola").json()
+    assert body["mode"] == "ai"
+    assert captured["extra_specs"] is None and "ESCALAMIENTO" not in captured["system"]
+
+    # A business rule brings the tool back, restricted to rule numbers.
+    client.put(
+        base,
+        json={"builtin_enabled": False, "rules": [{"condition": "Pide una cotización corporativa", "team_id": team["id"]}]},
+    )
+    body = _inbound(client, channel["id"], "quiero cotizar", message_id="wa-in-2").json()
+    assert captured["extra_specs"] is not None
+    spec = captured["extra_specs"][0]
+    assert "trigger" not in spec.input_schema["properties"] and "rule" in spec.input_schema["properties"]
+    assert "frustración" not in captured["system"].split("ESCALAMIENTO", 1)[1].split("[1]")[0]
+    assert "[1] Pide una cotización corporativa" in captured["system"]
+    # The handler refuses trigger-only calls while the switch is off.
+    result, is_error = spec.handler({"trigger": "frustration", "reason": "molesto"})
+    assert is_error
+    _, is_error = spec.handler({"rule": 1, "reason": "cotización"})
+    assert not is_error

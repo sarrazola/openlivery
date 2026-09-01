@@ -133,6 +133,8 @@ class Agent(Base):
     escalation_assignee_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True
     )
+    # The built-in triggers can be switched off; business rules keep working.
+    escalation_builtin_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     # Structured business brief. Optional guided fields that compose into the
     # system prompt alongside the free-form instructions.
     brief_summary: Mapped[str] = mapped_column(Text, default="", server_default="")
