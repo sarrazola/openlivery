@@ -638,7 +638,13 @@ textarea { line-height: 1.55; }
 .portal-template-name strong { display: block; color: #202638; font-weight: 600; }
 .portal-template-name small { display: block; margin-top: 3px; color: #7b8391; white-space: pre-wrap; }
 .portal-template-name small.danger { color: #b23a3a; }
-.portal-template-actions { text-align: right; }
+.portal-template-actions { text-align: right; white-space: nowrap; }
+.portal-teams-table { margin-top: 14px; }
+.portal-teams-table td { height: auto; padding-top: 14px; padding-bottom: 14px; vertical-align: middle; }
+.portal-team-name { min-width: 200px; }
+.portal-team-name strong { display: inline-flex; align-items: center; gap: 7px; color: #202638; }
+.portal-team-name small { display: block; margin-top: 3px; color: #7b8391; }
+.portal-teams-table .team-members { margin: 0; }
 .start-line-wrap { position: relative; }
 .menu-backdrop { position: fixed; inset: 0; z-index: 29; }
 .start-line-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; display: flex; flex-direction: column; gap: 2px; width: min(270px, 88vw); padding: 6px; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 10px 32px rgba(10, 14, 29, .16); }
@@ -770,12 +776,6 @@ textarea { line-height: 1.55; }
 
 /* Teams: the tray cards, member presence dots, and the routing surfaces. */
 .portal-teams { padding: 18px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: white; height: calc(100vh - 125px); }
-.team-grid { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
-.team-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: #fafbfc; }
-.team-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-.team-card header strong { display: flex; align-items: center; gap: 7px; font-size: 15px; }
-.team-card p { margin: 0; color: #5b6774; font-size: 13px; }
-.team-card small { color: #7b8391; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .team-members { display: flex; flex-wrap: wrap; gap: 6px; }
 .team-member { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; font-size: 12px; border: 1px solid var(--line); border-radius: 999px; background: white; }
 .team-member i { width: 7px; height: 7px; border-radius: 999px; background: #22a06b; }

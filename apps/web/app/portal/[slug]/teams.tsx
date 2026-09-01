@@ -104,22 +104,32 @@ export function TeamsView({ slug }: { slug: string }) {
       </div>
       {error && !editing && !deleting && <Alert>{error}</Alert>}
       {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>
-        : items.length ? <div className="team-grid">
-          {items.map((team) => <article key={team.id} className="team-card">
-            <header>
-              <strong>{team.name}{team.is_default && <span className="mini-badge ai">{t("portal.teams.default")}</span>}</strong>
-              <span className="thread-actions">
+        : items.length ? <div className="table-shell portal-teams-table">
+          <table className="data-table">
+            <thead><tr>
+              <th>{t("portal.teams.table.name")}</th>
+              <th>{t("portal.teams.table.strategy")}</th>
+              <th>{t("portal.teams.table.members")}</th>
+              <th>{t("portal.teams.table.open")}</th>
+              <th />
+            </tr></thead>
+            <tbody>{items.map((team) => <tr key={team.id}>
+              <td className="portal-team-name">
+                <strong>{team.name}{team.is_default && <span className="mini-badge ai">{t("portal.teams.default")}</span>}</strong>
+                {team.description && <small>{team.description}</small>}
+              </td>
+              <td>{strategyLabel(team.strategy)}</td>
+              <td><div className="team-members">
+                {team.members.length ? team.members.map((member) => <span key={member.id} className={`team-member ${member.availability}`}><i />{member.name}</span>)
+                  : <span className="muted">{t("portal.teams.noMembers")}</span>}
+              </div></td>
+              <td>{team.open_count}{team.unassigned_count > 0 && <em className="nav-count">{t("portal.teams.unassignedCount", { count: team.unassigned_count })}</em>}</td>
+              <td className="portal-template-actions">
                 <button className="icon-button" onClick={() => openEditor(team)} title={t("portal.teams.edit")} aria-label={t("portal.teams.edit")}><Pencil size={15} /></button>
                 <button className="icon-button danger" onClick={() => { setError(""); setDeleting(team); }} title={t("portal.teams.delete")} aria-label={t("portal.teams.delete")}><Trash2 size={15} /></button>
-              </span>
-            </header>
-            {team.description && <p>{team.description}</p>}
-            <small>{strategyLabel(team.strategy)} · {t("portal.teams.openCount", { count: team.open_count })}{team.unassigned_count > 0 && <em className="nav-count">{t("portal.teams.unassignedCount", { count: team.unassigned_count })}</em>}</small>
-            <div className="team-members">
-              {team.members.length ? team.members.map((member) => <span key={member.id} className={`team-member ${member.availability}`}><i />{member.name}</span>)
-                : <span className="muted">{t("portal.teams.noMembers")}</span>}
-            </div>
-          </article>)}
+              </td>
+            </tr>)}</tbody>
+          </table>
         </div>
         : <EmptyState icon={<Users />} title={t("portal.teams.emptyTitle")} description={t("portal.teams.emptyDescription")} />}
     </div>

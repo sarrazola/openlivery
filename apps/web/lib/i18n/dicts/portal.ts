@@ -198,6 +198,7 @@ const en = {
     emptyDescription: "Create trays like Sales or Support, add your people, and conversations can be routed to them.",
     openCount: "{count} open",
     unassignedCount: "{count} waiting",
+    table: { name: "Team", strategy: "Assignment", members: "Members", open: "Open" },
     strategy: {
       round_robin: "Round robin",
       least_busy: "Least busy",
@@ -512,6 +513,7 @@ const es: typeof en = {
     emptyDescription: "Crea bandejas como Ventas o Soporte, agrega a tu gente, y las conversaciones podrán enrutarse a ellas.",
     openCount: "{count} abiertas",
     unassignedCount: "{count} en espera",
+    table: { name: "Equipo", strategy: "Asignación", members: "Miembros", open: "Abiertas" },
     strategy: {
       round_robin: "Turnos rotativos",
       least_busy: "Menos ocupado",
