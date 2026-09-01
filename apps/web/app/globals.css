@@ -778,11 +778,22 @@ textarea { line-height: 1.55; }
  * chip floats mid-sidebar. */
 .portal-nav .availability-toggle { margin: auto 0 0; }
 .portal-nav .availability-toggle + .lang-switcher { margin-top: 10px; }
-.member-picker { display: flex; flex-direction: column; gap: 8px; }
-.member-picker-search { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; color: #8991a7; border: 1px solid var(--line); border-radius: 8px; background: white; }
-.member-picker-search:focus-within { color: var(--brand, #4f6bed); border-color: #bcc7f0; }
-.member-picker-search input { flex: 1; min-width: 0; border: 0; outline: 0; font-size: 13px; color: var(--ink); background: transparent; }
-.member-picker .merge-candidates { max-height: 220px; }
+.member-picker { position: relative; display: flex; flex-direction: column; gap: 8px; }
+.member-picker-search { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; color: #8991a7; border: 1px solid var(--line); border-radius: 8px; background: white; }
+.member-picker-search:focus-within { color: var(--brand, #4f6bed); border-color: #a99fff; box-shadow: 0 0 0 3px #f0eeff; }
+.member-picker-search input, .member-picker-search input:focus, .member-picker-search input:focus-visible { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; box-shadow: none; font-size: 13px; color: var(--ink); background: transparent; }
+.member-picker-search input::-webkit-search-cancel-button { display: none; }
+.member-options { position: absolute; top: 44px; left: 0; right: 0; z-index: 6; max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 6px; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 14px 34px rgba(15, 23, 42, .14); }
+.member-options button { display: flex; align-items: center; gap: 10px; padding: 8px 10px; text-align: left; border: 0; border-radius: 7px; background: transparent; cursor: pointer; }
+.member-options button:hover { background: #f2f4f8; }
+.member-options button > span { min-width: 0; display: flex; flex-direction: column; }
+.member-options button strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.member-options button small { color: #7b8391; }
+.member-options .muted { margin: 4px 6px; font-size: 13px; }
+.member-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.member-chips .team-member { padding: 5px 7px 5px 11px; }
+.member-chips .team-member button { display: inline-flex; align-items: center; margin-left: 3px; padding: 2px; border: 0; border-radius: 999px; color: #8991a7; background: transparent; cursor: pointer; }
+.member-chips .team-member button:hover { color: var(--red, #d64545); background: #f2f4f8; }
 .availability-toggle i { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 999px; background: #22a06b; }
 .availability-toggle.away i { background: #c2c9d4; }
 .availability-toggle.away { color: #7b8391; }

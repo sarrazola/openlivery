@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { LoaderCircle, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
+import { LoaderCircle, Pencil, Plus, Search, Trash2, Users, X } from "lucide-react";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { api, ApiError, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
@@ -22,6 +22,7 @@ export function TeamsView({ slug }: { slug: string }) {
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [memberQuery, setMemberQuery] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const load = useCallback(async () => {
     const [teams, people] = await Promise.all([
@@ -88,9 +89,12 @@ export function TeamsView({ slug }: { slug: string }) {
     : t("portal.teams.channel.widget");
 
   const query = memberQuery.trim().toLowerCase();
-  const visibleMembers = query
-    ? members.filter((member) => member.name.toLowerCase().includes(query) || member.email.toLowerCase().includes(query))
-    : members;
+  const chosenMembers = members.filter((member) => selectedMembers.includes(member.id));
+  const memberOptions = members.filter(
+    (member) =>
+      !selectedMembers.includes(member.id) &&
+      (!query || member.name.toLowerCase().includes(query) || member.email.toLowerCase().includes(query))
+  );
 
   return <>
     <div className="portal-teams">
@@ -135,15 +139,33 @@ export function TeamsView({ slug }: { slug: string }) {
         <div className="member-picker">
           {members.length > 0 && <div className="member-picker-search">
             <Search size={14} />
-            <input value={memberQuery} onChange={(e) => setMemberQuery(e.target.value)} placeholder={t("portal.teams.form.searchMembers")} />
+            <input
+              type="search"
+              name="member-filter"
+              autoComplete="off"
+              spellCheck={false}
+              value={memberQuery}
+              onChange={(e) => setMemberQuery(e.target.value)}
+              onFocus={() => setPickerOpen(true)}
+              onBlur={() => setPickerOpen(false)}
+              placeholder={t("portal.teams.form.searchMembers")}
+            />
           </div>}
-          <div className="merge-candidates">
-            {visibleMembers.map((member) => <button type="button" key={member.id} className={selectedMembers.includes(member.id) ? "active" : ""} onClick={() => setSelectedMembers((list) => toggle(list, member.id))}>
+          {pickerOpen && <div className="member-options">
+            {/* onMouseDown so picking wins over the input's blur closing the panel */}
+            {memberOptions.map((member) => <button type="button" key={member.id} onMouseDown={(e) => { e.preventDefault(); setSelectedMembers((list) => [...list, member.id]); setMemberQuery(""); }}>
               <i className={`presence-dot ${member.availability}`} />
               <span><strong>{member.name}</strong><small>{member.email}</small></span>
             </button>)}
-            {!members.length && <p className="muted">{t("portal.teams.form.noPeople")}</p>}
-            {members.length > 0 && !visibleMembers.length && <p className="muted">{t("portal.teams.form.noMatches")}</p>}
+            {!memberOptions.length && <p className="muted">{query ? t("portal.teams.form.noMatches") : t("portal.teams.form.allAdded")}</p>}
+          </div>}
+          {!members.length && <p className="muted">{t("portal.teams.form.noPeople")}</p>}
+          <div className="member-chips">
+            {chosenMembers.map((member) => <span key={member.id} className={`team-member ${member.availability}`}>
+              <i />{member.name}
+              <button type="button" onClick={() => setSelectedMembers((list) => list.filter((id) => id !== member.id))} title={t("portal.teams.form.removeMember")} aria-label={t("portal.teams.form.removeMember")}><X size={12} /></button>
+            </span>)}
+            {members.length > 0 && !chosenMembers.length && <span className="muted">{t("portal.teams.noMembers")}</span>}
           </div>
         </div>
         <label>{t("portal.teams.form.channels")}</label>
