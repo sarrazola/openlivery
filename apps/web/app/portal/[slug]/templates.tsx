@@ -98,7 +98,7 @@ export function TemplatesView({ slug, supported }: { slug: string; supported: bo
       {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>
         : items.length ? <>
           <div className="portal-templates-filters">
-            <div className="inbox-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("portal.templates.searchPlaceholder")} /></div>
+            <div className="template-search"><Search size={15} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("portal.templates.searchPlaceholder")} /></div>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label={t("portal.templates.table.status")}>
               <option value="">{t("portal.templates.filterStatusAll")}</option>
               <option value="APPROVED">{t("portal.templates.status.approved")}</option>

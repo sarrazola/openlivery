@@ -629,8 +629,10 @@ textarea { line-height: 1.55; }
 .portal-templates-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .portal-templates-toolbar p { margin: 0; max-width: 64ch; color: #5b6774; }
 .portal-templates-filters { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
-.portal-templates-filters .inbox-search { flex: 1; min-width: 220px; }
-.portal-templates-filters select { min-height: 38px; padding: 0 10px; color: #50586a; border: 1px solid var(--line); border-radius: 8px; background: white; font-size: 13.5px; }
+.template-search { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 220px; max-width: 380px; height: 38px; padding: 0 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: white; }
+.template-search svg { flex: 0 0 auto; }
+.template-search input { flex: 1; min-width: 0; height: auto; min-height: 0; padding: 0; border: 0; background: transparent; font-size: 13.5px; outline: none; }
+.portal-templates-filters select { width: auto; height: 38px; min-height: 0; min-width: 150px; padding: 0 11px; color: #50586a; border: 1px solid var(--line); border-radius: 8px; background: white; font-size: 13.5px; cursor: pointer; }
 .portal-template-table td { height: auto; vertical-align: top; padding-top: 14px; padding-bottom: 14px; }
 .portal-template-name { min-width: 260px; max-width: 480px; }
 .portal-template-name strong { display: block; color: #202638; font-weight: 600; }
