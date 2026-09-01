@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { LoaderCircle, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { LoaderCircle, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { api, ApiError, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
@@ -21,6 +21,7 @@ export function TeamsView({ slug }: { slug: string }) {
   const [deleting, setDeleting] = useState<Team | null>(null);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+  const [memberQuery, setMemberQuery] = useState("");
 
   const load = useCallback(async () => {
     const [teams, people] = await Promise.all([
@@ -41,6 +42,7 @@ export function TeamsView({ slug }: { slug: string }) {
     setEditing(team);
     setSelectedMembers(team === "new" ? [] : team.members.map((member) => member.id));
     setSelectedChannels(team === "new" ? [] : team.channels);
+    setMemberQuery("");
   }
 
   const toggle = (list: string[], value: string) =>
@@ -85,6 +87,11 @@ export function TeamsView({ slug }: { slug: string }) {
     : value === "whatsapp_cloud" ? t("portal.teams.channel.whatsapp_cloud")
     : t("portal.teams.channel.widget");
 
+  const query = memberQuery.trim().toLowerCase();
+  const visibleMembers = query
+    ? members.filter((member) => member.name.toLowerCase().includes(query) || member.email.toLowerCase().includes(query))
+    : members;
+
   return <>
     <div className="portal-teams">
       <div className="portal-contacts-toolbar">
@@ -124,13 +131,20 @@ export function TeamsView({ slug }: { slug: string }) {
           </label>
         </div>
         <label>{t("portal.teams.form.description")}<input name="description" maxLength={500} defaultValue={editing !== "new" && editing ? editing.description : ""} placeholder={t("portal.teams.form.descriptionPlaceholder")} /><span className="field-help">{t("portal.teams.form.descriptionHelp")}</span></label>
-        <label>{t("portal.teams.form.members")}</label>
-        <div className="merge-candidates">
-          {members.map((member) => <button type="button" key={member.id} className={selectedMembers.includes(member.id) ? "active" : ""} onClick={() => setSelectedMembers((list) => toggle(list, member.id))}>
-            <i className={`presence-dot ${member.availability}`} />
-            <span><strong>{member.name}</strong><small>{member.email}</small></span>
-          </button>)}
-          {!members.length && <p className="muted">{t("portal.teams.form.noPeople")}</p>}
+        <label>{t("portal.teams.form.members")}{selectedMembers.length > 0 && <span className="muted"> · {t("portal.teams.form.selectedCount", { count: selectedMembers.length })}</span>}</label>
+        <div className="member-picker">
+          {members.length > 0 && <div className="member-picker-search">
+            <Search size={14} />
+            <input value={memberQuery} onChange={(e) => setMemberQuery(e.target.value)} placeholder={t("portal.teams.form.searchMembers")} />
+          </div>}
+          <div className="merge-candidates">
+            {visibleMembers.map((member) => <button type="button" key={member.id} className={selectedMembers.includes(member.id) ? "active" : ""} onClick={() => setSelectedMembers((list) => toggle(list, member.id))}>
+              <i className={`presence-dot ${member.availability}`} />
+              <span><strong>{member.name}</strong><small>{member.email}</small></span>
+            </button>)}
+            {!members.length && <p className="muted">{t("portal.teams.form.noPeople")}</p>}
+            {members.length > 0 && !visibleMembers.length && <p className="muted">{t("portal.teams.form.noMatches")}</p>}
+          </div>
         </div>
         <label>{t("portal.teams.form.channels")}</label>
         <div className="team-channel-options">

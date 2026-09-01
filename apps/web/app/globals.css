@@ -772,7 +772,17 @@ textarea { line-height: 1.55; }
 .mini-badge.team { color: #4a5568; border-color: #d7dce4; background: #eef1f5; }
 .inbox-team-filter { margin: 0 12px 10px; display: flex; align-items: center; gap: 7px; color: #687082; }
 .inbox-team-filter select { flex: 1; min-height: 34px; font-size: 13px; }
-.availability-toggle { margin: 0 0 6px; display: flex; align-items: center; gap: 9px; padding: 8px 12px; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: white; font-size: 13px; cursor: pointer; }
+.availability-toggle { display: flex; align-items: center; gap: 9px; padding: 8px 12px; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: white; font-size: 13px; cursor: pointer; }
+/* The chip anchors the bottom group: its auto margin absorbs the free
+ * space, so the language switcher's must not, or the space splits and the
+ * chip floats mid-sidebar. */
+.portal-nav .availability-toggle { margin: auto 0 0; }
+.portal-nav .availability-toggle + .lang-switcher { margin-top: 10px; }
+.member-picker { display: flex; flex-direction: column; gap: 8px; }
+.member-picker-search { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; color: #8991a7; border: 1px solid var(--line); border-radius: 8px; background: white; }
+.member-picker-search:focus-within { color: var(--brand, #4f6bed); border-color: #bcc7f0; }
+.member-picker-search input { flex: 1; min-width: 0; border: 0; outline: 0; font-size: 13px; color: var(--ink); background: transparent; }
+.member-picker .merge-candidates { max-height: 220px; }
 .availability-toggle i { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 999px; background: #22a06b; }
 .availability-toggle.away i { background: #c2c9d4; }
 .availability-toggle.away { color: #7b8391; }
@@ -796,6 +806,8 @@ textarea { line-height: 1.55; }
   .portal-login > section { min-height: 360px; }
   .portal-app { grid-template-columns: 76px minmax(0,1fr); }
   .portal-nav strong, .portal-nav nav a span, .portal-nav > button { font-size: 0; }
+  .portal-nav .availability-toggle { justify-content: center; padding: 8px 0; }
+  .portal-nav .availability-name { display: none; }
   .portal-inbox { grid-template-columns: 260px minmax(0,1fr); }
 }
 
