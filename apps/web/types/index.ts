@@ -143,6 +143,19 @@ export type ConversationInbox = {
   updated_at: string;
   last_inbound_at?: string | null;
 };
+export type PortalMember = { id: string; name: string; email: string; availability: "online" | "away" };
+export type TeamMember = { id: string; name: string; email: string; availability: "online" | "away" };
+export type Team = {
+  id: string;
+  name: string;
+  description: string;
+  strategy: "round_robin" | "least_busy";
+  channels: string[];
+  is_default: boolean;
+  members: TeamMember[];
+  open_count: number;
+  unassigned_count: number;
+};
 export type Conversation = {
   id: string;
   client_id: string;
@@ -156,6 +169,8 @@ export type Conversation = {
   waiting_since?: string | null;
   assignee_id?: string | null;
   assignee_name?: string | null;
+  team_id?: string | null;
+  team_name?: string | null;
   reply_window_until?: string | null;
   reply_window_open?: boolean;
   channel: string;
