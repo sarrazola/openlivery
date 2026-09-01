@@ -738,6 +738,19 @@ textarea { line-height: 1.55; }
 .merge-candidates button strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .merge-candidates button small { color: #7b8391; }
 
+/* Escalation rule editor: WHEN input, WHERE picker, per-row controls. */
+.escalation-rules { display: flex; flex-direction: column; gap: 8px; }
+.escalation-rule { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: #fafbfc; }
+.escalation-rule.inactive { opacity: .55; }
+.escalation-rule input[type="text"], .escalation-rule input:not([type]) { flex: 1 1 auto; min-width: 0; }
+.escalation-rule select { flex: 0 1 220px; min-width: 140px; }
+.escalation-when, .escalation-then { flex: 0 0 auto; color: #687082; font-size: 12px; font-weight: 700; text-transform: lowercase; }
+.escalation-actions { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; }
+.escalation-active { display: inline-flex; align-items: center; padding: 0 4px; }
+.escalation-active input { width: auto; min-height: 0; height: auto; }
+.escalation-toolbar { display: flex; align-items: center; gap: 10px; }
+.escalation-saved { color: #00866b; font-size: 13px; }
+
 /* Teams: the tray cards, member presence dots, and the routing surfaces. */
 .portal-teams { padding: 18px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: white; height: calc(100vh - 125px); }
 .team-grid { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }

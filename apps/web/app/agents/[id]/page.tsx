@@ -11,6 +11,7 @@ import { FormSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { ChatPlayground } from "@/components/chat-playground";
 import { AgentToolsTab } from "@/components/agent-tools/agent-tools-tab";
+import { EscalationRulesEditor } from "@/components/escalation-rules";
 import { Combobox } from "@/components/combobox";
 import { PROVIDERS, modelsFor, defaultModelFor, estimateTokens, modelContextWindow, AUDIO_MODELS, IMAGE_MODELS } from "@/lib/providers";
 import { TIMEZONES } from "@/lib/timezones";
@@ -177,6 +178,8 @@ export default function AgentDetailPage() {
       </div></section>
       <div className="sticky-save"><span>{t("agents.detail.stickyNote")}</span><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} {t("agents.detail.saveConfig")}</button></div>
     </form>}
+
+    {tab === "details" && <EscalationRulesEditor agentId={agent.id} clientId={agent.client_id} />}
 
     {tab === "knowledge" && <><div className="knowledge-layout">
       <form className="panel knowledge-context" onSubmit={saveContext}><div className="panel-head"><div><h3>{t("agents.detail.manualContextHeading")}</h3><p>{t("agents.detail.manualContextCopy")}</p></div></div><textarea name="manual_context" rows={12} defaultValue={agent.manual_context} placeholder={t("agents.detail.manualContextPlaceholder")} /><div className="knowledge-actions"><small>{t("agents.detail.charsSaved", { count: agent.manual_context.length.toLocaleString("es") })}</small><button className="button secondary" disabled={busy}><Save size={16} /> {t("agents.detail.saveContext")}</button></div></form>
