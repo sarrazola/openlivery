@@ -128,6 +128,18 @@ async def create_template(
     return normalize({**payload, "id": created.get("id"), "status": created.get("status") or "PENDING"})
 
 
+async def delete_template(access_token: str, waba_id: str, *, name: str, hsm_id: str | None = None) -> None:
+    """Remove a template from the WABA. Meta has no disable switch, so
+    deleting is the only way to retire one. With an hsm_id only that
+    language goes; by name alone Meta removes every language under it."""
+    params: dict[str, str] = {"name": name}
+    if hsm_id:
+        params["hsm_id"] = hsm_id
+    response = await _graph_request("DELETE", _graph_url(f"{waba_id}/message_templates"), access_token, params=params)
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Meta could not delete the template: {_graph_error(response)}")
+
+
 async def send_template(
     access_token: str, phone_number_id: str, to: str, *, name: str, language: str, variables: list[str]
 ) -> str | None:

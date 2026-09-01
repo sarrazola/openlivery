@@ -40,6 +40,7 @@ from ..security import create_portal_token, decode_portal_token, verify_password
 from ..services.contacts import display_name, merge_contacts, normalize_phone, rename_conversations
 from ..services.whatsapp_templates import (
     create_template,
+    delete_template,
     list_templates,
     render,
     send_template,
@@ -821,6 +822,20 @@ async def portal_create_template(
     )
 
 
+@router.delete("/{slug}/templates/{name}", status_code=status.HTTP_204_NO_CONTENT)
+async def portal_delete_template(
+    slug: str,
+    name: str,
+    hsm_id: str | None = Query(default=None, max_length=64),
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    """Remove a template from the business account. Meta offers no way to
+    disable one, so deletion is how a template is retired."""
+    token, waba_id = _template_credentials(_cloud_channel(db, client))
+    await delete_template(token, waba_id, name=validate_template_name(name), hsm_id=hsm_id)
+
+
 async def _send_template_to(db: Session, client: Client, to: str, payload: TemplateSend) -> tuple[str | None, str]:
     """Send the template and return (external id, text as the person reads it)."""
     channel = _cloud_channel(db, client)
@@ -860,7 +875,7 @@ async def portal_start_conversation(
     if not contact.phone:
         raise HTTPException(status_code=409, detail="This contact has no phone number")
     cloud, qr = _cloud_channel(db, client), _qr_channel(db, client)
-    channel_name = payload.channel or ("whatsapp_cloud" if cloud and cloud.is_enabled else "whatsapp" if qr else None)
+    channel_name = payload.channel or ("whatsapp_cloud" if cloud and cloud.is_enabled else "whatsapp" if qr and qr.is_enabled else None)
     if channel_name == "whatsapp_cloud" and cloud and cloud.is_enabled:
         if not payload.template:
             raise HTTPException(status_code=422, detail="Starting a conversation on the WhatsApp API takes an approved template")

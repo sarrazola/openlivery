@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Clock, LoaderCircle, Plus, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, LoaderCircle, Plus, Search, Trash2, XCircle } from "lucide-react";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { api, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
@@ -24,7 +24,22 @@ export function TemplatesView({ slug, supported }: { slug: string; supported: bo
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [body, setBody] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [removing, setRemoving] = useState<Template | null>(null);
   const count = variableCount(body);
+  const categories = useMemo(() => Array.from(new Set(items.map((i) => i.category))).sort(), [items]);
+  const shown = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return items.filter((item) => {
+      if (query && !`${item.name} ${item.body} ${item.language}`.toLowerCase().includes(query)) return false;
+      if (categoryFilter && item.category !== categoryFilter) return false;
+      if (statusFilter === "PENDING") return item.status !== "APPROVED" && item.status !== "REJECTED";
+      if (statusFilter) return item.status === statusFilter;
+      return true;
+    });
+  }, [items, search, statusFilter, categoryFilter]);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -53,6 +68,18 @@ export function TemplatesView({ slug, supported }: { slug: string; supported: bo
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
 
+  async function remove(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!removing) return;
+    setBusy(true); setError("");
+    try {
+      const query = removing.id ? `?hsm_id=${encodeURIComponent(removing.id)}` : "";
+      await api(`/portal/${slug}/templates/${encodeURIComponent(removing.name)}${query}`, { method: "DELETE" });
+      setRemoving(null);
+      await load();
+    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+  }
+
   const statusBadge = (status: string) => {
     if (status === "APPROVED") return <span className="mini-badge resolved"><CheckCircle2 size={11} /> {t("portal.templates.status.approved")}</span>;
     if (status === "REJECTED") return <span className="mini-badge rejected"><XCircle size={11} /> {t("portal.templates.status.rejected")}</span>;
@@ -67,16 +94,54 @@ export function TemplatesView({ slug, supported }: { slug: string; supported: bo
         <p>{t("portal.templates.intro")}</p>
         <button className="button primary small" onClick={() => setCreating(true)}><Plus size={15} /> {t("portal.templates.new")}</button>
       </div>
-      {error && !creating && <Alert>{error}</Alert>}
+      {error && !creating && !removing && <Alert>{error}</Alert>}
       {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>
-        : items.length ? <div className="portal-template-list">{items.map((item) => <article key={`${item.name}-${item.language}`}>
-          <header><strong>{item.name}</strong><small>{item.language} · {item.category.toLowerCase()}</small>{statusBadge(item.status)}</header>
-          <p>{item.body}</p>
-          {item.footer && <small className="muted">{item.footer}</small>}
-          {item.status === "REJECTED" && item.rejected_reason && <small className="danger">{item.rejected_reason}</small>}
-        </article>)}</div>
+        : items.length ? <>
+          <div className="portal-templates-filters">
+            <div className="inbox-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("portal.templates.searchPlaceholder")} /></div>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label={t("portal.templates.table.status")}>
+              <option value="">{t("portal.templates.filterStatusAll")}</option>
+              <option value="APPROVED">{t("portal.templates.status.approved")}</option>
+              <option value="PENDING">{t("portal.templates.status.pending")}</option>
+              <option value="REJECTED">{t("portal.templates.status.rejected")}</option>
+            </select>
+            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} aria-label={t("portal.templates.table.category")}>
+              <option value="">{t("portal.templates.filterCategoryAll")}</option>
+              {categories.map((category) => <option key={category} value={category}>{category.toLowerCase()}</option>)}
+            </select>
+          </div>
+          {shown.length ? <div className="table-shell">
+            <table className="data-table portal-template-table">
+              <thead><tr>
+                <th>{t("portal.templates.table.name")}</th>
+                <th>{t("portal.templates.table.language")}</th>
+                <th>{t("portal.templates.table.category")}</th>
+                <th>{t("portal.templates.table.status")}</th>
+                <th />
+              </tr></thead>
+              <tbody>{shown.map((item) => <tr key={`${item.name}-${item.language}`}>
+                <td className="portal-template-name">
+                  <strong>{item.name}</strong>
+                  <small>{item.body}</small>
+                  {item.status === "REJECTED" && item.rejected_reason && <small className="danger">{item.rejected_reason}</small>}
+                </td>
+                <td>{item.language}</td>
+                <td>{item.category.toLowerCase()}</td>
+                <td>{statusBadge(item.status)}</td>
+                <td className="portal-template-actions"><button className="icon-button danger" onClick={() => setRemoving(item)} title={t("portal.templates.delete")} aria-label={t("portal.templates.delete")}><Trash2 size={15} /></button></td>
+              </tr>)}</tbody>
+            </table>
+          </div> : <div className="no-conversations">{t("portal.templates.noMatches")}</div>}
+        </>
         : <EmptyState icon={<Clock />} title={t("portal.templates.emptyTitle")} description={t("portal.templates.emptyDescription")} />}
     </div>
+    <Modal open={Boolean(removing)} title={t("portal.templates.deleteTitle", { name: removing?.name ?? "" })} onClose={() => setRemoving(null)}>
+      <form className="modal-form" onSubmit={remove}>
+        <Alert type="error">{t("portal.templates.deleteWarning")}</Alert>
+        {error && <Alert>{error}</Alert>}
+        <div className="modal-actions"><button type="button" className="button" onClick={() => setRemoving(null)}>{t("portal.contacts.form.cancel")}</button><button className="button danger" disabled={busy}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Trash2 size={15} /> {t("portal.templates.deleteConfirm")}</>}</button></div>
+      </form>
+    </Modal>
     <Modal open={creating} title={t("portal.templates.newTitle")} description={t("portal.templates.newDescription")} onClose={() => setCreating(false)}>
       <form className="modal-form" onSubmit={submit}>
         <div className="form-grid">

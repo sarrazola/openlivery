@@ -36,6 +36,53 @@ def _portal_with_cloud_line(client: TestClient):
     return customer
 
 
+def test_a_template_is_deleted_through_the_business_account(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    customer = _portal_with_cloud_line(client)
+    slug = customer["portal_slug"]
+    deleted = AsyncMock(return_value=None)
+    monkeypatch.setattr(portal_router, "delete_template", deleted)
+
+    assert client.delete(f"/api/portal/{slug}/templates/saludo_inicial?hsm_id=1").status_code == 204
+    assert deleted.call_args.args == ("tok", "WABA1")
+    assert deleted.call_args.kwargs == {"name": "saludo_inicial", "hsm_id": "1"}
+    # Without an hsm_id the whole name goes, every language of it.
+    assert client.delete(f"/api/portal/{slug}/templates/promo").status_code == 204
+    assert deleted.call_args.kwargs == {"name": "promo", "hsm_id": None}
+    assert client.delete(f"/api/portal/{slug}/templates/Bad Name").status_code == 422
+
+
+def test_the_sender_chooses_the_line_when_the_business_has_both(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    customer = _portal_with_cloud_line(client)
+    slug = customer["portal_slug"]
+    qr_host = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "name": "QR Host", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+    ).json()
+    assert client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": qr_host["id"]}).status_code in (200, 201)
+    assert [c["channel"] for c in client.get(f"/api/portal/{slug}/channels").json()] == ["whatsapp_cloud", "whatsapp"]
+
+    sent = AsyncMock(return_value="msg.qr.1")
+    monkeypatch.setattr(portal_router, "send_channel_message", sent)
+    contact = client.post(f"/api/portal/{slug}/contacts", json={"name": "Rita", "phone": "573009998877"}).json()
+    start = f"/api/portal/{slug}/contacts/{contact['id']}/conversations"
+
+    # Choosing the QR line sends free text, no template involved.
+    assert client.post(start, json={"channel": "whatsapp"}).status_code == 422
+    opened = client.post(start, json={"channel": "whatsapp", "text": "Hola Rita"})
+    assert opened.status_code == 201, opened.text
+    conv = opened.json()
+    assert conv["channel"] == "whatsapp" and conv["mode"] == "human"
+    assert conv["messages"][-1]["content"] == "Hola Rita"
+    assert conv["messages"][-1]["external_message_id"] == "msg.qr.1"
+    sent.assert_awaited_once()
+    # Only one open conversation per line and contact, but the other line stays available.
+    assert client.post(start, json={"channel": "whatsapp", "text": "Hola?"}).status_code == 409
+    # Left unspecified, the cloud line is still the default and wants a template.
+    assert client.post(start, json={"text": "Hola"}).status_code == 422
+
+
 def test_templates_are_read_and_submitted_through_the_business_account(authenticated_client: TestClient, monkeypatch):
     client = authenticated_client
     customer = _portal_with_cloud_line(client)
