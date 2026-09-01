@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoaderCircle, Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { Alert, Modal } from "@/components/ui";
 import { api, ApiError, messageFrom } from "@/lib/api";
@@ -31,8 +31,21 @@ export function useCannedReplies({ slug, vars, onInsert }: { slug: string; vars:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const contentRef = useRef<HTMLTextAreaElement>(null);
+
   const load = useCallback(() => api<CannedResponse[]>(`/portal/${slug}/canned-responses`).then(setItems).catch(() => {}), [slug]);
   useEffect(() => { load(); }, [load]);
+
+  function insertVariable(token: string) {
+    const el = contentRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? start;
+    el.value = el.value.slice(0, start) + token + el.value.slice(end);
+    const caret = start + token.length;
+    el.focus();
+    el.setSelectionRange(caret, caret);
+  }
 
   const matches = useMemo(() => {
     if (query === null) return [];
@@ -116,10 +129,10 @@ export function useCannedReplies({ slug, vars, onInsert }: { slug: string; vars:
             <span className="field-help">{t("portal.canned.form.shortcutHelp")}</span>
           </label>
           <label>{t("portal.canned.form.content")}
-            <textarea name="content" rows={4} required maxLength={4000} defaultValue={editing === "new" ? "" : editing.content} placeholder={t("portal.canned.form.contentPlaceholder")} />
+            <textarea ref={contentRef} name="content" rows={4} required maxLength={4000} defaultValue={editing === "new" ? "" : editing.content} placeholder={t("portal.canned.form.contentPlaceholder")} />
             <span className="field-help">{t("portal.canned.form.variablesHint")}</span>
           </label>
-          <div className="canned-vars">{VARIABLES.map((v) => <code key={v}>{v}</code>)}</div>
+          <div className="canned-vars">{VARIABLES.map((v) => <button type="button" key={v} onClick={() => insertVariable(v)}>{v}</button>)}</div>
           {error && <Alert>{error}</Alert>}
           <div className="modal-actions">
             <button type="button" className="button" onClick={() => { setEditing(null); setError(""); }}>{t("portal.contacts.form.cancel")}</button>
