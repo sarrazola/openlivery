@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import Agency, Agent, Client, Contact, Conversation, Message, PortalUser, WhatsAppChannel, WhatsAppCloudChannel, now_utc
+from ..models import Agency, Agent, Client, Contact, Conversation, Message, PortalUser, Team, TeamMember, WhatsAppChannel, WhatsAppCloudChannel, now_utc
 from ..ratelimit import login_rate_limit, public_asset_rate_limit
 from ..schemas import (
     AgentSummary,
@@ -29,8 +29,12 @@ from ..schemas import (
     PortalMemberOut,
     PortalPublicOut,
     PortalSessionOut,
+    PortalAvailabilityUpdate,
     ReactionRequest,
     SendMessageRequest,
+    ConversationTeamUpdate,
+    TeamOut,
+    TeamUpsert,
 )
 from ..security import create_portal_token, decode_portal_token, verify_password
 from ..services.contacts import display_name, merge_contacts, normalize_phone, rename_conversations
@@ -45,7 +49,8 @@ from ..services.whatsapp_templates import (
 )
 from ..services.conversation_state import record_activity
 from ..security import decrypt_secret
-from ..services.conversation_state import ConversationClosed, assign, note_reply, set_mode, set_status
+from ..services.conversation_state import ConversationClosed, assign, note_reply, set_mode, set_status, set_team
+from ..services.routing import route_conversation
 from ..services.notifications import notify_assigned
 from ..services.attachments import attachment_response, conversation_attachment, logo_response
 from ..services.operator_media import store_operator_media_reply
@@ -111,7 +116,15 @@ def _portal_user(
         user = db.get(PortalUser, uuid.UUID(raw_user))
     except (ValueError, TypeError):
         return None
-    return user if user and user.is_active else None
+    if not user or not user.is_active:
+        return None
+    # A cheap heartbeat: the portal polls every few seconds, so last_seen_at
+    # tracks real presence with one write a minute at most.
+    now = now_utc()
+    if user.last_seen_at is None or (now - user.last_seen_at).total_seconds() > 60:
+        user.last_seen_at = now
+        db.commit()
+    return user
 
 
 def _sender_name(
@@ -148,6 +161,7 @@ def _present(conversation: Conversation) -> ConversationDetail:
     return ConversationDetail.model_validate(conversation).model_copy(
         update={
             "assignee_name": (assignee.name.strip() or assignee.email) if assignee else None,
+            "team_name": conversation.team.name if conversation.team else None,
             **_window_fields(conversation, _last_inbound_at(conversation)),
         }
     )
@@ -267,6 +281,147 @@ def portal_members(slug: str, client: Client = Depends(_portal_client), db: Sess
     return [{"id": row.id, "name": row.name.strip() or row.email, "email": row.email} for row in rows]
 
 
+_TEAM_CHANNELS = {"whatsapp", "whatsapp_cloud", "widget"}
+
+
+def _portal_team(db: Session, client: Client, team_id: uuid.UUID) -> Team:
+    team = db.scalar(select(Team).where(Team.id == team_id, Team.client_id == client.id))
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    return team
+
+
+def _team_out(db: Session, team: Team) -> dict:
+    open_count, unassigned_count = db.execute(
+        select(
+            func.count(Conversation.id),
+            func.count(Conversation.id).filter(Conversation.assignee_id.is_(None)),
+        ).where(Conversation.team_id == team.id, Conversation.status == "open")
+    ).one()
+    return {
+        "id": team.id,
+        "name": team.name,
+        "description": team.description,
+        "strategy": team.strategy,
+        "channels": list(team.channels or []),
+        "is_default": team.is_default,
+        "members": [
+            {
+                "id": member.portal_user.id,
+                "name": member.portal_user.name.strip() or member.portal_user.email,
+                "email": member.portal_user.email,
+                "availability": member.portal_user.availability,
+            }
+            for member in team.members
+            if member.portal_user
+        ],
+        "open_count": int(open_count),
+        "unassigned_count": int(unassigned_count),
+    }
+
+
+def _apply_team_payload(db: Session, client: Client, team: Team, payload: TeamUpsert) -> None:
+    if set(payload.channels) - _TEAM_CHANNELS:
+        raise HTTPException(status_code=422, detail="Unknown channel for a team")
+    duplicate = db.scalar(
+        select(Team.id).where(Team.client_id == client.id, Team.name == payload.name.strip(), Team.id != team.id)
+    )
+    if duplicate:
+        raise HTTPException(status_code=409, detail="A team with this name already exists")
+    team.name = payload.name.strip()
+    team.description = payload.description.strip()
+    team.strategy = payload.strategy
+    team.channels = sorted(set(payload.channels))
+    if payload.is_default and not team.is_default:
+        for other in db.scalars(select(Team).where(Team.client_id == client.id, Team.is_default.is_(True))):
+            other.is_default = False
+    team.is_default = payload.is_default
+    team.updated_at = now_utc()
+
+    wanted = set(payload.member_ids)
+    if wanted:
+        users = db.scalars(
+            select(PortalUser).where(PortalUser.client_id == client.id, PortalUser.id.in_(wanted))
+        ).all()
+        if len(users) != len(wanted):
+            raise HTTPException(status_code=422, detail="Every member must be a portal user of this client")
+    existing = {member.portal_user_id: member for member in team.members}
+    for portal_user_id, member in existing.items():
+        if portal_user_id not in wanted:
+            db.delete(member)
+    for portal_user_id in wanted - set(existing):
+        db.add(TeamMember(team_id=team.id, portal_user_id=portal_user_id))
+
+
+@router.get("/{slug}/teams", response_model=list[TeamOut])
+def portal_teams(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+    teams = db.scalars(select(Team).where(Team.client_id == client.id).order_by(Team.name)).all()
+    return [_team_out(db, team) for team in teams]
+
+
+@router.post("/{slug}/teams", response_model=TeamOut, status_code=status.HTTP_201_CREATED)
+def portal_create_team(
+    slug: str, payload: TeamUpsert, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+):
+    # Checked before the row exists so a duplicate is a clean 409, not a
+    # constraint blowup at flush time.
+    if db.scalar(select(Team.id).where(Team.client_id == client.id, Team.name == payload.name.strip())):
+        raise HTTPException(status_code=409, detail="A team with this name already exists")
+    team = Team(client_id=client.id, name=payload.name.strip())
+    db.add(team)
+    db.flush()
+    _apply_team_payload(db, client, team, payload)
+    db.commit()
+    db.refresh(team)
+    return _team_out(db, team)
+
+
+@router.patch("/{slug}/teams/{team_id}", response_model=TeamOut)
+def portal_update_team(
+    slug: str,
+    team_id: uuid.UUID,
+    payload: TeamUpsert,
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    team = _portal_team(db, client, team_id)
+    _apply_team_payload(db, client, team, payload)
+    db.commit()
+    db.refresh(team)
+    return _team_out(db, team)
+
+
+@router.delete("/{slug}/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
+def portal_delete_team(
+    slug: str, team_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+):
+    # Conversations keep living; the FK sets their tray to NULL.
+    team = _portal_team(db, client, team_id)
+    db.delete(team)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch("/{slug}/me", response_model=PortalMemberOut)
+def portal_update_availability(
+    slug: str,
+    payload: PortalAvailabilityUpdate,
+    client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
+    db: Session = Depends(get_db),
+):
+    if not user or user.client_id != client.id:
+        raise HTTPException(status_code=401, detail="Sign in with your own user to change availability")
+    user.availability = payload.availability
+    db.commit()
+    return {
+        "id": user.id,
+        "name": user.name.strip() or user.email,
+        "email": user.email,
+        "availability": user.availability,
+    }
+
+
 @router.get("/{slug}/agents", response_model=list[AgentSummary])
 def portal_agents(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
     return db.scalars(select(Agent).where(Agent.client_id == client.id).order_by(Agent.name)).all()
@@ -278,6 +433,7 @@ def portal_conversations(
     status: str | None = None,
     mode: str | None = None,
     assignee: str | None = None,
+    team: uuid.UUID | None = None,
     search: str | None = None,
     unread: bool = False,
     limit: int = Query(default=100, ge=1, le=200),
@@ -325,13 +481,16 @@ def portal_conversations(
         .subquery()
     )
     query = (
-        select(Conversation, last.c.content, unread_count.label("unread_count"), PortalUser.name.label("assignee_name"), PortalUser.email.label("assignee_email"), last_inbound.c.at.label("last_inbound_at"))
+        select(Conversation, last.c.content, unread_count.label("unread_count"), PortalUser.name.label("assignee_name"), PortalUser.email.label("assignee_email"), last_inbound.c.at.label("last_inbound_at"), Team.name.label("team_name"))
         .outerjoin(last, last.c.cid == Conversation.id)
         .outerjoin(unread_counts, unread_counts.c.cid == Conversation.id)
         .outerjoin(PortalUser, PortalUser.id == Conversation.assignee_id)
         .outerjoin(last_inbound, last_inbound.c.cid == Conversation.id)
+        .outerjoin(Team, Team.id == Conversation.team_id)
         .where(Conversation.client_id == client.id)
     )
+    if team is not None:
+        query = query.where(Conversation.team_id == team)
     if assignee == "me" and user:
         query = query.where(Conversation.assignee_id == user.id)
     elif assignee == "none":
@@ -362,10 +521,11 @@ def portal_conversations(
                 "unread_count": int(row_unread_count),
                 "assignee_name": ((assignee_name or "").strip() or assignee_email) if conv.assignee_id else None,
                 "last_inbound_at": last_inbound_at,
+                "team_name": team_name,
                 **_window_fields(conv, last_inbound_at),
             }
         )
-        for conv, content, row_unread_count, assignee_name, assignee_email, last_inbound_at in rows
+        for conv, content, row_unread_count, assignee_name, assignee_email, last_inbound_at, team_name in rows
     ]
 
 
@@ -858,6 +1018,30 @@ def portal_mode(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if changed:
         db.commit()
+    return _present(_detail(db, client, conversation_id))
+
+
+@router.patch("/{slug}/conversations/{conversation_id}/team", response_model=ConversationDetail)
+async def portal_set_conversation_team(
+    slug: str,
+    conversation_id: uuid.UUID,
+    payload: ConversationTeamUpdate,
+    client: Client = Depends(_portal_client),
+    sender_name: str = Depends(_sender_name),
+    db: Session = Depends(get_db),
+):
+    conversation = _detail(db, client, conversation_id)
+    team = _portal_team(db, client, payload.team_id) if payload.team_id else None
+    try:
+        changed = set_team(db, conversation, team, actor=sender_name)
+    except ConversationClosed as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    routed = None
+    if changed and team and conversation.mode == "human" and conversation.assignee_id is None:
+        routed = route_conversation(db, conversation, actor=sender_name)
+    db.commit()
+    if routed:
+        await notify_assigned(db, conversation, routed, sender_name)
     return _present(_detail(db, client, conversation_id))
 
 

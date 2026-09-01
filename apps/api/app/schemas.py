@@ -310,6 +310,8 @@ class ConversationOut(ORMModel):
     waiting_since: datetime | None = None
     assignee_id: uuid.UUID | None = None
     assignee_name: str | None = None
+    team_id: uuid.UUID | None = None
+    team_name: str | None = None
     # WhatsApp Cloud API: free-form replies are allowed until this moment
     # (24 h after the contact's last message). None on other channels or
     # when the contact never wrote; ``reply_window_open`` says what applies.
@@ -406,6 +408,43 @@ class PortalMemberOut(BaseModel):
     id: uuid.UUID
     name: str
     email: str
+    availability: str = "online"
+
+
+class TeamMemberOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: str
+    availability: str = "online"
+
+
+class TeamOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str = ""
+    strategy: str = "round_robin"
+    channels: list[str] = []
+    is_default: bool = False
+    members: list[TeamMemberOut] = []
+    open_count: int = 0
+    unassigned_count: int = 0
+
+
+class TeamUpsert(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=500)
+    strategy: str = Field(default="round_robin", pattern=r"^(round_robin|least_busy)$")
+    channels: list[str] = []
+    is_default: bool = False
+    member_ids: list[uuid.UUID] = []
+
+
+class ConversationTeamUpdate(BaseModel):
+    team_id: uuid.UUID | None = None
+
+
+class PortalAvailabilityUpdate(BaseModel):
+    availability: str = Field(pattern=r"^(online|away)$")
 
 
 class PortalChannelOut(BaseModel):
