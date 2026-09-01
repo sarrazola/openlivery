@@ -837,6 +837,11 @@ textarea { line-height: 1.55; }
 .canned-shortcut-field span { display: grid; place-items: center; height: 43px; padding: 0 10px; color: #687082; border: 1px solid #cfd6df; border-right: 0; border-radius: 7px 0 0 7px; background: #f7f8fa; font-weight: 600; }
 .canned-shortcut-field input { border-radius: 0 7px 7px 0; }
 .portal-reports { display: flex; flex-direction: column; gap: 16px; padding: 4px 0; }
+.report-filters { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.report-custom-range { display: flex; align-items: center; gap: 8px; color: #5b6774; font-size: 13px; }
+.report-custom-range input { width: auto; height: 36px; min-height: 0; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: white; font-size: 13px; color: #50586a; }
+.report-selects { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.report-selects select { width: auto; height: 36px; min-height: 0; min-width: 140px; padding: 0 11px; color: #50586a; border: 1px solid var(--line); border-radius: 8px; background: white; font-size: 13px; cursor: pointer; }
 .report-ranges { display: flex; gap: 6px; }
 .report-ranges button { padding: 7px 14px; color: #5b6774; border: 1px solid var(--line); border-radius: 8px; background: white; font-size: 13px; font-weight: 600; cursor: pointer; }
 .report-ranges button.active { color: white; border-color: var(--portal-color, #635bff); background: var(--portal-color, #635bff); }

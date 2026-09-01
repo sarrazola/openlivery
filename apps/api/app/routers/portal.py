@@ -916,17 +916,28 @@ def portal_report(
     from_: date = Query(alias="from"),
     to: date = Query(),
     tz_offset: int = Query(default=0, ge=-840, le=840),
+    channel: str | None = Query(default=None, max_length=40),
+    assignee_id: uuid.UUID | None = Query(default=None),
+    team_id: uuid.UUID | None = Query(default=None),
     client: Client = Depends(_portal_client),
     db: Session = Depends(get_db),
 ):
     """Basic activity metrics over a local-day range. ``tz_offset`` is the
     viewer's UTC offset in minutes as JavaScript reports it (positive west),
-    so days group the way the operator's clock reads them."""
+    so days group the way the operator's clock reads them. ``channel``,
+    ``assignee_id`` and ``team_id`` narrow every conversation-based number."""
     if to < from_ or (to - from_).days > 366:
         raise HTTPException(status_code=422, detail="Pick a range of at most a year, oldest day first")
     shift = timedelta(minutes=tz_offset)
     start = datetime.combine(from_, time.min, tzinfo=timezone.utc) + shift
     end = datetime.combine(to, time.min, tzinfo=timezone.utc) + shift + timedelta(days=1)
+    conv_filters = [Conversation.client_id == client.id]
+    if channel:
+        conv_filters.append(Conversation.channel == channel)
+    if assignee_id:
+        conv_filters.append(Conversation.assignee_id == assignee_id)
+    if team_id:
+        conv_filters.append(Conversation.team_id == team_id)
 
     def local_day(column):
         return func.date(column - literal(shift, Interval))
@@ -934,13 +945,13 @@ def portal_report(
     started_day = local_day(Conversation.created_at)
     started_rows = db.execute(
         select(started_day, func.count())
-        .where(Conversation.client_id == client.id, Conversation.created_at >= start, Conversation.created_at < end)
+        .where(*conv_filters, Conversation.created_at >= start, Conversation.created_at < end)
         .group_by(started_day)
     ).all()
     resolved_day = local_day(Conversation.resolved_at)
     resolved_rows = db.execute(
         select(resolved_day, func.count())
-        .where(Conversation.client_id == client.id, Conversation.resolved_at >= start, Conversation.resolved_at < end)
+        .where(*conv_filters, Conversation.resolved_at >= start, Conversation.resolved_at < end)
         .group_by(resolved_day)
     ).all()
     days = {from_ + timedelta(days=i): ReportDay(date=from_ + timedelta(days=i)) for i in range((to - from_).days + 1)}
@@ -953,7 +964,7 @@ def portal_report(
 
     channel_rows = db.execute(
         select(Conversation.channel, func.count())
-        .where(Conversation.client_id == client.id, Conversation.created_at >= start, Conversation.created_at < end)
+        .where(*conv_filters, Conversation.created_at >= start, Conversation.created_at < end)
         .group_by(Conversation.channel)
         .order_by(func.count().desc())
     ).all()
@@ -968,7 +979,7 @@ def portal_report(
         .select_from(Message)
         .join(Conversation, Message.conversation_id == Conversation.id)
         .where(
-            Conversation.client_id == client.id,
+            *conv_filters,
             Message.kind == "message",
             Message.created_at >= start,
             Message.created_at < end,
@@ -977,20 +988,18 @@ def portal_report(
 
     active_contacts = db.scalar(
         select(func.count(func.distinct(Conversation.contact_id))).where(
-            Conversation.client_id == client.id,
+            *conv_filters,
             Conversation.contact_id.is_not(None),
             Conversation.created_at >= start,
             Conversation.created_at < end,
         )
     )
     open_now = db.scalar(
-        select(func.count()).select_from(Conversation).where(
-            Conversation.client_id == client.id, Conversation.status != "resolved"
-        )
+        select(func.count()).select_from(Conversation).where(*conv_filters, Conversation.status != "resolved")
     )
     avg_first_reply = db.scalar(
         select(func.avg(func.extract("epoch", Conversation.first_reply_at - Conversation.created_at))).where(
-            Conversation.client_id == client.id,
+            *conv_filters,
             Conversation.first_reply_at.is_not(None),
             Conversation.created_at >= start,
             Conversation.created_at < end,
@@ -998,7 +1007,7 @@ def portal_report(
     )
     avg_resolution = db.scalar(
         select(func.avg(func.extract("epoch", Conversation.resolved_at - Conversation.created_at))).where(
-            Conversation.client_id == client.id,
+            *conv_filters,
             Conversation.resolved_at >= start,
             Conversation.resolved_at < end,
         )
@@ -1012,7 +1021,7 @@ def portal_report(
             select(Message.portal_user_id, func.count())
             .join(Conversation, Message.conversation_id == Conversation.id)
             .where(
-                Conversation.client_id == client.id,
+                *conv_filters,
                 Message.kind == "message",
                 human_reply,
                 Message.portal_user_id.is_not(None),
@@ -1026,7 +1035,7 @@ def portal_report(
         db.execute(
             select(Conversation.assignee_id, func.count())
             .where(
-                Conversation.client_id == client.id,
+                *conv_filters,
                 Conversation.assignee_id.is_not(None),
                 Conversation.assigned_at >= start,
                 Conversation.assigned_at < end,
@@ -1038,7 +1047,7 @@ def portal_report(
         db.execute(
             select(Conversation.assignee_id, func.count())
             .where(
-                Conversation.client_id == client.id,
+                *conv_filters,
                 Conversation.assignee_id.is_not(None),
                 Conversation.status != "resolved",
             )
@@ -1055,6 +1064,7 @@ def portal_report(
                 open_now=open_by_user.get(user_id, 0),
             )
             for user_id, name, availability in users
+            if not assignee_id or user_id == assignee_id
         ),
         key=lambda row: (-row.replies, -row.assigned, row.name),
     )

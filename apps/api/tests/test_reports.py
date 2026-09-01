@@ -65,3 +65,13 @@ def test_reports_aggregate_the_range(authenticated_client: TestClient, monkeypat
     assert empty["started"] == 0 and len(empty["by_day"]) == 7 and empty["by_channel"] == []
 
     assert client.get(f"/api/portal/{slug}/reports?from={today.isoformat()}&to={frm}").status_code == 422
+
+    # The filters narrow every number: a foreign channel empties the report,
+    # the assignee filter keeps only that person's activity and row.
+    base = f"/api/portal/{slug}/reports?from={frm}&to={today.isoformat()}"
+    other_channel = client.get(f"{base}&channel=widget").json()
+    assert other_channel["started"] == 0 and other_channel["by_channel"] == []
+    ana_id = client.get(f"/api/portal/{slug}/members").json()[0]["id"]
+    mine = client.get(f"{base}&assignee_id={ana_id}").json()
+    assert mine["started"] == 1 and mine["human_replies"] == 1
+    assert len(mine["by_agent"]) == 1 and mine["by_agent"][0]["name"] == "Ana"
