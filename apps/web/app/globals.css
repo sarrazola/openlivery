@@ -775,7 +775,6 @@ textarea { line-height: 1.55; }
 .escalation-when, .escalation-then { flex: 0 0 auto; color: #687082; font-size: 12px; font-weight: 700; text-transform: lowercase; }
 .escalation-actions { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; }
 .escalation-active { display: inline-flex; align-items: center; padding: 0 4px; }
-.escalation-active input { width: auto; min-height: 0; height: auto; }
 .escalation-toolbar { display: flex; align-items: center; gap: 10px; }
 .escalation-saved { color: #00866b; font-size: 13px; }
 
@@ -970,11 +969,7 @@ textarea { line-height: 1.55; }
 }
 .switch-row input[type="checkbox"] {
   width: 42px;
-  min-width: 42px;
-  max-width: 42px;
   height: 24px;
-  min-height: 24px;
-  max-height: 24px;
   padding: 0;
   margin: 0;
   display: block;
@@ -1364,7 +1359,6 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .params-head strong { color: #39415b; font-size: 12px; }
 .param-row { display: grid; grid-template-columns: 1fr 108px 1.5fr auto auto; gap: 8px; align-items: center; }
 .param-required { flex-direction: row !important; align-items: center; gap: 5px !important; white-space: nowrap; font-weight: 500 !important; font-size: 12px !important; }
-.param-required input { width: auto; }
 .field-label { color: #39415b; font-size: 12px; font-weight: 700; }
 .stored-headers { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 13px; border: 1px dashed #d8dde5; border-radius: 10px; }
 .stored-headers small { color: var(--muted); }
