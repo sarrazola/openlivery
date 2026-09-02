@@ -521,7 +521,14 @@ def portal_conversations(
                 func.lower(func.coalesce(last.c.content, "")).like(term),
             )
         )
-    rows = db.execute(query.order_by(Conversation.updated_at.desc()).limit(limit).offset(offset)).all()
+    # A conversation moves up only when the contact writes. Reading it,
+    # replying, assigning or resolving all touch updated_at, and none of them
+    # should reshuffle the list under the person working it.
+    rows = db.execute(
+        query.order_by(func.coalesce(last_inbound.c.at, Conversation.created_at).desc(), Conversation.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    ).all()
     return [
         ConversationOut.model_validate(conv).model_copy(
             update={

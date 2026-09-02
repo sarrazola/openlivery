@@ -33,6 +33,14 @@ Docker stack; run `alembic upgrade head` on local setups).
 - Team fan-out for notifications: a conversation that needs a person rings
   the members of its tray instead of every portal device.
 
+### Fixed
+
+- Inbox lists (portal and agency) order by the contact's last message instead
+  of the row's last write, so opening, replying to, assigning or resolving a
+  conversation no longer jumps it to the top.
+- Switching between Open and Resolved in the portal no longer flashes the
+  previous inbox's rows while the new list loads.
+
 ## [0.4.0] - 2026-08-31
 
 Upgrading: this release adds database migrations (applied automatically by the
