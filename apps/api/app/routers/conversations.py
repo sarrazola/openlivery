@@ -67,7 +67,17 @@ def list_conversations(
         query = query.where(Conversation.agent_id == agent_id)
     if client_id:
         query = query.where(Conversation.client_id == client_id)
-    return db.scalars(query.order_by(Conversation.updated_at.desc())).all()
+    # Same rule as the inbox: only a new visitor message moves a row up.
+    last_inbound = (
+        select(Message.conversation_id.label("cid"), func.max(Message.created_at).label("at"))
+        .where(Message.kind == "message", Message.sender_type == "visitor")
+        .group_by(Message.conversation_id)
+        .subquery()
+    )
+    query = query.outerjoin(last_inbound, last_inbound.c.cid == Conversation.id).order_by(
+        func.coalesce(last_inbound.c.at, Conversation.created_at).desc(), Conversation.created_at.desc()
+    )
+    return db.scalars(query).all()
 
 
 @router.get("/inbox", response_model=list[ConversationInboxOut])
@@ -138,7 +148,12 @@ def inbox(
                 func.lower(func.coalesce(last.c.content, "")).like(term),
             )
         )
-    rows = db.execute(query.order_by(Conversation.updated_at.desc()).limit(limit).offset(offset)).all()
+    # Same rule as the portal: only a new visitor message moves a row up.
+    rows = db.execute(
+        query.order_by(func.coalesce(last_inbound.c.at, Conversation.created_at).desc(), Conversation.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    ).all()
     return [
         {
             "id": conv.id,
