@@ -932,3 +932,11 @@ def test_whatsapp_channel_inbound_ai_takeover_and_session(authenticated_client: 
     assert reply.json()["messages"][-1]["external_message_id"] == "wa-out-human-1"
     sender.assert_awaited_once()
     assert client.patch(f"/api/conversations/{conversation_id}/mode", json={"mode": "ai"}).json()["mode"] == "ai"
+
+
+def test_available_models_lists_the_catalog(authenticated_client):
+    body = authenticated_client.get("/api/catalog/available").json()
+    assert "gpt-5.6-luna" in body["chat"]["openai"]
+    assert "claude-sonnet-5" in body["chat"]["anthropic"]
+    assert "whisper-1" in body["audio"]
+    assert "gpt-5.6-luna" in body["image"]

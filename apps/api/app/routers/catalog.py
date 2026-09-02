@@ -5,10 +5,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..deps import get_current_user
 from ..models import User
 from ..schemas import ModelCatalogOut
+from ..services import model_catalog
 from ..services.model_catalog import get_model, list_models
 
 
 router = APIRouter(prefix="/catalog", tags=["Model catalog"])
+
+
+@router.get("/available")
+def available_models(user: User = Depends(get_current_user)):
+    """Model ids this workspace can pick, per provider and capability. A
+    module call on purpose, so a deployment can narrow the answer."""
+    return model_catalog.available_models()
 
 
 @router.get("/models", response_model=list[ModelCatalogOut])

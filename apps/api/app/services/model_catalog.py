@@ -123,3 +123,23 @@ def get_model(model_id: str) -> ModelInfo | None:
 def estimate_tokens(text: str) -> int:
     """Quick token estimate (~4 characters per token)."""
     return (len(text) + CHARS_PER_TOKEN - 1) // CHARS_PER_TOKEN
+
+
+# Capability model lists the app offers (mirrored by the frontend as its
+# loading fallback in apps/web/lib/providers.ts). OpenAI only: audio and image
+# understanding run through the workspace's OpenAI credentials.
+AUDIO_MODELS = ("gpt-transcribe", "whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "gpt-4o-transcribe-diarize")
+IMAGE_MODELS = ("gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.5", "gpt-5.4", "gpt-4.1", "gpt-4.1-mini")
+
+
+def available_models() -> dict:
+    """Model ids a workspace can pick, per provider and capability.
+
+    A stock install offers the whole catalog. A deployment may narrow this
+    (for example to the models its managed credentials can actually serve),
+    which is why the frontend asks instead of trusting its static lists.
+    """
+    chat: dict[str, list[str]] = {}
+    for model in _MODELS:
+        chat.setdefault(model.provider, []).append(model.id)
+    return {"chat": chat, "image": list(IMAGE_MODELS), "audio": list(AUDIO_MODELS)}
