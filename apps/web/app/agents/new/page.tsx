@@ -9,6 +9,7 @@ import { useToast } from "@/components/toast";
 import { api, messageFrom } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { PROVIDERS, modelsFor, modelOptionsFor, defaultModelFor, estimateTokens } from "@/lib/providers";
+import { narrowModels, useAvailableModels } from "@/lib/use-available-models";
 import { Combobox } from "@/components/combobox";
 import { TIMEZONES } from "@/lib/timezones";
 import { agentTemplates, localize } from "@/lib/agent-templates";
@@ -22,6 +23,7 @@ const STEP_KEYS = ["agents.wizard.s1", "agents.wizard.s2", "agents.wizard.s3", "
 
 export default function NewAgentPage() {
   const { t, lang } = useLanguage();
+  const available = useAvailableModels();
   const toast = useToast();
   const router = useRouter();
   const [step, setStep] = useState(0);
@@ -137,8 +139,8 @@ export default function NewAgentPage() {
         <label>{t("agents.new.providerLabel")}<select value={provider} onChange={(e) => { setProvider(e.target.value); setModel(defaultModelFor(e.target.value)); }}>{PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
         <div className="field-block">
           <span className="field-label">{t("agents.new.modelLabel")}</span>
-          {(["fast", "balanced", "capable"] as const).map((group) => { const options = modelOptionsFor(provider).filter((item) => item.group === group); if (!options.length) return null; return <div className="model-group" key={group}><div className="model-group-head"><span className="field-label">{t(`agents.wizard.modelGroup${group === "fast" ? "Fast" : group === "balanced" ? "Balanced" : "Capable"}`)}</span><small>{t(`agents.wizard.modelNote${group === "fast" ? "Fast" : group === "balanced" ? "Balanced" : "Capable"}`)}</small></div><div className="model-recommendations">{options.map((option) => <button type="button" key={option.id} className={option.id === model ? "active" : ""} onClick={() => setModel(option.id)}><span><strong>{option.label}</strong>{option.recommended && <em>{t("agents.wizard.modelBadgeRecommended")}</em>}</span><code>{option.id}</code></button>)}</div></div>; })}
-          <details className="advanced-options wizard-advanced"><summary>{t("agents.wizard.modelShowAll")}</summary><Combobox value={model} onChange={setModel} options={modelsFor(provider)} placeholder={t("agents.new.modelPlaceholder")} allowCustom /></details>
+          {(["fast", "balanced", "capable"] as const).map((group) => { const allowed = new Set(narrowModels(modelsFor(provider), available?.chat?.[provider])); const options = modelOptionsFor(provider).filter((item) => item.group === group && allowed.has(item.id)); if (!options.length) return null; return <div className="model-group" key={group}><div className="model-group-head"><span className="field-label">{t(`agents.wizard.modelGroup${group === "fast" ? "Fast" : group === "balanced" ? "Balanced" : "Capable"}`)}</span><small>{t(`agents.wizard.modelNote${group === "fast" ? "Fast" : group === "balanced" ? "Balanced" : "Capable"}`)}</small></div><div className="model-recommendations">{options.map((option) => <button type="button" key={option.id} className={option.id === model ? "active" : ""} onClick={() => setModel(option.id)}><span><strong>{option.label}</strong>{option.recommended && <em>{t("agents.wizard.modelBadgeRecommended")}</em>}</span><code>{option.id}</code></button>)}</div></div>; })}
+          <details className="advanced-options wizard-advanced"><summary>{t("agents.wizard.modelShowAll")}</summary><Combobox value={model} onChange={setModel} options={narrowModels(modelsFor(provider), available?.chat?.[provider])} placeholder={t("agents.new.modelPlaceholder")} allowCustom /></details>
           <span className="field-help">{t("agents.wizard.modelHelp")}</span>
         </div>
         <details className="advanced-options wizard-advanced"><summary>{t("agents.detail.advancedHeading")}</summary><p className="field-help">{t("agents.detail.advancedCopy")}</p>

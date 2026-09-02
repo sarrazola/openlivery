@@ -45,7 +45,10 @@ def test_reports_aggregate_the_range(authenticated_client: TestClient, monkeypat
         row.first_reply_at = row.created_at + timedelta(seconds=60)
         db.commit()
 
-    today = date.today()
+    # UTC, not the machine's local date: the default report range groups by
+    # UTC days (tz_offset 0) and the rows above were stamped in UTC, so a
+    # local evening west of Greenwich must not push them out of the range.
+    today = now_utc().date()
     frm = (today - timedelta(days=6)).isoformat()
     report = client.get(f"/api/portal/{slug}/reports?from={frm}&to={today.isoformat()}").json()
 

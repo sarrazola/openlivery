@@ -14,6 +14,7 @@ import { AgentToolsTab } from "@/components/agent-tools/agent-tools-tab";
 import { EscalationRulesEditor } from "@/components/escalation-rules";
 import { Combobox } from "@/components/combobox";
 import { PROVIDERS, modelsFor, defaultModelFor, estimateTokens, modelContextWindow, AUDIO_MODELS, IMAGE_MODELS } from "@/lib/providers";
+import { narrowModels, useAvailableModels } from "@/lib/use-available-models";
 import { TIMEZONES } from "@/lib/timezones";
 import type { Agent, AgentTool, Client, KnowledgeDocument, QAPair } from "@/types";
 
@@ -21,6 +22,7 @@ type Tab = "details" | "knowledge" | "tools" | "widget" | "playground";
 
 export default function AgentDetailPage() {
   const t = useT();
+  const available = useAvailableModels();
   const toast = useToast();
   const { id } = useParams<{ id: string }>();
   const [agent, setAgent] = useState<Agent | null>(null);
@@ -157,7 +159,7 @@ export default function AgentDetailPage() {
       </div></section>
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.aiModelHeading")}</h3><p>{t("agents.detail.aiModelCopy")}</p></div><div className="settings-fields">
         <label>{t("agents.detail.timezoneLabel")}<Combobox value={timezone} onChange={setTimezone} options={TIMEZONES} placeholder={t("agents.detail.timezoneLabel")} /></label>
-        <div className="form-grid"><label>{t("agents.detail.providerLabel")}<select value={provider} onChange={(e) => { setProvider(e.target.value); if (!modelsFor(e.target.value).includes(model)) setModel(defaultModelFor(e.target.value)); }}>{PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label><label>{t("agents.detail.modelLabel")}<Combobox value={model} onChange={setModel} options={modelsFor(provider)} placeholder={t("agents.detail.modelPlaceholder")} allowCustom /></label></div>
+        <div className="form-grid"><label>{t("agents.detail.providerLabel")}<select value={provider} onChange={(e) => { setProvider(e.target.value); if (!modelsFor(e.target.value).includes(model)) setModel(defaultModelFor(e.target.value)); }}>{PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label><label>{t("agents.detail.modelLabel")}<Combobox value={model} onChange={setModel} options={narrowModels(modelsFor(provider), available?.chat?.[provider])} placeholder={t("agents.detail.modelPlaceholder")} allowCustom /></label></div>
         <div className="context-bar"><div style={{ width: `${contextPct}%` }} /><small><Sparkles size={12} /> {t("agents.detail.contextUsage", { count: promptTokens.toLocaleString("es"), total: contextWindow.toLocaleString("es") })}</small></div>
         <Alert type="info">{t("agents.detail.providerKeysPrefix")}<Link href="/settings">{t("agents.detail.settingsLink")}</Link>.</Alert>
         <details className="advanced-options wizard-advanced"><summary>{t("agents.detail.advancedHeading")}</summary><p className="field-help">{t("agents.detail.advancedCopy")}</p>
@@ -169,11 +171,11 @@ export default function AgentDetailPage() {
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.capabilitiesHeading")}</h3><p>{t("agents.detail.capabilitiesCopy")}</p></div><div className="settings-fields">
         <div className="capability">
           <label className="capability-head"><input type="checkbox" checked={imageEnabled} onChange={(e) => setImageEnabled(e.target.checked)} /><ImageIcon size={17} /><span><strong>{t("agents.detail.imageLabel")}</strong><small>{t("agents.detail.imageHint")}</small></span></label>
-          {imageEnabled && <label className="capability-model">{t("agents.detail.modelLabel")}<Combobox value={imageModel} onChange={setImageModel} options={IMAGE_MODELS} placeholder="gpt-4.1" allowCustom /></label>}
+          {imageEnabled && <label className="capability-model">{t("agents.detail.modelLabel")}<Combobox value={imageModel} onChange={setImageModel} options={narrowModels(IMAGE_MODELS, available?.image)} placeholder="gpt-4.1" allowCustom /></label>}
         </div>
         <div className="capability">
           <label className="capability-head"><input type="checkbox" checked={audioEnabled} onChange={(e) => setAudioEnabled(e.target.checked)} /><AudioLines size={17} /><span><strong>{t("agents.detail.audioLabel")}</strong><small>{t("agents.detail.audioHint")}</small></span></label>
-          {audioEnabled && <label className="capability-model">{t("agents.detail.modelLabel")}<Combobox value={audioModel} onChange={setAudioModel} options={AUDIO_MODELS} placeholder="whisper-1" allowCustom /></label>}
+          {audioEnabled && <label className="capability-model">{t("agents.detail.modelLabel")}<Combobox value={audioModel} onChange={setAudioModel} options={narrowModels(AUDIO_MODELS, available?.audio)} placeholder="whisper-1" allowCustom /></label>}
         </div>
         <Alert type="info">{t("agents.detail.capabilitiesOpenAI")}</Alert>
       </div></section>
