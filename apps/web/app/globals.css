@@ -1102,12 +1102,12 @@ textarea { line-height: 1.55; }
 .compact-channel-grid article.channel-live .button { flex: 0 0 auto; }
 
 .wa-page { max-width: 1240px; }
-.wa-header { margin: 14px 0 28px; display: flex; align-items: center; gap: 16px; }
+.wa-header { margin: 18px 0 32px; display: flex; align-items: center; gap: 16px; }
 .wa-mark { width: 52px; height: 52px; display: grid; place-items: center; flex: 0 0 auto; color: white; border-radius: 12px; background: #159b6b; box-shadow: 0 7px 18px rgba(21, 155, 107, .2); }
-.wa-header > div:nth-child(2) { min-width: 0; flex: 1; }
-.wa-header span { color: #697386; font-size: 12px; font-weight: 600; }
-.wa-header h1 { margin: 2px 0 3px; font-size: 32px; letter-spacing: -1px; }
-.wa-header p { margin: 0; color: #697386; font-size: 14px; }
+.wa-header > div:nth-child(2) { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.wa-header span { color: #697386; font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.wa-header h1 { margin: 0; font-size: 30px; letter-spacing: -.8px; line-height: 1.15; }
+.wa-header p { margin: 0; color: #697386; font-size: 14px; line-height: 1.5; }
 .wa-state { min-height: 38px; padding: 0 12px; display: inline-flex; align-items: center; gap: 7px; color: #687082; border: 1px solid #dce1e7; border-radius: 999px; background: white; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .wa-state.connected { color: #087b52; border-color: #bfe8d7; background: #eefaf5; }
 .wa-state.error { color: #a6323e; border-color: #efcbd0; background: #fff7f8; }
