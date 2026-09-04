@@ -47,12 +47,27 @@ function lookup(lang: Lang, key: string): string {
   return node;
 }
 
+// First visit, nothing chosen yet: follow the browser. The first preferred
+// language we ship wins, in any regional form (es-MX, en-GB); anything else
+// falls back to the default. Nothing is stored, so a browser that changes its
+// language is followed until the user picks one with the switcher.
+function detectBrowserLang(): Lang {
+  if (typeof navigator === "undefined") return DEFAULT_LANG;
+  const preferred = navigator.languages?.length ? navigator.languages : [navigator.language];
+  for (const tag of preferred) {
+    const base = (tag || "").toLowerCase().split("-")[0];
+    if (base === "es" || base === "en") return base;
+  }
+  return DEFAULT_LANG;
+}
+
 function readStoredLang(): Lang {
   if (typeof document === "undefined") return DEFAULT_LANG;
   const match = document.cookie.match(/(?:^|;\s*)openlivery\.lang=(en|es)/);
   if (match) return match[1] as Lang;
   const stored = window.localStorage.getItem(STORAGE_KEY);
-  return stored === "es" || stored === "en" ? stored : DEFAULT_LANG;
+  if (stored === "es" || stored === "en") return stored;
+  return detectBrowserLang();
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {

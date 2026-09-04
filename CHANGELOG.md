@@ -13,6 +13,9 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- The interface opens in the browser's language on first visit: Spanish when
+  the browser prefers it, English otherwise. A language picked with the EN/ES
+  switch still wins once chosen.
 - Show/hide toggle on every password field: agency login and registration,
   client portal login, and the portal user form.
 
