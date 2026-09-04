@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight, Bot, Copy, ExternalLink, Globe2, ImagePlus, Inbo
 import { EmptyState, StatusBadge } from "@/components/ui";
 import { FormSkeleton, ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
+import { PasswordInput } from "@/components/password-input";
 import { api, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import type { Client, ClientDomain, Conversation, PortalUser } from "@/types";
@@ -122,7 +123,7 @@ function PortalUsers({ clientId }: { clientId: string }) {
         <label>{t("clients.detail.portalUserName")}<input name="name" required minLength={2} /></label>
         <label>{t("clients.detail.portalUserEmail")}<input name="email" required type="email" placeholder={t("clients.detail.portalEmailPlaceholder")} /></label>
       </div>
-      <label>{t("clients.detail.portalUserPassword")}<input name="password" required type="password" minLength={8} autoComplete="new-password" placeholder={t("clients.detail.portalPasswordMin")} /></label>
+      <label>{t("clients.detail.portalUserPassword")}<PasswordInput name="password" required minLength={8} autoComplete="new-password" placeholder={t("clients.detail.portalPasswordMin")} /></label>
       <button className="button secondary align-start" disabled={busy}>{busy ? <LoaderCircle className="spin" size={15} /> : <UserRound size={15} />} {t("clients.detail.portalUserAdd")}</button>
     </form>
   </div></section>;

@@ -13,6 +13,8 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- Show/hide toggle on every password field: agency login and registration,
+  client portal login, and the portal user form.
 
 - Teams in the client portal: named trays of portal users with an assignment
   strategy (round robin or least busy), an optional default tray per channel
