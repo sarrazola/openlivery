@@ -167,14 +167,10 @@ class AgentBase(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=2048, ge=1, le=32000)
     memory_limit: int = Field(default=30, ge=0, le=200)
-    image_enabled: bool = False
+    image_enabled: bool = True
     image_model: str = Field(default="", max_length=180)
-    audio_enabled: bool = False
+    audio_enabled: bool = True
     audio_model: str = Field(default="whisper-1", max_length=180)
-    widget_enabled: bool = False
-    widget_greeting: str = Field(default="", max_length=2000)
-    widget_color: str = Field(default="", max_length=20)
-    widget_position: str = Field(default="right", pattern=r"^(right|left)$")
     is_active: bool = True
 
 
@@ -205,10 +201,6 @@ class AgentUpdate(BaseModel):
     image_model: str | None = Field(default=None, max_length=180)
     audio_enabled: bool | None = None
     audio_model: str | None = Field(default=None, max_length=180)
-    widget_enabled: bool | None = None
-    widget_greeting: str | None = Field(default=None, max_length=2000)
-    widget_color: str | None = Field(default=None, max_length=20)
-    widget_position: str | None = Field(default=None, pattern=r"^(right|left)$")
     is_active: bool | None = None
 
 
@@ -237,11 +229,6 @@ class AgentOut(ORMModel):
     image_model: str
     audio_enabled: bool
     audio_model: str
-    widget_enabled: bool
-    widget_public_id: str
-    widget_greeting: str
-    widget_color: str
-    widget_position: str
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -719,6 +706,27 @@ class WhatsAppInternalStatus(BaseModel):
     display_name: str | None = None
     qr_code: str | None = None
     error: str | None = None
+
+
+class WidgetChannelUpdate(BaseModel):
+    agent_id: uuid.UUID
+    is_enabled: bool = True
+    greeting: str = Field(default="", max_length=2000)
+    color: str = Field(default="", max_length=20)
+    position: str = Field(default="right", pattern=r"^(right|left)$")
+
+
+class WidgetChannelOut(ORMModel):
+    id: uuid.UUID
+    client_id: uuid.UUID
+    agent_id: uuid.UUID
+    public_id: str
+    is_enabled: bool
+    greeting: str
+    color: str
+    position: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class WidgetConfigOut(BaseModel):

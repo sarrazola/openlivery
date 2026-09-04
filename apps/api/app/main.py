@@ -25,6 +25,7 @@ from .routers import (
     whatsapp_cloud,
     whatsapp_cloud_webhook,
     widget,
+    webchat,
 )
 
 
@@ -84,6 +85,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(agency.router, prefix="/api")
 app.include_router(clients.router, prefix="/api")
 app.include_router(agents.router, prefix="/api")
+app.include_router(webchat.router, prefix="/api")
 app.include_router(agent_tools.router, prefix="/api")
 app.include_router(providers.router, prefix="/api")
 app.include_router(catalog.router, prefix="/api")

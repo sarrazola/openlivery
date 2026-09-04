@@ -240,13 +240,22 @@ def test_widget_public_chat_and_gating(authenticated_client: TestClient, monkeyp
         "/api/agents",
         json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Sofia", "description": "", "instructions": "", "personality": "", "is_active": True},
     ).json()
-    public_id = agent["widget_public_id"]
+    # No web chat until the client gets one.
+    assert client.get(f"/api/webchat/channels/{customer['id']}").status_code == 404
 
-    # Disabled by default -> not exposed.
+    channel = client.put(
+        f"/api/webchat/channels/{customer['id']}",
+        json={"agent_id": agent["id"], "greeting": "Hi!", "color": "#075985", "is_enabled": False},
+    ).json()
+    public_id = channel["public_id"]
+    # Disabled -> not exposed.
     assert client.get(f"/api/widget/{public_id}").status_code == 404
 
-    enabled = client.patch(f"/api/agents/{agent['id']}", json={"widget_enabled": True, "widget_greeting": "Hi!", "widget_color": "#075985"}).json()
-    assert enabled["widget_enabled"] is True
+    enabled = client.put(
+        f"/api/webchat/channels/{customer['id']}",
+        json={"agent_id": agent["id"], "greeting": "Hi!", "color": "#075985", "is_enabled": True},
+    ).json()
+    assert enabled["is_enabled"] is True and enabled["public_id"] == public_id
 
     config = client.get(f"/api/widget/{public_id}")
     assert config.status_code == 200

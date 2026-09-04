@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, AudioLines, Bot, CheckCircle2, Code, Copy, ExternalLink, FileText, ImageIcon, LoaderCircle, MessageSquareText, Plus, Power, PowerOff, Save, Settings2, Sparkles, Trash2, UploadCloud, Wrench, XCircle } from "lucide-react";
+import { ArrowLeft, AudioLines, Bot, CheckCircle2, FileText, ImageIcon, LoaderCircle, MessageSquareText, Plus, Power, PowerOff, Save, Settings2, Sparkles, Trash2, UploadCloud, Wrench, XCircle } from "lucide-react";
 import { api, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { Alert } from "@/components/ui";
@@ -18,7 +18,7 @@ import { narrowModels, useAvailableModels } from "@/lib/use-available-models";
 import { TIMEZONES } from "@/lib/timezones";
 import type { Agent, AgentTool, Client, KnowledgeDocument, QAPair } from "@/types";
 
-type Tab = "details" | "knowledge" | "tools" | "widget" | "playground";
+type Tab = "details" | "knowledge" | "tools" | "playground";
 
 export default function AgentDetailPage() {
   const t = useT();
@@ -37,10 +37,6 @@ export default function AgentDetailPage() {
   const [imageModel, setImageModel] = useState("gpt-4.1");
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [audioModel, setAudioModel] = useState("whisper-1");
-  const [widgetEnabled, setWidgetEnabled] = useState(false);
-  const [widgetGreeting, setWidgetGreeting] = useState("");
-  const [widgetColor, setWidgetColor] = useState("#075985");
-  const [widgetPosition, setWidgetPosition] = useState("right");
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [qaPairs, setQaPairs] = useState<QAPair[]>([]);
   const [tools, setTools] = useState<AgentTool[]>([]);
@@ -55,8 +51,6 @@ export default function AgentDetailPage() {
     setTemperature(a.temperature); setMaxTokens(a.max_tokens); setMemoryLimit(a.memory_limit);
     setImageEnabled(a.image_enabled); setImageModel(a.image_model || "gpt-4.1");
     setAudioEnabled(a.audio_enabled); setAudioModel(a.audio_model || "whisper-1");
-    setWidgetEnabled(a.widget_enabled); setWidgetGreeting(a.widget_greeting);
-    setWidgetColor(a.widget_color || "#075985"); setWidgetPosition(a.widget_position || "right");
   };
 
   const contextWindow = modelContextWindow(model);
@@ -66,8 +60,8 @@ export default function AgentDetailPage() {
   );
   const contextPct = Math.min(100, Math.round((promptTokens / contextWindow) * 100));
   useEffect(() => { load(); }, [id]);
-  // Let other areas deep-link straight to a tab, e.g. the Channels page pointing at "?tab=widget".
-  useEffect(() => { const q = new URLSearchParams(window.location.search).get("tab"); if (q === "knowledge" || q === "tools" || q === "widget" || q === "playground") setTab(q); }, []);
+  // Let other areas deep-link straight to a tab.
+  useEffect(() => { const q = new URLSearchParams(window.location.search).get("tab"); if (q === "knowledge" || q === "tools" || q === "playground") setTab(q); }, []);
 
   async function saveConfig(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true);
@@ -93,17 +87,6 @@ export default function AgentDetailPage() {
     try { setAgent(await api<Agent>(`/agents/${id}/context`, { method: "PUT", body: JSON.stringify({ manual_context: form.get("manual_context") }) })); toast.success(t("agents.detail.manualContextSaved")); }
     catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); }
   }
-
-  async function saveWidget(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true);
-    const payload = { widget_enabled: widgetEnabled, widget_greeting: widgetGreeting, widget_color: widgetColor, widget_position: widgetPosition };
-    try { setAgent(await api<Agent>(`/agents/${id}`, { method: "PATCH", body: JSON.stringify(payload) })); toast.success(t("agents.detail.widgetSaved")); }
-    catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); }
-  }
-
-  const widgetSnippet = agent
-    ? `<script src="${typeof window === "undefined" ? "" : window.location.origin}/widget.js" data-agent="${agent.widget_public_id}" data-color="${widgetColor}" data-position="${widgetPosition}" async></script>`
-    : "";
 
   async function upload(file: File | undefined) {
     if (!file) return;
@@ -138,7 +121,7 @@ export default function AgentDetailPage() {
   return <div className="page agent-detail-page">
     <Link href="/agents" className="back-link"><ArrowLeft size={16} /> {t("agents.detail.back")}</Link>
     <header className="agent-detail-head"><div className="agent-title-wrap"><span className="agent-avatar xl"><Bot size={29} /></span><div><div className="title-line"><h1>{agent.name}</h1><span className={agent.is_active ? "pill purple" : "pill"}>{agent.is_active ? t("agents.detail.published") : t("agents.detail.unpublished")}</span></div><p>{agent.client.name} · {agent.description || t("agents.detail.noDescription")}</p></div></div><div className="header-actions"><button className={agent.is_active ? "button ghost" : "button primary"} onClick={togglePublish} disabled={busy}>{agent.is_active ? <><PowerOff size={16} /> {t("agents.detail.unpublish")}</> : <><Power size={16} /> {t("agents.detail.publish")}</>}</button><Link href={`/playground`} className="button secondary"><MessageSquareText size={17} /> {t("agents.detail.openPlayground")}</Link></div></header>
-    <nav className="tabs"><button className={tab === "details" ? "active" : ""} onClick={() => setTab("details")}><Settings2 size={17} /> {t("agents.detail.tabDetails")}</button><button className={tab === "knowledge" ? "active" : ""} onClick={() => setTab("knowledge")}><FileText size={17} /> {t("agents.detail.tabKnowledge")} <span>{documents.length}</span></button><button className={tab === "tools" ? "active" : ""} onClick={() => setTab("tools")}><Wrench size={17} /> {t("tools.tab")} <span>{tools.length}</span></button><button className={tab === "widget" ? "active" : ""} onClick={() => setTab("widget")}><Code size={17} /> {t("agents.detail.tabWidget")}</button><button className={tab === "playground" ? "active" : ""} onClick={() => setTab("playground")}><MessageSquareText size={17} /> {t("agents.detail.tabPlayground")}</button></nav>
+    <nav className="tabs"><button className={tab === "details" ? "active" : ""} onClick={() => setTab("details")}><Settings2 size={17} /> {t("agents.detail.tabDetails")}</button><button className={tab === "knowledge" ? "active" : ""} onClick={() => setTab("knowledge")}><FileText size={17} /> {t("agents.detail.tabKnowledge")} <span>{documents.length}</span></button><button className={tab === "tools" ? "active" : ""} onClick={() => setTab("tools")}><Wrench size={17} /> {t("tools.tab")} <span>{tools.length}</span></button><button className={tab === "playground" ? "active" : ""} onClick={() => setTab("playground")}><MessageSquareText size={17} /> {t("agents.detail.tabPlayground")}</button></nav>
 
     {tab === "details" && <form className="settings-form" onSubmit={saveConfig}>
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.generalHeading")}</h3><p>{t("agents.detail.generalCopy")}</p></div><div className="settings-fields"><div className="form-grid"><label>{t("agents.detail.clientLabel")}<select name="client_id" defaultValue={agent.client_id}>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><label>{t("agents.detail.nameLabel")}<input name="name" required defaultValue={agent.name} /></label></div><label>{t("agents.detail.descriptionLabel")}<textarea name="description" rows={3} defaultValue={agent.description} /></label></div></section>
@@ -166,9 +149,7 @@ export default function AgentDetailPage() {
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.temperatureLabel")}</span><strong>{temperature.toFixed(1)}/2</strong></div><input type="range" min="0" max="2" step="0.1" value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} /><span className="field-help">{t("agents.detail.temperatureHint")}</span></div>
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.maxTokensLabel")}</span><strong>{maxTokens}/8192</strong></div><input type="range" min="256" max="8192" step="256" value={maxTokens} onChange={(e) => setMaxTokens(Number(e.target.value))} /><span className="field-help">{t("agents.detail.maxTokensHint")}</span></div>
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.memoryLimitLabel")}</span><strong>{memoryLimit}/100</strong></div><input type="range" min="0" max="100" step="1" value={memoryLimit} onChange={(e) => setMemoryLimit(Number(e.target.value))} /><span className="field-help">{t("agents.detail.memoryLimitHint")}</span></div>
-        </details>
-      </div></section>
-      <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.capabilitiesHeading")}</h3><p>{t("agents.detail.capabilitiesCopy")}</p></div><div className="settings-fields">
+        <div className="capabilities-intro"><strong>{t("agents.detail.capabilitiesHeading")}</strong><span className="field-help">{t("agents.detail.capabilitiesCopy")}</span></div>
         <div className="capability">
           <label className="capability-head"><input type="checkbox" checked={imageEnabled} onChange={(e) => setImageEnabled(e.target.checked)} /><ImageIcon size={17} /><span><strong>{t("agents.detail.imageLabel")}</strong><small>{t("agents.detail.imageHint")}</small></span></label>
           {imageEnabled && <label className="capability-model">{t("agents.detail.modelLabel")}<Combobox value={imageModel} onChange={setImageModel} options={narrowModels(IMAGE_MODELS, available?.image)} placeholder="gpt-4.1" allowCustom /></label>}
@@ -178,6 +159,7 @@ export default function AgentDetailPage() {
           {audioEnabled && <label className="capability-model">{t("agents.detail.modelLabel")}<Combobox value={audioModel} onChange={setAudioModel} options={narrowModels(AUDIO_MODELS, available?.audio)} placeholder="whisper-1" allowCustom /></label>}
         </div>
         <Alert type="info">{t("agents.detail.capabilitiesOpenAI")}</Alert>
+        </details>
       </div></section>
       <div className="sticky-save"><span>{t("agents.detail.stickyNote")}</span><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} {t("agents.detail.saveConfig")}</button></div>
     </form>}
@@ -196,24 +178,6 @@ export default function AgentDetailPage() {
     </section></>}
 
     {tab === "tools" && <AgentToolsTab agentId={id} tools={tools} onToolsChange={setTools} />}
-
-    {tab === "widget" && <form className="settings-form" onSubmit={saveWidget}>
-      <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.widgetHeading")}</h3><p>{t("agents.detail.widgetCopy")}</p></div><div className="settings-fields">
-        <label className="switch-row"><span><strong>{t("agents.detail.widgetEnable")}</strong><small>{t("agents.detail.widgetEnableHint")}</small></span><input type="checkbox" checked={widgetEnabled} onChange={(e) => setWidgetEnabled(e.target.checked)} /></label>
-        <label>{t("agents.detail.widgetGreeting")}<textarea rows={2} value={widgetGreeting} onChange={(e) => setWidgetGreeting(e.target.value)} placeholder={t("agents.detail.widgetGreetingPlaceholder")} /></label>
-        <div className="form-grid">
-          <label>{t("agents.detail.widgetColor")}<div className="color-input"><input type="color" value={widgetColor} onChange={(e) => setWidgetColor(e.target.value)} /><input value={widgetColor} onChange={(e) => setWidgetColor(e.target.value)} /></div></label>
-          <label>{t("agents.detail.widgetPosition")}<select value={widgetPosition} onChange={(e) => setWidgetPosition(e.target.value)}><option value="right">{t("agents.detail.widgetPositionRight")}</option><option value="left">{t("agents.detail.widgetPositionLeft")}</option></select></label>
-        </div>
-      </div></section>
-      <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.widgetEmbedHeading")}</h3><p>{t("agents.detail.widgetEmbedCopy")}</p></div><div className="settings-fields">
-        {widgetEnabled ? <>
-          <pre className="embed-snippet">{widgetSnippet}</pre>
-          <div className="embed-actions"><button type="button" className="button secondary" onClick={() => { navigator.clipboard.writeText(widgetSnippet); toast.success(t("agents.detail.widgetCopied")); }}><Copy size={15} /> {t("agents.detail.widgetCopy2")}</button><a className="button ghost" href={`/widget/${agent.widget_public_id}`} target="_blank" rel="noreferrer"><ExternalLink size={15} /> {t("agents.detail.widgetPreview")}</a></div>
-        </> : <Alert type="info">{t("agents.detail.widgetEnableFirst")}</Alert>}
-      </div></section>
-      <div className="sticky-save"><span>{t("agents.detail.stickyNote")}</span><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} {t("agents.detail.saveConfig")}</button></div>
-    </form>}
 
     {tab === "playground" && <ChatPlayground lockedAgentId={agent.id} />}
   </div>;

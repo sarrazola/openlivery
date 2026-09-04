@@ -13,6 +13,9 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- The interface opens in the browser's language on first visit: Spanish when
+  the browser prefers it, English otherwise. A language picked with the EN/ES
+  switch still wins once chosen.
 - Show/hide toggle on every password field: agency login and registration,
   client portal login, and the portal user form.
 
@@ -42,6 +45,17 @@ Docker stack; run `alembic upgrade head` on local setups).
   conversation no longer jumps it to the top.
 - Switching between Open and Resolved in the portal no longer flashes the
   previous inbox's rows while the new list loads.
+
+### Changed
+- The web chat widget is a channel of the client, next to its WhatsApp
+  lines, instead of a setting on each agent: one per client, answered by the
+  agent you assign, configured from the client's Channels tab. Existing
+  widgets are carried over with their public id, so embedded snippets keep
+  working; `widget_*` fields leave the agent API in favour of
+  `/api/webchat/channels/{client_id}`.
+- Image and audio recognition are on by default for new agents, and both
+  switches now live under the advanced options of the model section instead
+  of a section of their own.
 
 ## [0.4.0] - 2026-08-31
 

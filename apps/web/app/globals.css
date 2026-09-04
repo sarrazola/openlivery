@@ -156,8 +156,8 @@ h1, h2, h3, .brand { font-family: var(--font-display); letter-spacing: -.015em; 
 /* Text-like fields only. A bare `input` selector also matches checkboxes and
    radios, which then render as full-width 42px boxes with a border, and every
    checkbox in the app has to undo it locally. */
-input:not([type="checkbox"]):not([type="radio"]), textarea, select { width: 100%; color: var(--ink); border: 1px solid #dfe3eb; border-radius: 9px; background: white; outline: none; transition: .15s; }
-input:not([type="checkbox"]):not([type="radio"]), select { height: 42px; padding: 0 12px; }
+input:where(:not([type="checkbox"]):not([type="radio"])), textarea, select { width: 100%; color: var(--ink); border: 1px solid #dfe3eb; border-radius: 9px; background: white; outline: none; transition: .15s; }
+input:where(:not([type="checkbox"]):not([type="radio"])), select { height: 42px; padding: 0 12px; }
 input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; accent-color: #635bff; cursor: pointer; flex: 0 0 auto; }
 textarea { padding: 11px 12px; line-height: 1.55; resize: vertical; }
 input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-color: #a99fff; box-shadow: 0 0 0 3px #f0eeff; }
@@ -268,7 +268,7 @@ h1, h2, h3, .brand { font-family: var(--font-display); }
 .filter-select { min-width: 240px; display: flex; align-items: center; gap: 9px; color: #687082; font-size: 13px; }
 .filter-select select { height: 44px; min-width: 190px; }
 label { color: #343b4d; font-size: 14px; font-weight: 600; }
-input:not([type="checkbox"]):not([type="radio"]), textarea, select { min-height: 43px; padding: 10px 12px; color: #202638; border: 1px solid #cfd6df; border-radius: 7px; background: white; font-size: 14px; }
+input:where(:not([type="checkbox"]):not([type="radio"])), textarea, select { min-height: 43px; padding: 10px 12px; color: #202638; border: 1px solid #cfd6df; border-radius: 7px; background: white; font-size: 14px; }
 input:focus, textarea:focus, select:focus, .phone-input:focus-within { outline: 0; border-color: #7770ff; box-shadow: 0 0 0 3px rgba(99,91,255,.13); }
 textarea { line-height: 1.55; }
 .field-help { margin-top: 6px; color: #7d8593; font-size: 12px; font-weight: 400; }
@@ -615,7 +615,12 @@ textarea { line-height: 1.55; }
 .portal-inbox > aside button { width: 100%; padding: 14px; display: flex; gap: 10px; text-align: left; border: 0; border-bottom: 1px solid #edf0f3; background: transparent; }
 .portal-inbox > aside button.active { background: #f0efff; }
 .portal-inbox > aside button.unread strong { font-weight: 700; }
-.portal-inbox > aside .segmented { margin: 14px 12px; padding: 3px; display: flex; gap: 3px; border: 1px solid var(--line); border-radius: 9px; background: #eef1f4; }
+/* Segmented switch: one list of a kind at a time (open / resolved). The
+   portal stretches it across its sidebar. */
+.segmented { padding: 3px; display: inline-flex; gap: 3px; border: 1px solid var(--line); border-radius: 9px; background: #eef1f4; }
+.segmented button { min-height: 30px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 7px; background: transparent; color: #5b6774; font: inherit; font-size: 13px; cursor: pointer; }
+.segmented button.active { background: white; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(23, 33, 43, .12); }
+.portal-inbox > aside .segmented { margin: 14px 12px; display: flex; }
 .portal-inbox > aside .segmented button { flex: 1; min-height: 30px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-bottom: 0; border-radius: 7px; background: transparent; color: #5b6774; font-size: 13px; font-weight: 500; }
 .portal-inbox > aside .segmented button.active { background: white; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(23, 33, 43, .12); }
 .mini-badge.resolved { display: inline-flex; align-items: center; gap: 3px; color: #2e7d4f; background: #e3f2e9; }
@@ -1140,6 +1145,14 @@ textarea { line-height: 1.55; }
 .wa-actions { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
 .wa-cloud-form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .wa-cloud-form label { display: flex; flex-direction: column; gap: 7px; color: #3c4454; font-size: 13px; font-weight: 600; }
+/* Web chat channel: one column, the switch on its own row, color and
+   position side by side, and the snippet block breathing. */
+.webchat-form { display: flex; flex-direction: column; gap: 16px; }
+.webchat-form label { display: flex; flex-direction: column; gap: 7px; color: #3c4454; font-size: 13px; font-weight: 600; }
+.webchat-form .switch-row { margin: 0; }
+.webchat-form .form-grid { max-width: 520px; }
+.wa-panel .embed-snippet { margin-top: 6px; }
+.wa-panel .embed-actions { margin-top: 12px; }
 .wa-copy-field { margin-top: 12px; display: flex; align-items: flex-end; gap: 10px; }
 .wa-copy-field label { flex: 1; display: flex; flex-direction: column; gap: 7px; color: #3c4454; font-size: 13px; font-weight: 600; }
 .wa-copy-field input { color: #545d6e; background: #fbfcfd; }
@@ -1336,6 +1349,9 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .capability-head strong { font-size: 14px; }
 .capability-head small { color: var(--muted); font-size: 12px; }
 .capability-model { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); padding-left: 28px; }
+.capabilities-intro { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.capabilities-intro strong { font-size: 13px; color: #39415b; }
+.capabilities-intro .field-help { margin: 0; }
 .review-list { margin: 0; display: flex; flex-direction: column; gap: 1px; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 .review-list > div { display: grid; grid-template-columns: 200px 1fr; gap: 12px; padding: 13px 16px; background: white; border-bottom: 1px solid #edf0f3; }
 .review-list > div:last-child { border-bottom: 0; }

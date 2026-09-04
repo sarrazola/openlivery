@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..database import get_db
 from ..services.conversation_state import exchanged_only
-from ..models import Agency, Agent, Client, Conversation, Message, MessageAttachment, now_utc
+from ..models import Agency, Agent, Client, Conversation, Message, MessageAttachment, WidgetChannel, now_utc
 from ..ratelimit import public_asset_rate_limit, widget_rate_limit
 from ..schemas import WidgetConfigOut, WidgetMessageIn, WidgetReply
 from ..services.attachments import (
@@ -45,33 +45,39 @@ def _message_out(item: Message) -> dict:
     }
 
 
-def _agent(db: Session, public_id: str) -> Agent:
-    agent = db.scalar(
-        select(Agent)
-        .options(joinedload(Agent.client))
-        .where(Agent.widget_public_id == public_id, Agent.widget_enabled.is_(True))
+def _channel(db: Session, public_id: str) -> WidgetChannel:
+    """The client's web chat behind a public id: only while it is enabled and
+    the client is active."""
+    channel = db.scalar(
+        select(WidgetChannel)
+        .join(Client, Client.id == WidgetChannel.client_id)
+        .options(joinedload(WidgetChannel.agent).joinedload(Agent.client))
+        .where(WidgetChannel.public_id == public_id, WidgetChannel.is_enabled.is_(True), Client.is_active.is_(True))
     )
-    if not agent:
+    if not channel:
         raise HTTPException(status_code=404, detail="Widget not found")
-    return agent
+    return channel
 
 
-def _conversation(db: Session, agent: Agent, session_id: str) -> Conversation:
-    external_chat_id = f"widget:{session_id}"
-    conversation = db.scalar(
+def _find_conversation(db: Session, channel: WidgetChannel, session_id: str) -> Conversation | None:
+    return db.scalar(
         select(Conversation).where(
-            Conversation.agent_id == agent.id,
-            Conversation.channel == "widget",
-            Conversation.external_chat_id == external_chat_id,
+            Conversation.widget_channel_id == channel.id,
+            Conversation.external_chat_id == f"widget:{session_id}",
         )
     )
+
+
+def _conversation(db: Session, channel: WidgetChannel, session_id: str) -> Conversation:
+    conversation = _find_conversation(db, channel, session_id)
     if not conversation:
         conversation = Conversation(
-            agency_id=agent.agency_id,
-            client_id=agent.client_id,
-            agent_id=agent.id,
+            agency_id=channel.agency_id,
+            client_id=channel.client_id,
+            agent_id=channel.agent_id,
+            widget_channel_id=channel.id,
             channel="widget",
-            external_chat_id=external_chat_id,
+            external_chat_id=f"widget:{session_id}",
             title="Web chat",
         )
         db.add(conversation)
@@ -81,15 +87,16 @@ def _conversation(db: Session, agent: Agent, session_id: str) -> Conversation:
 
 @router.get("/{public_id}", response_model=WidgetConfigOut)
 def widget_config(public_id: str, db: Session = Depends(get_db)):
-    agent = _agent(db, public_id)
-    agency = db.get(Agency, agent.agency_id)
-    client = db.get(Client, agent.client_id)
+    channel = _channel(db, public_id)
+    agent = channel.agent
+    agency = db.get(Agency, channel.agency_id)
+    client = db.get(Client, channel.client_id)
     has_logo = (client and client.logo_mime) or (agency and agency.logo_data)
     return {
         "title": agent.name,
-        "greeting": agent.widget_greeting,
-        "color": agent.widget_color or (agency.brand_color if agency else ""),
-        "position": agent.widget_position,
+        "greeting": channel.greeting,
+        "color": channel.color or (agency.brand_color if agency else ""),
+        "position": channel.position,
         "agency_name": agency.name if agency else "",
         "logo_url": f"/api/widget/{public_id}/logo" if has_logo else None,
     }
@@ -99,11 +106,11 @@ def widget_config(public_id: str, db: Session = Depends(get_db)):
 def widget_logo(public_id: str, db: Session = Depends(get_db)):
     """Public logo for the widget header: the client's own logo when set,
     otherwise the agency logo."""
-    agent = _agent(db, public_id)
-    client = db.get(Client, agent.client_id)
+    channel = _channel(db, public_id)
+    client = db.get(Client, channel.client_id)
     if client and client.logo_data and client.logo_mime:
         return logo_response(client.logo_data, client.logo_mime)
-    agency = db.get(Agency, agent.agency_id)
+    agency = db.get(Agency, channel.agency_id)
     if agency and agency.logo_data and agency.logo_mime:
         return logo_response(agency.logo_data, agency.logo_mime)
     raise HTTPException(status_code=404, detail="No logo")
@@ -111,14 +118,7 @@ def widget_logo(public_id: str, db: Session = Depends(get_db)):
 
 @router.get("/{public_id}/history", response_model=WidgetReply, dependencies=[Depends(widget_rate_limit)])
 def widget_history(public_id: str, session_id: str, db: Session = Depends(get_db)):
-    agent = _agent(db, public_id)
-    conversation = db.scalar(
-        select(Conversation).where(
-            Conversation.agent_id == agent.id,
-            Conversation.channel == "widget",
-            Conversation.external_chat_id == f"widget:{session_id}",
-        )
-    )
+    conversation = _find_conversation(db, _channel(db, public_id), session_id)
     if not conversation:
         return {"mode": "ai", "reply": None, "messages": []}
     messages = db.scalars(
@@ -137,14 +137,7 @@ def widget_history(public_id: str, session_id: str, db: Session = Depends(get_db
 
 @router.get("/{public_id}/attachments/{attachment_id}", dependencies=[Depends(widget_rate_limit)])
 def widget_attachment(public_id: str, attachment_id: uuid.UUID, session_id: str, db: Session = Depends(get_db)):
-    agent = _agent(db, public_id)
-    conversation = db.scalar(
-        select(Conversation).where(
-            Conversation.agent_id == agent.id,
-            Conversation.channel == "widget",
-            Conversation.external_chat_id == f"widget:{session_id}",
-        )
-    )
+    conversation = _find_conversation(db, _channel(db, public_id), session_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Attachment not found")
     return attachment_response(conversation_attachment(db, conversation, attachment_id))
@@ -189,8 +182,9 @@ async def _widget_ai_reply(db: Session, agent: Agent, conversation: Conversation
 
 @router.post("/{public_id}/messages", response_model=WidgetReply, dependencies=[Depends(widget_rate_limit)])
 async def widget_message(public_id: str, payload: WidgetMessageIn, db: Session = Depends(get_db)):
-    agent = _agent(db, public_id)
-    conversation = _conversation(db, agent, payload.session_id)
+    channel = _channel(db, public_id)
+    agent = channel.agent
+    conversation = _conversation(db, channel, payload.session_id)
 
     content = payload.content.strip()
     if conversation.title == "Web chat":
@@ -214,8 +208,9 @@ async def widget_media(
     caption: str = Form(default=""),
     db: Session = Depends(get_db),
 ):
-    agent = _agent(db, public_id)
-    conversation = _conversation(db, agent, session_id)
+    channel = _channel(db, public_id)
+    agent = channel.agent
+    conversation = _conversation(db, channel, session_id)
 
     content_type = (file.content_type or "").lower() or "application/octet-stream"
     ensure_uploadable(content_type)

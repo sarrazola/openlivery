@@ -89,6 +89,9 @@ class Client(Base):
     whatsapp_cloud_channel: Mapped["WhatsAppCloudChannel | None"] = relationship(
         back_populates="client", cascade="all, delete-orphan", uselist=False
     )
+    widget_channel: Mapped["WidgetChannel | None"] = relationship(
+        back_populates="client", cascade="all, delete-orphan", uselist=False
+    )
     portal_users: Mapped[list["PortalUser"]] = relationship(
         back_populates="client", cascade="all, delete-orphan"
     )
@@ -159,16 +162,11 @@ class Agent(Base):
     memory_limit: Mapped[int] = mapped_column(Integer, default=30, server_default="30")
     # Multimodal capabilities. When enabled, inbound images are described by a
     # vision model and inbound audio is transcribed before reaching the agent.
-    image_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # On by default: a new agent should understand what customers send it.
+    image_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     image_model: Mapped[str] = mapped_column(String(180), default="", server_default="")
-    audio_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    audio_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     audio_model: Mapped[str] = mapped_column(String(180), default="whisper-1", server_default="whisper-1")
-    # Embeddable web chat widget.
-    widget_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    widget_public_id: Mapped[str] = mapped_column(String(64), default=new_public_id, unique=True, index=True)
-    widget_greeting: Mapped[str] = mapped_column(Text, default="", server_default="")
-    widget_color: Mapped[str] = mapped_column(String(20), default="", server_default="")
-    widget_position: Mapped[str] = mapped_column(String(10), default="right", server_default="right")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
@@ -179,6 +177,7 @@ class Agent(Base):
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="agent", cascade="all, delete-orphan")
     whatsapp_channels: Mapped[list["WhatsAppChannel"]] = relationship(back_populates="agent")
     whatsapp_cloud_channels: Mapped[list["WhatsAppCloudChannel"]] = relationship(back_populates="agent")
+    widget_channels: Mapped[list["WidgetChannel"]] = relationship(back_populates="agent")
     tools: Mapped[list["AgentTool"]] = relationship(back_populates="agent", cascade="all, delete-orphan", order_by="AgentTool.created_at")
 
 
@@ -331,6 +330,31 @@ class UsageRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
 
 
+
+class WidgetChannel(Base):
+    """The embeddable web chat, as a channel of the client like the WhatsApp
+    lines: one per client, answered by whichever agent of that client is
+    assigned. ``public_id`` is what the embed snippet carries."""
+
+    __tablename__ = "widget_channels"
+    __table_args__ = (UniqueConstraint("client_id", name="uq_widget_channels_client_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    agency_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agencies.id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="RESTRICT"), index=True)
+    public_id: Mapped[str] = mapped_column(String(64), default=new_public_id, unique=True, index=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    greeting: Mapped[str] = mapped_column(Text, default="", server_default="")
+    color: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    position: Mapped[str] = mapped_column(String(10), default="right", server_default="right")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+    client: Mapped[Client] = relationship(back_populates="widget_channel")
+    agent: Mapped[Agent] = relationship(back_populates="widget_channels")
+    conversations: Mapped[list["Conversation"]] = relationship(back_populates="widget_channel")
+
 class Contact(Base):
     """A person the business talks to, one per client and phone number.
 
@@ -380,6 +404,9 @@ class Conversation(Base):
     whatsapp_cloud_channel_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("whatsapp_cloud_channels.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    widget_channel_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("widget_channels.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     external_chat_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
     contact_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -423,6 +450,7 @@ class Conversation(Base):
         return self.team.name if self.team else None
     whatsapp_channel: Mapped[WhatsAppChannel | None] = relationship(back_populates="conversations")
     whatsapp_cloud_channel: Mapped[WhatsAppCloudChannel | None] = relationship(back_populates="conversations")
+    widget_channel: Mapped["WidgetChannel | None"] = relationship(back_populates="conversations")
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")
 
 

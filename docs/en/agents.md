@@ -26,7 +26,7 @@ Each agent uses one provider — `openai` or `anthropic` — and one model from 
 
 ## Multimodal capabilities
 
-An agent can optionally understand incoming media. Each capability has its own toggle and its own model setting, independent of the main chat model:
+An agent understands incoming media out of the box: both capabilities are on for new agents. Each has its own toggle and its own model setting, independent of the main chat model, under the advanced options of the model section:
 
 - **Image recognition (vision)** — when `image_enabled` is on, inbound images are described by the model in `image_model` before reaching the agent.
 - **Audio transcription** — when `audio_enabled` is on, inbound audio is transcribed by the model in `audio_model` (default `whisper-1`) before reaching the agent.

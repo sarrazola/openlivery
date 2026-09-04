@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Check, LoaderCircle, PencilLine, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, AudioLines, Check, ImageIcon, LoaderCircle, PencilLine, Sparkles } from "lucide-react";
 import { Alert } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { api, messageFrom } from "@/lib/api";
@@ -42,6 +42,9 @@ export default function NewAgentPage() {
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
   const [memoryLimit, setMemoryLimit] = useState(30);
+  // Multimodal understanding is on unless the user switches it off here.
+  const [imageEnabled, setImageEnabled] = useState(true);
+  const [audioEnabled, setAudioEnabled] = useState(true);
 
   useEffect(() => {
     const preferred = new URLSearchParams(window.location.search).get("client") || "";
@@ -73,6 +76,7 @@ export default function NewAgentPage() {
         client_id: clientId, name, description, instructions, personality,
         provider, model: model || "", timezone,
         temperature, max_tokens: maxTokens, memory_limit: memoryLimit, is_active: true,
+        image_enabled: imageEnabled, audio_enabled: audioEnabled,
       }) });
       router.push(`/agents/${agent.id}`);
     } catch (err) { toast.error(messageFrom(err)); setBusy(false); }
@@ -147,6 +151,10 @@ export default function NewAgentPage() {
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.temperatureLabel")}</span><strong>{temperature.toFixed(1)}/2</strong></div><input type="range" min="0" max="2" step="0.1" value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} /><span className="field-help">{t("agents.detail.temperatureHint")}</span></div>
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.maxTokensLabel")}</span><strong>{maxTokens}/8192</strong></div><input type="range" min="256" max="8192" step="256" value={maxTokens} onChange={(e) => setMaxTokens(Number(e.target.value))} /><span className="field-help">{t("agents.detail.maxTokensHint")}</span></div>
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.memoryLimitLabel")}</span><strong>{memoryLimit}/100</strong></div><input type="range" min="0" max="100" step="1" value={memoryLimit} onChange={(e) => setMemoryLimit(Number(e.target.value))} /><span className="field-help">{t("agents.detail.memoryLimitHint")}</span></div>
+        <div className="capabilities-intro"><strong>{t("agents.detail.capabilitiesHeading")}</strong><span className="field-help">{t("agents.detail.capabilitiesCopy")}</span></div>
+        <div className="capability"><label className="capability-head"><input type="checkbox" checked={imageEnabled} onChange={(e) => setImageEnabled(e.target.checked)} /><ImageIcon size={17} /><span><strong>{t("agents.detail.imageLabel")}</strong><small>{t("agents.detail.imageHint")}</small></span></label></div>
+        <div className="capability"><label className="capability-head"><input type="checkbox" checked={audioEnabled} onChange={(e) => setAudioEnabled(e.target.checked)} /><AudioLines size={17} /><span><strong>{t("agents.detail.audioLabel")}</strong><small>{t("agents.detail.audioHint")}</small></span></label></div>
+        <Alert type="info">{t("agents.detail.capabilitiesOpenAI")}</Alert>
         </details>
       </div>}
 

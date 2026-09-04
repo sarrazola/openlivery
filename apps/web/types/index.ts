@@ -69,11 +69,6 @@ export type Agent = {
   image_model: string;
   audio_enabled: boolean;
   audio_model: string;
-  widget_enabled: boolean;
-  widget_public_id: string;
-  widget_greeting: string;
-  widget_color: string;
-  widget_position: string;
   is_active: boolean;
   client: Client;
   created_at: string;
@@ -198,6 +193,19 @@ export type WhatsAppChannel = {
   is_enabled: boolean;
   has_session: boolean;
   last_connected_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WidgetChannel = {
+  id: string;
+  client_id: string;
+  agent_id: string;
+  public_id: string;
+  is_enabled: boolean;
+  greeting: string;
+  color: string;
+  position: "right" | "left";
   created_at: string;
   updated_at: string;
 };
