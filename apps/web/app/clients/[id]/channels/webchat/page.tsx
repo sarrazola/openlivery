@@ -72,7 +72,7 @@ export default function WebChatChannelPage() {
         {!client.agents.length && <Alert>{t("clients.whatsapp.needsAgent")}</Alert>}
       </section>
       <section className="wa-panel"><div className="wa-panel-head"><span><Palette size={19} /></span><div><h2>{t("clients.webchat.appearanceTitle")}</h2><p>{t("clients.webchat.appearanceCopy")}</p></div></div>
-        <div className="wa-cloud-form">
+        <div className="webchat-form">
           <label className="switch-row"><span><strong>{t("clients.webchat.enable")}</strong><small>{t("clients.webchat.enableHint")}</small></span><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} disabled={busy} /></label>
           <label>{t("clients.webchat.greeting")}<textarea rows={2} value={greeting} onChange={(event) => setGreeting(event.target.value)} placeholder={t("clients.webchat.greetingPlaceholder")} disabled={busy} /></label>
           <div className="form-grid">
