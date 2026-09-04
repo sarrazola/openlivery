@@ -159,9 +159,10 @@ class Agent(Base):
     memory_limit: Mapped[int] = mapped_column(Integer, default=30, server_default="30")
     # Multimodal capabilities. When enabled, inbound images are described by a
     # vision model and inbound audio is transcribed before reaching the agent.
-    image_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # On by default: a new agent should understand what customers send it.
+    image_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     image_model: Mapped[str] = mapped_column(String(180), default="", server_default="")
-    audio_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    audio_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     audio_model: Mapped[str] = mapped_column(String(180), default="whisper-1", server_default="whisper-1")
     # Embeddable web chat widget.
     widget_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

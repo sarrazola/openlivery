@@ -167,9 +167,9 @@ class AgentBase(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=2048, ge=1, le=32000)
     memory_limit: int = Field(default=30, ge=0, le=200)
-    image_enabled: bool = False
+    image_enabled: bool = True
     image_model: str = Field(default="", max_length=180)
-    audio_enabled: bool = False
+    audio_enabled: bool = True
     audio_model: str = Field(default="whisper-1", max_length=180)
     widget_enabled: bool = False
     widget_greeting: str = Field(default="", max_length=2000)

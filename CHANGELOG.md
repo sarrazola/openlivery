@@ -46,6 +46,11 @@ Docker stack; run `alembic upgrade head` on local setups).
 - Switching between Open and Resolved in the portal no longer flashes the
   previous inbox's rows while the new list loads.
 
+### Changed
+- Image and audio recognition are on by default for new agents, and both
+  switches now live under the advanced options of the model section instead
+  of a section of their own.
+
 ## [0.4.0] - 2026-08-31
 
 Upgrading: this release adds database migrations (applied automatically by the

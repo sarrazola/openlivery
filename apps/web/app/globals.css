@@ -1336,6 +1336,9 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .capability-head strong { font-size: 14px; }
 .capability-head small { color: var(--muted); font-size: 12px; }
 .capability-model { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); padding-left: 28px; }
+.capabilities-intro { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.capabilities-intro strong { font-size: 13px; color: #39415b; }
+.capabilities-intro .field-help { margin: 0; }
 .review-list { margin: 0; display: flex; flex-direction: column; gap: 1px; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 .review-list > div { display: grid; grid-template-columns: 200px 1fr; gap: 12px; padding: 13px 16px; background: white; border-bottom: 1px solid #edf0f3; }
 .review-list > div:last-child { border-bottom: 0; }

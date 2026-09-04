@@ -26,7 +26,7 @@ Cada agente usa un proveedor — `openai` o `anthropic` — y un modelo de ese p
 
 ## Capacidades multimodales
 
-Un agente puede, opcionalmente, entender medios entrantes. Cada capacidad tiene su propio interruptor y su propio ajuste de modelo, independiente del modelo de chat principal:
+Un agente entiende los medios entrantes desde el inicio: ambas capacidades vienen activas en los agentes nuevos. Cada una tiene su propio interruptor y su propio ajuste de modelo, independiente del modelo de chat principal, dentro de las opciones avanzadas de la sección del modelo:
 
 - **Reconocimiento de imágenes (visión)** — cuando `image_enabled` está activo, las imágenes entrantes se describen con el modelo de `image_model` antes de llegar al agente.
 - **Transcripción de audio** — cuando `audio_enabled` está activo, el audio entrante se transcribe con el modelo de `audio_model` (por defecto `whisper-1`) antes de llegar al agente.
