@@ -6,6 +6,7 @@ import { Bot, Building2, LoaderCircle, MessageSquareText, ShieldCheck } from "lu
 import { api, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { Alert } from "@/components/ui";
+import { PasswordInput } from "@/components/password-input";
 
 type AuthStatus = { needs_setup: boolean; registration_open: boolean };
 
@@ -82,7 +83,7 @@ export default function LoginPage() {
                 <label>{t("auth.yourName")}<input name="name" required minLength={2} placeholder={t("auth.yourNamePlaceholder")} /></label>
               </>}
               <label>{t("auth.email")}<input name="email" required type="email" placeholder={t("auth.emailPlaceholder")} /></label>
-              <label>{t("auth.password")}<input name="password" required type="password" minLength={8} placeholder={t("auth.passwordPlaceholder")} /></label>
+              <label>{t("auth.password")}<PasswordInput name="password" required minLength={8} placeholder={t("auth.passwordPlaceholder")} /></label>
               {error && <Alert>{error}</Alert>}
               <button className="button primary full" disabled={busy}>{busy && <LoaderCircle className="spin" size={17} />}{mode === "register" ? t("auth.submitRegister") : t("auth.submitLogin")}</button>
             </form>
