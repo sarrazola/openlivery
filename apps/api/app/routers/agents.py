@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import Agent, AgentQA, Client, EscalationRule, KnowledgeDocument, PortalUser, Team, User, WhatsAppChannel
+from ..models import Agent, AgentQA, Client, EscalationRule, KnowledgeDocument, PortalUser, Team, User, WhatsAppChannel, WhatsAppCloudChannel, WidgetChannel
 from ..schemas import AgentCreate, AgentOut, AgentUpdate, DocumentOut, EscalationConfigIn, EscalationConfigOut, ManualContextRequest, QAPairCreate, QAPairOut
 from ..services.knowledge import embed_document_chunks
 
@@ -35,6 +35,15 @@ def _validate_client(db: Session, user: User, client_id: uuid.UUID) -> None:
     client = db.scalar(select(Client).where(Client.id == client_id, Client.agency_id == user.agency_id))
     if not client:
         raise HTTPException(status_code=400, detail="The selected client does not exist")
+
+
+def _channels_of(db: Session, agent: Agent) -> list[WhatsAppChannel | WhatsAppCloudChannel | WidgetChannel]:
+    """Every channel this agent answers: both WhatsApp lines and the web chat."""
+    return [
+        *db.scalars(select(WhatsAppChannel).where(WhatsAppChannel.agent_id == agent.id)).all(),
+        *db.scalars(select(WhatsAppCloudChannel).where(WhatsAppCloudChannel.agent_id == agent.id)).all(),
+        *db.scalars(select(WidgetChannel).where(WidgetChannel.agent_id == agent.id)).all(),
+    ]
 
 
 @router.get("", response_model=list[AgentOut])
@@ -66,10 +75,10 @@ def update_agent(agent_id: uuid.UUID, payload: AgentUpdate, db: Session = Depend
     agent = _agent(db, user, agent_id)
     values = payload.model_dump(exclude_unset=True)
     client_id = values.get("client_id", agent.client_id)
-    if client_id != agent.client_id and db.scalar(select(WhatsAppChannel).where(WhatsAppChannel.agent_id == agent.id)):
+    if client_id != agent.client_id and _channels_of(db, agent):
         raise HTTPException(
             status_code=409,
-            detail="This agent is assigned to WhatsApp. Assign another agent to the channel before changing its client.",
+            detail="This agent answers a channel of its client. Assign another agent to it before changing the client.",
         )
     _validate_client(db, user, client_id)
     for key, value in values.items():
@@ -81,10 +90,10 @@ def update_agent(agent_id: uuid.UUID, payload: AgentUpdate, db: Session = Depend
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_agent(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     agent = _agent(db, user, agent_id)
-    if db.scalar(select(WhatsAppChannel).where(WhatsAppChannel.agent_id == agent.id)):
+    if _channels_of(db, agent):
         raise HTTPException(
             status_code=409,
-            detail="This agent is assigned to WhatsApp. Assign another agent to the channel before deleting it.",
+            detail="This agent answers a channel of its client. Assign another agent to it before deleting this one.",
         )
     db.delete(agent)
     db.commit()

@@ -47,6 +47,12 @@ Docker stack; run `alembic upgrade head` on local setups).
   previous inbox's rows while the new list loads.
 
 ### Changed
+- The web chat widget is a channel of the client, next to its WhatsApp
+  lines, instead of a setting on each agent: one per client, answered by the
+  agent you assign, configured from the client's Channels tab. Existing
+  widgets are carried over with their public id, so embedded snippets keep
+  working; `widget_*` fields leave the agent API in favour of
+  `/api/webchat/channels/{client_id}`.
 - Image and audio recognition are on by default for new agents, and both
   switches now live under the advanced options of the model section instead
   of a section of their own.

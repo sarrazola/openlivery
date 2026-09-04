@@ -254,8 +254,7 @@ def test_webhook_provider_fires_when_a_human_is_expected_to_answer(
             "description": "", "instructions": "", "personality": "", "is_active": True,
         },
     ).json()
-    client.patch(f"/api/agents/{agent['id']}", json={"widget_enabled": True})
-    public_id = agent["widget_public_id"]
+    public_id = client.put(f"/api/webchat/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()["public_id"]
 
     monkeypatch.setattr(
         widget_router, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Hello!"))

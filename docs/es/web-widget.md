@@ -2,33 +2,33 @@
 
 > Read in English: [web-widget.md](../en/web-widget.md)
 
-El widget web es un chat embebible, respaldado por uno de tus agentes, que puedes colocar en cualquier sitio web con una sola etiqueta `<script>`. Los visitantes ven un botón de chat flotante; al abrirlo hablan con el agente a través de la API pública de OpenLivery, con el mismo conocimiento e instrucciones que configuraste.
+El widget web es un chat embebible, un canal de un cliente atendido por uno de sus agentes, que puedes colocar en cualquier sitio web con una sola etiqueta `<script>`. Los visitantes ven un botón de chat flotante; al abrirlo hablan con el agente a través de la API pública de OpenLivery, con el mismo conocimiento e instrucciones que configuraste.
 
 ## Cómo funciona
 
-Cada agente tiene un `widget_public_id`: un identificador público que se usa en la ruta del widget `/widget/<publicId>`. El script de carga monta un `iframe` que apunta a esa ruta y añade un botón lanzador flotante. Como el id es público, el widget se sirve sin autenticación, así que nunca se expone al navegador nada sensible (claves de API, datos de otros clientes).
+El chat web es un canal del cliente, como sus líneas de WhatsApp: cada cliente tiene como máximo uno, y tú eliges cuál de sus agentes lo atiende. El canal lleva un id público que se usa en la ruta del widget `/widget/<publicId>`. El script de carga monta un `iframe` que apunta a esa ruta y añade un botón lanzador flotante.
 
-El widget solo funciona mientras está habilitado: el backend sirve los endpoints de configuración, historial y mensajes únicamente para agentes en los que `widget_enabled` está activo. Publica y habilita el agente antes de embeberlo.
+El widget solo funciona mientras el canal está activado y el cliente está activo: el backend sirve los endpoints de configuración, historial y mensajes únicamente entonces. El id público es del canal, no del agente, así que puedes cambiar o reemplazar el agente sin tocar los sitios donde está insertado el fragmento.
 
-## Habilitar y obtener el fragmento
+## Configurarlo y obtener el fragmento
 
-1. Abre el agente y ve a la pestaña **Widget**.
-2. Activa **Habilitar widget** y define el saludo, el color y la posición (izquierda o derecha).
-3. Guarda y copia el fragmento de inserción desde la sección **Embed**. Un enlace de **Vista previa** abre el widget de forma independiente.
+1. Abre el cliente, ve a **Canales** y elige **Chat web** (o usa la página de Canales y elige el cliente).
+2. Elige el agente que responde, define el saludo, el color y la posición (izquierda o derecha), y deja activado **Activar chat web**.
+3. Guarda y copia el fragmento de inserción desde la sección **Código de inserción**. Un enlace de **Previsualizar** abre el widget de forma independiente.
 
-El fragmento apunta `data-agent` al id público del agente y pasa las opciones de apariencia como atributos de datos:
+El fragmento apunta `data-agent` al id público del canal y pasa las opciones de apariencia como atributos de datos:
 
 ```html
 <script
   src="https://your-openlivery-domain/widget.js"
-  data-agent="AGENT_PUBLIC_ID"
+  data-agent="CHANNEL_PUBLIC_ID"
   data-color="#075985"
   data-position="right"
   async
 ></script>
 ```
 
-Pégalo antes de la etiqueta de cierre `</body>` de cualquier página. El origen de `src` debe ser tu despliegue de OpenLivery; `widget.js` deriva la URL del iframe de su propio origen.
+Pégalo antes de la etiqueta de cierre `</body>` de cualquier página. El origen del `src` debe ser tu despliegue de OpenLivery; `widget.js` deriva la URL del iframe de su propio origen.
 
 ## Mensajes y límite de peticiones
 
