@@ -1298,6 +1298,8 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .wizard-head h1 { margin: 4px 0 0; font-size: clamp(26px, 3vw, 34px); font-weight: 600; letter-spacing: -1px; }
 .wizard-steps { margin: 0 0 20px; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; list-style: none; }
 .wizard-steps li { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: white; color: var(--muted); font-size: 12px; }
+.wizard-steps li.clickable { cursor: pointer; }
+.wizard-steps li.clickable:hover { border-color: #cec8ff; color: #39415b; }
 .wizard-steps li span { width: 22px; height: 22px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: #eef1f4; color: #6d7384; font-size: 12px; font-weight: 700; }
 .wizard-steps li.current { border-color: #bdb8f4; box-shadow: 0 0 0 3px #f0eeff; color: var(--ink); }
 .wizard-steps li.current span { background: var(--purple); color: white; }
@@ -1659,3 +1661,13 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .ai-hint-tip::after { content: ""; position: absolute; left: 50%; top: 100%; border: 6px solid transparent; border-top-color: #0f172a; transform: translateX(-50%); }
 .ai-hint:hover .ai-hint-tip, .ai-hint:focus-visible .ai-hint-tip { opacity: 1; transform: translateX(-50%) translateY(0); }
 .settings-copy h3 .ai-hint, .section-copy h2 .ai-hint { margin-left: 2px; }
+
+/* Agent wizard: essentials and a compact model choice. */
+.token-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; color: #4f46c7; background: #f0efff; border-radius: 20px; font-size: 12px; font-weight: 600; }
+
+/* Combobox options with a display label, id and tag (model picker). */
+.combo-option { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.combo-option code { color: #7e8695; font-size: 12px; }
+.combo-tag { margin-left: 8px; padding: 2px 7px; border-radius: 20px; background: #eef0f5; color: #5b6474; font-size: 11px; font-style: normal; font-weight: 700; white-space: nowrap; vertical-align: middle; }
+.combo-option .combo-tag { margin-left: 0; }
+.combo-value .combo-tag { background: #e9e7ff; color: #5048c8; }

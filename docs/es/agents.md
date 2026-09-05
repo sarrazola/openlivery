@@ -10,13 +10,13 @@ Un agente vive bajo un cliente (`Agency → Client → Agent`). El cliente es so
 
 ## Crear un agente con el asistente
 
-Los agentes nuevos se crean mediante un asistente de cinco pasos (**Agents → New agent**):
+Los agentes nuevos se crean mediante un asistente de cinco pasos (**Agents → New agent**); la cabecera de pasos es clicable para moverse entre los pasos ya alcanzados:
 
 1. **Plantilla** — empieza desde cero (recomendado y preseleccionado) o elige una plantilla inicial por industria. Las plantillas rellenan qué hace el agente, su tono y el brief del negocio (qué hace, productos, público, información clave, siempre y nunca) en tu idioma, para que reemplaces los detalles con los del cliente.
 2. **Identidad** — elige el cliente propietario y nombra el agente.
-3. **Instrucciones** — escribe qué hace el agente y cómo debe sonar. Un contador de tokens en vivo estima el tamaño del prompt mientras escribes.
-4. **Modelo** — define la zona horaria, el proveedor y el modelo, y ajusta la temperatura, los tokens máximos y la memoria. Una barra de ventana de contexto muestra cuánto de la ventana del modelo usa el prompt.
-5. **Revisión** — confirma el resumen y crea el agente.
+3. **Esenciales** — las tres cosas que el agente necesita para responder bien: qué hace el negocio, su información clave y políticas, y qué hace el agente. Productos, público, reglas de siempre/nunca y tono se completan después en Básicos del agente.
+4. **Modelo** — proveedor y modelo, con el recomendado preseleccionado y cada opción etiquetada (recomendado, equilibrado, más potente), más zona horaria y, en opciones avanzadas, los ajustes de generación y las capacidades de imagen y audio.
+5. **Revisión** — un resumen del agente y el tamaño de su prompt, y el botón de crear. Al crear se llega a Básicos del agente.
 
 Las plantillas iniciales incluidas son Pedidos de restaurante, Leads inmobiliarios, Citas de clínica, Soporte de tienda online y Atención al cliente. Después de crearlo refinas todo en la página de detalle del agente, donde **Básicos** reúne cliente, nombre, brief del negocio, trabajo del agente, escalamiento y modelo. La sección del modelo muestra cuántos tokens cuesta el prompt compuesto en cada mensaje. Crear un cliente termina en el asistente con ese cliente preseleccionado.
 

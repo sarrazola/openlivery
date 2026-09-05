@@ -13,8 +13,13 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
-- The agent wizard recommends and preselects starting from scratch; the
-  starter templates now also pre-fill the business brief in both languages.
+- The agent wizard asks for the three essentials (what the business does,
+  key info and policies, what the agent does) instead of a free prompt, picks
+  the model from a searchable dropdown with recommended and tier tags, and
+  its step header is clickable. Starting from scratch is
+  recommended and preselected; the starter templates pre-fill the whole
+  business brief in both languages. The note about the OpenAI key under the
+  capabilities is gone.
 - A small help icon next to the fields the AI reads (client industry, type,
   name; agent name, business and job sections) says in one line what the
   model receives from them.

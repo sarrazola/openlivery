@@ -15,7 +15,7 @@ import { ChatPlayground } from "@/components/chat-playground";
 import { AgentToolsTab } from "@/components/agent-tools/agent-tools-tab";
 import { EscalationRulesEditor } from "@/components/escalation-rules";
 import { Combobox } from "@/components/combobox";
-import { PROVIDERS, modelsFor, defaultModelFor, estimateTokens, modelContextWindow, AUDIO_MODELS, IMAGE_MODELS } from "@/lib/providers";
+import { PROVIDERS, modelsFor, modelOptionsFor, defaultModelFor, estimateTokens, modelContextWindow, AUDIO_MODELS, IMAGE_MODELS } from "@/lib/providers";
 import { narrowModels, useAvailableModels } from "@/lib/use-available-models";
 import { TIMEZONES } from "@/lib/timezones";
 import type { Agent, AgentTool, KnowledgeDocument, QAPair } from "@/types";
@@ -148,7 +148,7 @@ export default function AgentDetailPage() {
       <EscalationRulesEditor agentId={agent.id} clientId={agent.client_id} />
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.aiModelHeading")}</h3><p>{t("agents.detail.aiModelCopy")}</p></div><div className="settings-fields">
         <label>{t("agents.detail.timezoneLabel")}<Combobox value={timezone} onChange={setTimezone} options={TIMEZONES} placeholder={t("agents.detail.timezoneLabel")} /></label>
-        <div className="form-grid"><label>{t("agents.detail.providerLabel")}<select value={provider} onChange={(e) => { setProvider(e.target.value); if (!modelsFor(e.target.value).includes(model)) setModel(defaultModelFor(e.target.value)); }}>{PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label><label>{t("agents.detail.modelLabel")}<Combobox value={model} onChange={setModel} options={narrowModels(modelsFor(provider), available?.chat?.[provider])} placeholder={t("agents.detail.modelPlaceholder")} allowCustom /></label></div>
+        <div className="form-grid"><label>{t("agents.detail.providerLabel")}<select value={provider} onChange={(e) => { setProvider(e.target.value); if (!modelsFor(e.target.value).includes(model)) setModel(defaultModelFor(e.target.value)); }}>{PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label><label>{t("agents.detail.modelLabel")}{(() => { const allowed = narrowModels(modelsFor(provider), available?.chat?.[provider]); const known = modelOptionsFor(provider).filter((item) => allowed.includes(item.id)); const ordered = [...known.filter((item) => item.recommended), ...known.filter((item) => !item.recommended)].map((item) => item.id); const options = [...ordered, ...allowed.filter((id) => !ordered.includes(id))]; const labels = Object.fromEntries(known.map((item) => [item.id, item.label])); const tierOf = (g: string) => g === "fast" ? t("agents.wizard.modelGroupFast") : g === "balanced" ? t("agents.wizard.modelGroupBalanced") : t("agents.wizard.modelGroupCapable"); const tags = Object.fromEntries(known.map((item) => [item.id, item.recommended ? t("agents.wizard.modelBadgeRecommended") : tierOf(item.group)])); return <Combobox value={model} onChange={setModel} options={options} labels={labels} tags={tags} placeholder={t("agents.detail.modelPlaceholder")} allowCustom />; })()}</label></div>
         <div className="context-bar"><div style={{ width: `${contextPct}%` }} /><small><Sparkles size={12} /> {t("agents.detail.promptTokens", { count: (promptTokens ?? 0).toLocaleString(lang) })} · {t("agents.detail.contextUsage", { count: (promptTokens ?? 0).toLocaleString(lang), total: contextWindow.toLocaleString(lang) })}</small></div>
         <Alert type="info">{t("agents.detail.providerKeysPrefix")}<Link href="/settings">{t("agents.detail.settingsLink")}</Link>.</Alert>
         <details className="advanced-options wizard-advanced"><summary>{t("agents.detail.advancedHeading")}</summary><p className="field-help">{t("agents.detail.advancedCopy")}</p>
@@ -164,7 +164,6 @@ export default function AgentDetailPage() {
           <label className="capability-head"><input type="checkbox" checked={audioEnabled} onChange={(e) => setAudioEnabled(e.target.checked)} /><AudioLines size={17} /><span><strong>{t("agents.detail.audioLabel")}</strong><small>{t("agents.detail.audioHint")}</small></span></label>
           {audioEnabled && <label className="capability-model">{t("agents.detail.modelLabel")}<Combobox value={audioModel} onChange={setAudioModel} options={narrowModels(AUDIO_MODELS, available?.audio)} placeholder="whisper-1" allowCustom /></label>}
         </div>
-        <Alert type="info">{t("agents.detail.capabilitiesOpenAI")}</Alert>
         </details>
       </div></section>
       <div className="sticky-save"><span>{t("agents.detail.stickyNote")}</span><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} {t("agents.detail.saveConfig")}</button></div>
