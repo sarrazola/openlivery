@@ -60,6 +60,11 @@ Docker stack; run `alembic upgrade head` on local setups).
   the members of its tray instead of every portal device.
 
 ### Fixed
+- Voice notes recorded in the browser (playground, portal and web chat) are
+  transcribed again. They were sent to the transcription provider named
+  `audio.ogg` whatever their container, so Safari's mp4 and Chrome's webm
+  recordings were rejected as corrupted and the agent only saw a placeholder;
+  the file name now follows the audio's mime type.
 - The playground no longer shows activity lines (took over, resolved) as
   if they were messages.
 - The web chat widget now shows what a person writes after taking over a

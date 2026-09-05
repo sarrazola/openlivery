@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from .conversation_state import note_reply
 from ..models import Agent, Conversation, Message, now_utc
 from .attachments import MAX_ATTACHMENT_BYTES, attachment_kind, store_attachment
-from .media import describe_image, transcribe_audio
+from .media import audio_filename, describe_image, transcribe_audio
 from .providers import resolve_provider_credentials
 from .whatsapp import send_channel_media
 
@@ -49,7 +49,7 @@ async def _operator_media_llm_text(
                 detail = await describe_image(base_url, api_key, model, data, mime, instruction)
             else:
                 model = agent.audio_model.strip() or "whisper-1"
-                detail = await transcribe_audio(base_url, api_key, model, data, filename or "audio.ogg", mime) or ""
+                detail = await transcribe_audio(base_url, api_key, model, data, filename or audio_filename(mime), mime) or ""
         except (HTTPException, ValueError):
             detail = ""
     if kind == "file" and filename:
