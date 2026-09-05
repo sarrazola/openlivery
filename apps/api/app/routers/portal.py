@@ -66,6 +66,10 @@ from ..services.operator_media import store_operator_media_reply
 from ..services.whatsapp import deliver_reaction, resolve_quote, send_channel_message, signal_channel_read
 
 
+# Playground conversations are rehearsals by the agency: stored, but never
+# shown to the client's team nor counted in its reports.
+PLAYGROUND = "playground"
+
 router = APIRouter(prefix="/portal", tags=["Client portal"])
 
 
@@ -496,7 +500,7 @@ def portal_conversations(
         .outerjoin(PortalUser, PortalUser.id == Conversation.assignee_id)
         .outerjoin(last_inbound, last_inbound.c.cid == Conversation.id)
         .outerjoin(Team, Team.id == Conversation.team_id)
-        .where(Conversation.client_id == client.id)
+        .where(Conversation.client_id == client.id, Conversation.channel != PLAYGROUND)
     )
     if team is not None:
         query = query.where(Conversation.team_id == team)
@@ -738,7 +742,7 @@ def portal_delete_contact(
     # with those, the messages and attachments). The portal asks the person
     # to type the contact's name before it calls this.
     contact = _portal_contact(db, client, contact_id)
-    for conversation in db.scalars(select(Conversation).where(Conversation.contact_id == contact.id)).all():
+    for conversation in db.scalars(select(Conversation).where(Conversation.contact_id == contact.id, Conversation.channel != PLAYGROUND)).all():
         db.delete(conversation)
     db.delete(contact)
     db.commit()
@@ -763,7 +767,7 @@ def portal_contact_conversations(
     rows = db.execute(
         select(Conversation, last.c.content)
         .outerjoin(last, last.c.cid == Conversation.id)
-        .where(Conversation.contact_id == contact.id)
+        .where(Conversation.contact_id == contact.id, Conversation.channel != PLAYGROUND)
         .order_by(Conversation.created_at.desc())
     ).all()
     return [
@@ -938,7 +942,7 @@ def portal_report(
     shift = timedelta(minutes=tz_offset)
     start = datetime.combine(from_, time.min, tzinfo=timezone.utc) + shift
     end = datetime.combine(to, time.min, tzinfo=timezone.utc) + shift + timedelta(days=1)
-    conv_filters = [Conversation.client_id == client.id]
+    conv_filters = [Conversation.client_id == client.id, Conversation.channel != PLAYGROUND]
     if channel:
         conv_filters.append(Conversation.channel == channel)
     if assignee_id:
@@ -1260,7 +1264,7 @@ def portal_inbox_summary(
             func.count().filter(is_open, is_human, concerns_me, unread_exists).label("unread"),
             func.count().filter(is_open, is_mine).label("mine"),
             func.count().filter(is_open, is_human, Conversation.assignee_id.is_(None)).label("unassigned"),
-        ).where(Conversation.client_id == client.id)
+        ).where(Conversation.client_id == client.id, Conversation.channel != PLAYGROUND)
     ).one()
     return {
         "open": row.open, "resolved": row.resolved, "human": row.human, "ai": row.ai,

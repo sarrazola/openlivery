@@ -26,16 +26,18 @@ export default function NewAgentPage() {
   const available = useAvailableModels();
   const toast = useToast();
   const router = useRouter();
-  const [step, setStep] = useState(0);
+  const [step, setStepState] = useState(0);
+  const [reached, setReached] = useState(0);
+  const setStep = (next: number | ((s: number) => number)) => setStepState((s) => { const value = typeof next === "function" ? next(s) : next; setReached((r) => Math.max(r, value)); return value; });
   const [clients, setClients] = useState<Client[]>([]);
   const [busy, setBusy] = useState(false);
 
   const [templateId, setTemplateId] = useState("");
   const [clientId, setClientId] = useState("");
   const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
   const [personality, setPersonality] = useState("");
+  const [brief, setBrief] = useState({ summary: "", products: "", audience: "", policies: "", dos: "", donts: "" });
   const [provider, setProvider] = useState("openai");
   const [model, setModel] = useState(defaultModelFor("openai"));
   const [timezone, setTimezone] = useState(BROWSER_TZ);
@@ -54,27 +56,31 @@ export default function NewAgentPage() {
     }).catch(() => {});
   }, []);
 
-  const promptTokens = useMemo(() => estimateTokens([description, instructions, personality].join("\n")), [description, instructions, personality]);
+  const promptTokens = useMemo(() => estimateTokens([brief.summary, brief.products, brief.audience, brief.policies, instructions, brief.dos, brief.donts, personality].join("\n")), [brief, instructions, personality]);
 
   function applyTemplate(id: string) {
     setTemplateId(id);
     const tpl = agentTemplates.find((item) => item.id === id);
     if (tpl) {
-      setDescription(localize(tpl.description, lang));
       setInstructions(localize(tpl.instructions, lang));
       setPersonality(localize(tpl.personality, lang));
+      setBrief({ summary: localize(tpl.brief.summary, lang), products: localize(tpl.brief.products, lang), audience: localize(tpl.brief.audience, lang), policies: localize(tpl.brief.policies, lang), dos: localize(tpl.brief.dos, lang), donts: localize(tpl.brief.donts, lang) });
+    } else {
+      setInstructions(""); setPersonality("");
+      setBrief({ summary: "", products: "", audience: "", policies: "", dos: "", donts: "" });
     }
     setStep(1);
   }
 
-  const canNext = step === 1 ? name.trim().length > 0 && Boolean(clientId) : step === 3 ? model.trim().length > 0 : true;
+  const canNext = step === 1 ? name.trim().length > 0 && Boolean(clientId) : true;
 
   async function create() {
     setBusy(true);
     try {
       const agent = await api<Agent>("/agents", { method: "POST", body: JSON.stringify({
-        client_id: clientId, name, description, instructions, personality,
-        provider, model: model || "", timezone,
+        client_id: clientId, name, instructions, personality,
+        brief_summary: brief.summary, brief_products: brief.products, brief_audience: brief.audience, brief_policies: brief.policies, brief_dos: brief.dos, brief_donts: brief.donts,
+        provider, model: model || "", timezone, prompt_language: lang,
         temperature, max_tokens: maxTokens, memory_limit: memoryLimit, is_active: true,
         image_enabled: imageEnabled, audio_enabled: audioEnabled,
       }) });
@@ -94,12 +100,12 @@ export default function NewAgentPage() {
     <header className="wizard-head"><span className="eyebrow">{t("agents.new.eyebrow")}</span><h1>{t("agents.new.title")}</h1></header>
 
     <ol className="wizard-steps">
-      {STEP_KEYS.map((key, index) => (
-        <li key={key} className={index === step ? "current" : index < step ? "done" : ""}>
+      {STEP_KEYS.map((key, index) => { const reachable = index <= reached && (index <= 1 || (name.trim().length > 0 && Boolean(clientId))); return (
+        <li key={key} className={`${index === step ? "current" : index < step ? "done" : ""}${reachable && index !== step ? " clickable" : ""}`} onClick={() => reachable && !busy && setStep(index)} role={reachable ? "button" : undefined} tabIndex={reachable && index !== step ? 0 : undefined} onKeyDown={(e) => { if (reachable && (e.key === "Enter" || e.key === " ")) setStep(index); }}>
           <span>{index < step ? <Check size={14} /> : index + 1}</span>
           <small>{t(key)}</small>
         </li>
-      ))}
+      ); })}
     </ol>
 
     <section className="wizard-card">
@@ -113,8 +119,8 @@ export default function NewAgentPage() {
               <small>{localize(tpl.tagline, lang)}</small>
             </button>
           ))}
-          <button type="button" className="template-card blank" onClick={() => { setTemplateId(""); setStep(1); }}>
-            <span className="template-icon"><PencilLine size={20} /></span>
+          <button type="button" className={`template-card blank ${templateId === "" ? "active" : ""}`} onClick={() => { applyTemplate(""); }}>
+            <span className="template-card-top"><span className="template-icon"><PencilLine size={20} /></span><em className="template-badge">{t("agents.wizard.modelBadgeRecommended")}</em></span>
             <strong>{t("agents.wizard.blankName")}</strong>
             <small>{t("agents.wizard.blankTagline")}</small>
           </button>
@@ -127,26 +133,22 @@ export default function NewAgentPage() {
           <label>{t("agents.new.clientLabel")}<select value={clientId} onChange={(e) => setClientId(e.target.value)}>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
           <label>{t("agents.new.nameLabel")}<input value={name} onChange={(e) => setName(e.target.value)} required autoFocus placeholder={t("agents.new.namePlaceholder")} /></label>
         </div>
-        <label>{t("agents.new.descriptionLabel")}<textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder={t("agents.new.descriptionPlaceholder")} /></label>
+        {name.trim() && <p className="greeting-preview">{t("agents.detail.greetingPreview", { name: name.trim(), client: clients.find((c) => c.id === clientId)?.name || "" })}</p>}
       </div>}
 
       {step === 2 && <div className="wizard-fields">
-        <div className="wizard-copy"><h2>{t("agents.wizard.promptTitle")}</h2><p>{t("agents.wizard.promptSubtitle")}</p></div>
-        <label>{t("agents.new.instructionsLabel")}<textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={10} placeholder={t("agents.new.instructionsPlaceholder")} /></label>
-        <label>{t("agents.new.personalityLabel")}<textarea value={personality} onChange={(e) => setPersonality(e.target.value)} rows={3} placeholder={t("agents.new.personalityPlaceholder")} /></label>
-        <div className="token-meter"><span><Sparkles size={13} /> {t("agents.wizard.tokens", { count: promptTokens.toLocaleString(lang) })}</span><small className="field-help">{t("agents.wizard.tokensHint")}</small></div>
+        <div className="wizard-copy"><h2>{t("agents.wizard.essentialsTitle")}</h2><p>{t("agents.wizard.essentialsSubtitle")}</p></div>
+        <label>{t("agents.detail.briefSummaryLabel")}<textarea value={brief.summary} onChange={(e) => setBrief({ ...brief, summary: e.target.value })} rows={2} autoFocus placeholder={t("agents.detail.briefSummaryPlaceholder")} /></label>
+        <label>{t("agents.detail.briefPoliciesLabel")}<textarea value={brief.policies} onChange={(e) => setBrief({ ...brief, policies: e.target.value })} rows={3} placeholder={t("agents.detail.briefPoliciesPlaceholder")} /></label>
+        <label>{t("agents.new.instructionsLabel")}<textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={5} placeholder={t("agents.new.instructionsPlaceholder")} /></label>
+        <span className="field-help">{t("agents.wizard.essentialsLater")}</span>
       </div>}
 
       {step === 3 && <div className="wizard-fields">
         <div className="wizard-copy"><h2>{t("agents.wizard.modelTitle")}</h2><p>{t("agents.wizard.modelSubtitle")}</p></div>
-        <label>{t("agents.detail.timezoneLabel")}<Combobox value={timezone} onChange={setTimezone} options={TIMEZONES} placeholder={t("agents.detail.timezoneLabel")} /></label>
         <label>{t("agents.new.providerLabel")}<select value={provider} onChange={(e) => { setProvider(e.target.value); setModel(defaultModelFor(e.target.value)); }}>{PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
-        <div className="field-block">
-          <span className="field-label">{t("agents.new.modelLabel")}</span>
-          {(["fast", "balanced", "capable"] as const).map((group) => { const allowed = new Set(narrowModels(modelsFor(provider), available?.chat?.[provider])); const options = modelOptionsFor(provider).filter((item) => item.group === group && allowed.has(item.id)); if (!options.length) return null; return <div className="model-group" key={group}><div className="model-group-head"><span className="field-label">{t(`agents.wizard.modelGroup${group === "fast" ? "Fast" : group === "balanced" ? "Balanced" : "Capable"}`)}</span><small>{t(`agents.wizard.modelNote${group === "fast" ? "Fast" : group === "balanced" ? "Balanced" : "Capable"}`)}</small></div><div className="model-recommendations">{options.map((option) => <button type="button" key={option.id} className={option.id === model ? "active" : ""} onClick={() => setModel(option.id)}><span><strong>{option.label}</strong>{option.recommended && <em>{t("agents.wizard.modelBadgeRecommended")}</em>}</span><code>{option.id}</code></button>)}</div></div>; })}
-          <details className="advanced-options wizard-advanced"><summary>{t("agents.wizard.modelShowAll")}</summary><Combobox value={model} onChange={setModel} options={narrowModels(modelsFor(provider), available?.chat?.[provider])} placeholder={t("agents.new.modelPlaceholder")} allowCustom /></details>
-          <span className="field-help">{t("agents.wizard.modelHelp")}</span>
-        </div>
+        <label>{t("agents.new.modelLabel")}{(() => { const allowed = narrowModels(modelsFor(provider), available?.chat?.[provider]); const catalog = modelOptionsFor(provider); const known = catalog.filter((item) => allowed.includes(item.id)); const ordered = [...known.filter((item) => item.recommended), ...known.filter((item) => !item.recommended)].map((item) => item.id); const options = [...ordered, ...allowed.filter((id) => !ordered.includes(id))]; const labels = Object.fromEntries(known.map((item) => [item.id, item.label])); const tierOf = (g: string) => g === "fast" ? t("agents.wizard.modelGroupFast") : g === "balanced" ? t("agents.wizard.modelGroupBalanced") : t("agents.wizard.modelGroupCapable"); const tags = Object.fromEntries(known.map((item) => [item.id, item.recommended ? t("agents.wizard.modelBadgeRecommended") : tierOf(item.group)])); return <Combobox value={model} onChange={setModel} options={options} labels={labels} tags={tags} placeholder={t("agents.new.modelPlaceholder")} allowCustom />; })()}</label>
+        <label>{t("agents.detail.timezoneLabel")}<Combobox value={timezone} onChange={setTimezone} options={TIMEZONES} placeholder={t("agents.detail.timezoneLabel")} /></label>
         <details className="advanced-options wizard-advanced"><summary>{t("agents.detail.advancedHeading")}</summary><p className="field-help">{t("agents.detail.advancedCopy")}</p>
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.temperatureLabel")}</span><strong>{temperature.toFixed(1)}/2</strong></div><input type="range" min="0" max="2" step="0.1" value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} /><span className="field-help">{t("agents.detail.temperatureHint")}</span></div>
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.maxTokensLabel")}</span><strong>{maxTokens}/8192</strong></div><input type="range" min="256" max="8192" step="256" value={maxTokens} onChange={(e) => setMaxTokens(Number(e.target.value))} /><span className="field-help">{t("agents.detail.maxTokensHint")}</span></div>
@@ -154,18 +156,19 @@ export default function NewAgentPage() {
         <div className="capabilities-intro"><strong>{t("agents.detail.capabilitiesHeading")}</strong><span className="field-help">{t("agents.detail.capabilitiesCopy")}</span></div>
         <div className="capability"><label className="capability-head"><input type="checkbox" checked={imageEnabled} onChange={(e) => setImageEnabled(e.target.checked)} /><ImageIcon size={17} /><span><strong>{t("agents.detail.imageLabel")}</strong><small>{t("agents.detail.imageHint")}</small></span></label></div>
         <div className="capability"><label className="capability-head"><input type="checkbox" checked={audioEnabled} onChange={(e) => setAudioEnabled(e.target.checked)} /><AudioLines size={17} /><span><strong>{t("agents.detail.audioLabel")}</strong><small>{t("agents.detail.audioHint")}</small></span></label></div>
-        <Alert type="info">{t("agents.detail.capabilitiesOpenAI")}</Alert>
         </details>
       </div>}
 
       {step === 4 && <div className="wizard-fields">
         <div className="wizard-copy"><h2>{t("agents.wizard.reviewTitle")}</h2><p>{t("agents.wizard.reviewSubtitle")}</p></div>
         <dl className="review-list">
-          <div><dt>{t("agents.new.nameLabel")}</dt><dd>{name || <span className="muted">—</span>}</dd></div>
-          <div><dt>{t("agents.new.clientLabel")}</dt><dd>{clients.find((c) => c.id === clientId)?.name || "—"}</dd></div>
+          <div><dt>{t("agents.new.nameLabel")}</dt><dd>{name}</dd></div>
+          <div><dt>{t("agents.new.clientLabel")}</dt><dd>{clients.find((c) => c.id === clientId)?.name || ""}</dd></div>
           <div><dt>{t("agents.wizard.reviewTemplate")}</dt><dd>{templateId ? localize(agentTemplates.find((x) => x.id === templateId)!.name, lang) : t("agents.wizard.blankName")}</dd></div>
+          <div><dt>{t("agents.detail.briefSummaryLabel")}</dt><dd>{brief.summary.trim() || <span className="muted">{t("agents.wizard.reviewEmpty")}</span>}</dd></div>
           <div><dt>{t("agents.new.providerLabel")}</dt><dd>{PROVIDERS.find((p) => p.id === provider)?.label || provider}</dd></div>
-          <div><dt>{t("agents.new.modelLabel")}</dt><dd>{model || <span className="muted">{t("agents.wizard.modelRequired")}</span>}</dd></div>
+          <div><dt>{t("agents.new.modelLabel")}</dt><dd>{modelOptionsFor(provider).find((item) => item.id === model)?.label || model}</dd></div>
+          <div><dt>{t("agents.wizard.reviewPrompt")}</dt><dd><span className="token-pill"><Sparkles size={13} /> {t("agents.wizard.tokens", { count: promptTokens.toLocaleString(lang) })}</span></dd></div>
         </dl>
       </div>}
     </section>

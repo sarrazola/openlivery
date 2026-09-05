@@ -22,9 +22,7 @@ def _setup_channel(client: TestClient) -> None:
         "/api/clients",
         json={
             "name": "Sol Store",
-            "industry": "Retail",
-            "description": "",
-            "general_context": "Open Monday through Saturday.",
+            "industry": "retail_ecommerce",
             "is_active": True,
         },
     ).json()
@@ -36,7 +34,6 @@ def _setup_channel(client: TestClient) -> None:
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "name": "Sol Advisor",
-            "description": "",
             "instructions": "Help the customers.",
             "personality": "Friendly",
             "is_active": True,

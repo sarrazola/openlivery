@@ -5,11 +5,13 @@ import uuid
 
 from fastapi.testclient import TestClient
 
+from conftest import customer_conversation
+
 
 def _portal_with_members(client: TestClient, names: list[str], company: str = "Teams Co"):
     customer = client.post(
         "/api/clients",
-        json={"name": company, "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": company, "is_active": True},
     ).json()
     slug = customer["portal_slug"]
     members = []
@@ -28,9 +30,9 @@ def _conversation(client: TestClient, customer: dict, slug: str, title_hint: str
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto", "description": "", "instructions": "", "personality": "", "is_active": True},
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto", "instructions": "", "personality": "", "is_active": True},
     ).json()
-    conversation = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()
+    conversation = customer_conversation(client, agent["id"])
     return conversation["id"]
 
 
@@ -142,7 +144,7 @@ def test_escalation_rules_replace_and_validate(authenticated_client: TestClient)
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto", "description": "", "instructions": "", "personality": "", "is_active": True},
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto", "instructions": "", "personality": "", "is_active": True},
     ).json()
     base = f"/api/agents/{agent['id']}/escalation-rules"
 

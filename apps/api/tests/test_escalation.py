@@ -14,7 +14,7 @@ from app.services import whatsapp as whatsapp_service
 def _setup(client: TestClient, company: str, member_names: list[str]):
     customer = client.post(
         "/api/clients",
-        json={"name": company, "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": company, "is_active": True},
     ).json()
     slug = customer["portal_slug"]
     for index, name in enumerate(member_names):
@@ -28,7 +28,7 @@ def _setup(client: TestClient, company: str, member_names: list[str]):
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto", "description": "", "instructions": "", "personality": "", "is_active": True},
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto", "instructions": "", "personality": "", "is_active": True},
     ).json()
     channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
     return customer, slug, members, agent, channel

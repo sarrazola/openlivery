@@ -18,6 +18,7 @@ from .routers import (
     conversations,
     dashboard,
     domains,
+    industries,
     mobile,
     portal,
     providers,
@@ -84,6 +85,7 @@ def health():
 app.include_router(auth.router, prefix="/api")
 app.include_router(agency.router, prefix="/api")
 app.include_router(clients.router, prefix="/api")
+app.include_router(industries.router, prefix="/api")
 app.include_router(agents.router, prefix="/api")
 app.include_router(webchat.router, prefix="/api")
 app.include_router(agent_tools.router, prefix="/api")

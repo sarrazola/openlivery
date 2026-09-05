@@ -19,7 +19,7 @@ def _headers() -> dict:
 def _setup_bridge_channel(client: TestClient) -> str:
     customer = client.post(
         "/api/clients",
-        json={"name": "Casa", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Casa", "is_active": True},
     ).json()
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
@@ -29,7 +29,6 @@ def _setup_bridge_channel(client: TestClient) -> str:
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "name": "Bella",
-            "description": "",
             "instructions": "",
             "personality": "",
             "is_active": True,

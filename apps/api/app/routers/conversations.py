@@ -342,6 +342,17 @@ async def send_media_message(
     return await _generate_reply(db, user, conversation, agent, credentials, llm_content)
 
 
+@router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_conversation(conversation_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Discard a playground rehearsal. Customer conversations are history and stay."""
+    conversation = _conversation(db, user, conversation_id)
+    if conversation.channel != "playground":
+        raise HTTPException(status_code=409, detail="Only playground conversations can be deleted")
+    db.delete(conversation)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/{conversation_id}/attachments/{attachment_id}")
 def get_attachment(
     conversation_id: uuid.UUID,

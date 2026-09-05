@@ -2,11 +2,10 @@
 
 > Read in English: [knowledge-base.md](../en/knowledge-base.md)
 
-La base de conocimiento es la forma de dar a un agente los datos del negocio que necesita para responder con precisión. Añades conocimiento desde tres tipos de fuentes y OpenLivery ensambla las partes relevantes en el prompt de sistema del agente en cada mensaje.
+La base de conocimiento es la forma de dar a un agente los datos del negocio que necesita para responder con precisión. Añades conocimiento desde dos tipos de fuentes y OpenLivery ensambla las partes relevantes en el prompt de sistema del agente en cada mensaje.
 
 ## Fuentes de conocimiento
 
-- **Contexto general** — texto libre sobre el cliente (compartido entre los agentes de ese cliente) y un contexto manual por agente. Úsalo para todo lo que puedas describir en prosa: horarios, tono, posicionamiento, políticas.
 - **Pares de preguntas y respuestas** — entradas estructuradas de pregunta/respuesta. Son ideales para preguntas frecuentes donde quieres una respuesta específica y fiable.
 - **PDFs subidos** — adjunta documentos (catálogos, manuales, listas de precios) y el agente lee de su texto. Los PDFs tienen un límite de 20 MB y solo se aceptan archivos PDF.
 
@@ -27,16 +26,15 @@ Los embeddings se guardan como un simple **arreglo JSON de números** y la simil
 
 ## Cómo se ensambla el prompt de sistema
 
-Todo se compone en un único mensaje de sistema, en este orden:
+Todo se compone en un único mensaje de sistema, escrito como un documento markdown corto. Los títulos y las pocas frases fijas siguen el `prompt_language` del agente (`es` o `en`, tomado del idioma de la interfaz al guardar el agente); todo lo que escribió el operador entra tal cual. Secciones, en orden:
 
-1. La línea de identidad del agente (nombre y cliente).
-2. La fecha y hora actual, en la zona horaria configurada del agente.
-3. Instrucciones principales.
-4. Personalidad y tono.
-5. El brief del negocio, si está completado.
-6. El contexto general del cliente.
-7. El contexto manual del agente.
-8. Los pares de preguntas y respuestas.
-9. El texto de conocimiento de los PDFs recuperado (o completo).
+1. Título e identidad: el nombre del agente, el cliente y el tipo de negocio (de la industria y el tipo del cliente), más la fecha y hora actual en la zona horaria del agente.
+2. **Tu trabajo**: qué hace el agente.
+3. **El negocio**: qué hace, productos y servicios, público, información y políticas clave, como lista.
+4. **Reglas**: la lista de siempre del agente y luego la de nunca, que abre siempre con cinco reglas fijas (nunca inventar datos, nunca salirse del negocio, nunca pedir datos sensibles, nunca abandonar el rol, nunca contenido ofensivo) seguidas de las propias del agente.
+5. **Tono**.
+6. **Conocimiento**: los pares de preguntas y respuestas y el texto de PDFs recuperado (o completo), cerrado con la instrucción de no inventar lo que no está ahí.
+
+Las secciones vacías se omiten. `GET /api/agents/{id}/prompt` devuelve el prompt compuesto sin el texto de documentos por mensaje; el editor del agente lo usa para mostrar el costo en tokens de cada mensaje.
 
 El historial reciente de la conversación se añade después de este mensaje de sistema. Cualquier sección vacía se omite, así que el prompt solo lleva lo que realmente has proporcionado.

@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowRight, Bot, Building2, Cpu, MessagesSquare, MessageSquareText, Radio, UserRound } from "lucide-react";
 import { api } from "@/lib/api";
-import { useT } from "@/lib/i18n";
+import { useLanguage } from "@/lib/i18n";
+import { businessLabel, useIndustries } from "@/lib/industries";
 import { PageHead, StatusBadge } from "@/components/ui";
 import { ListRowsSkeleton, PanelSkeleton, Skeleton } from "@/components/skeleton";
 import type { Agent, AgentSummary, Conversation } from "@/types";
@@ -16,7 +17,8 @@ type ModelUsage = { model: string; input_tokens: number; output_tokens: number }
 type Metrics = { messages: number; human_conversations: number; by_channel: Record<string, number>; daily_conversations: DailyPoint[]; top_agents: TopAgent[]; tokens_in: number; tokens_out: number; usage_by_model: ModelUsage[] };
 
 export default function HomePage() {
-  const t = useT();
+  const { t, lang } = useLanguage();
+  const catalog = useIndustries();
   const [data, setData] = useState<Dashboard | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -68,7 +70,7 @@ export default function HomePage() {
       </section>
       <section className="panel">
         <div className="panel-head"><div><h3>{t("home.recentAgents.title")}</h3><p>{t("home.recentAgents.subtitle")}</p></div><Link href="/agents" className="text-link">{t("home.recentAgents.viewAll")} <ArrowRight size={15} /></Link></div>
-        {!loadedCore ? <ListRowsSkeleton rows={4} /> : agents.length ? <div className="compact-list">{agents.slice(0, 5).map((agent) => <Link href={`/agents/${agent.id}`} key={agent.id} className="compact-row"><span className="agent-avatar"><Bot size={18} /></span><div><strong>{agent.name}</strong><small>{agent.client.name} · {agent.description || t("common.noDescription")}</small></div><StatusBadge active={agent.is_active} /><ArrowRight size={16} /></Link>)}</div> : <div className="inline-empty"><Bot size={24} /><div><strong>{t("home.recentAgents.emptyTitle")}</strong><span>{t("home.recentAgents.emptyDesc")}</span></div></div>}
+        {!loadedCore ? <ListRowsSkeleton rows={4} /> : agents.length ? <div className="compact-list">{agents.slice(0, 5).map((agent) => <Link href={`/agents/${agent.id}`} key={agent.id} className="compact-row"><span className="agent-avatar"><Bot size={18} /></span><div><strong>{agent.name}</strong><small>{agent.client.name}{businessLabel(catalog, agent.client, lang) ? ` · ${businessLabel(catalog, agent.client, lang)}` : ""}</small></div><StatusBadge active={agent.is_active} /><ArrowRight size={16} /></Link>)}</div> : <div className="inline-empty"><Bot size={24} /><div><strong>{t("home.recentAgents.emptyTitle")}</strong><span>{t("home.recentAgents.emptyDesc")}</span></div></div>}
       </section>
     </div>
   );

@@ -2,11 +2,10 @@
 
 > Leer en español: [knowledge-base.md](../es/knowledge-base.md)
 
-The knowledge base is how you give an agent the business facts it needs to answer accurately. You add knowledge from three kinds of sources, and OpenLivery assembles the relevant parts into the agent's system prompt on every message.
+The knowledge base is how you give an agent the business facts it needs to answer accurately. You add knowledge from two kinds of sources, and OpenLivery assembles the relevant parts into the agent's system prompt on every message.
 
 ## Sources of knowledge
 
-- **General context** — free-form text about the client (shared across that client's agents) and a per-agent manual context. Use it for anything you can describe in prose: hours, tone, positioning, policies.
 - **Q&A pairs** — structured question/answer entries. These are ideal for frequently asked questions where you want a specific, reliable answer.
 - **PDF uploads** — attach documents (catalogs, manuals, price lists) and the agent reads from their text. PDFs are limited to 20 MB and only PDF files are accepted.
 
@@ -27,16 +26,15 @@ Embeddings are stored as a plain **JSON array of floats** and similarity is comp
 
 ## How the system prompt is assembled
 
-Everything is composed into a single system message, in this order:
+Everything is composed into a single system message, written as a short markdown document. Headings and the few fixed sentences follow the agent's `prompt_language` (`es` or `en`, taken from the UI language when the agent is saved); everything the operator typed is inserted verbatim. Sections, in order:
 
-1. The agent's identity line (name and client).
-2. The current date and time, in the agent's configured timezone.
-3. Main instructions.
-4. Personality and tone.
-5. The business brief, if filled in.
-6. The client's general context.
-7. The agent's manual context.
-8. Q&A pairs.
-9. Retrieved (or full) PDF knowledge text.
+1. Title and identity: the agent's name, the client and the kind of business (from the client's industry and business type), plus the current date and time in the agent's timezone.
+2. **Your job**: what the agent does.
+3. **The business**: what it does, products and services, audience, key info and policies, as a bullet list.
+4. **Rules**: the agent's always list, then the never list, which always opens with five fixed rules (never invent facts, never leave the business, never ask for sensitive data, never drop the role, never produce offensive content) followed by the agent's own.
+5. **Tone**.
+6. **Knowledge**: Q&A pairs and the retrieved (or full) PDF text, closed by the instruction not to invent what is not there.
+
+Empty sections are left out. `GET /api/agents/{id}/prompt` returns the composed prompt without the per-message document text; the agent editor uses it to show the token cost of every message.
 
 The recent conversation history is appended after this system message. Any empty section is skipped, so the prompt only carries what you have actually provided.

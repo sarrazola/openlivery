@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 def _portal(client: TestClient, name: str, email: str):
     customer = client.post(
         "/api/clients",
-        json={"name": name, "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": name, "is_active": True},
     ).json()
     client.post(f"/api/clients/{customer['id']}/portal-users", json={"name": "Ana", "email": email, "password": "secure-portal"})
     client.patch(f"/api/clients/{customer['id']}/portal", json={"portal_enabled": True})

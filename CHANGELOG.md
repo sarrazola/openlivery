@@ -13,6 +13,30 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- The agent wizard asks for the three essentials (what the business does,
+  key info and policies, what the agent does) instead of a free prompt, picks
+  the model from a searchable dropdown with recommended and tier tags, and
+  its step header is clickable. Starting from scratch is
+  recommended and preselected; the starter templates pre-fill the whole
+  business brief in both languages. The note about the OpenAI key under the
+  capabilities is gone.
+- A small help icon next to the fields the AI reads (client industry, type,
+  name; agent name, business and job sections) says in one line what the
+  model receives from them.
+- Playground conversations can be deleted from the playground sidebar
+  (`DELETE /api/conversations/{id}`, playground channel only), and the
+  composer has an image button next to the microphone.
+- `GET /api/agents/{id}/prompt` returns the composed system prompt; the agent
+  editor uses it to show the real token cost of every message.
+- The system prompt is a structured markdown document (identity, job, the
+  business, rules, tone, knowledge). The never list always opens with five fixed
+  rules (no inventing facts, no leaving the business, no sensitive data, no
+  dropping the role, no offensive content) ahead of the agent's own. Its headings follow the agent's new
+  `prompt_language` (`es` or `en`, set from the UI language on save); the
+  operator's text is inserted verbatim.
+- Clients pick an **industry** and a **business type** from a fixed catalog
+  (`GET /api/industries`), with a free-text field when only "other" fits, and
+  the prompt's first line names the kind of business.
 - Web chat visitors get a stable handle ("Visitor 3F9A2C", from their browser
   session) shown in the portal, the inbox, the playground and push
   notifications, so anonymous chats can be told apart. When a case is
@@ -49,6 +73,11 @@ Docker stack; run `alembic upgrade head` on local setups).
   the members of its tray instead of every portal device.
 
 ### Fixed
+- Voice notes recorded in the browser (playground, portal and web chat) are
+  transcribed again. They were sent to the transcription provider named
+  `audio.ogg` whatever their container, so Safari's mp4 and Chrome's webm
+  recordings were rejected as corrupted and the agent only saw a placeholder;
+  the file name now follows the audio's mime type.
 - The playground no longer shows activity lines (took over, resolved) as
   if they were messages.
 - The web chat widget now shows what a person writes after taking over a
@@ -63,6 +92,19 @@ Docker stack; run `alembic upgrade head` on local setups).
   previous inbox's rows while the new list loads.
 
 ### Changed
+- Playground conversations are rehearsals: they no longer appear in the
+  client portal (conversation list, contact history, counters, reports).
+  The agency inbox and dashboard still show them under the Playground channel.
+- Creating a client asks only who the business is: industry, business type
+  and name, all required before it can be created, plus an optional logo,
+  and continues into creating its first agent. Everything about
+  what the business does moved to the agent. The client's free-text `description` and
+  `general_context`, the agent's `description`, `brief_goal` and
+  `manual_context` (with `PUT /api/agents/{id}/context`) are gone: on upgrade
+  a client's general context and an agent's manual context are appended to
+  the agent's key info and policies, and a brief goal to its instructions;
+  the descriptions never reached the model. Free-text industries are cleared.
+  Knowledge keeps PDFs and Q&A pairs.
 - The web chat widget is a channel of the client, next to its WhatsApp
   lines, instead of a setting on each agent: one per client, answered by the
   agent you assign, configured from the client's Channels tab. Existing

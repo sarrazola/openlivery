@@ -15,12 +15,18 @@ export function Combobox({
   options,
   placeholder,
   allowCustom = false,
+  labels,
+  tags,
 }: {
   value: string;
   onChange: (value: string) => void;
   options: readonly string[];
   placeholder?: string;
   allowCustom?: boolean;
+  /** Display text per option; the option itself is the value stored. */
+  labels?: Record<string, string>;
+  /** Small tag shown next to an option, e.g. "Recommended". */
+  tags?: Record<string, string>;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -40,13 +46,18 @@ export function Combobox({
   function pick(option: string) { onChange(option); close(); }
 
   const q = query.trim().toLowerCase();
-  const filtered = q ? options.filter((option) => option.toLowerCase().includes(q)) : options;
+  const filtered = q ? options.filter((option) => option.toLowerCase().includes(q) || (labels?.[option] ?? "").toLowerCase().includes(q)) : options;
   const canUseCustom = allowCustom && q.length > 0 && !options.some((option) => option.toLowerCase() === q);
 
   return (
     <div className={`combo ${open ? "open" : ""}`} ref={ref}>
-      <button type="button" className="combo-value" onClick={() => (open ? close() : setOpen(true))}>
-        <span className={value ? "" : "muted"}>{value || placeholder}</span>
+      <button
+        type="button"
+        className="combo-value"
+        onMouseDown={(event) => { event.preventDefault(); if (open) close(); else setOpen(true); }}
+        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); if (open) close(); else setOpen(true); } }}
+      >
+        <span className={value ? "" : "muted"}>{value ? <>{labels?.[value] ?? value}{tags?.[value] && <em className="combo-tag">{tags[value]}</em>}</> : placeholder}</span>
         <ChevronDown size={16} />
       </button>
       {open && (
@@ -75,7 +86,7 @@ export function Combobox({
             {filtered.map((option) => (
               <li key={option}>
                 <button type="button" className={option === value ? "active" : ""} onClick={() => pick(option)}>
-                  {option}{option === value && <Check size={14} />}
+                  <span className="combo-option">{labels?.[option] ?? option}{labels?.[option] && <code>{option}</code>}{tags?.[option] && <em className="combo-tag">{tags[option]}</em>}</span>{option === value && <Check size={14} />}
                 </button>
               </li>
             ))}

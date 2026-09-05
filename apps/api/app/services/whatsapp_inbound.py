@@ -21,7 +21,7 @@ from .conversation_state import exchanged_only, note_inbound, note_reply
 from ..models import Agent, Conversation, Message, now_utc
 from .attachments import llm_text, store_attachment
 from .knowledge import build_system_prompt, retrieve_knowledge
-from .media import describe_image, transcribe_audio
+from .media import audio_filename, describe_image, transcribe_audio
 from .notifications import notify_needs_human
 from .providers import resolve_agent_credentials, resolve_provider_credentials
 from .tools import run_completion
@@ -99,7 +99,8 @@ async def resolve_inbound_content(db: Session, agent: Agent, inbound: InboundMes
             description = await describe_image(base_url, api_key, model, data, inbound.media_mime or "image/jpeg", instruction)
             return text, (f"{text}\n\n" if text else "") + f"[Imagen recibida] {description}"
         model = agent.audio_model.strip() or "whisper-1"
-        transcript = await transcribe_audio(base_url, api_key, model, data, "audio.ogg", inbound.media_mime or "audio/ogg")
+        mime = inbound.media_mime or "audio/ogg"
+        transcript = await transcribe_audio(base_url, api_key, model, data, audio_filename(mime), mime)
         return text, (f"{text}\n\n" if text else "") + (transcript or _media_placeholder("audio"))
     except (HTTPException, ValueError):
         return text, text or _media_placeholder(inbound.media_kind)

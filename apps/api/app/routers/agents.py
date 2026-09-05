@@ -12,8 +12,8 @@ from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_user
 from ..models import Agent, AgentQA, Client, EscalationRule, KnowledgeDocument, PortalUser, Team, User, WhatsAppChannel, WhatsAppCloudChannel, WidgetChannel
-from ..schemas import AgentCreate, AgentOut, AgentUpdate, DocumentOut, EscalationConfigIn, EscalationConfigOut, ManualContextRequest, QAPairCreate, QAPairOut
-from ..services.knowledge import embed_document_chunks
+from ..schemas import AgentCreate, AgentOut, AgentPromptOut, AgentUpdate, DocumentOut, EscalationConfigIn, EscalationConfigOut, QAPairCreate, QAPairOut
+from ..services.knowledge import build_system_prompt, embed_document_chunks
 
 
 router = APIRouter(prefix="/agents", tags=["Agents"])
@@ -100,12 +100,11 @@ def delete_agent(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.put("/{agent_id}/context", response_model=AgentOut)
-def set_context(agent_id: uuid.UUID, payload: ManualContextRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+@router.get("/{agent_id}/prompt", response_model=AgentPromptOut)
+def get_prompt(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """What the model receives on every message, minus the knowledge retrieved per message."""
     agent = _agent(db, user, agent_id)
-    agent.manual_context = payload.manual_context
-    db.commit()
-    return _agent(db, user, agent_id)
+    return AgentPromptOut(prompt=build_system_prompt(agent, ""))
 
 
 def _document_out(doc: KnowledgeDocument) -> dict:

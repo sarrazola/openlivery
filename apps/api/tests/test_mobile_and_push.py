@@ -29,7 +29,7 @@ def reset_push(monkeypatch):
 def _client_with_portal(client: TestClient, name="Barber Co"):
     customer = client.post(
         "/api/clients",
-        json={"name": name, "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": name, "is_active": True},
     ).json()
     # Mirrors a user carried over from the pre-0021 shared login: real
     # credentials, no display name.
@@ -122,7 +122,7 @@ def test_portal_can_be_enabled_with_users_instead_of_a_shared_login(authenticate
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Clinic Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Clinic Co", "is_active": True},
     ).json()
     cid = customer["id"]
 
@@ -251,7 +251,7 @@ def test_webhook_provider_fires_when_a_human_is_expected_to_answer(
         "/api/agents",
         json={
             "client_id": cid, "provider": "openai", "model": "gpt-4.1-mini", "name": "Sofia",
-            "description": "", "instructions": "", "personality": "", "is_active": True,
+            "instructions": "", "personality": "", "is_active": True,
         },
     ).json()
     public_id = client.put(f"/api/webchat/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()["public_id"]
@@ -348,7 +348,7 @@ def test_replies_are_signed_by_the_person_not_the_business(authenticated_client:
     agent = client.post(
         "/api/agents",
         json={
-            "client_id": cid, "name": "Sofia", "description": "", "instructions": "",
+            "client_id": cid, "name": "Sofia", "instructions": "",
             "personality": "", "model": "", "is_active": True,
         },
     ).json()

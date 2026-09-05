@@ -63,9 +63,12 @@ class Client(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     agency_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agencies.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(180), index=True)
+    # Codes from app.industries: the sector and the kind of business within
+    # it. Both optional; they describe the business to the agent's prompt.
     industry: Mapped[str] = mapped_column(String(160), default="")
-    description: Mapped[str] = mapped_column(Text, default="")
-    general_context: Mapped[str] = mapped_column(Text, default="")
+    business_type: Mapped[str] = mapped_column(String(80), default="", server_default="")
+    # Free words for the kind of business when the catalog only offers "other".
+    business_custom: Mapped[str] = mapped_column(String(120), default="", server_default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Optional per-client logo, shown in the widget and portal (falls back to
     # the agency logo). Bytes stored in Postgres like the agency logo.
@@ -124,7 +127,7 @@ class Agent(Base):
     agency_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agencies.id", ondelete="CASCADE"), index=True)
     client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(180))
-    description: Mapped[str] = mapped_column(Text, default="")
+    # What this agent does: its job, tasks and rules, in prose.
     instructions: Mapped[str] = mapped_column(Text, default="")
     personality: Mapped[str] = mapped_column(Text, default="")
     # Where the built-in escalation triggers (frustration, explicit request
@@ -139,12 +142,11 @@ class Agent(Base):
     # The built-in triggers can be switched off; business rules keep working.
     escalation_builtin_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     # Structured business brief. Optional guided fields that compose into the
-    # system prompt alongside the free-form instructions.
+    # system prompt alongside the instructions.
     brief_summary: Mapped[str] = mapped_column(Text, default="", server_default="")
     brief_products: Mapped[str] = mapped_column(Text, default="", server_default="")
     brief_audience: Mapped[str] = mapped_column(Text, default="", server_default="")
     brief_policies: Mapped[str] = mapped_column(Text, default="", server_default="")
-    brief_goal: Mapped[str] = mapped_column(Text, default="", server_default="")
     brief_dos: Mapped[str] = mapped_column(Text, default="", server_default="")
     brief_donts: Mapped[str] = mapped_column(Text, default="", server_default="")
     # AI provider ("openai" or "anthropic"); the agency's key for that provider is used.
@@ -153,7 +155,10 @@ class Agent(Base):
     # IANA timezone (e.g. "America/Bogota"); injected into the system prompt so
     # the agent knows the local date/time. "UTC" when unset.
     timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC")
-    manual_context: Mapped[str] = mapped_column(Text, default="")
+    # Language of the prompt's headings and fixed sentences ("es" or "en").
+    # Set from the UI language when the agent is saved; the operator's own
+    # text is inserted as written.
+    prompt_language: Mapped[str] = mapped_column(String(5), default="es", server_default="es")
     # Generation settings. Sampling params are applied best-effort by the AI
     # service (models that reject them fall back to their defaults).
     temperature: Mapped[float] = mapped_column(Float, default=0.7, server_default="0.7")

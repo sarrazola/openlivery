@@ -1,19 +1,21 @@
 from fastapi.testclient import TestClient
 
+from conftest import customer_conversation
+
 
 def _portal_with_two_people(client: TestClient):
     customer = client.post(
         "/api/clients",
-        json={"name": "Handoff Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Handoff Co", "is_active": True},
     ).json()
     for name, email in (("Ana", "ana@handoff.com"), ("Pablo", "pablo@handoff.com")):
         client.post(f"/api/clients/{customer['id']}/portal-users", json={"name": name, "email": email, "password": "secure-portal"})
     client.patch(f"/api/clients/{customer['id']}/portal", json={"portal_enabled": True})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "name": "Host", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+        json={"client_id": customer["id"], "name": "Host", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
-    conversation_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    conversation_id = customer_conversation(client, agent["id"])["id"]
     return customer["portal_slug"], conversation_id
 
 
