@@ -182,11 +182,12 @@ export default function WidgetPage() {
 
   function close() { window.parent?.postMessage({ type: "ol-widget", action: "close" }, "*"); }
 
-  function exportChat() {
+  // Exports the chat on screen: the live one with its greeting, or a past one.
+  function exportChat(list: Msg[] = messages, withGreeting = true) {
     if (!config) return;
-    const transcript: typeof messages = config.greeting
-      ? [{ role: "assistant", content: config.greeting }, ...messages]
-      : messages;
+    const transcript: typeof messages = withGreeting && config.greeting
+      ? [{ role: "assistant", content: config.greeting }, ...list]
+      : list;
     const text = chatToText(transcript, { title: config.title, agentLabel: config.title, visitorLabel: t("inbox.senderVisitor") });
     downloadText(text, config.title);
   }
@@ -252,7 +253,7 @@ export default function WidgetPage() {
             <button type="button" className="widget-head-btn" onClick={() => setView(view === "past" ? "list" : "chat")} aria-label={t("chat.backToChat")}><ArrowLeft size={18} /></button>
             <div><strong>{view === "past" && past ? t("chat.chatFrom", { date: dateOf(past.item.created_at) }) : t("chat.previousChats")}</strong><small>{config.title}</small></div>
           </div>
-          <div className="widget-head-actions"><button type="button" className="widget-head-btn" onClick={close} aria-label="Close"><X size={18} /></button></div>
+          <div className="widget-head-actions">{view === "past" && past && past.messages.length > 0 && <button type="button" className="widget-head-btn" onClick={() => exportChat(past.messages, false)} title={t("chat.exportChat")} aria-label={t("chat.exportChat")}><Download size={17} /></button>}<button type="button" className="widget-head-btn" onClick={close} aria-label="Close"><X size={18} /></button></div>
         </header>
         {view === "list"
           ? <div className="widget-case-list">
@@ -273,7 +274,7 @@ export default function WidgetPage() {
         </div>
         <div className="widget-head-actions">
           {previous.length > 0 && <button type="button" className="widget-head-btn" onClick={() => setView("list")} title={t("chat.previousChats")} aria-label={t("chat.previousChats")}><History size={17} /></button>}
-          {messages.length > 0 && <button type="button" className="widget-head-btn" onClick={exportChat} title={t("chat.exportChat")} aria-label={t("chat.exportChat")}><Download size={17} /></button>}
+          {messages.length > 0 && <button type="button" className="widget-head-btn" onClick={() => exportChat()} title={t("chat.exportChat")} aria-label={t("chat.exportChat")}><Download size={17} /></button>}
           <button type="button" className="widget-head-btn" onClick={close} aria-label="Close"><X size={18} /></button>
         </div>
       </header>

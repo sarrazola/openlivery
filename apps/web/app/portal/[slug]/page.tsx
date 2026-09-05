@@ -286,6 +286,8 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   }
   const memberLabel = (member: Member) => (member.id === session.user_id ? t("portal.inbox.assignment.me", { name: member.name }) : member.name);
   const isResolved = selected?.status === "resolved";
+  // Reactions and quoted replies travel over WhatsApp only; the web chat has no way to show them.
+  const gesturesAvailable = selected?.channel === "whatsapp" || selected?.channel === "whatsapp_cloud";
   const windowClosed = Boolean(selected) && selected?.channel === "whatsapp_cloud" && selected?.reply_window_open === false;
   const canReply = Boolean(selected) && selected?.mode === "human" && !isResolved && !windowClosed;
   const activityText = (message: Message) => {
@@ -376,7 +378,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
               const mine = message.role === "assistant";
               return <article key={message.id} className={`${message.role}${mine ? " mine" : ""}${mine && message.sender_type === "ai" ? " ai" : ""}${grouped ? " grouped" : ""}`}>
                 {!grouped && <small>{message.sender_name || (message.role === "assistant" ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor"))}</small>}
-                {canReply && <span className="bubble-actions">
+                {canReply && gesturesAvailable && <span className="bubble-actions">
                   {message.role === "user" && <button type="button" title={t("portal.inbox.conversation.react")} aria-label={t("portal.inbox.conversation.react")} onClick={() => setReactingTo(reactingTo === message.id ? null : message.id)}><SmilePlus size={14} /></button>}
                   <button type="button" title={t("portal.inbox.conversation.reply")} aria-label={t("portal.inbox.conversation.reply")} onClick={() => { setQuoting(message); replyInputRef.current?.focus(); }}><Reply size={14} /></button>
                 </span>}
