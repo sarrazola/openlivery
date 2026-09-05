@@ -57,3 +57,17 @@ def authenticated_client(client: TestClient):
     )
     assert response.status_code == 201
     return client
+
+
+def customer_conversation(client: TestClient, agent_id: str) -> dict:
+    """A conversation as a customer would open it (widget channel), so it shows
+    in the client portal. Playground conversations are rehearsals and never do."""
+    from app.models import Conversation
+
+    created = client.post("/api/conversations", json={"agent_id": agent_id}).json()
+    with TestingSession() as db:
+        conversation = db.get(Conversation, created["id"])
+        conversation.channel = "widget"
+        db.commit()
+    created["channel"] = "widget"
+    return created

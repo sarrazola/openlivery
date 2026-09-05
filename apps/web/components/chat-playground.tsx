@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, FileText, LoaderCircle, MessageSquarePlus, Send, Sparkles, TriangleAlert, UserRound, Wrench } from "lucide-react";
+import { Bot, FileText, ImageIcon, LoaderCircle, MessageSquarePlus, Send, Sparkles, Trash2, TriangleAlert, UserRound, Wrench } from "lucide-react";
 import { api, apiUrl, messageFrom } from "@/lib/api";
 import { AttachButton, MessageAttachments, PendingAttachment, RecordButton, useFileDrop, type GalleryImage } from "@/components/attachments";
 import { RichText } from "@/components/rich-text";
-import { Alert, EmptyState } from "@/components/ui";
+import { Alert, EmptyState, Modal } from "@/components/ui";
 import { ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { formatTime } from "@/lib/datetime";
@@ -54,6 +54,19 @@ export function ChatPlayground({ lockedAgentId }: { lockedAgentId?: string }) {
   const needsKey = Boolean(selectedAgent) && !providers.find((item) => item.provider === selectedAgent!.provider)?.configured;
   const needsModel = Boolean(selectedAgent) && !selectedAgent!.model.trim();
   const agentReady = Boolean(selectedAgent) && !needsKey && !needsModel;
+
+  const [deleting, setDeleting] = useState<Conversation | null>(null);
+  async function removeConversation(item: Conversation) {
+    try {
+      await api(`/conversations/${item.id}`, { method: "DELETE" });
+      const rest = conversations.filter((c) => c.id !== item.id);
+      setConversations(rest);
+      if (conversation?.id === item.id) {
+        if (rest[0]) setConversation(await api<Conversation>(`/conversations/${rest[0].id}`));
+        else setConversation(null);
+      }
+    } catch (err) { toast.error(messageFrom(err)); } finally { setDeleting(null); }
+  }
 
   async function newConversation() {
     if (!agentId) return;
@@ -123,13 +136,16 @@ export function ChatPlayground({ lockedAgentId }: { lockedAgentId?: string }) {
     </aside>
     <section className="chat-panel drop-target" {...dropProps}>
       {overlay}
-      <header className="chat-head">{selectedAgent ? <><span className="agent-avatar"><Bot size={18} /></span><div><strong>{selectedAgent.name}</strong><small><i className={selectedAgent.model ? "online" : "offline"} />{selectedAgent.model ? t("playground.chat.modelConfigured") : t("playground.chat.noModelConfigured")}</small></div></> : <div><strong>{t("playground.chat.fallbackTitle")}</strong><small>{t("playground.chat.fallbackSubtitle")}</small></div>}{conversation && <span className={`mode-label ${conversation.mode}`}>{conversation.mode === "human" ? t("playground.chat.modeHuman") : t("playground.chat.modeAi")}</span>}</header>
+      <header className="chat-head">{selectedAgent ? <><span className="agent-avatar"><Bot size={18} /></span><div><strong>{selectedAgent.name}</strong><small><i className={selectedAgent.model ? "online" : "offline"} />{selectedAgent.model ? t("playground.chat.modelConfigured") : t("playground.chat.noModelConfigured")}</small></div></> : <div><strong>{t("playground.chat.fallbackTitle")}</strong><small>{t("playground.chat.fallbackSubtitle")}</small></div>}{conversation && <span className="chat-head-actions"><span className={`mode-label ${conversation.mode}`}>{conversation.mode === "human" ? t("playground.chat.modeHuman") : t("playground.chat.modeAi")}</span>{conversation.channel === "playground" && <button type="button" className="icon-button" onClick={() => setDeleting(conversation)} disabled={busy} title={t("playground.conversations.delete")} aria-label={t("playground.conversations.delete")}><Trash2 size={16} /></button>}</span>}</header>
       <div className="messages">
         {!loaded ? <ListRowsSkeleton rows={4} /> : !agentId ? <EmptyState icon={<Bot />} title={t("playground.empty.title")} description={t("playground.empty.description")} /> : !conversation?.messages?.length ? <div className="chat-welcome"><span><Sparkles size={24} /></span><h3>{t("playground.welcome.title", { name: selectedAgent?.name || "" })}</h3><p>{t("playground.welcome.description")}</p></div> : conversation.messages.filter((message) => message.kind !== "activity").map((message) => <div className={`message-row ${message.role}`} key={message.id}><span className="message-avatar">{message.role === "assistant" ? <Bot size={17} /> : <UserRound size={17} />}</span><div className="message-body"><small>{message.sender_name || (message.role === "assistant" ? selectedAgent?.name : t("playground.message.you"))}</small><MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={formatTime(message.created_at, lang)} />{message.content && <div className="bubble"><RichText text={message.content} /><time className="msg-time">{formatTime(message.created_at, lang)}</time></div>}{message.sources?.length > 0 && <div className="sources"><strong><FileText size={13} /> {t("playground.message.sourcesUsed")}</strong>{message.sources.map((source) => <span key={source.id} title={source.excerpt}>{source.filename}</span>)}</div>}{(message.tool_calls?.length ?? 0) > 0 && <div className="sources"><strong><Wrench size={13} /> {t("tools.usedInReply")}</strong>{message.tool_calls!.map((call, index) => <span key={index} className={call.is_error ? "tool-error" : ""} title={call.result_preview}>{call.name}</span>)}</div>}{message.tool_calls?.some((call) => call.is_error) && <div className="tool-error-details">{message.tool_calls!.filter((call) => call.is_error).map((call, index) => <small key={index}><TriangleAlert size={12} /> <strong>{call.name}</strong> {call.result_preview}</small>)}</div>}</div></div>)}
         {busy && <div className="message-row assistant"><span className="message-avatar"><Bot size={17} /></span><div className="thinking"><i /><i /><i /></div></div>}
         <div ref={endRef} />
       </div>
-      <div className="composer-wrap">{needsKey ? <Alert type="info">{t("playground.notReady.keyPrefix")}<Link href="/settings">{t("playground.notReady.settingsLink")}</Link>.</Alert> : needsModel ? <Alert type="info">{t("playground.notReady.modelPrefix")}<Link href={`/agents/${agentId}`}>{t("playground.notReady.modelLink")}</Link>.</Alert> : null}{pendingFile && <PendingAttachment file={pendingFile} onCancel={() => setPendingFile(null)} />}<form className="composer" onSubmit={send}><AttachButton onFile={setPendingFile} disabled={!agentId || busy || !agentReady} title={t("chat.attachFile")} /><RecordButton onRecorded={sendFile} onError={() => toast.error(t("chat.micDenied"))} disabled={!agentId || busy || !agentReady} title={t("chat.recordAudio")} titleStop={t("chat.stopRecording")} /><textarea ref={composerRef} name="message" rows={1} placeholder={agentId ? t("playground.composer.placeholder") : t("playground.composer.placeholderNoAgent")} disabled={!agentId || !agentReady} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /><button disabled={!agentId || busy || !agentReady} aria-label={t("playground.composer.send")}>{busy ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}</button></form><small>{t("playground.composer.disclaimer")}</small></div>
+      <div className="composer-wrap">{needsKey ? <Alert type="info">{t("playground.notReady.keyPrefix")}<Link href="/settings">{t("playground.notReady.settingsLink")}</Link>.</Alert> : needsModel ? <Alert type="info">{t("playground.notReady.modelPrefix")}<Link href={`/agents/${agentId}`}>{t("playground.notReady.modelLink")}</Link>.</Alert> : null}{pendingFile && <PendingAttachment file={pendingFile} onCancel={() => setPendingFile(null)} />}<form className="composer" onSubmit={send}><AttachButton onFile={setPendingFile} disabled={!agentId || busy || !agentReady} title={t("chat.attachFile")} /><AttachButton onFile={setPendingFile} accept="image/*" icon={ImageIcon} disabled={!agentId || busy || !agentReady} title={t("chat.attachImage")} /><RecordButton onRecorded={sendFile} onError={() => toast.error(t("chat.micDenied"))} disabled={!agentId || busy || !agentReady} title={t("chat.recordAudio")} titleStop={t("chat.stopRecording")} /><textarea ref={composerRef} name="message" rows={1} placeholder={agentId ? t("playground.composer.placeholder") : t("playground.composer.placeholderNoAgent")} disabled={!agentId || !agentReady} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /><button disabled={!agentId || busy || !agentReady} aria-label={t("playground.composer.send")}>{busy ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}</button></form><small>{t("playground.composer.disclaimer")}</small></div>
     </section>
+  <Modal open={deleting !== null} title={t("playground.conversations.delete")} description={t("playground.conversations.confirmDelete")} onClose={() => setDeleting(null)}>
+      <div className="modal-form"><div className="modal-actions"><button type="button" className="button" onClick={() => setDeleting(null)}>{t("playground.conversations.cancel")}</button><button type="button" className="button danger" onClick={() => deleting && removeConversation(deleting)}><Trash2 size={15} /> {t("playground.conversations.deleteConfirm")}</button></div></div>
+    </Modal>
   </div>;
 }

@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
 
+from conftest import customer_conversation
+
 
 def _portal_with_two_people(client: TestClient):
     customer = client.post(
@@ -13,7 +15,7 @@ def _portal_with_two_people(client: TestClient):
         "/api/agents",
         json={"client_id": customer["id"], "name": "Host", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
-    conversation_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    conversation_id = customer_conversation(client, agent["id"])["id"]
     return customer["portal_slug"], conversation_id
 
 

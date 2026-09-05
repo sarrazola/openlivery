@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
+from conftest import customer_conversation
+
 from app.routers import agents as agents_router
 from app.routers import clients as clients_router
 from app.routers import providers as providers_router
@@ -619,7 +621,7 @@ def test_white_label_portal_and_human_takeover(authenticated_client: TestClient)
         "/api/agents",
         json={"client_id": client_id, "name": "Host", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
-    conversation = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()
+    conversation = customer_conversation(client, agent["id"])
 
     public = client.get(f"/api/portal/{customer['portal_slug']}")
     assert public.status_code == 200
@@ -664,7 +666,7 @@ def test_portal_inbox_pages_searches_and_tracks_unread(authenticated_client: Tes
         "/api/agents",
         json={"client_id": customer["id"], "name": "Pager", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
-    ids = [client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"] for _ in range(3)]
+    ids = [customer_conversation(client, agent["id"])["id"] for _ in range(3)]
     slug = customer["portal_slug"]
     client.post(f"/api/portal/{slug}/login", json={"email": "ana@paged.com", "password": "secure-portal"})
 
@@ -714,7 +716,7 @@ def test_portal_resolves_reopens_and_narrates_the_thread(authenticated_client: T
         "/api/agents",
         json={"client_id": customer["id"], "name": "Host", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
-    conversation_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    conversation_id = customer_conversation(client, agent["id"])["id"]
     slug = customer["portal_slug"]
     base = f"/api/portal/{slug}/conversations"
     client.post(f"/api/portal/{slug}/login", json={"email": "ana@status.com", "password": "secure-portal"})
@@ -744,7 +746,7 @@ def test_portal_resolves_reopens_and_narrates_the_thread(authenticated_client: T
     assert client.get(f"{base}/{conversation_id}").json()["status"] == "resolved"
 
     # Who answers is narrated too, and the preview never shows an activity line.
-    fresh_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    fresh_id = customer_conversation(client, agent["id"])["id"]
     conversation_id = fresh_id
     taken = client.patch(f"{base}/{conversation_id}/mode", json={"mode": "human"}).json()
     assert taken["messages"][-1]["activity"] == {"event": "taken_over"}

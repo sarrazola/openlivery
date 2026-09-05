@@ -14,6 +14,10 @@ const en = {
     heading: "Conversations",
     new: "New conversation",
     empty: "No conversations yet.",
+    delete: "Delete conversation",
+    confirmDelete: "This test conversation and its messages will be deleted. This cannot be undone.",
+    deleteConfirm: "Delete",
+    cancel: "Cancel",
   },
   chat: {
     modelConfigured: "Model configured",
@@ -67,6 +71,10 @@ const es: typeof en = {
     heading: "Conversaciones",
     new: "Nueva conversación",
     empty: "No hay conversaciones todavía.",
+    delete: "Eliminar conversación",
+    confirmDelete: "Se eliminará esta conversación de prueba con sus mensajes. No se puede deshacer.",
+    deleteConfirm: "Eliminar",
+    cancel: "Cancelar",
   },
   chat: {
     modelConfigured: "Modelo configurado",

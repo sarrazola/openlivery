@@ -24,6 +24,7 @@ const en = {
   },
   chat: {
     attachFile: "Attach a file",
+    attachImage: "Attach an image",
     dropToSend: "Drop the file to attach it",
     attachmentImage: "Image",
     attachmentAudio: "Voice note",
@@ -149,6 +150,7 @@ const es: typeof en = {
   },
   chat: {
     attachFile: "Adjuntar un archivo",
+    attachImage: "Adjuntar una imagen",
     dropToSend: "Suelta el archivo para adjuntarlo",
     attachmentImage: "Imagen",
     attachmentAudio: "Nota de voz",

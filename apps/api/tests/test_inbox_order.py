@@ -3,6 +3,8 @@ from datetime import timedelta
 
 from fastapi.testclient import TestClient
 
+from conftest import customer_conversation
+
 from app.database import SessionLocal
 from app.models import Message, now_utc
 
@@ -19,8 +21,8 @@ def _portal(client: TestClient):
         json={"client_id": customer["id"], "name": "Host", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
     client.post(f"/api/portal/{customer['portal_slug']}/login", json={"email": "ana@order.co", "password": "secure-portal"})
-    first = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
-    second = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
+    first = customer_conversation(client, agent["id"])["id"]
+    second = customer_conversation(client, agent["id"])["id"]
     return customer["portal_slug"], first, second
 
 

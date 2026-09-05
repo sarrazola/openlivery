@@ -5,6 +5,8 @@ import uuid
 
 from fastapi.testclient import TestClient
 
+from conftest import customer_conversation
+
 
 def _portal_with_members(client: TestClient, names: list[str], company: str = "Teams Co"):
     customer = client.post(
@@ -30,7 +32,7 @@ def _conversation(client: TestClient, customer: dict, slug: str, title_hint: str
         "/api/agents",
         json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto", "instructions": "", "personality": "", "is_active": True},
     ).json()
-    conversation = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()
+    conversation = customer_conversation(client, agent["id"])
     return conversation["id"]
 
 

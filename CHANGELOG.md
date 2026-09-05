@@ -13,6 +13,9 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- Playground conversations can be deleted from the playground sidebar
+  (`DELETE /api/conversations/{id}`, playground channel only), and the
+  composer has an image button next to the microphone.
 - `GET /api/agents/{id}/prompt` returns the composed system prompt; the agent
   editor uses it to show the real token cost of every message.
 - The system prompt is a structured markdown document (identity, job, the
@@ -79,6 +82,9 @@ Docker stack; run `alembic upgrade head` on local setups).
   previous inbox's rows while the new list loads.
 
 ### Changed
+- Playground conversations are rehearsals: they no longer appear in the
+  client portal (conversation list, contact history, counters, reports).
+  The agency inbox and dashboard still show them under the Playground channel.
 - Creating a client asks only who the business is: industry, business type
   and name, and continues into creating its first agent. Everything about
   what the business does moved to the agent. The client's free-text `description` and

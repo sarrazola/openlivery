@@ -2,7 +2,7 @@
 
 import { DragEvent, MouseEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight, FileText, Mic, Paperclip, Pause, Play, Square, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, Mic, Paperclip, Pause, Play, Square, X, type LucideIcon } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import type { Attachment } from "@/types";
 
@@ -300,12 +300,12 @@ export function PendingAttachment({ file, onCancel }: { file: File; onCancel: ()
 }
 
 /** Paperclip button + hidden file input for chat composers. */
-export function AttachButton({ onFile, disabled, title, accept }: { onFile: (file: File) => void; disabled?: boolean; title: string; accept?: string }) {
+export function AttachButton({ onFile, disabled, title, accept, icon: Icon = Paperclip }: { onFile: (file: File) => void; disabled?: boolean; title: string; accept?: string; icon?: LucideIcon }) {
   const inputRef = useRef<HTMLInputElement>(null);
   return (
     <>
       <button type="button" className="composer-attach" disabled={disabled} title={title} aria-label={title} onClick={() => inputRef.current?.click()}>
-        <Paperclip size={18} />
+        <Icon size={18} />
       </button>
       <input
         ref={inputRef}

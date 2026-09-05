@@ -1641,3 +1641,7 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 
 /* Agent editor: identity preview. */
 .greeting-preview { margin: 0; padding: 10px 14px; border-radius: 9px; background: #f1faf6; color: #0f766e; font-size: 14px; font-weight: 600; }
+
+/* Playground header: the open rehearsal can be thrown away from here. */
+.chat-head-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; }
+.chat-head-actions .mode-label { margin-left: 0; }
