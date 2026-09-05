@@ -299,7 +299,8 @@ def test_widget_public_chat_and_gating(authenticated_client: TestClient, monkeyp
     # Resolving closes the case: the visitor's next message opens a new one,
     # while the widget keeps showing the whole exchange.
     assert client.patch(f"/api/conversations/{conversation_id}/status", json={"status": "resolved"}).status_code == 200
-    assert client.get(f"/api/widget/{public_id}/updates?session_id=s1").json()["status"] == "resolved"
+    closed = client.get(f"/api/widget/{public_id}/updates?session_id=s1").json()
+    assert closed["status"] == "resolved" and closed["messages"] == []  # never refills a fresh chat
     # Right after closing, the widget starts blank and the thread is history.
     fresh = client.get(f"/api/widget/{public_id}/history?session_id=s1").json()
     assert fresh["messages"] == [] and fresh["conversation_id"] is None

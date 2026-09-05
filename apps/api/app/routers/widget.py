@@ -232,7 +232,10 @@ def widget_updates(
     if not conversation:
         return {"mode": "ai", "status": "open", "reply": None, "messages": []}
     # A resolved latest case is reported as such, with nothing new: the widget
-    # then starts a fresh chat and moves it to history.
+    # then starts a fresh chat and moves it to history. Its messages never
+    # come back through here, or a fresh chat would fill up with them again.
+    if conversation.status == "resolved":
+        return {"mode": conversation.mode, "status": "resolved", "conversation_id": conversation.id, "reply": None, "messages": []}
     return {
         "mode": conversation.mode,
         "status": conversation.status,
