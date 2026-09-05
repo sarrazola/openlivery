@@ -13,6 +13,12 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- Web chat visitors get a stable handle ("Visitor 3F9A2C", from their browser
+  session) shown in the portal, the inbox, the playground and push
+  notifications, so anonymous chats can be told apart. When a case is
+  closed, by a person or the agent, the widget starts a fresh chat and
+  the closed thread moves to previous chats; a short chime plays when a
+  reply arrives.
 - The web chat widget keeps the visitor's earlier chats: the current case is
   shown on its own, a closed one gets a notice and the next message opens a
   new case, and a history button lists previous chats to read again. Chats
@@ -43,6 +49,8 @@ Docker stack; run `alembic upgrade head` on local setups).
   the members of its tray instead of every portal device.
 
 ### Fixed
+- The playground no longer shows activity lines (took over, resolved) as
+  if they were messages.
 - The web chat widget now shows what a person writes after taking over a
   conversation, live, labelled with their name; it used to display only the
   agent's replies. A message sent after the conversation was resolved opens a

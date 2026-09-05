@@ -310,7 +310,7 @@ def test_webhook_provider_fires_when_a_human_is_expected_to_answer(
     assert posted["headers"]["Authorization"] == "Bearer shhh"
     # A web visitor is anonymous, so the heading names the channel rather than
     # echoing their first message back as if it had just arrived.
-    assert posted["json"]["title"] == "Web chat"
+    assert posted["json"]["title"] == "Visitor S1"  # the visitor's handle, not the generic channel name
     assert posted["json"]["body"] == "are you open Saturday?"
     assert posted["json"]["data"]["conversation_id"] == conversation_id
     assert [d["token"] for d in posted["json"]["devices"]] == ["ana-phone-token"]
