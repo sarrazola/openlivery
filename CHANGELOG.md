@@ -13,6 +13,10 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- The web chat widget keeps the visitor's earlier chats: the current case is
+  shown on its own, a closed one gets a notice and the next message opens a
+  new case, and a history button lists previous chats to read again. Chats
+  are tied to the browser's anonymous session and stored on the server.
 - The interface opens in the browser's language on first visit: Spanish when
   the browser prefers it, English otherwise. A language picked with the EN/ES
   switch still wins once chosen.

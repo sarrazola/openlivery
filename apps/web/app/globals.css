@@ -1629,3 +1629,10 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .widget-bubble .msg-time { position: absolute; right: 9px; bottom: 6px; font-size: var(--text-xs); line-height: 1; color: inherit; opacity: .5; font-variant-numeric: tabular-nums; }
 
 .widget-sender { display: block; margin: 0 0 3px 6px; color: #68718a; font-size: 11px; font-weight: 600; }
+.widget-closed-note { align-self: center; margin: 6px 0; padding: 6px 12px; color: #68718a; background: #eceef3; border-radius: 99px; font-size: 12px; text-align: center; }
+.widget-case-list { flex: 1 1 auto; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; background: #f7f8fa; }
+.widget-case-item { display: flex; flex-direction: column; gap: 3px; padding: 11px 13px; text-align: left; border: 1px solid #e4e8f0; border-radius: 10px; background: white; cursor: pointer; font: inherit; color: #17213b; }
+.widget-case-item:hover { border-color: var(--widget-color, #635bff); }
+.widget-case-item strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.widget-case-item small { color: #68718a; font-size: 12px; }
+.widget-empty-note { padding: 24px 14px; color: #68718a; font-size: 13px; text-align: center; }
