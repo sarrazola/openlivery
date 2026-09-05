@@ -34,6 +34,28 @@ function latestStamp(messages: Msg[]): string | null {
   return last;
 }
 
+// A short two-note chime when a reply arrives. Browsers only allow sound after
+// the visitor interacted with the page, which typing in the chat satisfies;
+// when it is not allowed yet, this silently does nothing.
+let audioContext: AudioContext | null = null;
+function playChime() {
+  try {
+    audioContext = audioContext || new AudioContext();
+    const ctx = audioContext;
+    if (ctx.state === "suspended") { ctx.resume().catch(() => {}); return; }
+    const now = ctx.currentTime;
+    [[880, 0], [1174.66, 0.12]].forEach(([freq, at]) => {
+      const osc = ctx.createOscillator(); const gain = ctx.createGain();
+      osc.type = "sine"; osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, now + at);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.22);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now + at); osc.stop(now + at + 0.25);
+    });
+  } catch {}
+}
+
 // Tell the host loader (widget.js) to show a greeting teaser or an unread dot.
 function notifyHost(action: string, text?: string) {
   try { window.parent?.postMessage({ type: "ol-widget", action, text }, "*"); } catch {}
@@ -53,10 +75,11 @@ export default function WidgetPage() {
   // on the server under the browser's session id; clearing site data is the
   // only way to lose them.
   const [caseId, setCaseId] = useState<string | null>(null);
-  const [status, setStatus] = useState("open");
   const [previous, setPrevious] = useState<PastCase[]>([]);
   const [view, setView] = useState<"chat" | "list" | "past">("chat");
   const [past, setPast] = useState<{ item: PastCase; messages: Msg[] } | null>(null);
+  // Set when a case closes while the widget is open, so the fresh chat says why.
+  const [justClosed, setJustClosed] = useState(false);
   const openRef = useRef(false);
   const lastAtRef = useRef<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -98,9 +121,11 @@ export default function WidgetPage() {
     lastAtRef.current = latestStamp(data.messages);
     setMessages(data.messages);
     setCaseId(data.conversation_id ?? null);
-    setStatus(data.status ?? "open");
     setPrevious(data.previous ?? []);
   }, [session, publicId]);
+  // A new case opened by writing: the closed one moved to history, so the
+  // notice no longer applies.
+  useEffect(() => { if (caseId) setJustClosed(false); }, [caseId]);
   useEffect(() => { loadHistory().catch(() => {}); }, [loadHistory]);
 
   async function openPast(item: PastCase) {
@@ -118,13 +143,22 @@ export default function WidgetPage() {
     if (!session) return;
     const after = lastAtRef.current ? `&after=${encodeURIComponent(lastAtRef.current)}` : "";
     const data = await api<Reply>(`/widget/${publicId}/updates?session_id=${encodeURIComponent(session)}${after}`);
-    if (data.status) setStatus(data.status);
-    if (!data.messages.length) return;
-    const newest = latestStamp(data.messages);
-    if (newest && (!lastAtRef.current || newest > lastAtRef.current)) lastAtRef.current = newest;
-    setMessages((current) => mergeMessages(current, data.messages));
-    if (!openRef.current && data.messages.some((m) => m.role !== "user")) notifyHost("unread");
-  }, [session, publicId]);
+    const incoming = data.messages.filter((m) => m.role !== "user");
+    if (data.messages.length) {
+      const newest = latestStamp(data.messages);
+      if (newest && (!lastAtRef.current || newest > lastAtRef.current)) lastAtRef.current = newest;
+      setMessages((current) => mergeMessages(current, data.messages));
+    }
+    if (incoming.length) {
+      playChime();
+      if (!openRef.current) notifyHost("unread");
+    }
+    if (data.status === "resolved" && caseId && data.conversation_id === caseId) {
+      // Closed by a person or the agent: start fresh, the thread goes to history.
+      setJustClosed(true);
+      await loadHistory();
+    }
+  }, [session, publicId, caseId, loadHistory]);
   useEffect(() => {
     if (!session) return;
     let tick = 0;
@@ -173,9 +207,10 @@ export default function WidgetPage() {
     setMessages((current) => [...current, { role: "user", content, created_at: new Date().toISOString() }]);
     try {
       const sent = await api<Reply>(`/widget/${publicId}/messages`, { method: "POST", body: JSON.stringify({ session_id: session, content }) });
-      if (caseId && sent.conversation_id && sent.conversation_id !== caseId) {
-        // Written after a closed case: a new one opened, the old one joins the list.
-        await loadHistory();
+      if (!caseId || (sent.conversation_id && sent.conversation_id !== caseId)) {
+        // First message of a fresh chat: adopt the new case, then pull its reply.
+        setCaseId(sent.conversation_id ?? null);
+        await refresh();
       } else {
         // The reply, when there is one, comes back through the same channel as
         // everything else, with its id, so nothing shows twice.
@@ -195,8 +230,9 @@ export default function WidgetPage() {
       if (caption) data.append("caption", caption);
       const result = await api<Reply>(`/widget/${publicId}/media`, { method: "POST", body: data });
       if (inputRef.current) inputRef.current.value = "";
-      if (caseId && result.conversation_id && result.conversation_id !== caseId) await loadHistory();
-      else if (result.messages.length) { lastAtRef.current = latestStamp(result.messages); setMessages(result.messages); }
+      if (result.conversation_id && result.conversation_id !== caseId) setCaseId(result.conversation_id);
+      if (result.messages.length) { lastAtRef.current = latestStamp(result.messages); setMessages(result.messages); }
+      if (result.reply) playChime();
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); inputRef.current?.focus(); }
   }
 
@@ -243,8 +279,8 @@ export default function WidgetPage() {
       </header>
       <div className="widget-messages">
         {showGreeting && <div className="widget-msg assistant"><div className="widget-bubble"><RichText text={config.greeting} /></div></div>}
+        {justClosed && messages.length === 0 && <div className="widget-closed-note">{t("chat.closedNotice")}</div>}
         {messages.map(renderMessage)}
-        {status === "resolved" && messages.length > 0 && <div className="widget-closed-note">{t("chat.closedNotice")}</div>}
         {busy && <div className="widget-msg assistant"><div className="widget-bubble widget-typing"><i /><i /><i /></div></div>}
         <div ref={endRef} />
       </div>

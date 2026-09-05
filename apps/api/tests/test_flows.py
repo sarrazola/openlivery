@@ -271,7 +271,9 @@ def test_widget_public_chat_and_gating(authenticated_client: TestClient, monkeyp
     assert [m["role"] for m in history.json()["messages"]] == ["user", "assistant"]
 
     # A visitor message left unanswered (human mode) marks the conversation unread.
-    conversation_id = client.get("/api/conversations/inbox").json()[0]["id"]
+    first_row = client.get("/api/conversations/inbox").json()[0]
+    conversation_id = first_row["id"]
+    assert first_row["contact_name"].startswith("Visitor ")  # a short handle from the browser session
     client.patch(f"/api/conversations/{conversation_id}/mode", json={"mode": "human"})
     client.post(f"/api/widget/{public_id}/messages", json={"session_id": "s1", "content": "still there?"})
     inbox_row = next(row for row in client.get("/api/conversations/inbox").json() if row["id"] == conversation_id)
@@ -298,6 +300,10 @@ def test_widget_public_chat_and_gating(authenticated_client: TestClient, monkeyp
     # while the widget keeps showing the whole exchange.
     assert client.patch(f"/api/conversations/{conversation_id}/status", json={"status": "resolved"}).status_code == 200
     assert client.get(f"/api/widget/{public_id}/updates?session_id=s1").json()["status"] == "resolved"
+    # Right after closing, the widget starts blank and the thread is history.
+    fresh = client.get(f"/api/widget/{public_id}/history?session_id=s1").json()
+    assert fresh["messages"] == [] and fresh["conversation_id"] is None
+    assert [p["id"] for p in fresh["previous"]] == [conversation_id]
     client.post(f"/api/widget/{public_id}/messages", json={"session_id": "s1", "content": "one more thing"})
     rows = client.get("/api/conversations/inbox").json()
     assert len(rows) == 2 and rows[0]["id"] != conversation_id

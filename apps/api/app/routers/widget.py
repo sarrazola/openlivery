@@ -100,7 +100,14 @@ def _session_messages(
     return list(reversed(rows))
 
 
-def _previous_cases(db: Session, channel: WidgetChannel, session_id: str, current: Conversation) -> list[dict]:
+def _open_case(db: Session, channel: WidgetChannel, session_id: str) -> Conversation | None:
+    """The case the widget is talking in: the latest one, unless it was
+    resolved, in which case the visitor starts fresh and it joins history."""
+    conversation = _find_conversation(db, channel, session_id)
+    return conversation if conversation is not None and conversation.status != "resolved" else None
+
+
+def _previous_cases(db: Session, channel: WidgetChannel, session_id: str, current: Conversation | None) -> list[dict]:
     """The visitor's earlier cases, newest first, with how much each holds."""
     counts = (
         select(Message.conversation_id.label("cid"), func.count(Message.id).label("n"))
@@ -111,7 +118,7 @@ def _previous_cases(db: Session, channel: WidgetChannel, session_id: str, curren
     rows = db.execute(
         select(Conversation, func.coalesce(counts.c.n, 0))
         .outerjoin(counts, counts.c.cid == Conversation.id)
-        .where(*_session_filters(channel, session_id), Conversation.id != current.id)
+        .where(*_session_filters(channel, session_id), *([Conversation.id != current.id] if current else []))
         .order_by(Conversation.created_at.desc())
         .limit(20)
     ).all()
@@ -135,6 +142,9 @@ def _conversation(db: Session, channel: WidgetChannel, session_id: str) -> Conve
             widget_channel_id=channel.id,
             channel="widget",
             external_chat_id=f"widget:{session_id}",
+            # Anonymous visitors need telling apart in the inbox: a short,
+            # stable handle from their browser session does that.
+            contact_name=f"Visitor {session_id.replace('-', '')[:6].upper()}",
             title="Web chat",
         )
         db.add(conversation)
@@ -176,17 +186,18 @@ def widget_logo(public_id: str, db: Session = Depends(get_db)):
 @router.get("/{public_id}/history", response_model=WidgetReply, dependencies=[Depends(widget_rate_limit)])
 def widget_history(public_id: str, session_id: str, db: Session = Depends(get_db)):
     channel = _channel(db, public_id)
-    conversation = _find_conversation(db, channel, session_id)
+    conversation = _open_case(db, channel, session_id)
+    previous = _previous_cases(db, channel, session_id, conversation)
     if not conversation:
-        return {"mode": "ai", "status": "open", "reply": None, "messages": []}
-    # The current case only; earlier ones are listed, and fetched on demand.
+        # Nothing open: a blank chat, with whatever came before behind the history button.
+        return {"mode": "ai", "status": "open", "reply": None, "messages": [], "previous": previous}
     return {
         "mode": conversation.mode,
         "status": conversation.status,
         "conversation_id": conversation.id,
         "reply": None,
         "messages": [_message_out(item) for item in _session_messages(db, channel, session_id, conversation_id=conversation.id)],
-        "previous": _previous_cases(db, channel, session_id, conversation),
+        "previous": previous,
     }
 
 
@@ -220,6 +231,8 @@ def widget_updates(
     conversation = _find_conversation(db, channel, session_id)
     if not conversation:
         return {"mode": "ai", "status": "open", "reply": None, "messages": []}
+    # A resolved latest case is reported as such, with nothing new: the widget
+    # then starts a fresh chat and moves it to history.
     return {
         "mode": conversation.mode,
         "status": conversation.status,
