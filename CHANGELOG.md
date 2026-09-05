@@ -13,6 +13,8 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- The agent wizard recommends and preselects starting from scratch; the
+  starter templates now also pre-fill the business brief in both languages.
 - A small help icon next to the fields the AI reads (client industry, type,
   name; agent name, business and job sections) says in one line what the
   model receives from them.

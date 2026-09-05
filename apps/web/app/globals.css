@@ -1314,6 +1314,9 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .template-card:hover { transform: translateY(-2px); border-color: #cec8ff; box-shadow: var(--shadow); }
 .template-card.active { border-color: var(--purple); box-shadow: 0 0 0 3px #f0eeff; }
 .template-card.blank { border-style: dashed; }
+.template-card.blank.active { border-style: solid; background: #fbfaff; }
+.template-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.template-badge { padding: 3px 8px; border-radius: 20px; background: #eeecff; color: #4f46c9; font-size: 11px; font-style: normal; font-weight: 700; letter-spacing: .02em; }
 .template-icon { width: 40px; height: 40px; display: grid; place-items: center; color: var(--purple); background: var(--purple-soft); border-radius: 11px; }
 .template-card strong { font-size: 14px; }
 .template-card small { color: var(--muted); font-size: 12px; line-height: 1.5; }

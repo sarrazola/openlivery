@@ -35,6 +35,7 @@ export default function NewAgentPage() {
   const [name, setName] = useState("");
   const [instructions, setInstructions] = useState("");
   const [personality, setPersonality] = useState("");
+  const [brief, setBrief] = useState({ summary: "", products: "", audience: "", policies: "", dos: "", donts: "" });
   const [provider, setProvider] = useState("openai");
   const [model, setModel] = useState(defaultModelFor("openai"));
   const [timezone, setTimezone] = useState(BROWSER_TZ);
@@ -61,6 +62,10 @@ export default function NewAgentPage() {
     if (tpl) {
       setInstructions(localize(tpl.instructions, lang));
       setPersonality(localize(tpl.personality, lang));
+      setBrief({ summary: localize(tpl.brief.summary, lang), products: localize(tpl.brief.products, lang), audience: localize(tpl.brief.audience, lang), policies: localize(tpl.brief.policies, lang), dos: localize(tpl.brief.dos, lang), donts: localize(tpl.brief.donts, lang) });
+    } else {
+      setInstructions(""); setPersonality("");
+      setBrief({ summary: "", products: "", audience: "", policies: "", dos: "", donts: "" });
     }
     setStep(1);
   }
@@ -72,6 +77,7 @@ export default function NewAgentPage() {
     try {
       const agent = await api<Agent>("/agents", { method: "POST", body: JSON.stringify({
         client_id: clientId, name, instructions, personality,
+        brief_summary: brief.summary, brief_products: brief.products, brief_audience: brief.audience, brief_policies: brief.policies, brief_dos: brief.dos, brief_donts: brief.donts,
         provider, model: model || "", timezone, prompt_language: lang,
         temperature, max_tokens: maxTokens, memory_limit: memoryLimit, is_active: true,
         image_enabled: imageEnabled, audio_enabled: audioEnabled,
@@ -111,8 +117,8 @@ export default function NewAgentPage() {
               <small>{localize(tpl.tagline, lang)}</small>
             </button>
           ))}
-          <button type="button" className="template-card blank" onClick={() => { setTemplateId(""); setStep(1); }}>
-            <span className="template-icon"><PencilLine size={20} /></span>
+          <button type="button" className={`template-card blank ${templateId === "" ? "active" : ""}`} onClick={() => { applyTemplate(""); }}>
+            <span className="template-card-top"><span className="template-icon"><PencilLine size={20} /></span><em className="template-badge">{t("agents.wizard.modelBadgeRecommended")}</em></span>
             <strong>{t("agents.wizard.blankName")}</strong>
             <small>{t("agents.wizard.blankTagline")}</small>
           </button>

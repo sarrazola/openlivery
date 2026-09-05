@@ -12,7 +12,7 @@ An agent lives under a client (`Agency → Client → Agent`). The client is onl
 
 New agents are created through a five-step wizard (**Agents → New agent**):
 
-1. **Template** — pick an industry starter template or start blank. Templates pre-fill what the agent does and its tone so you have a working prompt from the first minute.
+1. **Template** — start from scratch (recommended and preselected) or pick an industry starter template. Templates pre-fill what the agent does, its tone and the business brief (what the business does, products, audience, key info, always and never) in your language, for you to replace the specifics with the client's own.
 2. **Identity** — choose the owning client and name the agent.
 3. **Instructions** — write what the agent does and how it should sound. A live token counter estimates the size of the prompt as you type.
 4. **Model** — set the timezone, provider and model, and tune temperature, max tokens and memory. A context-window bar shows how much of the model's window the prompt uses.

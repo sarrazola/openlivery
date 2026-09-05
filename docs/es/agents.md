@@ -12,7 +12,7 @@ Un agente vive bajo un cliente (`Agency → Client → Agent`). El cliente es so
 
 Los agentes nuevos se crean mediante un asistente de cinco pasos (**Agents → New agent**):
 
-1. **Plantilla** — elige una plantilla inicial por industria o empieza en blanco. Las plantillas rellenan qué hace el agente y su tono para que tengas un prompt funcional desde el primer minuto.
+1. **Plantilla** — empieza desde cero (recomendado y preseleccionado) o elige una plantilla inicial por industria. Las plantillas rellenan qué hace el agente, su tono y el brief del negocio (qué hace, productos, público, información clave, siempre y nunca) en tu idioma, para que reemplaces los detalles con los del cliente.
 2. **Identidad** — elige el cliente propietario y nombra el agente.
 3. **Instrucciones** — escribe qué hace el agente y cómo debe sonar. Un contador de tokens en vivo estima el tamaño del prompt mientras escribes.
 4. **Modelo** — define la zona horaria, el proveedor y el modelo, y ajusta la temperatura, los tokens máximos y la memoria. Una barra de ventana de contexto muestra cuánto de la ventana del modelo usa el prompt.
