@@ -13,6 +13,9 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- A small help icon next to the fields the AI reads (client industry, type,
+  name; agent name, business and job sections) says in one line what the
+  model receives from them.
 - Playground conversations can be deleted from the playground sidebar
   (`DELETE /api/conversations/{id}`, playground channel only), and the
   composer has an image button next to the microphone.
@@ -86,7 +89,8 @@ Docker stack; run `alembic upgrade head` on local setups).
   client portal (conversation list, contact history, counters, reports).
   The agency inbox and dashboard still show them under the Playground channel.
 - Creating a client asks only who the business is: industry, business type
-  and name, and continues into creating its first agent. Everything about
+  and name, all required before it can be created, plus an optional logo,
+  and continues into creating its first agent. Everything about
   what the business does moved to the agent. The client's free-text `description` and
   `general_context`, the agent's `description`, `brief_goal` and
   `manual_context` (with `PUT /api/agents/{id}/context`) are gone: on upgrade

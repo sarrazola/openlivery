@@ -22,6 +22,15 @@ const en = {
     connect: "Connect",
     configure: "Configure",
   },
+  aiContext: {
+    industry: "Sent to the AI. The agent introduces the business by its industry and type, e.g. “a fast food business”.",
+    businessType: "Sent to the AI. Names the kind of business more precisely than the industry, e.g. “a fast food business”.",
+    businessCustom: "Sent to the AI in place of the type: “a business of …”.",
+    businessName: "Sent to the AI. The agent speaks on behalf of this name.",
+    agentName: "Sent to the AI. The agent introduces itself with this name.",
+    agentBusiness: "Everything in this section is sent to the AI with every message.",
+    agentJob: "Everything in this section is sent to the AI with every message.",
+  },
   chat: {
     attachFile: "Attach a file",
     attachImage: "Attach an image",
@@ -147,6 +156,15 @@ const es: typeof en = {
     comingSoon: "Próximamente",
     connect: "Conectar",
     configure: "Configurar",
+  },
+  aiContext: {
+    industry: "Se envía a la IA. El agente presenta el negocio por su industria y tipo, p. ej. “un negocio de comida rápida”.",
+    businessType: "Se envía a la IA. Nombra el tipo de negocio con más precisión que la industria, p. ej. “un negocio de comida rápida”.",
+    businessCustom: "Se envía a la IA en lugar del tipo: “un negocio de …”.",
+    businessName: "Se envía a la IA. El agente habla en nombre de este negocio.",
+    agentName: "Se envía a la IA. El agente se presenta con este nombre.",
+    agentBusiness: "Todo lo de esta sección se envía a la IA en cada mensaje.",
+    agentJob: "Todo lo de esta sección se envía a la IA en cada mensaje.",
   },
   chat: {
     attachFile: "Adjuntar un archivo",

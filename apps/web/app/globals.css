@@ -367,9 +367,11 @@ textarea { line-height: 1.55; }
 .section-heading h2 { margin: 0 0 4px; font-size: 20px; }
 .section-heading p { margin: 0; color: #687082; font-size: 14px; }
 .security-note { margin-bottom: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; color: #514a98; border: 1px solid #dddafe; border-radius: 7px; background: #f8f7ff; font-size: 13px; }
-.logo-editor { display: flex; align-items: center; gap: 14px; }
+.logo-editor { display: flex; align-items: center; gap: 16px; padding: 14px 16px; border: 1px solid #e6e8ee; border-radius: 10px; background: #fbfbfd; }
 .logo-preview { width: 68px; height: 68px; display: grid; place-items: center; overflow: hidden; color: #635bff; border: 1px dashed #bdb8f4; border-radius: 9px; background: #f7f6ff; }
 .logo-preview img { width: 100%; height: 100%; object-fit: contain; }
+.logo-pick { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.logo-pick .text-button { padding: 0; font-size: 12px; }
 .logo-editor > div { display: flex; flex-direction: column; gap: 3px; }
 .logo-editor small { color: #7b8391; font-size: 12px; }
 .logo-editor > div > div { display: flex; gap: 13px; }
@@ -1645,3 +1647,12 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 /* Playground header: the open rehearsal can be thrown away from here. */
 .chat-head-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; }
 .chat-head-actions .mode-label { margin-left: 0; }
+
+/* "?" hints that say what the AI receives from a field or section. */
+.label-row { display: inline-flex; align-items: center; gap: 6px; }
+.ai-hint { position: relative; display: inline-flex; align-items: center; color: #8a93a8; cursor: help; vertical-align: middle; outline: 0; }
+.ai-hint:hover, .ai-hint:focus-visible { color: #4f46d4; }
+.ai-hint-tip { position: absolute; left: 50%; bottom: calc(100% + 8px); z-index: 30; width: 250px; padding: 9px 11px; border-radius: 9px; background: #0f172a; color: #f1f5f9; font-size: 12px; font-weight: 500; line-height: 1.45; text-transform: none; letter-spacing: 0; text-align: left; transform: translateX(-50%) translateY(4px); opacity: 0; pointer-events: none; transition: opacity .12s ease, transform .12s ease; box-shadow: 0 8px 24px rgba(15,23,42,.18); }
+.ai-hint-tip::after { content: ""; position: absolute; left: 50%; top: 100%; border: 6px solid transparent; border-top-color: #0f172a; transform: translateX(-50%); }
+.ai-hint:hover .ai-hint-tip, .ai-hint:focus-visible .ai-hint-tip { opacity: 1; transform: translateX(-50%) translateY(0); }
+.settings-copy h3 .ai-hint, .section-copy h2 .ai-hint { margin-left: 2px; }
