@@ -764,6 +764,18 @@ class WidgetReply(BaseModel):
     # Where the latest case for this visitor stands; resolved means the next
     # message opens a new one.
     status: str = "open"
+    conversation_id: uuid.UUID | None = None
+    # Earlier cases of the same visitor, newest first, for the widget's
+    # "previous chats" list.
+    previous: list["WidgetCaseOut"] = []
+
+
+class WidgetCaseOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    created_at: datetime
+    resolved_at: datetime | None = None
+    message_count: int = 0
 
 
 class WhatsAppInbound(BaseModel):

@@ -75,9 +75,17 @@ def _find_conversation(db: Session, channel: WidgetChannel, session_id: str) -> 
     )
 
 
-def _session_messages(db: Session, channel: WidgetChannel, session_id: str, *, after: datetime | None = None) -> list[Message]:
-    """What was exchanged with this visitor across all their cases, oldest
-    first. Activity lines never leave the inbox."""
+def _session_messages(
+    db: Session,
+    channel: WidgetChannel,
+    session_id: str,
+    *,
+    after: datetime | None = None,
+    conversation_id: uuid.UUID | None = None,
+) -> list[Message]:
+    """What was exchanged with this visitor, oldest first: one case when
+    ``conversation_id`` is given, otherwise everything since ``after``.
+    Activity lines never leave the inbox."""
     query = (
         select(Message)
         .join(Conversation, Conversation.id == Message.conversation_id)
@@ -86,8 +94,31 @@ def _session_messages(db: Session, channel: WidgetChannel, session_id: str, *, a
     )
     if after is not None:
         query = query.where(Message.created_at > after)
+    if conversation_id is not None:
+        query = query.where(Conversation.id == conversation_id)
     rows = db.scalars(query.order_by(Message.created_at.desc()).limit(HISTORY_LIMIT)).all()
     return list(reversed(rows))
+
+
+def _previous_cases(db: Session, channel: WidgetChannel, session_id: str, current: Conversation) -> list[dict]:
+    """The visitor's earlier cases, newest first, with how much each holds."""
+    counts = (
+        select(Message.conversation_id.label("cid"), func.count(Message.id).label("n"))
+        .where(Message.kind == "message")
+        .group_by(Message.conversation_id)
+        .subquery()
+    )
+    rows = db.execute(
+        select(Conversation, func.coalesce(counts.c.n, 0))
+        .outerjoin(counts, counts.c.cid == Conversation.id)
+        .where(*_session_filters(channel, session_id), Conversation.id != current.id)
+        .order_by(Conversation.created_at.desc())
+        .limit(20)
+    ).all()
+    return [
+        {"id": conv.id, "title": conv.title, "created_at": conv.created_at, "resolved_at": conv.resolved_at, "message_count": int(n)}
+        for conv, n in rows
+    ]
 
 
 def _conversation(db: Session, channel: WidgetChannel, session_id: str) -> Conversation:
@@ -148,11 +179,30 @@ def widget_history(public_id: str, session_id: str, db: Session = Depends(get_db
     conversation = _find_conversation(db, channel, session_id)
     if not conversation:
         return {"mode": "ai", "status": "open", "reply": None, "messages": []}
+    # The current case only; earlier ones are listed, and fetched on demand.
     return {
         "mode": conversation.mode,
         "status": conversation.status,
+        "conversation_id": conversation.id,
         "reply": None,
-        "messages": [_message_out(item) for item in _session_messages(db, channel, session_id)],
+        "messages": [_message_out(item) for item in _session_messages(db, channel, session_id, conversation_id=conversation.id)],
+        "previous": _previous_cases(db, channel, session_id, conversation),
+    }
+
+
+@router.get("/{public_id}/conversations/{conversation_id}", response_model=WidgetReply, dependencies=[Depends(widget_rate_limit)])
+def widget_case(public_id: str, conversation_id: uuid.UUID, session_id: str, db: Session = Depends(get_db)):
+    """One earlier case of this visitor, read-only."""
+    channel = _channel(db, public_id)
+    conversation = db.scalar(select(Conversation).where(*_session_filters(channel, session_id), Conversation.id == conversation_id))
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {
+        "mode": conversation.mode,
+        "status": conversation.status,
+        "conversation_id": conversation.id,
+        "reply": None,
+        "messages": [_message_out(item) for item in _session_messages(db, channel, session_id, conversation_id=conversation.id)],
     }
 
 
@@ -173,8 +223,9 @@ def widget_updates(
     return {
         "mode": conversation.mode,
         "status": conversation.status,
+        "conversation_id": conversation.id,
         "reply": None,
-        "messages": [_message_out(item) for item in _session_messages(db, channel, session_id, after=after)],
+        "messages": [_message_out(item) for item in _session_messages(db, channel, session_id, after=after, conversation_id=conversation.id)],
     }
 
 
@@ -245,9 +296,9 @@ async def widget_message(public_id: str, payload: WidgetMessageIn, db: Session =
 
     if conversation.mode == "human":
         await notify_needs_human(db, conversation, content)
-        return {"mode": "human", "status": conversation.status, "reply": None, "messages": []}
+        return {"mode": "human", "status": conversation.status, "conversation_id": conversation.id, "reply": None, "messages": []}
     reply = await _widget_ai_reply(db, agent, conversation, content)
-    return {"mode": "ai", "status": conversation.status, "reply": reply, "reply_at": now_utc() if reply else None, "messages": []}
+    return {"mode": "ai", "status": conversation.status, "conversation_id": conversation.id, "reply": reply, "reply_at": now_utc() if reply else None, "messages": []}
 
 
 @router.post("/{public_id}/media", response_model=WidgetReply, dependencies=[Depends(widget_rate_limit)])
@@ -312,5 +363,5 @@ async def widget_media(
         await notify_needs_human(db, conversation, display_content or llm_content)
     reply = None if mode == "human" else await _widget_ai_reply(db, agent, conversation, llm_content)
     # Return the refreshed history so the client can render the new attachment.
-    history = _session_messages(db, channel, session_id)
-    return {"mode": mode, "status": conversation.status, "reply": reply, "messages": [_message_out(item) for item in history]}
+    history = _session_messages(db, channel, session_id, conversation_id=conversation.id)
+    return {"mode": mode, "status": conversation.status, "conversation_id": conversation.id, "reply": reply, "messages": [_message_out(item) for item in history]}

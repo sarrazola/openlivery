@@ -303,10 +303,17 @@ def test_widget_public_chat_and_gating(authenticated_client: TestClient, monkeyp
     assert len(rows) == 2 and rows[0]["id"] != conversation_id
     assert client.get(f"/api/conversations/{rows[0]['id']}").json()["status"] == "open"
     history = client.get(f"/api/widget/{public_id}/history?session_id=s1").json()
-    assert history["status"] == "open"
+    assert history["status"] == "open" and history["conversation_id"] == rows[0]["id"]
+    # The widget shows the new case only; the closed one is listed as previous.
     # The new case starts in AI mode again, so the agent answers it.
-    assert [m["content"] for m in history["messages"]][-3:] == ["Soy Ana, te ayudo", "one more thing", "Sure, happy to help!"]
-    assert all(m["role"] in ("user", "assistant") for m in history["messages"])  # no activity lines
+    assert [m["content"] for m in history["messages"]] == ["one more thing", "Sure, happy to help!"]
+    assert [(p["id"], p["message_count"]) for p in history["previous"]] == [(conversation_id, 4)]
+    past = client.get(f"/api/widget/{public_id}/conversations/{conversation_id}?session_id=s1").json()
+    assert past["status"] == "resolved"
+    assert [m["content"] for m in past["messages"]][-1] == "Soy Ana, te ayudo"
+    assert all(m["role"] in ("user", "assistant") for m in past["messages"])  # no activity lines
+    # Another visitor cannot read it.
+    assert client.get(f"/api/widget/{public_id}/conversations/{conversation_id}?session_id=s2").status_code == 404
 
 
 def test_inbox_pagination_and_search(authenticated_client: TestClient):
