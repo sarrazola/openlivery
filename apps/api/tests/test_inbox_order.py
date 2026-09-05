@@ -10,13 +10,13 @@ from app.models import Message, now_utc
 def _portal(client: TestClient):
     customer = client.post(
         "/api/clients",
-        json={"name": "Order Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Order Co", "is_active": True},
     ).json()
     client.post(f"/api/clients/{customer['id']}/portal-users", json={"name": "Ana", "email": "ana@order.co", "password": "secure-portal"})
     client.patch(f"/api/clients/{customer['id']}/portal", json={"portal_enabled": True})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "name": "Host", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+        json={"client_id": customer["id"], "name": "Host", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
     client.post(f"/api/portal/{customer['portal_slug']}/login", json={"email": "ana@order.co", "password": "secure-portal"})
     first = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]

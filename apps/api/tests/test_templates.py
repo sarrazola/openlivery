@@ -19,13 +19,13 @@ PENDING = {**APPROVED, "id": "2", "name": "promo", "status": "PENDING", "body": 
 def _portal_with_cloud_line(client: TestClient):
     customer = client.post(
         "/api/clients",
-        json={"name": "Outbound Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Outbound Co", "is_active": True},
     ).json()
     client.post(f"/api/clients/{customer['id']}/portal-users", json={"name": "Ana", "email": "ana@outbound.com", "password": "secure-portal"})
     client.patch(f"/api/clients/{customer['id']}/portal", json={"portal_enabled": True})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "name": "Host", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+        json={"client_id": customer["id"], "name": "Host", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
     created = client.put(
         f"/api/whatsapp-cloud/channels/{customer['id']}",
@@ -58,7 +58,7 @@ def test_the_sender_chooses_the_line_when_the_business_has_both(authenticated_cl
     slug = customer["portal_slug"]
     qr_host = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "name": "QR Host", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+        json={"client_id": customer["id"], "name": "QR Host", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
     assert client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": qr_host["id"]}).status_code in (200, 201)
     assert [c["channel"] for c in client.get(f"/api/portal/{slug}/channels").json()] == ["whatsapp_cloud", "whatsapp"]

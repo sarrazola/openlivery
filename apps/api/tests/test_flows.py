@@ -151,9 +151,8 @@ def test_main_crud_knowledge_and_persistent_chat(authenticated_client: TestClien
         "/api/clients",
         json={
             "name": "Aurora Clinic",
-            "industry": "Health",
-            "description": "Dermatology clinic",
-            "general_context": "Open Monday through Friday.",
+            "industry": "health_wellness",
+            "business_type": "clinic",
             "is_active": True,
         },
     )
@@ -171,7 +170,6 @@ def test_main_crud_knowledge_and_persistent_chat(authenticated_client: TestClien
             "model": "gpt-4.1-mini",
             "timezone": "America/Bogota",
             "name": "Aurora Advisor",
-            "description": "Answers frequently asked questions",
             "instructions": "Only answer questions about the clinic's services.",
             "personality": "Warm and clear",
             "is_active": True,
@@ -181,9 +179,9 @@ def test_main_crud_knowledge_and_persistent_chat(authenticated_client: TestClien
     assert agent.json()["timezone"] == "America/Bogota"
     agent_id = agent.json()["id"]
 
-    context = client.put(f"/api/agents/{agent_id}/context", json={"manual_context": "Does not offer emergency care."})
+    context = client.patch(f"/api/agents/{agent_id}", json={"brief_policies": "Does not offer emergency care."})
     assert context.status_code == 200
-    assert context.json()["manual_context"] == "Does not offer emergency care."
+    assert context.json()["brief_policies"] == "Does not offer emergency care."
 
     class FakePage:
         def extract_text(self):
@@ -233,12 +231,12 @@ def test_widget_public_chat_and_gating(authenticated_client: TestClient, monkeyp
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Widget Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Widget Co", "is_active": True},
     ).json()
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Sofia", "description": "", "instructions": "", "personality": "", "is_active": True},
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Sofia", "instructions": "", "personality": "", "is_active": True},
     ).json()
     # No web chat until the client gets one.
     assert client.get(f"/api/webchat/channels/{customer['id']}").status_code == 404
@@ -327,11 +325,11 @@ def test_inbox_pagination_and_search(authenticated_client: TestClient):
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Paged Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Paged Co", "is_active": True},
     ).json()
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "name": "Pager", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+        json={"client_id": customer["id"], "name": "Pager", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
     for _ in range(3):
         client.post("/api/conversations", json={"agent_id": agent["id"]})
@@ -351,12 +349,12 @@ def test_usage_recorded_and_reported(authenticated_client: TestClient, monkeypat
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Usage Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Usage Co", "is_active": True},
     ).json()
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Meter", "description": "", "instructions": "", "personality": "", "is_active": True},
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Meter", "instructions": "", "personality": "", "is_active": True},
     ).json()
     conversation = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()
 
@@ -373,11 +371,11 @@ def test_dashboard_metrics(authenticated_client: TestClient):
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Metrics Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Metrics Co", "is_active": True},
     ).json()
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "name": "Counter", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+        json={"client_id": customer["id"], "name": "Counter", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
     client.post("/api/conversations", json={"agent_id": agent["id"]})
     client.post("/api/conversations", json={"agent_id": agent["id"]})
@@ -400,12 +398,12 @@ def test_agent_qa_pairs_reach_prompt(authenticated_client: TestClient, monkeypat
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "FAQ Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "FAQ Co", "is_active": True},
     ).json()
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Faq", "description": "", "instructions": "", "personality": "", "is_active": True},
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Faq", "instructions": "", "personality": "", "is_active": True},
     ).json()
 
     created = client.post(f"/api/agents/{agent['id']}/qa", json={"question": "¿Horario?", "answer": "9am a 6pm"})
@@ -417,7 +415,7 @@ def test_agent_qa_pairs_reach_prompt(authenticated_client: TestClient, monkeypat
     monkeypatch.setattr(conversations_router, "run_completion", fake_completion)
     client.post(f"/api/conversations/{conversation['id']}/messages", json={"content": "hola"})
     prompt = fake_completion.await_args.args[4][0]["content"]
-    assert "PREGUNTAS FRECUENTES" in prompt
+    assert "### Preguntas frecuentes" in prompt
     assert "9am a 6pm" in prompt
 
     assert client.delete(f"/api/agents/{agent['id']}/qa/{created.json()['id']}").status_code == 204
@@ -428,7 +426,7 @@ def test_agent_brief_persists_and_reaches_prompt(authenticated_client: TestClien
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Brief Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Brief Co", "is_active": True},
     ).json()
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
@@ -441,8 +439,8 @@ def test_agent_brief_persists_and_reaches_prompt(authenticated_client: TestClien
     ).json()
     assert agent["brief_summary"] == "A bakery"
 
-    updated = client.patch(f"/api/agents/{agent['id']}", json={"brief_goal": "Take cake orders"}).json()
-    assert updated["brief_goal"] == "Take cake orders"
+    updated = client.patch(f"/api/agents/{agent['id']}", json={"brief_dos": "Confirm the pickup date"}).json()
+    assert updated["brief_dos"] == "Confirm the pickup date"
     assert updated["brief_summary"] == "A bakery"
 
     conversation = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()
@@ -450,9 +448,9 @@ def test_agent_brief_persists_and_reaches_prompt(authenticated_client: TestClien
     monkeypatch.setattr(conversations_router, "run_completion", fake_completion)
     client.post(f"/api/conversations/{conversation['id']}/messages", json={"content": "hola"})
     prompt = fake_completion.await_args.args[4][0]["content"]
-    assert "BRIEF DEL NEGOCIO" in prompt
+    assert "## El negocio" in prompt
     assert "A bakery" in prompt
-    assert "Take cake orders" in prompt
+    assert "Confirm the pickup date" in prompt
     assert "Never promise same-day delivery" in prompt
 
 
@@ -460,7 +458,7 @@ def test_custom_portal_domain_flow(authenticated_client: TestClient, monkeypatch
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Brand", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Brand", "is_active": True},
     ).json()
     client.post(
         f"/api/clients/{customer['id']}/portal-users",
@@ -493,7 +491,7 @@ def test_custom_portal_domain_flow(authenticated_client: TestClient, monkeypatch
     # The same domain cannot be claimed by another client.
     other = client.post(
         "/api/clients",
-        json={"name": "Other", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Other", "is_active": True},
     ).json()
     assert client.put(f"/api/clients/{other['id']}/domain", json={"domain": "chat.brand.com"}).status_code == 409
 
@@ -505,12 +503,12 @@ def test_media_message_uses_image_capability(authenticated_client: TestClient, m
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Pizza Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Pizza Co", "is_active": True},
     ).json()
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "image_enabled": True, "name": "Waiter", "description": "", "instructions": "", "personality": "", "is_active": True},
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "image_enabled": True, "name": "Waiter", "instructions": "", "personality": "", "is_active": True},
     ).json()
     assert agent["image_enabled"] is True
     conversation = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()
@@ -543,12 +541,12 @@ def test_media_message_without_capability_uses_placeholder(authenticated_client:
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Shop", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Shop", "is_active": True},
     ).json()
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Bot", "description": "", "instructions": "", "personality": "", "is_active": True},
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Bot", "instructions": "", "personality": "", "is_active": True},
     ).json()
     conversation = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()
     fake_completion = AsyncMock(return_value=ai_service.Completion(text="Got it"))
@@ -569,11 +567,11 @@ def test_media_message_without_capability_uses_placeholder(authenticated_client:
 def test_agent_without_model_explains_configuration(authenticated_client: TestClient):
     customer = authenticated_client.post(
         "/api/clients",
-        json={"name": "Client", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Client", "is_active": True},
     ).json()
     agent = authenticated_client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "name": "Agent", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+        json={"client_id": customer["id"], "name": "Agent", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
     conversation = authenticated_client.post("/api/conversations", json={"agent_id": agent["id"]}).json()
     response = authenticated_client.post(
@@ -598,7 +596,7 @@ def test_white_label_portal_and_human_takeover(authenticated_client: TestClient)
 
     customer = client.post(
         "/api/clients",
-        json={"name": "Luna Café", "industry": "Restaurants", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Luna Café", "industry": "restaurants_food", "is_active": True},
     ).json()
     client_id = customer["id"]
     assert customer["portal_slug"] == "luna-cafe"
@@ -619,7 +617,7 @@ def test_white_label_portal_and_human_takeover(authenticated_client: TestClient)
 
     agent = client.post(
         "/api/agents",
-        json={"client_id": client_id, "name": "Host", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+        json={"client_id": client_id, "name": "Host", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
     conversation = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()
 
@@ -655,7 +653,7 @@ def test_portal_inbox_pages_searches_and_tracks_unread(authenticated_client: Tes
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Paged Portal", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Paged Portal", "is_active": True},
     ).json()
     client.post(
         f"/api/clients/{customer['id']}/portal-users",
@@ -664,7 +662,7 @@ def test_portal_inbox_pages_searches_and_tracks_unread(authenticated_client: Tes
     client.patch(f"/api/clients/{customer['id']}/portal", json={"portal_enabled": True})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "name": "Pager", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+        json={"client_id": customer["id"], "name": "Pager", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
     ids = [client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"] for _ in range(3)]
     slug = customer["portal_slug"]
@@ -705,7 +703,7 @@ def test_portal_resolves_reopens_and_narrates_the_thread(authenticated_client: T
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Status Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Status Co", "is_active": True},
     ).json()
     client.post(
         f"/api/clients/{customer['id']}/portal-users",
@@ -714,7 +712,7 @@ def test_portal_resolves_reopens_and_narrates_the_thread(authenticated_client: T
     client.patch(f"/api/clients/{customer['id']}/portal", json={"portal_enabled": True})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "name": "Host", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+        json={"client_id": customer["id"], "name": "Host", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
     conversation_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
     slug = customer["portal_slug"]
@@ -760,12 +758,12 @@ def test_activity_never_reaches_the_model_and_a_resolved_case_stays_closed(authe
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Reopen Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Reopen Co", "is_active": True},
     ).json()
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Host", "description": "", "instructions": "", "personality": "", "is_active": True},
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Host", "instructions": "", "personality": "", "is_active": True},
     ).json()
     channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
     headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
@@ -815,11 +813,11 @@ def test_idle_ai_conversations_resolve_themselves_but_human_ones_wait(authentica
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Idle Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Idle Co", "is_active": True},
     ).json()
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "name": "Host", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+        json={"client_id": customer["id"], "name": "Host", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
     ai_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
     human_id = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()["id"]
@@ -856,12 +854,12 @@ def test_whatsapp_inbound_image_uses_capability(authenticated_client: TestClient
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Bistro", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Bistro", "is_active": True},
     ).json()
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "image_enabled": True, "name": "Host", "description": "", "instructions": "", "personality": "", "is_active": True},
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "image_enabled": True, "name": "Host", "instructions": "", "personality": "", "is_active": True},
     ).json()
     channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
     headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
@@ -899,12 +897,12 @@ def test_whatsapp_channel_inbound_ai_takeover_and_session(authenticated_client: 
     client = authenticated_client
     customer = client.post(
         "/api/clients",
-        json={"name": "Sol Store", "industry": "Retail", "description": "", "general_context": "Open Monday through Saturday.", "is_active": True},
+        json={"name": "Sol Store", "industry": "retail_ecommerce", "is_active": True},
     ).json()
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Sol Advisor", "description": "", "instructions": "Help the customers.", "personality": "Friendly", "is_active": True},
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Sol Advisor", "instructions": "Help the customers.", "personality": "Friendly", "is_active": True},
     ).json()
 
     configured = client.put(

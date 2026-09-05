@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
 from ..deps import get_current_user
+from .. import industries
 from ..models import Client, PortalUser, PushDevice, User, new_domain_token, Team
 from ..schemas import (
     ClientCreate,
@@ -40,6 +41,12 @@ def _domain_out(client: Client) -> ClientDomainOut:
     )
 
 
+def _check_industry(industry: str, business_type: str) -> None:
+    error = industries.validate(industry, business_type)
+    if error:
+        raise HTTPException(status_code=422, detail=error)
+
+
 def _client(db: Session, user: User, client_id: uuid.UUID) -> Client:
     client = db.scalar(
         select(Client)
@@ -63,6 +70,7 @@ def list_clients(db: Session = Depends(get_db), user: User = Depends(get_current
 
 @router.post("", response_model=ClientOut, status_code=status.HTTP_201_CREATED)
 def create_client(payload: ClientCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _check_industry(payload.industry, payload.business_type)
     client = Client(
         agency_id=user.agency_id,
         portal_slug=unique_slug(db, Client, "portal_slug", payload.name),
@@ -81,7 +89,15 @@ def get_client(client_id: uuid.UUID, db: Session = Depends(get_db), user: User =
 @router.patch("/{client_id}", response_model=ClientOut)
 def update_client(client_id: uuid.UUID, payload: ClientUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     client = _client(db, user, client_id)
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    values = payload.model_dump(exclude_unset=True)
+    industry = values.get("industry", client.industry)
+    business_type = values.get("business_type", client.business_type)
+    # Changing the industry drops a type that no longer belongs to it.
+    if "industry" in values and "business_type" not in values and industries.get_type(industry, business_type) is None:
+        values["business_type"] = ""
+        business_type = ""
+    _check_industry(industry, business_type)
+    for key, value in values.items():
         setattr(client, key, value)
     db.commit()
     return _client(db, user, client_id)

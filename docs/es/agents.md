@@ -6,19 +6,19 @@ Un agente es el asistente de IA que conversa con tus usuarios finales. Cada agen
 
 ## Qué es un agente
 
-Un agente vive bajo un cliente (`Agency → Client → Agent`), de modo que todo el contexto del cliente está disponible para cada agente que le pertenece. Un agente define cómo debe comportarse, qué proveedor y modelo responden sus mensajes, cuánto historial de conversación recuerda y si puede entender imágenes y audio entrantes. Puedes crear tantos agentes por cliente como necesites — por ejemplo, uno para WhatsApp y otro incrustado como widget web.
+Un agente vive bajo un cliente (`Agency → Client → Agent`). El cliente es solo la identidad del negocio: su nombre, su industria y su tipo de negocio, elegidos de un catálogo fijo. Todo lo que el negocio hace y cómo debe responderse se escribe en el agente, así que dos agentes del mismo cliente pueden describirlo de forma distinta. Un agente define cómo debe comportarse, qué proveedor y modelo responden sus mensajes, cuánto historial de conversación recuerda y si puede entender imágenes y audio entrantes. Puedes crear tantos agentes por cliente como necesites — por ejemplo, uno para WhatsApp y otro incrustado como widget web.
 
 ## Crear un agente con el asistente
 
 Los agentes nuevos se crean mediante un asistente de cinco pasos (**Agents → New agent**):
 
-1. **Plantilla** — elige una plantilla inicial por industria o empieza en blanco. Las plantillas rellenan la descripción, las instrucciones y la personalidad para que tengas un prompt funcional desde el primer minuto.
-2. **Identidad** — elige el cliente propietario, nombra el agente y escribe una descripción breve.
-3. **Prompt** — escribe las instrucciones y la personalidad. Un contador de tokens en vivo estima el tamaño del prompt mientras escribes.
+1. **Plantilla** — elige una plantilla inicial por industria o empieza en blanco. Las plantillas rellenan qué hace el agente y su tono para que tengas un prompt funcional desde el primer minuto.
+2. **Identidad** — elige el cliente propietario y nombra el agente.
+3. **Instrucciones** — escribe qué hace el agente y cómo debe sonar. Un contador de tokens en vivo estima el tamaño del prompt mientras escribes.
 4. **Modelo** — define la zona horaria, el proveedor y el modelo, y ajusta la temperatura, los tokens máximos y la memoria. Una barra de ventana de contexto muestra cuánto de la ventana del modelo usa el prompt.
 5. **Revisión** — confirma el resumen y crea el agente.
 
-Las plantillas iniciales incluidas son Pedidos de restaurante, Leads inmobiliarios, Citas de clínica, Soporte de tienda online y Atención al cliente. Después de crearlo puedes refinar cada campo, además del brief estructurado del negocio, en la página de detalle del agente.
+Las plantillas iniciales incluidas son Pedidos de restaurante, Leads inmobiliarios, Citas de clínica, Soporte de tienda online y Atención al cliente. Después de crearlo refinas todo en la página de detalle del agente, donde **Básicos** reúne cliente, nombre, brief del negocio, trabajo del agente, escalamiento y modelo. La sección del modelo muestra cuántos tokens cuesta el prompt compuesto en cada mensaje. Crear un cliente termina en el asistente con ese cliente preseleccionado.
 
 ## Elegir proveedor y modelo
 
@@ -38,11 +38,11 @@ Ambas funciones usan modelos de OpenAI, por lo que requieren una clave de OpenAI
 | Ajuste | Campo | Qué hace |
 | --- | --- | --- |
 | Cliente | `client_id` | El cliente propietario del agente. |
-| Instrucciones | `instructions` | El brief principal de comportamiento enviado como prompt del sistema. |
-| Personalidad | `personality` | Guía de tono y estilo para las respuestas. |
-| Brief del negocio | `brief_summary`, `brief_products`, `brief_audience`, `brief_policies`, `brief_goal`, `brief_dos`, `brief_donts` | Campos guiados opcionales que se componen en el prompt del sistema junto a las instrucciones. |
-| Contexto por agente | `manual_context` | Contexto libre específico de este agente, guardado por separado en la página de detalle. |
-| Contexto por cliente | `general_context` (en el cliente) | Contexto compartido inyectado en cada agente de ese cliente. |
+| Qué hace el agente | `instructions` | Su trabajo, tareas y reglas, en prosa. Va dentro del prompt del sistema. |
+| Tono | `personality` | Guía de tono y estilo para las respuestas. |
+| Brief del negocio | `brief_summary`, `brief_products`, `brief_audience`, `brief_policies`, `brief_dos`, `brief_donts` | Qué es y qué ofrece el negocio, más las reglas de siempre/nunca del agente. Se compone en el prompt del sistema. |
+| Identidad del negocio | `industry`, `business_type`, `business_custom` (en el cliente) | Códigos del catálogo (`GET /api/industries`) que nombran el tipo de negocio en la primera línea del prompt; cuando el catálogo solo ofrece "otro", `business_custom` guarda las palabras del propio cliente. |
+| Idioma del prompt | `prompt_language` | `es` o `en`: el idioma de los títulos y frases fijas del prompt. Se toma del idioma de la interfaz al guardar el agente. |
 | Zona horaria | `timezone` | Zona horaria IANA (p. ej. `America/Bogota`) inyectada para que el agente conozca la fecha y hora locales. Por defecto `UTC`. |
 | Proveedor | `provider` | `openai` o `anthropic`. |
 | Modelo | `model` | El modelo de chat usado para las respuestas. |

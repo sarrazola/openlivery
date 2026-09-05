@@ -59,7 +59,7 @@ def _post_signed(client: TestClient, channel_id: str, payload: dict, secret: str
 def _setup_channel(client: TestClient, *, image_enabled: bool = False) -> tuple[dict, dict, dict]:
     customer = client.post(
         "/api/clients",
-        json={"name": "Bistro", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Bistro", "is_active": True},
     ).json()
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
@@ -70,7 +70,6 @@ def _setup_channel(client: TestClient, *, image_enabled: bool = False) -> tuple[
             "model": "gpt-4.1-mini",
             "image_enabled": image_enabled,
             "name": "Host",
-            "description": "",
             "instructions": "",
             "personality": "",
             "is_active": True,
@@ -481,7 +480,7 @@ def test_configure_channel_refuses_a_number_another_client_uses(authenticated_cl
 
     other = client.post(
         "/api/clients",
-        json={"name": "Cafe", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Cafe", "is_active": True},
     ).json()
     agent = client.post(
         "/api/agents",
@@ -490,7 +489,6 @@ def test_configure_channel_refuses_a_number_another_client_uses(authenticated_cl
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "name": "Host",
-            "description": "",
             "instructions": "",
             "personality": "",
             "is_active": True,

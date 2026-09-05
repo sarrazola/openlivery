@@ -6,19 +6,19 @@ An agent is the AI assistant that talks to your end users. Every agent belongs t
 
 ## What an agent is
 
-An agent lives under a client (`Agency → Client → Agent`), so all the client's context is available to every agent it owns. An agent defines how it should behave, which provider and model answer its messages, how much conversation history it remembers, and whether it can understand incoming images and audio. You can create as many agents per client as you need — for example one for WhatsApp and another embedded as a web widget.
+An agent lives under a client (`Agency → Client → Agent`). The client is only the identity of the business: its name, its industry and its business type, picked from a fixed catalog. Everything about what the business does and how it should be answered is written on the agent, so two agents of the same client can describe it differently. An agent defines how it should behave, which provider and model answer its messages, how much conversation history it remembers, and whether it can understand incoming images and audio. You can create as many agents per client as you need — for example one for WhatsApp and another embedded as a web widget.
 
 ## Creating an agent with the wizard
 
 New agents are created through a five-step wizard (**Agents → New agent**):
 
-1. **Template** — pick an industry starter template or start blank. Templates pre-fill the description, instructions and personality so you have a working prompt from the first minute.
-2. **Identity** — choose the owning client, name the agent and write a short description.
-3. **Prompt** — write the instructions and personality. A live token counter estimates the size of the prompt as you type.
+1. **Template** — pick an industry starter template or start blank. Templates pre-fill what the agent does and its tone so you have a working prompt from the first minute.
+2. **Identity** — choose the owning client and name the agent.
+3. **Instructions** — write what the agent does and how it should sound. A live token counter estimates the size of the prompt as you type.
 4. **Model** — set the timezone, provider and model, and tune temperature, max tokens and memory. A context-window bar shows how much of the model's window the prompt uses.
 5. **Review** — confirm the summary and create the agent.
 
-The built-in starter templates are Restaurant orders, Real estate leads, Clinic appointments, Online store support and Customer support. After creation you can refine every field, plus the structured business brief, on the agent detail page.
+The built-in starter templates are Restaurant orders, Real estate leads, Clinic appointments, Online store support and Customer support. After creation you refine everything on the agent detail page, where **Basics** holds the client, name, business brief, the agent's job, escalation and model. The model section shows how many tokens the composed prompt costs on every message. Creating a client ends on the wizard with that client preselected.
 
 ## Choosing a provider and model
 
@@ -38,11 +38,11 @@ Both features use OpenAI models, so they require an OpenAI key regardless of the
 | Setting | Field | What it does |
 | --- | --- | --- |
 | Client | `client_id` | The client that owns the agent. |
-| Instructions | `instructions` | The main behavior brief sent as the system prompt. |
-| Personality | `personality` | Tone and style guidance for replies. |
-| Business brief | `brief_summary`, `brief_products`, `brief_audience`, `brief_policies`, `brief_goal`, `brief_dos`, `brief_donts` | Optional guided fields composed into the system prompt alongside the instructions. |
-| Per-agent context | `manual_context` | Free-form context specific to this agent, saved separately on the detail page. |
-| Per-client context | `general_context` (on the client) | Shared context injected into every agent of that client. |
+| What the agent does | `instructions` | Its job, tasks and rules, in prose. Sent as part of the system prompt. |
+| Tone | `personality` | Tone and style guidance for replies. |
+| Business brief | `brief_summary`, `brief_products`, `brief_audience`, `brief_policies`, `brief_dos`, `brief_donts` | What the business is and offers, plus the agent's always/never rules. Composed into the system prompt. |
+| Business identity | `industry`, `business_type`, `business_custom` (on the client) | Catalog codes (`GET /api/industries`) that name the kind of business in the prompt's first line; when the catalog only offers "other", `business_custom` holds the client's own words. |
+| Prompt language | `prompt_language` | `es` or `en`: the language of the prompt's headings and fixed sentences. Set from the UI language when the agent is saved. |
 | Timezone | `timezone` | IANA timezone (e.g. `America/Bogota`) injected so the agent knows the local date and time. Defaults to `UTC`. |
 | Provider | `provider` | `openai` or `anthropic`. |
 | Model | `model` | The chat model used for replies. |

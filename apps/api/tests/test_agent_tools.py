@@ -18,14 +18,14 @@ from app.services.tools.specs import build_tool_specs
 def _setup_agent(client: TestClient) -> str:
     customer = client.post(
         "/api/clients",
-        json={"name": "Tools Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Tools Co", "is_active": True},
     ).json()
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
         "/api/agents",
         json={
             "client_id": customer["id"], "provider": "openai", "model": "gpt-5", "name": "Toolo",
-            "description": "", "instructions": "", "personality": "", "is_active": True,
+            "instructions": "", "personality": "", "is_active": True,
         },
     ).json()
     return agent["id"]

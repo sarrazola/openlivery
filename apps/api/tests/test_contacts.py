@@ -11,7 +11,7 @@ from app.services import whatsapp_inbound as whatsapp_inbound_service
 def _portal(client: TestClient, name: str = "Contacts Co"):
     customer = client.post(
         "/api/clients",
-        json={"name": name, "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": name, "is_active": True},
     ).json()
     client.post(
         f"/api/clients/{customer['id']}/portal-users",
@@ -54,7 +54,7 @@ def test_inbound_creates_the_contact_and_a_new_case_after_resolution(authenticat
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto", "description": "", "instructions": "", "personality": "", "is_active": True},
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto", "instructions": "", "personality": "", "is_active": True},
     ).json()
     channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
     headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
@@ -114,7 +114,7 @@ def test_merge_contacts_moves_conversations_and_fills_blanks(authenticated_clien
     client.put("/api/providers/openai", json={"api_key": "secret"})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto", "description": "", "instructions": "", "personality": "", "is_active": True},
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto", "instructions": "", "personality": "", "is_active": True},
     ).json()
     channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
     headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}

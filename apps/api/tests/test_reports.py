@@ -12,13 +12,13 @@ from app.routers import portal as portal_router
 def _portal_with_qr_line(client: TestClient):
     customer = client.post(
         "/api/clients",
-        json={"name": "Report Co", "industry": "", "description": "", "general_context": "", "is_active": True},
+        json={"name": "Report Co", "is_active": True},
     ).json()
     client.post(f"/api/clients/{customer['id']}/portal-users", json={"name": "Ana", "email": "ana@report.co", "password": "secure-portal"})
     client.patch(f"/api/clients/{customer['id']}/portal", json={"portal_enabled": True})
     agent = client.post(
         "/api/agents",
-        json={"client_id": customer["id"], "name": "Host", "description": "", "instructions": "", "personality": "", "model": "", "is_active": True},
+        json={"client_id": customer["id"], "name": "Host", "instructions": "", "personality": "", "model": "", "is_active": True},
     ).json()
     client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]})
     client.post(f"/api/portal/{customer['portal_slug']}/login", json={"email": "ana@report.co", "password": "secure-portal"})

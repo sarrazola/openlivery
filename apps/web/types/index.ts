@@ -8,14 +8,18 @@ export type User = {
 
 export type Agency = { id: string; name: string; slug: string; brand_color: string; logo_url: string | null };
 
-export type AgentSummary = { id: string; name: string; description: string; is_active: boolean };
+export type AgentSummary = { id: string; name: string; is_active: boolean };
+
+export type IndustryLabel = { en: string; es: string };
+export type BusinessType = { code: string; label: IndustryLabel };
+export type Industry = { code: string; label: IndustryLabel; types: BusinessType[] };
 
 export type Client = {
   id: string;
   name: string;
   industry: string;
-  description: string;
-  general_context: string;
+  business_type: string;
+  business_custom: string;
   is_active: boolean;
   portal_slug: string;
   portal_enabled: boolean;
@@ -49,19 +53,17 @@ export type Agent = {
   client_id: string;
   provider: string;
   name: string;
-  description: string;
   instructions: string;
   personality: string;
   brief_summary: string;
   brief_products: string;
   brief_audience: string;
   brief_policies: string;
-  brief_goal: string;
   brief_dos: string;
   brief_donts: string;
   model: string;
   timezone: string;
-  manual_context: string;
+  prompt_language: "en" | "es";
   temperature: number;
   max_tokens: number;
   memory_limit: number;

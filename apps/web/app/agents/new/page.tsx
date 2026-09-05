@@ -33,7 +33,6 @@ export default function NewAgentPage() {
   const [templateId, setTemplateId] = useState("");
   const [clientId, setClientId] = useState("");
   const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
   const [personality, setPersonality] = useState("");
   const [provider, setProvider] = useState("openai");
@@ -54,13 +53,12 @@ export default function NewAgentPage() {
     }).catch(() => {});
   }, []);
 
-  const promptTokens = useMemo(() => estimateTokens([description, instructions, personality].join("\n")), [description, instructions, personality]);
+  const promptTokens = useMemo(() => estimateTokens([instructions, personality].join("\n")), [instructions, personality]);
 
   function applyTemplate(id: string) {
     setTemplateId(id);
     const tpl = agentTemplates.find((item) => item.id === id);
     if (tpl) {
-      setDescription(localize(tpl.description, lang));
       setInstructions(localize(tpl.instructions, lang));
       setPersonality(localize(tpl.personality, lang));
     }
@@ -73,8 +71,8 @@ export default function NewAgentPage() {
     setBusy(true);
     try {
       const agent = await api<Agent>("/agents", { method: "POST", body: JSON.stringify({
-        client_id: clientId, name, description, instructions, personality,
-        provider, model: model || "", timezone,
+        client_id: clientId, name, instructions, personality,
+        provider, model: model || "", timezone, prompt_language: lang,
         temperature, max_tokens: maxTokens, memory_limit: memoryLimit, is_active: true,
         image_enabled: imageEnabled, audio_enabled: audioEnabled,
       }) });
@@ -127,7 +125,7 @@ export default function NewAgentPage() {
           <label>{t("agents.new.clientLabel")}<select value={clientId} onChange={(e) => setClientId(e.target.value)}>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
           <label>{t("agents.new.nameLabel")}<input value={name} onChange={(e) => setName(e.target.value)} required autoFocus placeholder={t("agents.new.namePlaceholder")} /></label>
         </div>
-        <label>{t("agents.new.descriptionLabel")}<textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder={t("agents.new.descriptionPlaceholder")} /></label>
+        {name.trim() && <p className="greeting-preview">{t("agents.detail.greetingPreview", { name: name.trim(), client: clients.find((c) => c.id === clientId)?.name || "" })}</p>}
       </div>}
 
       {step === 2 && <div className="wizard-fields">

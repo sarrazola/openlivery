@@ -45,8 +45,8 @@ class UserOut(ORMModel):
 class ClientBase(BaseModel):
     name: str = Field(min_length=1, max_length=180)
     industry: str = Field(default="", max_length=160)
-    description: str = ""
-    general_context: str = ""
+    business_type: str = Field(default="", max_length=80)
+    business_custom: str = Field(default="", max_length=120)
     is_active: bool = True
 
 
@@ -56,9 +56,9 @@ class ClientCreate(ClientBase):
 
 class ClientUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=180)
-    industry: str | None = None
-    description: str | None = None
-    general_context: str | None = None
+    industry: str | None = Field(default=None, max_length=160)
+    business_type: str | None = Field(default=None, max_length=80)
+    business_custom: str | None = Field(default=None, max_length=120)
     is_active: bool | None = None
 
 
@@ -71,7 +71,6 @@ class ClientPortalUpdate(BaseModel):
 class AgentSummary(ORMModel):
     id: uuid.UUID
     name: str
-    description: str
     is_active: bool
 
 
@@ -79,8 +78,8 @@ class ClientOut(ORMModel):
     id: uuid.UUID
     name: str
     industry: str
-    description: str
-    general_context: str
+    business_type: str
+    business_custom: str
     is_active: bool
     portal_slug: str
     portal_enabled: bool
@@ -151,19 +150,18 @@ class ProviderOut(BaseModel):
 class AgentBase(BaseModel):
     client_id: uuid.UUID
     name: str = Field(min_length=1, max_length=180)
-    description: str = ""
     instructions: str = ""
     personality: str = ""
     brief_summary: str = ""
     brief_products: str = ""
     brief_audience: str = ""
     brief_policies: str = ""
-    brief_goal: str = ""
     brief_dos: str = ""
     brief_donts: str = ""
     model: str = ""
     provider: str = Field(default="openai", pattern=r"^(openai|anthropic)$")
     timezone: str = Field(default="UTC", max_length=64)
+    prompt_language: str = Field(default="es", pattern=r"^(en|es)$")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=2048, ge=1, le=32000)
     memory_limit: int = Field(default=30, ge=0, le=200)
@@ -181,19 +179,18 @@ class AgentCreate(AgentBase):
 class AgentUpdate(BaseModel):
     client_id: uuid.UUID | None = None
     name: str | None = Field(default=None, min_length=1, max_length=180)
-    description: str | None = None
     instructions: str | None = None
     personality: str | None = None
     brief_summary: str | None = None
     brief_products: str | None = None
     brief_audience: str | None = None
     brief_policies: str | None = None
-    brief_goal: str | None = None
     brief_dos: str | None = None
     brief_donts: str | None = None
     model: str | None = None
     provider: str | None = Field(default=None, pattern=r"^(openai|anthropic)$")
     timezone: str | None = Field(default=None, max_length=64)
+    prompt_language: str | None = Field(default=None, pattern=r"^(en|es)$")
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1, le=32000)
     memory_limit: int | None = Field(default=None, ge=0, le=200)
@@ -209,19 +206,17 @@ class AgentOut(ORMModel):
     client_id: uuid.UUID
     provider: str
     name: str
-    description: str
     instructions: str
     personality: str
     brief_summary: str
     brief_products: str
     brief_audience: str
     brief_policies: str
-    brief_goal: str
     brief_dos: str
     brief_donts: str
     model: str
     timezone: str
-    manual_context: str
+    prompt_language: str
     temperature: float
     max_tokens: int
     memory_limit: int
@@ -235,8 +230,10 @@ class AgentOut(ORMModel):
     client: ClientOut
 
 
-class ManualContextRequest(BaseModel):
-    manual_context: str
+class AgentPromptOut(BaseModel):
+    """The system prompt an agent sends, before per-message knowledge retrieval."""
+
+    prompt: str
 
 
 class QAPairCreate(BaseModel):
