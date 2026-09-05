@@ -36,6 +36,8 @@ When a visitor sends a message, the widget calls the public endpoint `POST /api/
 
 These public endpoints are rate-limited per client IP (30 message requests per minute) because each call spends LLM tokens. Callers over the limit get `429 Too Many Requests` with a `Retry-After` header. The limiter reads the client IP from `X-Forwarded-For` set by the gateway. See [Configuration](configuration.md) for the `RATE_LIMIT_ENABLED` toggle.
 
+While open, the widget also polls `GET /api/widget/<publicId>/updates` every few seconds (its own, wider limit of 120 per minute), so replies written by a person who took over the conversation appear live, labelled with their name. Resolving a conversation closes the case: the visitor's next message opens a new one, and the widget keeps showing the whole exchange.
+
 ## Widget conversations in the inbox
 
 Every widget chat becomes a conversation on the `widget` channel, so it shows up in the [Inbox](inbox.md) alongside WhatsApp and playground threads. You can filter by the widget channel, read the full transcript, and switch a conversation to **human** mode — which pauses the AI so an operator can reply directly from the portal.

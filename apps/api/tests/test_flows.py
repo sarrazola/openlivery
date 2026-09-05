@@ -283,6 +283,31 @@ def test_widget_public_chat_and_gating(authenticated_client: TestClient, monkeyp
     assert inbox_row["unread"] is False
     assert inbox_row["unread_count"] == 0
 
+    # A person's reply reaches the widget through the updates poll, labelled.
+    history = client.get(f"/api/widget/{public_id}/history?session_id=s1").json()
+    assert history["mode"] == "human" and history["status"] == "open"
+    last_seen = history["messages"][-1]["created_at"]
+    assert client.post(f"/api/conversations/{conversation_id}/reply", json={"content": "Soy Ana, te ayudo"}).status_code == 200
+    updates = client.get(f"/api/widget/{public_id}/updates?session_id=s1&after={last_seen}").json()
+    assert [(m["role"], m["sender_type"], m["content"]) for m in updates["messages"]] == [("assistant", "human", "Soy Ana, te ayudo")]
+    assert updates["messages"][0]["id"] and updates["messages"][0]["sender_name"]
+    # Nothing new since that reply.
+    assert client.get(f"/api/widget/{public_id}/updates?session_id=s1&after={updates['messages'][0]['created_at']}").json()["messages"] == []
+
+    # Resolving closes the case: the visitor's next message opens a new one,
+    # while the widget keeps showing the whole exchange.
+    assert client.patch(f"/api/conversations/{conversation_id}/status", json={"status": "resolved"}).status_code == 200
+    assert client.get(f"/api/widget/{public_id}/updates?session_id=s1").json()["status"] == "resolved"
+    client.post(f"/api/widget/{public_id}/messages", json={"session_id": "s1", "content": "one more thing"})
+    rows = client.get("/api/conversations/inbox").json()
+    assert len(rows) == 2 and rows[0]["id"] != conversation_id
+    assert client.get(f"/api/conversations/{rows[0]['id']}").json()["status"] == "open"
+    history = client.get(f"/api/widget/{public_id}/history?session_id=s1").json()
+    assert history["status"] == "open"
+    # The new case starts in AI mode again, so the agent answers it.
+    assert [m["content"] for m in history["messages"]][-3:] == ["Soy Ana, te ayudo", "one more thing", "Sure, happy to help!"]
+    assert all(m["role"] in ("user", "assistant") for m in history["messages"])  # no activity lines
+
 
 def test_inbox_pagination_and_search(authenticated_client: TestClient):
     client = authenticated_client

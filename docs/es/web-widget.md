@@ -36,6 +36,8 @@ Cuando un visitante envía un mensaje, el widget llama al endpoint público `POS
 
 Estos endpoints públicos tienen límite de peticiones por IP de cliente (30 peticiones de mensaje por minuto) porque cada llamada consume tokens del LLM. Quien supere el límite recibe `429 Too Many Requests` con una cabecera `Retry-After`. El limitador lee la IP del cliente desde `X-Forwarded-For` que establece el gateway. Consulta [Configuración](configuration.md) para el interruptor `RATE_LIMIT_ENABLED`.
 
+Mientras está abierto, el widget también consulta `GET /api/widget/<publicId>/updates` cada pocos segundos (con su propio límite, más amplio, de 120 por minuto), así que las respuestas que escribe una persona que tomó el control aparecen en vivo, con su nombre. Resolver una conversación cierra el caso: el siguiente mensaje del visitante abre uno nuevo, y el widget sigue mostrando todo el intercambio.
+
 ## Conversaciones del widget en el inbox
 
 Cada chat del widget se convierte en una conversación del canal `widget`, así que aparece en el [Inbox](inbox.md) junto a los hilos de WhatsApp y del playground. Puedes filtrar por el canal del widget, leer la transcripción completa y cambiar una conversación a modo **humano**, lo que pausa la IA para que un operador responda directamente desde el portal.

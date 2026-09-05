@@ -1627,3 +1627,5 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 /* Timestamp inside widget chat bubbles */
 .widget-bubble:has(> .msg-time) { position: relative; padding-right: 48px; }
 .widget-bubble .msg-time { position: absolute; right: 9px; bottom: 6px; font-size: var(--text-xs); line-height: 1; color: inherit; opacity: .5; font-variant-numeric: tabular-nums; }
+
+.widget-sender { display: block; margin: 0 0 3px 6px; color: #68718a; font-size: 11px; font-weight: 600; }
