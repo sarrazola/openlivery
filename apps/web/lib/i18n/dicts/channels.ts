@@ -16,7 +16,7 @@ const en = {
     description:
       "Official WhatsApp Business Cloud API, hosted by Meta. Connect a number with your own Meta app credentials.",
     ownerPlaceholder: "Choose a client to configure its number",
-    configure: "Configure WhatsApp API",
+    configure: "Configure",
     selectClient: "Select a client",
   },
   whatsapp: {
@@ -25,7 +25,7 @@ const en = {
     description:
       "Scan a QR with the WhatsApp app on your phone and reply with an agent in minutes. Free and instant to set up, so it is ideal for demos and testing. For production, use WhatsApp API instead.",
     ownerPlaceholder: "Choose a client to configure its number",
-    configure: "Configure WhatsApp QR",
+    configure: "Configure",
     selectClient: "Select a client",
   },
   webchat: {
@@ -34,7 +34,7 @@ const en = {
     description:
       "Embed an assistant on any website with a single line of code. Its conversations land in the same Inbox as WhatsApp.",
     ownerPlaceholder: "Choose a client to configure its widget",
-    configure: "Configure widget",
+    configure: "Configure",
     selectClient: "Select a client",
     needsAgent: "Create an agent first",
   },
@@ -70,7 +70,7 @@ const es: typeof en = {
     description:
       "API oficial de WhatsApp Business Cloud, alojada por Meta. Conecta un número con las credenciales de tu propia app de Meta.",
     ownerPlaceholder: "Elige un cliente para configurar su número",
-    configure: "Configurar WhatsApp API",
+    configure: "Configurar",
     selectClient: "Selecciona un cliente",
   },
   whatsapp: {
@@ -79,7 +79,7 @@ const es: typeof en = {
     description:
       "Escanea un QR con la app de WhatsApp de tu teléfono y responde con un agente en minutos. Es gratis e instantáneo de configurar, así que es ideal para demos y pruebas. Para producción usa mejor WhatsApp API.",
     ownerPlaceholder: "Elige un cliente para configurar su número",
-    configure: "Configurar WhatsApp QR",
+    configure: "Configurar",
     selectClient: "Selecciona un cliente",
   },
   webchat: {
@@ -88,7 +88,7 @@ const es: typeof en = {
     description:
       "Inserta un asistente en cualquier sitio web con una línea de código. Sus conversaciones llegan al mismo Inbox que WhatsApp.",
     ownerPlaceholder: "Elige un cliente para configurar su widget",
-    configure: "Configurar widget",
+    configure: "Configurar",
     selectClient: "Selecciona un cliente",
     needsAgent: "Crea un agente primero",
   },
