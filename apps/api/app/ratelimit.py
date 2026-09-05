@@ -66,6 +66,9 @@ class RateLimiter:
 # widget message endpoint is throttled because each call spends LLM tokens.
 login_rate_limit = RateLimiter(10, 60, name="login")
 widget_rate_limit = RateLimiter(30, 60, name="widget")
+# The widget polls for what people and agents write while it is open; a poll
+# spends no tokens, so it gets its own, wider budget.
+widget_poll_rate_limit = RateLimiter(120, 60, name="widget-poll")
 public_asset_rate_limit = RateLimiter(60, 60, name="public-asset")
 # The Meta webhook is authenticated by its HMAC signature; this generous limit
 # only guards against floods of unsigned traffic.

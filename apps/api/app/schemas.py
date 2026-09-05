@@ -746,10 +746,14 @@ class WidgetMessageIn(BaseModel):
 
 
 class WidgetMessageOut(BaseModel):
+    id: uuid.UUID | None = None
     role: str
     content: str
     created_at: datetime | None = None
     attachments: list[AttachmentOut] = []
+    # "ai", "human" or "visitor": lets the widget label a person's reply.
+    sender_type: str | None = None
+    sender_name: str | None = None
 
 
 class WidgetReply(BaseModel):
@@ -757,6 +761,9 @@ class WidgetReply(BaseModel):
     reply: str | None = None
     reply_at: datetime | None = None
     messages: list[WidgetMessageOut] = []
+    # Where the latest case for this visitor stands; resolved means the next
+    # message opens a new one.
+    status: str = "open"
 
 
 class WhatsAppInbound(BaseModel):

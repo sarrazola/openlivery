@@ -1,13 +1,15 @@
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..database import get_db
 from ..services.conversation_state import exchanged_only
 from ..models import Agency, Agent, Client, Conversation, Message, MessageAttachment, WidgetChannel, now_utc
-from ..ratelimit import public_asset_rate_limit, widget_rate_limit
+from ..ratelimit import public_asset_rate_limit, widget_poll_rate_limit, widget_rate_limit
 from ..schemas import WidgetConfigOut, WidgetMessageIn, WidgetReply
 from ..services.attachments import (
     MAX_ATTACHMENT_BYTES,
@@ -35,9 +37,12 @@ HISTORY_LIMIT = 50
 
 def _message_out(item: Message) -> dict:
     return {
+        "id": item.id,
         "role": item.role,
         "content": item.content,
         "created_at": item.created_at,
+        "sender_type": item.sender_type,
+        "sender_name": item.sender_name,
         "attachments": [
             {"id": a.id, "kind": a.kind, "mime": a.mime, "filename": a.filename, "size_bytes": a.size_bytes}
             for a in item.attachments
@@ -59,17 +64,38 @@ def _channel(db: Session, public_id: str) -> WidgetChannel:
     return channel
 
 
+def _session_filters(channel: WidgetChannel, session_id: str):
+    return (Conversation.widget_channel_id == channel.id, Conversation.external_chat_id == f"widget:{session_id}")
+
+
 def _find_conversation(db: Session, channel: WidgetChannel, session_id: str) -> Conversation | None:
+    """The visitor's latest case. Earlier, resolved ones stay as history."""
     return db.scalar(
-        select(Conversation).where(
-            Conversation.widget_channel_id == channel.id,
-            Conversation.external_chat_id == f"widget:{session_id}",
-        )
+        select(Conversation).where(*_session_filters(channel, session_id)).order_by(Conversation.created_at.desc()).limit(1)
     )
 
 
+def _session_messages(db: Session, channel: WidgetChannel, session_id: str, *, after: datetime | None = None) -> list[Message]:
+    """What was exchanged with this visitor across all their cases, oldest
+    first. Activity lines never leave the inbox."""
+    query = (
+        select(Message)
+        .join(Conversation, Conversation.id == Message.conversation_id)
+        .options(selectinload(Message.attachments))
+        .where(*_session_filters(channel, session_id), Message.kind == "message")
+    )
+    if after is not None:
+        query = query.where(Message.created_at > after)
+    rows = db.scalars(query.order_by(Message.created_at.desc()).limit(HISTORY_LIMIT)).all()
+    return list(reversed(rows))
+
+
 def _conversation(db: Session, channel: WidgetChannel, session_id: str) -> Conversation:
+    """The open case for this visitor, or a fresh one: like WhatsApp, a
+    message after a resolution starts a new conversation."""
     conversation = _find_conversation(db, channel, session_id)
+    if conversation is not None and conversation.status == "resolved":
+        conversation = None
     if not conversation:
         conversation = Conversation(
             agency_id=channel.agency_id,
@@ -118,26 +144,50 @@ def widget_logo(public_id: str, db: Session = Depends(get_db)):
 
 @router.get("/{public_id}/history", response_model=WidgetReply, dependencies=[Depends(widget_rate_limit)])
 def widget_history(public_id: str, session_id: str, db: Session = Depends(get_db)):
-    conversation = _find_conversation(db, _channel(db, public_id), session_id)
+    channel = _channel(db, public_id)
+    conversation = _find_conversation(db, channel, session_id)
     if not conversation:
-        return {"mode": "ai", "reply": None, "messages": []}
-    messages = db.scalars(
-        select(Message)
-        .options(selectinload(Message.attachments))
-        .where(Message.conversation_id == conversation.id)
-        .order_by(Message.created_at)
-        .limit(HISTORY_LIMIT)
-    ).all()
+        return {"mode": "ai", "status": "open", "reply": None, "messages": []}
     return {
         "mode": conversation.mode,
+        "status": conversation.status,
         "reply": None,
-        "messages": [_message_out(item) for item in messages],
+        "messages": [_message_out(item) for item in _session_messages(db, channel, session_id)],
+    }
+
+
+@router.get("/{public_id}/updates", response_model=WidgetReply, dependencies=[Depends(widget_poll_rate_limit)])
+def widget_updates(
+    public_id: str,
+    session_id: str,
+    after: datetime | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """What arrived since ``after``: a person's replies while they hold the
+    conversation, an agent's replies, and where the case stands. The widget
+    polls this while it is open, so a human taking over is visible live."""
+    channel = _channel(db, public_id)
+    conversation = _find_conversation(db, channel, session_id)
+    if not conversation:
+        return {"mode": "ai", "status": "open", "reply": None, "messages": []}
+    return {
+        "mode": conversation.mode,
+        "status": conversation.status,
+        "reply": None,
+        "messages": [_message_out(item) for item in _session_messages(db, channel, session_id, after=after)],
     }
 
 
 @router.get("/{public_id}/attachments/{attachment_id}", dependencies=[Depends(widget_rate_limit)])
 def widget_attachment(public_id: str, attachment_id: uuid.UUID, session_id: str, db: Session = Depends(get_db)):
-    conversation = _find_conversation(db, _channel(db, public_id), session_id)
+    channel = _channel(db, public_id)
+    # The attachment may belong to an earlier, resolved case of the same visitor.
+    conversation = db.scalar(
+        select(Conversation)
+        .join(Message, Message.conversation_id == Conversation.id)
+        .join(MessageAttachment, MessageAttachment.message_id == Message.id)
+        .where(*_session_filters(channel, session_id), MessageAttachment.id == attachment_id)
+    )
     if not conversation:
         raise HTTPException(status_code=404, detail="Attachment not found")
     return attachment_response(conversation_attachment(db, conversation, attachment_id))
@@ -195,9 +245,9 @@ async def widget_message(public_id: str, payload: WidgetMessageIn, db: Session =
 
     if conversation.mode == "human":
         await notify_needs_human(db, conversation, content)
-        return {"mode": "human", "reply": None, "messages": []}
+        return {"mode": "human", "status": conversation.status, "reply": None, "messages": []}
     reply = await _widget_ai_reply(db, agent, conversation, content)
-    return {"mode": "ai", "reply": reply, "reply_at": now_utc() if reply else None, "messages": []}
+    return {"mode": "ai", "status": conversation.status, "reply": reply, "reply_at": now_utc() if reply else None, "messages": []}
 
 
 @router.post("/{public_id}/media", response_model=WidgetReply, dependencies=[Depends(widget_rate_limit)])
@@ -262,11 +312,5 @@ async def widget_media(
         await notify_needs_human(db, conversation, display_content or llm_content)
     reply = None if mode == "human" else await _widget_ai_reply(db, agent, conversation, llm_content)
     # Return the refreshed history so the client can render the new attachment.
-    history = db.scalars(
-        select(Message)
-        .options(selectinload(Message.attachments))
-        .where(Message.conversation_id == conversation.id)
-        .order_by(Message.created_at)
-        .limit(HISTORY_LIMIT)
-    ).all()
-    return {"mode": mode, "reply": reply, "messages": [_message_out(item) for item in history]}
+    history = _session_messages(db, channel, session_id)
+    return {"mode": mode, "status": conversation.status, "reply": reply, "messages": [_message_out(item) for item in history]}

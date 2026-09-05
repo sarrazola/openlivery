@@ -39,6 +39,10 @@ Docker stack; run `alembic upgrade head` on local setups).
   the members of its tray instead of every portal device.
 
 ### Fixed
+- The web chat widget now shows what a person writes after taking over a
+  conversation, live, labelled with their name; it used to display only the
+  agent's replies. A message sent after the conversation was resolved opens a
+  new case, as on WhatsApp, instead of landing in the closed one.
 
 - Inbox lists (portal and agency) order by the contact's last message instead
   of the row's last write, so opening, replying to, assigning or resolving a
