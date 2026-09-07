@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session, selectinload
 from ..database import get_db
 from ..deps import get_current_user
 from .. import industries
-from ..models import Client, PortalUser, PushDevice, User, new_domain_token, Team
+from ..models import Agent, Client, Contact, Conversation, PortalUser, PushDevice, User, new_domain_token, Team
 from ..schemas import (
+    ClientDeletionPreview,
     ClientCreate,
     ClientDomainOut,
     ClientDomainSet,
@@ -21,6 +22,7 @@ from ..schemas import (
 )
 from ..security import hash_password
 from ..services.attachments import logo_response
+from ..services.whatsapp import bridge_command
 from ..services import dns as dns_service
 from ..slugs import slugify, unique_slug
 
@@ -216,11 +218,43 @@ def delete_client_domain(client_id: uuid.UUID, db: Session = Depends(get_db), us
 
 
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_client(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+async def delete_client(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Delete the client and everything under it: agents, channels, contacts,
+    conversations, portal users. The UI shows the counts and asks for the
+    client's name before calling this.
+
+    A linked WhatsApp device is logged out first so the phone does not keep a
+    session to a channel that no longer exists. Best-effort: a bridge that is
+    down must not keep a client from being deleted.
+    """
     client = _client(db, user, client_id)
+    channel = client.whatsapp_channel
+    if channel is not None and channel.encrypted_auth_state:
+        try:
+            await bridge_command("POST", f"/channels/{channel.id}/disconnect")
+        except Exception:  # noqa: BLE001 - the deletion goes ahead regardless
+            pass
     db.delete(client)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{client_id}/deletion-preview", response_model=ClientDeletionPreview)
+def client_deletion_preview(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """What deleting this client takes with it."""
+    client = _client(db, user, client_id)
+
+    def count(model, *conds) -> int:
+        return db.scalar(select(func.count()).select_from(model).where(*conds)) or 0
+
+    channels = sum(1 for item in (client.whatsapp_channel, client.whatsapp_cloud_channel, client.widget_channel) if item is not None)
+    return {
+        "agents": count(Agent, Agent.client_id == client.id, Agent.deleted_at.is_(None)),
+        "channels": channels,
+        "conversations": count(Conversation, Conversation.client_id == client.id, Conversation.channel != "playground"),
+        "contacts": count(Contact, Contact.client_id == client.id),
+        "portal_users": count(PortalUser, PortalUser.client_id == client.id),
+    }
 
 
 def _portal_user(db: Session, user: User, client_id: uuid.UUID, portal_user_id: uuid.UUID) -> PortalUser:

@@ -73,6 +73,7 @@ def configure_channel(
             Agent.id == payload.agent_id,
             Agent.client_id == client.id,
             Agent.agency_id == user.agency_id,
+            Agent.deleted_at.is_(None),
         )
     )
     if not agent:

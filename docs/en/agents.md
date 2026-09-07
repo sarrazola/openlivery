@@ -58,3 +58,7 @@ Sampling parameters are applied best-effort; models that reject a value fall bac
 ## Knowledge in the system prompt
 
 Beyond these settings, the agent's Q&A pairs, uploaded documents, per-client context and per-agent context are all assembled into the system prompt at answer time. See [Knowledge base](knowledge-base.md) for how documents are chunked, embedded and retrieved.
+
+## Unpublishing and deleting an agent
+
+**Unpublish** (`is_active: false`) pauses the agent: it stops answering and spending tokens, messages keep arriving for a person, and everything is kept. **Delete** (`DELETE /api/agents/{id}`) removes its knowledge, tools, questions and answers, escalation rules and configuration. The conversations it handled are the client's history and stay in the portal under the agent's name. An agent that answers a channel cannot be deleted until another agent is assigned to that channel (`409`).

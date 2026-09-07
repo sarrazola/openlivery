@@ -51,3 +51,22 @@ En lugar de la ruta compartida `/portal/<slug>`, puedes apuntar el portal a un d
 - `docker/Caddyfile.ondemand` restringe el TLS bajo demanda con el mismo endpoint como su hook `ask`, así que solo se emite un certificado para dominios de portal verificados y nunca para hosts arbitrarios apuntados al servidor.
 
 La pasarela bajo demanda es opcional. Consulta [Self-hosting](self-hosting.md) para montar el override y publicar los puertos 80 y 443.
+
+## Archivar y eliminar conversaciones
+
+Las conversaciones son el historial del cliente, así que nada las quita en un solo paso.
+
+- **Archivar** una conversación resuelta desde su cabecera, o todas las resueltas de una vez desde la bandeja Resueltas. Las archivadas salen de las bandejas, conservan todos sus mensajes, siguen contando en los reportes y se pueden restaurar (vuelven como resueltas). Archivar una conversación abierta la resuelve primero.
+- **Eliminar** solo desde la bandeja Archivadas, una por una o todas, después de escribir la palabra de confirmación. Eliminar borra la conversación y sus mensajes de la base de datos de forma definitiva.
+
+Eliminar un agente desde el panel nunca toca las conversaciones: se quedan en el portal con el nombre del agente. Eliminar un cliente sí las borra, junto con todo lo demás que hay bajo el cliente.
+
+API: `GET /api/portal/{slug}/conversations?archived=1`, `PATCH .../conversations/{id}/archive` con `{"archived": true|false}`, `POST .../conversations/archive-resolved`, `DELETE .../conversations/{id}` (solo archivadas), `POST .../conversations/delete-archived`. El resumen de la bandeja trae un conteo `archived`.
+
+## Bloquear un contacto
+
+Un contacto que hace spam al número se puede **bloquear** desde Contactos o desde la cabecera de la conversación. Bloqueado, sus mensajes se siguen guardando pero nadie los responde: el agente no contesta ni gasta tokens, no suena ninguna notificación y sus conversaciones salen de todas las bandejas (siguen legibles desde el historial del contacto). Puede seguir escribiendo; solo que no recibe respuesta.
+
+**Desbloquear** no responde lo acumulado. La conversación abierta se resuelve con una nota en el hilo, y el siguiente mensaje del contacto abre una conversación nueva que el agente atiende normal.
+
+API: `POST /api/portal/{slug}/contacts/{id}/block` con `{"blocked": true|false}`; `ContactOut.blocked_at` indica si está bloqueado. Es un bloqueo interno: a WhatsApp no se le avisa, así que el contacto ve sus mensajes como entregados.

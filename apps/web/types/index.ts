@@ -163,6 +163,7 @@ export type Conversation = {
   mode: "ai" | "human";
   status?: "open" | "resolved";
   resolved_at?: string | null;
+  archived_at?: string | null;
   first_reply_at?: string | null;
   taken_over_at?: string | null;
   waiting_since?: string | null;
@@ -288,6 +289,7 @@ export type Contact = {
   conversation_count: number;
   open_count: number;
   last_activity_at: string | null;
+  blocked_at?: string | null;
 };
 
 export type PortalPublic = {

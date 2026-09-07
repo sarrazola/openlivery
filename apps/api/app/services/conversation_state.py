@@ -46,6 +46,10 @@ _ACTIVITY_TEXT = {
     "team_assigned": "{actor} moved the conversation to {team}",
     "team_removed": "{actor} took the conversation out of {team}",
     "escalated": "{actor} escalated the conversation to {target}: {reason}",
+    "archived": "{actor} archived the conversation",
+    "unarchived": "{actor} restored the conversation from the archive",
+    "blocked": "{actor} blocked the contact",
+    "unblocked": "{actor} unblocked the contact; messages sent while blocked were not answered",
 }
 
 
@@ -92,6 +96,25 @@ def set_status(db: Session, conversation: Conversation, status: str, *, actor: s
     else:
         conversation.resolved_at = None
         record_activity(db, conversation, "reopened", actor=actor)
+    return True
+
+
+def set_archived(db: Session, conversation: Conversation, archived: bool, *, actor: str | None = None) -> bool:
+    """Move the conversation in or out of the archive.
+
+    Archiving closes the case first when it is still open: an archived
+    conversation is history, nobody answers it. Restoring brings it back as
+    resolved, not open; the contact's next message opens a new one anyway.
+    """
+    if bool(conversation.archived_at) == archived:
+        return False
+    if archived:
+        set_status(db, conversation, "resolved", actor=actor)
+        conversation.archived_at = now_utc()
+        record_activity(db, conversation, "archived", actor=actor)
+    else:
+        conversation.archived_at = None
+        record_activity(db, conversation, "unarchived", actor=actor)
     return True
 
 

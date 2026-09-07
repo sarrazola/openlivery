@@ -2,12 +2,12 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, AudioLines, Bot, CheckCircle2, FileText, ImageIcon, LoaderCircle, MessageSquareText, Plus, Power, PowerOff, Save, Settings2, Sparkles, Trash2, UploadCloud, Wrench, XCircle } from "lucide-react";
 import { api, messageFrom } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { businessLabel, useIndustries } from "@/lib/industries";
-import { Alert } from "@/components/ui";
+import { Alert, Modal } from "@/components/ui";
 import { FormSkeleton } from "@/components/skeleton";
 import { AiHint } from "@/components/ai-hint";
 import { useToast } from "@/components/toast";
@@ -82,6 +82,20 @@ export default function AgentDetailPage() {
     catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); }
   }
 
+  const router = useRouter();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteName, setDeleteName] = useState("");
+  async function removeAgent() {
+    if (!agent || deleteName.trim() !== agent.name.trim()) return;
+    setBusy(true); setDeleteError(null);
+    try {
+      await api(`/agents/${id}`, { method: "DELETE" });
+      toast.success(t("agents.detail.deletedNotice"));
+      router.push(`/clients/${agent.client_id}`);
+    } catch (err) { setDeleteError(messageFrom(err)); setBusy(false); }
+  }
+
   async function togglePublish() {
     if (!agent) return;
     setBusy(true);
@@ -126,6 +140,20 @@ export default function AgentDetailPage() {
   return <div className="page agent-detail-page">
     <Link href="/agents" className="back-link"><ArrowLeft size={16} /> {t("agents.detail.back")}</Link>
     <header className="agent-detail-head"><div className="agent-title-wrap"><span className="agent-avatar xl"><Bot size={29} /></span><div><div className="title-line"><h1>{agent.name}</h1><span className={agent.is_active ? "pill purple" : "pill"}>{agent.is_active ? t("agents.detail.published") : t("agents.detail.unpublished")}</span></div><p><Link href={`/clients/${agent.client_id}`} className="table-link">{agent.client.name}</Link>{businessLabel(catalog, agent.client, lang) ? ` · ${businessLabel(catalog, agent.client, lang)}` : ""}</p></div></div><div className="header-actions"><button className={agent.is_active ? "button ghost" : "button primary"} onClick={togglePublish} disabled={busy}>{agent.is_active ? <><PowerOff size={16} /> {t("agents.detail.unpublish")}</> : <><Power size={16} /> {t("agents.detail.publish")}</>}</button><Link href={`/playground`} className="button secondary"><MessageSquareText size={17} /> {t("agents.detail.openPlayground")}</Link></div></header>
+    <Modal open={deleteOpen} title={t("agents.detail.deleteTitle", { name: agent.name })} onClose={() => setDeleteOpen(false)}>
+      <div className="modal-form">
+        <p className="modal-copy">{t("agents.detail.deleteCopy")}</p>
+        <ul className="deletion-list">
+          <li><strong>{documents.length}</strong> {t("agents.detail.deleteCountDocuments")}</li>
+          <li><strong>{qaPairs.length}</strong> {t("agents.detail.deleteCountQa")}</li>
+          <li><strong>{tools.length}</strong> {t("agents.detail.deleteCountTools")}</li>
+        </ul>
+        <p className="modal-copy">{t("agents.detail.deleteKeeps")}</p>
+        <label>{t("agents.detail.deleteTypeName", { name: agent.name })}<input value={deleteName} onChange={(e) => setDeleteName(e.target.value)} autoComplete="off" placeholder={agent.name} /></label>
+        {deleteError && <Alert>{deleteError}</Alert>}
+        <div className="modal-actions"><button type="button" className="button" onClick={() => setDeleteOpen(false)}>{t("common.cancel")}</button><button type="button" className="button danger" disabled={busy || deleteName.trim() !== agent.name.trim()} onClick={removeAgent}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Trash2 size={15} /> {t("agents.detail.deleteAgent")}</>}</button></div>
+      </div>
+    </Modal>
     <nav className="tabs"><button className={tab === "basics" ? "active" : ""} onClick={() => setTab("basics")}><Settings2 size={17} /> {t("agents.detail.tabBasics")}</button><button className={tab === "knowledge" ? "active" : ""} onClick={() => setTab("knowledge")}><FileText size={17} /> {t("agents.detail.tabKnowledge")} <span>{documents.length}</span></button><button className={tab === "tools" ? "active" : ""} onClick={() => setTab("tools")}><Wrench size={17} /> {t("tools.tab")} <span>{tools.length}</span></button><button className={tab === "playground" ? "active" : ""} onClick={() => setTab("playground")}><MessageSquareText size={17} /> {t("agents.detail.tabPlayground")}</button></nav>
 
     {tab === "basics" && <form className="settings-form" onSubmit={saveConfig}>
@@ -171,7 +199,7 @@ export default function AgentDetailPage() {
         </div>
         </details>
       </div></section>
-      <div className="sticky-save"><span>{t("agents.detail.stickyNote")}</span><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} {t("agents.detail.saveConfig")}</button></div>
+      <div className="sticky-save"><div className="sticky-left"><button type="button" className="button danger" onClick={() => { setDeleteError(null); setDeleteName(""); setDeleteOpen(true); }}><Trash2 size={16} /> {t("agents.detail.deleteAgent")}</button><span>{t("agents.detail.stickyNote")}</span></div><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} {t("agents.detail.saveConfig")}</button></div>
     </form>}
 
 

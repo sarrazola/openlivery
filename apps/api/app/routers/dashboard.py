@@ -37,7 +37,7 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
         )
     ) or 0
     recent_agents = db.scalars(
-        select(Agent).where(Agent.agency_id == agency_id).order_by(Agent.created_at.desc()).limit(5)
+        select(Agent).where(Agent.agency_id == agency_id, Agent.deleted_at.is_(None)).order_by(Agent.created_at.desc()).limit(5)
     ).all()
     return {
         "clients": clients,

@@ -13,6 +13,26 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- Contacts can be **blocked** from the portal. Their messages are still
+  stored but the agent does not answer them (no tokens spent), nothing rings,
+  and their conversations leave the inboxes until they are unblocked; the
+  backlog is never answered, the next message opens a fresh conversation.
+  `POST /api/portal/{slug}/contacts/{id}/block`, `contacts.blocked_at`
+  (migration 0035).
+- Conversations can be **archived** from the portal, one at a time or every
+  resolved one at once. Archived conversations leave the inboxes, keep their
+  messages, still count in reports and can be restored. Deleting is only
+  possible from the Archived inbox, after typing a confirmation word; it
+  removes the conversation and its messages for good. Migration 0035 adds
+  `conversations.archived_at`.
+- Agents can be **deleted** from their editor. Their knowledge, tools,
+  questions and answers, rules and configuration go; the conversations they
+  handled stay in the portal under their name (`agents.deleted_at`, same
+  migration). Agents answering a channel still cannot be deleted.
+- Deleting a client opens a dialog with what goes with it (agents, channels,
+  conversations, contacts, portal users, from
+  `GET /api/clients/{id}/deletion-preview`), asks for the client's name, and
+  logs out a linked WhatsApp device first.
 - Each agent sets how long it waits before answering on WhatsApp, as a
   minimum and a maximum in seconds (`reply_delay_min_seconds`,
   `reply_delay_max_seconds`, sliders under the agent's advanced options): every
@@ -80,6 +100,8 @@ Docker stack; run `alembic upgrade head` on local setups).
   the members of its tray instead of every portal device.
 
 ### Fixed
+- Switching a client off now stops its agents on WhatsApp and closes its
+  portal, as the setting always claimed. It used to hide the web chat only.
 - Removing a person from a client's portal access now asks first, in a
   dialog that says what goes (sign-in, notifications) and what stays (their
   conversations, unassigned in the inbox). Their name, email and password can

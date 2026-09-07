@@ -171,6 +171,10 @@ class Agent(Base):
     # one reply. Both at 0 answers each message immediately.
     reply_delay_min_seconds: Mapped[int] = mapped_column(Integer, default=6, server_default="6")
     reply_delay_max_seconds: Mapped[int] = mapped_column(Integer, default=9, server_default="9")
+    # Set when the agent is deleted. The row stays so the conversations it
+    # handled keep its name; everything it owned (knowledge, tools, rules)
+    # is purged and it disappears from every list.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Multimodal capabilities. When enabled, inbound images are described by a
     # vision model and inbound audio is transcribed before reaching the agent.
     # On by default: a new agent should understand what customers send it.
@@ -385,6 +389,9 @@ class Contact(Base):
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
+    # A blocked contact talks to a wall: their messages are stored but nobody
+    # answers, nothing rings, and their conversations leave the inboxes.
+    blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
@@ -429,6 +436,9 @@ class Conversation(Base):
     status: Mapped[str] = mapped_column(String(20), default="open", server_default="open")
     status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Archived conversations leave the inboxes but keep their history and
+    # still count in reports. Only archived conversations can be deleted.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     # First reply of any kind (AI or person) after the conversation opened.
     first_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # When a person last took the conversation over from the AI.

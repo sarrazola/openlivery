@@ -192,7 +192,9 @@ async def process_inbound(
         if quoted:
             visitor_message.quoted_message_id = quoted.id
     conversation.updated_at = now_utc()
-    note_inbound(db, conversation)
+    blocked = conversation.contact is not None and conversation.contact.blocked_at is not None
+    if not blocked:
+        note_inbound(db, conversation)
     db.add(visitor_message)
     if inbound.media_kind and inbound.media_bytes:
         db.flush()
@@ -204,6 +206,10 @@ async def process_inbound(
             kind=inbound.media_kind,
         )
     db.commit()
+    if blocked:
+        # Kept for the record, answered by nobody, and no tokens spent: the
+        # conversation stays out of the inboxes until the contact is unblocked.
+        return InboundResult(accepted=True, conversation_id=conversation.id, mode=conversation.mode)
     if conversation.mode == "human":
         # An operator took this conversation over, so nothing will answer unless
         # a person sees it. This is the moment a phone should ring.
@@ -296,6 +302,13 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     text on the synchronous path, or the whole visitor burst when debounced.
     """
     agent = channel.agent
+    if not channel.client.is_active:
+        # An inactive client is switched off everywhere: the message is kept
+        # for the record, nobody answers it and no tokens are spent.
+        channel.last_error = "A message was received, but the client is inactive. Reactivate the client so its agent answers again."
+        channel.updated_at = now_utc()
+        db.commit()
+        return InboundResult(accepted=True, conversation_id=conversation.id, mode="ai")
     credentials = resolve_agent_credentials(db, agent)
     if not agent.is_active or not credentials or not agent.model.strip():
         channel.last_error = "A message was received, but the assigned agent is not ready (model or provider key missing)."

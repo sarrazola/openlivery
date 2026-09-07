@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from ..database import get_db
 from ..deps import get_current_user
 from ..services.conversation_state import ConversationClosed, STATUSES, note_reply, set_mode, set_status
-from ..models import Agent, Conversation, Message, User, now_utc
+from ..models import Agent, Contact, Conversation, Message, now_utc, User
 from ..schemas import (
     ConversationCreate,
     ConversationDetail,
@@ -62,7 +62,7 @@ def list_conversations(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    query = select(Conversation).where(Conversation.agency_id == user.agency_id)
+    query = select(Conversation).where(Conversation.agency_id == user.agency_id, Conversation.archived_at.is_(None))
     if agent_id:
         query = query.where(Conversation.agent_id == agent_id)
     if client_id:
@@ -129,7 +129,8 @@ def inbox(
         .outerjoin(last, last.c.cid == Conversation.id)
         .outerjoin(unread_counts, unread_counts.c.cid == Conversation.id)
         .outerjoin(last_inbound, last_inbound.c.cid == Conversation.id)
-        .where(Conversation.agency_id == user.agency_id)
+        .outerjoin(Contact, Contact.id == Conversation.contact_id)
+        .where(Conversation.agency_id == user.agency_id, Conversation.archived_at.is_(None), Contact.blocked_at.is_(None))
     )
     if agent_id:
         query = query.where(Conversation.agent_id == agent_id)
@@ -176,7 +177,7 @@ def inbox(
 
 @router.post("", response_model=ConversationDetail, status_code=status.HTTP_201_CREATED)
 def create_conversation(payload: ConversationCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    agent = db.scalar(select(Agent).where(Agent.id == payload.agent_id, Agent.agency_id == user.agency_id))
+    agent = db.scalar(select(Agent).where(Agent.id == payload.agent_id, Agent.agency_id == user.agency_id, Agent.deleted_at.is_(None)))
     if not agent:
         raise HTTPException(status_code=400, detail="The selected agent does not exist")
     conversation = Conversation(

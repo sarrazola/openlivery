@@ -58,3 +58,7 @@ Los parámetros de muestreo se aplican con mejor esfuerzo; los modelos que recha
 ## El conocimiento en el prompt del sistema
 
 Más allá de estos ajustes, los pares de preguntas y respuestas del agente, los documentos subidos, el contexto por cliente y el contexto por agente se ensamblan en el prompt del sistema al momento de responder. Consulta [Base de conocimiento](knowledge-base.md) para ver cómo se fragmentan, se generan embeddings y se recuperan los documentos.
+
+## Despublicar y eliminar un agente
+
+**Despublicar** (`is_active: false`) pausa el agente: deja de responder y de gastar tokens, los mensajes siguen llegando para una persona, y todo se conserva. **Eliminar** (`DELETE /api/agents/{id}`) borra su conocimiento, herramientas, preguntas y respuestas, reglas de escalamiento y configuración. Las conversaciones que atendió son el historial del cliente y se quedan en el portal con el nombre del agente. Un agente que atiende un canal no se puede eliminar hasta asignar otro agente a ese canal (`409`).

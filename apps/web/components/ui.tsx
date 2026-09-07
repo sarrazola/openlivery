@@ -1,6 +1,7 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 export function StatusBadge({ active }: { active: boolean }) {
@@ -8,8 +9,17 @@ export function StatusBadge({ active }: { active: boolean }) {
 }
 
 export function Modal({ open, title, description, onClose, children }: { open: boolean; title: string; description?: string; onClose: () => void; children: ReactNode }) {
-  if (!open) return null;
-  return (
+  // Escape closes the dialog, like clicking outside it or the X.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); onClose(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+  if (!open || typeof document === "undefined") return null;
+  // Rendered at the body so no ancestor (a transformed or filtered wrapper,
+  // a sticky bar) can clip the backdrop or stack above it.
+  return createPortal(
     <div className="modal-backdrop" onMouseDown={onClose}>
       <section className="modal" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}>
         <div className="modal-head">
@@ -18,7 +28,8 @@ export function Modal({ open, title, description, onClose, children }: { open: b
         </div>
         {children}
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
