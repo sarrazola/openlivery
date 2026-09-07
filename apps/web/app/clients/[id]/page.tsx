@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Bot, Copy, ExternalLink, Globe2, ImagePlus, Inbox, LoaderCircle, MessageCircle, QrCode, Radio, Save, Settings2, ShieldAlert, ShieldCheck, Trash2, UserRound } from "lucide-react";
-import { EmptyState, StatusBadge } from "@/components/ui";
+import { ArrowLeft, ArrowRight, Bot, Copy, ExternalLink, Globe2, ImagePlus, Inbox, LoaderCircle, MessageCircle, Pencil, QrCode, Radio, Save, Settings2, ShieldAlert, ShieldCheck, Trash2, UserCheck, UserRound, UserX } from "lucide-react";
+import { Alert, EmptyState, Modal, StatusBadge } from "@/components/ui";
 import { IndustryPicker, isBusinessComplete, type IndustryValue } from "@/components/industry-picker";
 import { AiHint } from "@/components/ai-hint";
 import { FormSkeleton, ListRowsSkeleton } from "@/components/skeleton";
@@ -93,50 +93,104 @@ function PortalUsers({ clientId }: { clientId: string }) {
   const toast = useToast();
   const [users, setUsers] = useState<PortalUser[] | null>(null);
   const [busy, setBusy] = useState(false);
+  // "new" opens the create dialog; a user opens the edit dialog for them.
+  const [editing, setEditing] = useState<PortalUser | "new" | null>(null);
+  const [deleting, setDeleting] = useState<PortalUser | null>(null);
+  const [suspending, setSuspending] = useState<PortalUser | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setUsers(await api<PortalUser[]>(`/clients/${clientId}/portal-users`));
   }, [clientId]);
   useEffect(() => { load().catch(() => {}); }, [load]);
 
-  async function add(event: FormEvent<HTMLFormElement>) {
+  function open(target: PortalUser | "new") { setModalError(null); setEditing(target); }
+
+  async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    setBusy(true);
+    if (!editing) return;
+    const data = new FormData(event.currentTarget);
+    const password = String(data.get("password") || "");
+    if (editing === "new" && password !== String(data.get("password_confirm") || "")) { setModalError(t("clients.detail.portalUserPasswordMismatch")); return; }
+    const payload: Record<string, string> = { name: String(data.get("name") || "").trim(), email: String(data.get("email") || "").trim() };
+    if (password) payload.password = password;
+    setBusy(true); setModalError(null);
     try {
-      await api(`/clients/${clientId}/portal-users`, { method: "POST", body: JSON.stringify({ name: data.get("name"), email: data.get("email"), password: data.get("password") }) });
-      form.reset();
-      toast.success(t("clients.detail.portalUserAdded"));
+      if (editing === "new") {
+        await api(`/clients/${clientId}/portal-users`, { method: "POST", body: JSON.stringify(payload) });
+        toast.success(t("clients.detail.portalUserAdded"));
+      } else {
+        await api(`/clients/${clientId}/portal-users/${editing.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+        toast.success(t("clients.detail.portalUserSaved"));
+      }
+      setEditing(null);
       await load();
-    } catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); }
+    } catch (err) { setModalError(messageFrom(err)); } finally { setBusy(false); }
   }
-  async function toggle(u: PortalUser) {
-    try { await api(`/clients/${clientId}/portal-users/${u.id}`, { method: "PATCH", body: JSON.stringify({ is_active: !u.is_active }) }); await load(); }
-    catch (err) { toast.error(messageFrom(err)); }
+  async function setActive(u: PortalUser, active: boolean) {
+    setBusy(true); setModalError(null);
+    try {
+      await api(`/clients/${clientId}/portal-users/${u.id}`, { method: "PATCH", body: JSON.stringify({ is_active: active }) });
+      setSuspending(null);
+      await load();
+    } catch (err) { if (suspending) setModalError(messageFrom(err)); else toast.error(messageFrom(err)); } finally { setBusy(false); }
   }
-  async function removeUser(u: PortalUser) {
-    try { await api(`/clients/${clientId}/portal-users/${u.id}`, { method: "DELETE" }); toast.success(t("clients.detail.portalUserRemoved")); await load(); }
-    catch (err) { toast.error(messageFrom(err)); }
+  async function removeUser() {
+    if (!deleting) return;
+    setBusy(true); setModalError(null);
+    try {
+      await api(`/clients/${clientId}/portal-users/${deleting.id}`, { method: "DELETE" });
+      toast.success(t("clients.detail.portalUserRemoved"));
+      setDeleting(null);
+      await load();
+    } catch (err) { setModalError(messageFrom(err)); } finally { setBusy(false); }
   }
+
+  const creating = editing === "new";
+  const current = editing && editing !== "new" ? editing : null;
 
   return <section className="form-section"><div className="section-copy"><h2>{t("clients.detail.portalUsersTitle")}</h2><p>{t("clients.detail.portalUsersCopy")}</p></div><div className="form-fields">
     {users === null ? <ListRowsSkeleton rows={2} /> : users.length ? <div className="table-shell"><table className="data-table"><tbody>
       {users.map((u) => <tr key={u.id}>
-        <td><span className="entity-cell"><span className="agent-avatar"><UserRound size={17} /></span><span><strong>{u.name || u.email}</strong>{u.name && <small style={{ display: "block", color: "#89909d" }}>{u.email}</small>}</span></span></td>
-        <td><StatusBadge active={u.is_active} /></td>
-        <td><button type="button" className="text-button" onClick={() => toggle(u)}>{u.is_active ? t("clients.detail.portalUserSuspend") : t("clients.detail.portalUserActivate")}</button></td>
-        <td><button type="button" className="text-button danger-text" onClick={() => removeUser(u)} aria-label={t("clients.detail.portalUserRemove")}><Trash2 size={15} /></button></td>
+        <td><span className="entity-cell"><span className="agent-avatar"><UserRound size={17} /></span><span><span className="name-line"><strong>{u.name || u.email}</strong><StatusBadge active={u.is_active} /></span>{u.name && <small style={{ display: "block", color: "#89909d" }}>{u.email}</small>}</span></span></td>
+        <td className="row-end"><span className="row-actions">
+          <button type="button" className="button secondary small" disabled={busy} onClick={() => (u.is_active ? (setModalError(null), setSuspending(u)) : setActive(u, true))}>{u.is_active ? <><UserX size={14} /> {t("clients.detail.portalUserSuspend")}</> : <><UserCheck size={14} /> {t("clients.detail.portalUserActivate")}</>}</button>
+          <span className="row-sep" />
+          <button type="button" className="icon-button" onClick={() => open(u)} aria-label={t("clients.detail.portalUserEdit")} title={t("clients.detail.portalUserEdit")}><Pencil size={15} /></button>
+          <button type="button" className="icon-button danger-icon" onClick={() => { setModalError(null); setDeleting(u); }} aria-label={t("clients.detail.portalUserRemove")} title={t("clients.detail.portalUserRemove")}><Trash2 size={15} /></button>
+        </span></td>
       </tr>)}
     </tbody></table></div> : <p className="field-help">{t("clients.detail.portalUsersEmpty")}</p>}
-    <form onSubmit={add} className="form-fields">
-      <div className="form-grid">
-        <label>{t("clients.detail.portalUserName")}<input name="name" required minLength={2} /></label>
-        <label>{t("clients.detail.portalUserEmail")}<input name="email" required type="email" placeholder={t("clients.detail.portalEmailPlaceholder")} /></label>
+    <button type="button" className="button secondary align-start" onClick={() => open("new")}><UserRound size={15} /> {t("clients.detail.portalUserAdd")}</button>
+
+    <Modal open={editing !== null} title={creating ? t("clients.detail.portalUserAddTitle") : t("clients.detail.portalUserEditTitle", { name: current?.name || current?.email || "" })} description={creating ? t("clients.detail.portalUserAddCopy") : undefined} onClose={() => setEditing(null)}>
+      <form key={creating ? "new" : current?.id} className="modal-form" onSubmit={save}>
+        <div className="form-grid">
+          <label>{t("clients.detail.portalUserName")}<input name="name" required minLength={2} maxLength={160} defaultValue={current?.name || ""} autoFocus /></label>
+          <label>{t("clients.detail.portalUserEmail")}<input name="email" required type="email" defaultValue={current?.email || ""} placeholder={t("clients.detail.portalEmailPlaceholder")} /></label>
+        </div>
+        {creating ? <div className="form-grid">
+          <label>{t("clients.detail.portalUserPassword")}<PasswordInput name="password" required minLength={8} autoComplete="new-password" placeholder={t("clients.detail.portalPasswordMin")} /></label>
+          <label>{t("clients.detail.portalUserConfirmPassword")}<PasswordInput name="password_confirm" required minLength={8} autoComplete="new-password" placeholder={t("clients.detail.portalUserConfirmPlaceholder")} /></label>
+        </div> : <label>{t("clients.detail.portalUserNewPassword")}<PasswordInput name="password" minLength={8} autoComplete="new-password" placeholder={t("clients.detail.portalUserPasswordKeep")} /><span className="field-help">{t("clients.detail.portalUserNewPasswordHint")}</span></label>}
+        {modalError && <Alert>{modalError}</Alert>}
+        <div className="modal-actions"><button type="button" className="button" onClick={() => setEditing(null)}>{t("common.cancel")}</button><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={16} /> : creating ? t("clients.detail.portalUserAdd") : t("common.saveChanges")}</button></div>
+      </form>
+    </Modal>
+    <Modal open={suspending !== null} title={t("clients.detail.portalUserSuspendTitle", { name: suspending?.name || suspending?.email || "" })} onClose={() => setSuspending(null)}>
+      <div className="modal-form">
+        <p className="modal-copy">{t("clients.detail.portalUserSuspendCopy")}</p>
+        {modalError && <Alert>{modalError}</Alert>}
+        <div className="modal-actions"><button type="button" className="button" onClick={() => setSuspending(null)}>{t("common.cancel")}</button><button type="button" className="button primary" disabled={busy} onClick={() => suspending && setActive(suspending, false)}>{busy ? <LoaderCircle className="spin" size={16} /> : <><UserX size={15} /> {t("clients.detail.portalUserSuspend")}</>}</button></div>
       </div>
-      <label>{t("clients.detail.portalUserPassword")}<PasswordInput name="password" required minLength={8} autoComplete="new-password" placeholder={t("clients.detail.portalPasswordMin")} /></label>
-      <button className="button secondary align-start" disabled={busy}>{busy ? <LoaderCircle className="spin" size={15} /> : <UserRound size={15} />} {t("clients.detail.portalUserAdd")}</button>
-    </form>
+    </Modal>
+    <Modal open={deleting !== null} title={t("clients.detail.portalUserRemoveTitle", { name: deleting?.name || deleting?.email || "" })} onClose={() => setDeleting(null)}>
+      <div className="modal-form">
+        <p className="modal-copy">{t("clients.detail.portalUserRemoveCopy")}</p>
+        {modalError && <Alert>{modalError}</Alert>}
+        <div className="modal-actions"><button type="button" className="button" onClick={() => setDeleting(null)}>{t("common.cancel")}</button><button type="button" className="button danger" disabled={busy} onClick={removeUser}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Trash2 size={15} /> {t("clients.detail.portalUserRemove")}</>}</button></div>
+      </div>
+    </Modal>
   </div></section>;
 }
 

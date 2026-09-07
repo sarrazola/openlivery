@@ -80,6 +80,11 @@ Docker stack; run `alembic upgrade head` on local setups).
   the members of its tray instead of every portal device.
 
 ### Fixed
+- Removing a person from a client's portal access now asks first, in a
+  dialog that says what goes (sign-in, notifications) and what stays (their
+  conversations, unassigned in the inbox). Their name, email and password can
+  be edited from the same list, and "Suspend" carries a help note saying it
+  only blocks sign-in and is reversible.
 - Voice notes recorded in the browser (playground, portal and web chat) are
   transcribed again. They were sent to the transcription provider named
   `audio.ogg` whatever their container, so Safari's mp4 and Chrome's webm

@@ -1659,6 +1659,12 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 
 /* "?" hints that say what the AI receives from a field or section. */
 .label-row { display: inline-flex; align-items: center; gap: 6px; }
+.row-actions { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.row-end { text-align: right; width: 1%; }
+.name-line { display: inline-flex; align-items: center; gap: 8px; }
+.modal-head .icon-button { width: 34px; height: 34px; min-height: 0; padding: 0; flex: 0 0 auto; }
+.modal-copy { margin: 0; color: #50586a; font-size: 14px; line-height: 1.6; }
+.row-sep { width: 1px; height: 22px; margin: 0 6px; background: var(--line); }
 .ai-hint { position: relative; display: inline-flex; align-items: center; color: #8a93a8; cursor: help; vertical-align: middle; outline: 0; }
 .ai-hint:hover, .ai-hint:focus-visible { color: #4f46d4; }
 .ai-hint-tip { position: absolute; left: 50%; bottom: calc(100% + 8px); z-index: 30; width: 250px; padding: 9px 11px; border-radius: 9px; background: #0f172a; color: #f1f5f9; font-size: 12px; font-weight: 500; line-height: 1.45; text-transform: none; letter-spacing: 0; text-align: left; transform: translateX(-50%) translateY(4px); opacity: 0; pointer-events: none; transition: opacity .12s ease, transform .12s ease; box-shadow: 0 8px 24px rgba(15,23,42,.18); }
