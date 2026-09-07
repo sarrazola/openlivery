@@ -39,7 +39,9 @@ def _validate_client(db: Session, user: User, client_id: uuid.UUID) -> None:
 
 def _channels_of(db: Session, agent: Agent) -> list[WhatsAppChannel | WhatsAppCloudChannel | WidgetChannel]:
     """Every channel this agent answers: both WhatsApp lines and the web chat."""
+    from ..models import SocialChannel
     return [
+        *db.scalars(select(SocialChannel).where(SocialChannel.agent_id == agent.id)).all(),
         *db.scalars(select(WhatsAppChannel).where(WhatsAppChannel.agent_id == agent.id)).all(),
         *db.scalars(select(WhatsAppCloudChannel).where(WhatsAppCloudChannel.agent_id == agent.id)).all(),
         *db.scalars(select(WidgetChannel).where(WidgetChannel.agent_id == agent.id)).all(),

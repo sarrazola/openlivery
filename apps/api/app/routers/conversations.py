@@ -111,6 +111,7 @@ def inbox(
         .join(Conversation, Conversation.id == Message.conversation_id)
         .where(
             Message.sender_type == "visitor",
+            Message.is_historical.is_(False),
             or_(Conversation.operator_read_at.is_(None), Message.created_at > Conversation.operator_read_at),
         )
         .group_by(Message.conversation_id)
@@ -219,6 +220,8 @@ def get_conversation(conversation_id: uuid.UUID, db: Session = Depends(get_db), 
 
 def _ready_agent(db: Session, conversation: Conversation) -> tuple[Agent, tuple[str, str]]:
     """Validate the conversation can produce an AI reply and return the agent + credentials."""
+    if conversation.channel in {"instagram", "messenger"}:
+        raise HTTPException(status_code=409, detail="Use the inbox reply action for this channel.")
     agent = conversation.agent
     if not agent.is_active:
         raise HTTPException(status_code=400, detail="This agent is inactive")
@@ -409,6 +412,17 @@ async def reply_as_human(
     conversation = _conversation(db, user, conversation_id)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
+    if conversation.channel in ("instagram", "messenger"):
+        from ..services.social_delivery import queue_message
+        if payload.quoted_message_id:
+            raise HTTPException(status_code=422, detail="Quoted replies are not supported by this channel.")
+        message = Message(conversation_id=conversation.id, role="assistant", content=payload.content.strip(),
+            sender_type="human", sender_name=user.name)
+        db.add(message)
+        queue_message(db, conversation, message)
+        conversation.updated_at = now_utc()
+        db.commit()
+        return _conversation(db, user, conversation_id)
     quoted_id, quoted_external = resolve_quote(db, conversation, payload.quoted_message_id)
     external_message_id = await send_channel_message(
         db, conversation, payload.content.strip(), quoted_external_id=quoted_external

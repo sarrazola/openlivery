@@ -1706,3 +1706,46 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .combo-tag { margin-left: 8px; padding: 2px 7px; border-radius: 20px; background: #eef0f5; color: #5b6474; font-size: 11px; font-style: normal; font-weight: 700; white-space: nowrap; vertical-align: middle; }
 .combo-option .combo-tag { margin-left: 0; }
 .combo-value .combo-tag { background: #e9e7ff; color: #5048c8; }
+
+/* Social accounts share the existing channel setup and inbox layout. */
+.channel-badge.instagram, .channel-dot.instagram { background: #c83b82; }
+.channel-badge.messenger, .channel-dot.messenger { background: #1877f2; }
+.wa-mark.instagram { color: #bd347c; background: #fcecf5; }
+.wa-mark.messenger { color: #1877f2; background: #edf4ff; }
+.social-account { display: flex; align-items: center; gap: 14px; margin: 22px 0; padding: 18px; border: 1px solid #e3e7ee; border-radius: 12px; }
+.social-account div { display: grid; gap: 5px; overflow-wrap: anywhere; }
+.social-account small, .social-meta { color: #687082; }
+.social-selection { display: grid; gap: 14px; margin: 22px 0; padding: 20px; background: #f7f9fc; border: 1px solid #dce3ef; border-radius: 12px; }
+.social-selection h3, .social-selection p { margin: 0; }
+.social-selection label, .social-webhook-fields label { display: grid; gap: 8px; font-size: 13px; font-weight: 600; }
+.social-selection button { justify-self: start; }
+.social-manual > summary { display: flex; align-items: center; gap: 10px; font-weight: 650; cursor: pointer; }
+.social-manual > p { margin: 18px 0; color: #687082; line-height: 1.6; }
+.social-human-agent { margin-top: 22px; gap: 20px; }
+.social-webhook-fields { display: grid; gap: 16px; }
+.social-feedback { display: flex; align-items: center; gap: 8px; color: #087b52; }
+.social-permissions { margin-top: 20px; font-size: 12px; overflow-wrap: anywhere; }
+.social-permissions summary { cursor: pointer; }
+.reply-policy-notice { display: flex; align-items: flex-start; gap: 10px; flex-shrink: 0; padding: 14px 20px; border-top: 1px solid #eadcb9; background: #fff9ec; color: #805c1e; }
+.reply-policy-notice div { display: grid; gap: 4px; }
+.reply-policy-notice strong { font-size: 13px; }
+.reply-policy-notice small { font-size: 12px; line-height: 1.5; }
+.reply-policy-notice svg { flex-shrink: 0; margin-top: 2px; }
+.reply-policy-notice.human { background: #eef5ff; border-color: #cedff7; color: #285b93; }
+@media (max-width: 640px) { .social-page .wa-cloud-form { grid-template-columns: 1fr; } }
+
+.portal-channel-filter { display: grid; gap: 6px; margin: 0 14px 12px; color: #687082; font-size: 12px; }
+.portal-channel-filter select { padding: 7px 10px; font-size: 12px; }
+
+.social-setup-notice { padding: 14px; background: #f1f6fb; border: 1px solid #d5e2ee; border-radius: 8px; color: #43617f; font-size: 13px; line-height: 1.5; }
+.social-disclosure { margin-left: auto; flex-shrink: 0; transition: transform .15s; }
+.social-manual[open] .social-disclosure { transform: rotate(180deg); }
+@media (max-width: 900px) { .social-page .wa-side { order: 0; } }
+@media (max-width: 640px) {
+  .social-page .wa-header { display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: start; }
+  .social-page .wa-state { grid-column: 2; justify-self: start; margin-left: 0; }
+  .social-page .wa-header h1 { font-size: 27px; }
+}
+
+.social-history-status { display: grid; gap: 6px; margin: 16px 0; font-size: 13px; }
+.social-history-status small { color: #687082; }

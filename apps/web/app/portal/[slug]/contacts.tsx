@@ -32,7 +32,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const [mergePrimary, setMergePrimary] = useState<Contact | null>(null);
   const cloudLine = channels.find((c) => c.channel === "whatsapp_cloud");
   const qrLine = channels.find((c) => c.channel === "whatsapp");
-  const lines = [cloudLine, qrLine].filter((line): line is PortalChannel => Boolean(line));
+  const lines = [cloudLine, qrLine].filter((line): line is PortalChannel & { channel: "whatsapp" | "whatsapp_cloud" } => Boolean(line));
   const [starting, setStarting] = useState<"whatsapp_cloud" | "whatsapp" | null>(null);
   const [choosingLine, setChoosingLine] = useState(false);
   const lineDetail = (line: PortalChannel) => [line.display_name, formatPhone(line.phone_number)].filter(Boolean).join(" · ");

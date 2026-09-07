@@ -8,7 +8,7 @@ import { useT } from "@/lib/i18n";
 import type { PortalMember, Team } from "@/types";
 
 const STRATEGIES = ["round_robin", "least_busy"] as const;
-const CHANNEL_OPTIONS = ["whatsapp", "whatsapp_cloud", "widget"] as const;
+const CHANNEL_OPTIONS = ["whatsapp", "whatsapp_cloud", "instagram", "messenger", "widget"] as const;
 
 export function TeamsView({ slug }: { slug: string }) {
   const t = useT();
@@ -86,6 +86,8 @@ export function TeamsView({ slug }: { slug: string }) {
   const channelLabel = (value: string) =>
     value === "whatsapp" ? t("portal.teams.channel.whatsapp")
     : value === "whatsapp_cloud" ? t("portal.teams.channel.whatsapp_cloud")
+    : value === "instagram" ? t("social.instagram.title")
+    : value === "messenger" ? t("social.messenger.title")
     : t("portal.teams.channel.widget");
 
   const query = memberQuery.trim().toLowerCase();

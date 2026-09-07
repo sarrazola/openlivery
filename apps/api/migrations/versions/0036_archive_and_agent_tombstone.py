@@ -12,16 +12,16 @@ purged when it is deleted and it is hidden from every list.
 reach the agent or a person's phone, and their conversations leave the
 inboxes until they are unblocked.
 
-Revision ID: 0035_archive_and_agent_tombstone
-Revises: 0034_agent_reply_delay
+Revision ID: 0036_archive_and_agent_tombstone
+Revises: 0035_social_channels
 """
 
 from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0035_archive_and_agent_tombstone"
-down_revision = "0034_agent_reply_delay"
+revision = "0036_archive_and_agent_tombstone"
+down_revision = "0035_social_channels"
 branch_labels = None
 depends_on = None
 

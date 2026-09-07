@@ -7,6 +7,7 @@ uses the text resolved into ``Message.llm_content`` at ingestion time.
 
 import re
 import uuid
+from urllib.parse import quote
 
 from fastapi import HTTPException, Response
 from sqlalchemy import select
@@ -123,6 +124,14 @@ def logo_response(data: bytes, mime: str) -> Response:
     )
 
 
+def content_disposition(filename: str | None, *, inline: bool = False) -> str:
+    """ASCII fallback plus RFC 5987 preserves Unicode names in HTTP headers."""
+    filename = safe_filename(filename) or "attachment"
+    ascii_filename = filename.encode("ascii", "ignore").decode() or "attachment"
+    disposition = "inline" if inline else "attachment"
+    return f'{disposition}; filename="{ascii_filename}"; filename*=UTF-8\'\'{quote(filename, safe="")}'
+
+
 def attachment_response(attachment: MessageAttachment) -> Response:
     inline = is_inline_safe(attachment.mime)
     headers = {
@@ -135,9 +144,7 @@ def attachment_response(attachment: MessageAttachment) -> Response:
         # matters when the API is served from its own domain.
         "Vary": "Origin",
     }
-    disposition = "inline" if inline else "attachment"
-    filename = attachment.filename or "attachment"
-    headers["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+    headers["Content-Disposition"] = content_disposition(attachment.filename, inline=inline)
     media_type = attachment.mime if inline else "application/octet-stream"
     return Response(content=attachment.data, media_type=media_type, headers=headers)
 

@@ -99,6 +99,7 @@ class Client(Base):
         back_populates="client", cascade="all, delete-orphan"
     )
     teams: Mapped[list["Team"]] = relationship(back_populates="client", cascade="all, delete-orphan")
+    social_channels: Mapped[list["SocialChannel"]] = relationship(back_populates="client", cascade="all, delete-orphan")
 
     @property
     def logo_url(self) -> str | None:
@@ -407,6 +408,7 @@ class Conversation(Base):
     __table_args__ = (
         Index("ix_conversations_whatsapp_chat", "whatsapp_channel_id", "external_chat_id"),
         Index("ix_conversations_whatsapp_cloud_chat", "whatsapp_cloud_channel_id", "external_chat_id"),
+        Index("ix_conversations_social_chat", "social_channel_id", "external_chat_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
@@ -416,6 +418,14 @@ class Conversation(Base):
     title: Mapped[str] = mapped_column(String(240), default="New conversation")
     mode: Mapped[str] = mapped_column(String(30), default="ai")
     channel: Mapped[str] = mapped_column(String(40), default="playground")
+    social_channel_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("social_channels.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    social_last_inbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    social_reply_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    social_reply_claimed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    social_thread_owned: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    social_pending_escalation: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     whatsapp_channel_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("whatsapp_channels.id", ondelete="CASCADE"), nullable=True, index=True
     )
@@ -472,7 +482,38 @@ class Conversation(Base):
     whatsapp_channel: Mapped[WhatsAppChannel | None] = relationship(back_populates="conversations")
     whatsapp_cloud_channel: Mapped[WhatsAppCloudChannel | None] = relationship(back_populates="conversations")
     widget_channel: Mapped["WidgetChannel | None"] = relationship(back_populates="conversations")
+    social_channel: Mapped["SocialChannel | None"] = relationship()
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")
+
+    def _reply_policy(self) -> dict:
+        if self.channel in ("instagram", "messenger"):
+            from .services.social_policy import window_fields
+            return window_fields(self)
+        return {}
+
+    @property
+    def reply_window_open(self) -> bool:
+        return self._reply_policy().get("reply_window_open", True)
+
+    @property
+    def reply_window_until(self):
+        return self._reply_policy().get("reply_window_until")
+
+    @property
+    def human_reply_window_open(self) -> bool:
+        return self._reply_policy().get("human_reply_window_open", True)
+
+    @property
+    def human_reply_window_until(self):
+        return self._reply_policy().get("human_reply_window_until")
+
+    @property
+    def reply_block_reason(self):
+        return self._reply_policy().get("reply_block_reason")
+
+    @property
+    def channel_capabilities(self):
+        return self._reply_policy().get("channel_capabilities")
 
 
 class Message(Base):
@@ -488,6 +529,7 @@ class Message(Base):
     # to the conversation (resolved, reopened, taken over), shown in the
     # thread but never sent out nor fed to the model. See ``activity``.
     kind: Mapped[str] = mapped_column(String(20), default="message", server_default="message")
+    is_historical: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # For kind=activity: {"event": "resolved" | "reopened" | "reopened_by_contact"
     # | "taken_over" | "returned_to_ai"}. ``sender_name`` carries who did it
     # and ``content`` an English sentence for clients that do not know the event.
@@ -507,7 +549,7 @@ class Message(Base):
     portal_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True
     )
-    external_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    external_message_id: Mapped[str | None] = mapped_column(String(1024), nullable=True, index=True)
     # For outbound messages on the WhatsApp Cloud API: sent | delivered |
     # read | failed, as Meta's receipts report it. None until the first one.
     delivery_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -706,3 +748,140 @@ class PushDevice(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
     portal_user: Mapped["PortalUser | None"] = relationship(back_populates="devices")
+
+
+class SocialChannel(Base):
+    """A professional Instagram account or Messenger Page assigned to a client."""
+
+    __tablename__ = "social_channels"
+    __table_args__ = (
+        UniqueConstraint("client_id", "provider", name="uq_social_channels_client_provider"),
+        Index("uq_social_channels_account", "provider", "external_account_id", unique=True,
+              postgresql_where=text("external_account_id <> ''")),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    agency_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agencies.id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="RESTRICT"), index=True)
+    provider: Mapped[str] = mapped_column(String(30))
+    app_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    external_account_id: Mapped[str] = mapped_column(String(128), default="", server_default="")
+    display_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    username: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    encrypted_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    encrypted_app_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    token_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    token_refresh_attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    connection_source: Mapped[str] = mapped_column(String(30), default="manual", server_default="manual")
+    status: Mapped[str] = mapped_column(String(30), default="disconnected", server_default="disconnected")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    human_agent_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    webhook_verify_token: Mapped[str] = mapped_column(String(64), default=new_public_id)
+    granted_scopes: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    last_connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+    agent: Mapped[Agent] = relationship()
+    client: Mapped[Client] = relationship(back_populates="social_channels")
+
+
+class SocialOAuthState(Base):
+    """Short-lived, user-bound authorization state; credentials stay encrypted."""
+
+    __tablename__ = "social_oauth_states"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    agency_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agencies.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
+    provider: Mapped[str] = mapped_column(String(30))
+    redirect_uri: Mapped[str] = mapped_column(Text)
+    next_url: Mapped[str] = mapped_column(Text)
+    encrypted_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class ContactIdentity(Base):
+    """An external person's identity scoped to the receiving account."""
+
+    __tablename__ = "contact_identities"
+    __table_args__ = (
+        UniqueConstraint("client_id", "provider", "external_account_id", "external_user_id", name="uq_contact_identity"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    contact_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("contacts.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(30))
+    external_account_id: Mapped[str] = mapped_column(String(128), default="", server_default="")
+    external_user_id: Mapped[str] = mapped_column(String(255))
+    username: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    contact: Mapped[Contact] = relationship()
+
+
+class SocialWebhookEvent(Base):
+    """Durable, account-scoped webhook inbox. One row survives provider retries."""
+
+    __tablename__ = "social_webhook_events"
+    __table_args__ = (
+        UniqueConstraint("channel_id", "external_event_id", name="uq_social_webhook_event"),
+        Index("uq_social_event_processing", "channel_id", unique=True, postgresql_where=text("status = 'processing'")),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("social_channels.id", ondelete="CASCADE"), index=True)
+    external_event_id: Mapped[str] = mapped_column(String(512))
+    payload: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(30), default="pending", server_default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SocialOutbox(Base):
+    """One deliverable part of a stored message, with an explicit send outcome."""
+
+    __tablename__ = "social_outbox"
+    __table_args__ = (UniqueConstraint("message_id", "part", name="uq_social_outbox_part"),)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("social_channels.id", ondelete="CASCADE"), index=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
+    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), index=True)
+    part: Mapped[int] = mapped_column(Integer, default=0)
+    payload: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(30), default="pending", server_default="pending", index=True)
+    external_message_id: Mapped[str | None] = mapped_column(String(1024), nullable=True, index=True)
+    receipt_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SocialHistoryImport(Base):
+    """A resumable, bounded import of messages predating the connection."""
+
+    __tablename__ = "social_history_imports"
+    __table_args__ = (Index("uq_social_history_active", "channel_id", unique=True,
+        postgresql_where=text("status IN ('pending', 'processing')")),)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("social_channels.id", ondelete="CASCADE"), index=True)
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="pending", server_default="pending")
+    cursor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cutoff_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    conversations_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    messages_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    max_conversations: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)

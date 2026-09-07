@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from ..models import Contact, Conversation, Message, now_utc
+from ..models import Contact, ContactIdentity, Conversation, Message, now_utc
 
 
 _NON_DIGITS = re.compile(r"[^0-9]")
@@ -36,16 +36,34 @@ def find_contact(db: Session, client_id, phone: str) -> Contact | None:
     return db.scalar(select(Contact).where(Contact.client_id == client_id, Contact.phone == phone))
 
 
-def resolve_contact(db: Session, client_id, *, phone: str, name: str | None) -> Contact:
-    """The contact for this number, created on first sight."""
-    contact = find_contact(db, client_id, phone)
+def resolve_contact(
+    db: Session, client_id, *, phone: str | None = None, name: str | None = None,
+    provider: str = "phone", external_account_id: str = "", external_user_id: str | None = None,
+    username: str | None = None,
+) -> Contact:
+    """Resolve an opaque account-scoped identity, preserving aliases after a merge."""
+    external_user_id = external_user_id or phone
+    if not external_user_id:
+        raise ValueError("An external identity is required")
+    identity = db.scalar(select(ContactIdentity).where(
+        ContactIdentity.client_id == client_id, ContactIdentity.provider == provider,
+        ContactIdentity.external_account_id == external_account_id,
+        ContactIdentity.external_user_id == external_user_id,
+    ))
+    contact = identity.contact if identity else (find_contact(db, client_id, phone) if phone else None)
     if contact:
         if name and not contact.name.strip():
             contact.name = name.strip()[:180]
-        return contact
-    contact = Contact(client_id=client_id, phone=phone, name=(name or "").strip()[:180])
-    db.add(contact)
-    db.flush()
+    else:
+        contact = Contact(client_id=client_id, phone=phone, name=(name or username or "").strip()[:180])
+        db.add(contact)
+        db.flush()
+    if not identity:
+        db.add(ContactIdentity(client_id=client_id, contact_id=contact.id, provider=provider,
+            external_account_id=external_account_id, external_user_id=external_user_id, username=username))
+        db.flush()
+    elif username:
+        identity.username = username[:180]
     return contact
 
 
@@ -66,9 +84,8 @@ def merge_contacts(db: Session, primary: Contact, merged: Contact) -> None:
     fields on the primary fill in from the merged profile (the primary wins
     every conflict), notes are combined, and the merged contact is deleted.
 
-    When both contacts have a phone the primary keeps its own; a later
-    message from the dropped number starts a fresh contact, which is the
-    honest behaviour until per-channel identities exist.
+    All channel identities move to the surviving contact, including phone
+    aliases, so later messages find the same person.
     """
     if not primary.name.strip() and merged.name.strip():
         primary.name = merged.name.strip()[:180]
@@ -79,6 +96,11 @@ def merge_contacts(db: Session, primary: Contact, merged: Contact) -> None:
     if merged.notes.strip() and merged.notes.strip() not in primary.notes:
         primary.notes = f"{primary.notes.strip()}\n{merged.notes.strip()}".strip()
     primary.updated_at = now_utc()
+    # Contacts created manually before their first message have no identity yet.
+    for contact in (primary, merged):
+        if contact.phone:
+            resolve_contact(db, contact.client_id, phone=contact.phone, name=contact.name)
+    db.execute(update(ContactIdentity).where(ContactIdentity.contact_id == merged.id).values(contact_id=primary.id))
     db.execute(update(Conversation).where(Conversation.contact_id == merged.id).values(contact_id=primary.id))
     db.delete(merged)
     db.flush()

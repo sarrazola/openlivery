@@ -228,12 +228,16 @@ async def delete_client(client_id: uuid.UUID, db: Session = Depends(get_db), use
     down must not keep a client from being deleted.
     """
     client = _client(db, user, client_id)
-    channel = client.whatsapp_channel
-    if channel is not None and channel.encrypted_auth_state:
+    whatsapp = client.whatsapp_channel
+    if whatsapp is not None and whatsapp.encrypted_auth_state:
         try:
-            await bridge_command("POST", f"/channels/{channel.id}/disconnect")
+            await bridge_command("POST", f"/channels/{whatsapp.id}/disconnect")
         except Exception:  # noqa: BLE001 - the deletion goes ahead regardless
             pass
+    from ..models import SocialChannel
+    from ..services.social_connections import disconnect_channel
+    for channel in db.scalars(select(SocialChannel).where(SocialChannel.client_id == client.id)).all():
+        await disconnect_channel(db, channel)
     db.delete(client)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

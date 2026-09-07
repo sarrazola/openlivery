@@ -10,6 +10,7 @@ import asyncio
 import random
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -48,6 +49,7 @@ class InboundMessage:
     media_mime: str | None = None
     # External id of the message the visitor replied to (swipe-to-reply).
     quoted_external_id: str | None = None
+    occurred_at: datetime | None = None
 
 
 @dataclass
@@ -113,6 +115,7 @@ async def process_inbound(
     *,
     conversation_channel: str,
     channel_fk_field: str,
+    defer_reply: bool = False,
 ) -> InboundResult:
     """Run the shared pipeline for one inbound message.
 
@@ -146,8 +149,13 @@ async def process_inbound(
         .limit(1)
     )
     if not conversation:
-        phone = phone_from_chat_id(inbound.external_chat_id)
-        contact = resolve_contact(db, channel.client_id, phone=phone, name=inbound.sender_name) if phone else None
+        if conversation_channel in ("instagram", "messenger"):
+            contact = resolve_contact(db, channel.client_id, provider=conversation_channel,
+                external_account_id=channel.external_account_id, external_user_id=inbound.external_chat_id,
+                name=inbound.sender_name)
+        else:
+            phone = phone_from_chat_id(inbound.external_chat_id)
+            contact = resolve_contact(db, channel.client_id, phone=phone, name=inbound.sender_name) if phone else None
         if contact:
             title = display_name(contact)[:240]
         else:
@@ -179,8 +187,9 @@ async def process_inbound(
         content=display_content,
         llm_content=llm_content if llm_content != display_content else None,
         sender_type="visitor",
-        sender_name=inbound.sender_name or "WhatsApp contact",
+        sender_name=inbound.sender_name or ("Contact" if conversation_channel in ("instagram", "messenger") else "WhatsApp contact"),
         external_message_id=inbound.external_message_id,
+        **({"created_at": inbound.occurred_at} if inbound.occurred_at else {}),
     )
     if inbound.quoted_external_id:
         quoted = db.scalar(
@@ -195,6 +204,11 @@ async def process_inbound(
     blocked = conversation.contact is not None and conversation.contact.blocked_at is not None
     if not blocked:
         note_inbound(db, conversation)
+    if conversation_channel in ("instagram", "messenger") and inbound.occurred_at:
+        last = conversation.social_last_inbound_at
+        if not last or inbound.occurred_at > last:
+            conversation.social_last_inbound_at = inbound.occurred_at
+        conversation.waiting_since = min(conversation.waiting_since, inbound.occurred_at)
     db.add(visitor_message)
     if inbound.media_kind and inbound.media_bytes:
         db.flush()
@@ -205,6 +219,9 @@ async def process_inbound(
             mime=inbound.media_mime or ("image/jpeg" if inbound.media_kind == "image" else "audio/ogg"),
             kind=inbound.media_kind,
         )
+    if defer_reply:
+        db.flush()
+        return InboundResult(accepted=True, conversation_id=conversation.id, mode=conversation.mode)
     db.commit()
     if blocked:
         # Kept for the record, answered by nobody, and no tokens spent: the
@@ -295,7 +312,8 @@ async def _signal_read_and_typing(db: Session, conversation: Conversation, messa
     await signal_channel_read(db, conversation, message_external_ids, typing=True)
 
 
-async def _reply_with_ai(db: Session, channel, conversation: Conversation, retrieval_query: str) -> InboundResult:
+async def _reply_with_ai(db: Session, channel, conversation: Conversation, retrieval_query: str,
+                         *, expected_last_message_id: uuid.UUID | None = None) -> InboundResult:
     """Generate and store the AI reply for the conversation's current history.
 
     ``retrieval_query`` drives knowledge retrieval: the triggering message's
@@ -314,7 +332,10 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
         channel.last_error = "A message was received, but the assigned agent is not ready (model or provider key missing)."
         channel.updated_at = now_utc()
         db.commit()
-        return InboundResult(accepted=True, conversation_id=conversation.id, mode="ai")
+        if conversation.channel in ("instagram", "messenger"):
+            from .social_worker import hand_over_failed_reply
+            await hand_over_failed_reply(db, conversation, channel.last_error)
+        return InboundResult(accepted=True, conversation_id=conversation.id, mode=conversation.mode)
 
     knowledge = await retrieve_knowledge(db, agent, retrieval_query)
     db.refresh(conversation)
@@ -333,6 +354,7 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     escalation_holder: list = []
     if conversation.channel in ("whatsapp", "whatsapp_cloud"):
         system_content += "\n\n" + _gesture_rules(burst)
+    if conversation.channel in ("whatsapp", "whatsapp_cloud", "instagram", "messenger"):
         rules = escalation_active_rules(db, agent)
         if escalation_enabled(db, agent, rules):
             system_content += "\n\n" + escalation_prompt(rules, builtin_enabled=agent.escalation_builtin_enabled)
@@ -356,12 +378,30 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
             extra_specs=escalation_specs,
         )
     except Exception as exc:
-        channel.last_error = f"Message received, but the agent could not reply: {str(exc)[:400]}"
+        channel.last_error = ("Message received, but the agent could not reply. A person must continue this conversation."
+                              if conversation.channel in ("instagram", "messenger")
+                              else f"Message received, but the agent could not reply: {str(exc)[:400]}")
         channel.updated_at = now_utc()
         db.commit()
-        return InboundResult(accepted=True, conversation_id=conversation.id, mode="ai")
+        if conversation.channel in ("instagram", "messenger"):
+            from .social_worker import hand_over_failed_reply
+            await hand_over_failed_reply(db, conversation, channel.last_error)
+        return InboundResult(accepted=True, conversation_id=conversation.id, mode=conversation.mode)
 
     reply_text = completion.text
+    if conversation.channel in ("instagram", "messenger"):
+        from .social_policy import require_reply
+        db.refresh(conversation)
+        last_message = db.scalar(select(Message).where(Message.conversation_id == conversation.id,
+            Message.kind == "message").order_by(Message.created_at.desc()).limit(1))
+        try:
+            require_reply(conversation, human=False)
+            if expected_last_message_id and (not last_message or last_message.id != expected_last_message_id):
+                raise HTTPException(status_code=409, detail="The conversation changed while generating the reply.")
+        except HTTPException:
+            record_usage(db, agent.agency_id, agent.id, agent.provider, agent.model.strip(), completion)
+            db.commit()
+            return InboundResult(accepted=True, conversation_id=conversation.id, mode=conversation.mode)
     quoted_message_id: uuid.UUID | None = None
     quote_external_id: str | None = None
     if conversation.channel in ("whatsapp", "whatsapp_cloud"):
@@ -371,7 +411,8 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
 
     outbound = None
     if reply_text:
-        note_reply(conversation)
+        if conversation.channel not in ("instagram", "messenger"):
+            note_reply(conversation)
         outbound = Message(
             conversation_id=conversation.id,
             role="assistant",
@@ -383,14 +424,28 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
             quoted_message_id=quoted_message_id,
         )
         db.add(outbound)
+        if conversation.channel in ("instagram", "messenger"):
+            from .social_delivery import queue_message
+            queue_message(db, conversation, outbound)
     record_usage(db, agent.agency_id, agent.id, agent.provider, agent.model.strip(), completion)
     conversation.updated_at = now_utc()
     channel.last_error = None
+    if escalation_holder and conversation.channel in ("instagram", "messenger"):
+        request = escalation_holder[-1]
+        conversation.social_pending_escalation = {
+            "message_id": str(outbound.id) if outbound else None,
+            "reason": request.reason, "trigger": request.trigger,
+            "rule_id": str(request.rule.id) if request.rule else None,
+        }
     db.commit()
-    if escalation_holder:
+    if escalation_holder and conversation.channel not in ("instagram", "messenger"):
         # After the farewell is stored, so the thread reads chronologically:
         # the AI says goodbye, then the hand-over happens.
         await apply_escalation(db, conversation, agent, escalation_holder[-1])
+    elif not reply_text and not escalation_holder and conversation.channel in ("instagram", "messenger"):
+        from .social_worker import hand_over_failed_reply
+        await hand_over_failed_reply(db, conversation,
+            "The agent returned no reply. A person must continue this conversation.")
     return InboundResult(
         accepted=True,
         reply=reply_text or None,

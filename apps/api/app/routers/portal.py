@@ -1,8 +1,8 @@
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 
-from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, Header, Query, Response, UploadFile, status
-from sqlalchemy import Interval, and_, case, func, literal, or_, select
+from fastapi import APIRouter, Cookie, Depends, Header, File, Form, HTTPException, Query, Response, UploadFile, status
+from sqlalchemy import Interval, and_, case, exists, func, literal, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
@@ -62,7 +62,7 @@ from ..services.whatsapp_templates import (
 )
 from ..services.conversation_state import record_activity
 from ..security import decrypt_secret
-from ..services.conversation_state import ConversationClosed, assign, note_reply, set_archived, set_mode, set_status, set_team
+from ..services.conversation_state import ConversationClosed, assign, ensure_open, note_reply, set_archived, set_mode, set_status, set_team
 from ..services.routing import route_conversation
 from ..services.notifications import notify_assigned
 from ..services.attachments import attachment_response, conversation_attachment, logo_response
@@ -110,6 +110,15 @@ def _portal_client(
     client = db.scalar(select(Client).where(Client.id == client_id, Client.portal_slug == slug, Client.portal_enabled.is_(True)))
     if not client:
         raise HTTPException(status_code=401, detail="The portal is no longer available")
+    # A named session must stay tied to an active member of this portal.
+    # Removing a member cannot turn their token into an anonymous legacy one.
+    if payload.get("pu"):
+        try:
+            user = db.get(PortalUser, uuid.UUID(payload["pu"]))
+        except (ValueError, TypeError):
+            user = None
+        if not user or not user.is_active or user.client_id != client.id:
+            raise HTTPException(status_code=401, detail="This account is no longer active")
     return client
 
 
@@ -170,6 +179,9 @@ def _last_inbound_at(conversation: Conversation):
 
 
 def _window_fields(conversation: Conversation, last_inbound_at) -> dict:
+    if conversation.channel in ("instagram", "messenger"):
+        from ..services.social_policy import window_fields
+        return window_fields(conversation)
     if conversation.channel != "whatsapp_cloud":
         return {"reply_window_until": None, "reply_window_open": True}
     return {"reply_window_until": window_open_until(last_inbound_at), "reply_window_open": window_is_open(last_inbound_at)}
@@ -297,10 +309,10 @@ def portal_members(slug: str, client: Client = Depends(_portal_client), db: Sess
     rows = db.scalars(
         select(PortalUser).where(PortalUser.client_id == client.id, PortalUser.is_active.is_(True)).order_by(PortalUser.name, PortalUser.email)
     ).all()
-    return [{"id": row.id, "name": row.name.strip() or row.email, "email": row.email} for row in rows]
+    return [{"id": row.id, "name": row.name.strip() or row.email, "email": row.email, "availability": row.availability} for row in rows]
 
 
-_TEAM_CHANNELS = {"whatsapp", "whatsapp_cloud", "widget"}
+_TEAM_CHANNELS = {"whatsapp", "whatsapp_cloud", "widget", "instagram", "messenger"}
 
 
 def _portal_team(db: Session, client: Client, team_id: uuid.UUID) -> Team:
@@ -452,6 +464,7 @@ def portal_conversations(
     status: str | None = None,
     mode: str | None = None,
     archived: bool = False,
+    channel: str | None = None,
     assignee: str | None = None,
     team: uuid.UUID | None = None,
     search: str | None = None,
@@ -480,6 +493,7 @@ def portal_conversations(
         .join(Conversation, Conversation.id == Message.conversation_id)
         .where(
             Message.sender_type == "visitor",
+            Message.is_historical.is_(False),
             or_(Conversation.operator_read_at.is_(None), Message.created_at > Conversation.operator_read_at),
         )
         .group_by(Message.conversation_id)
@@ -512,6 +526,10 @@ def portal_conversations(
     )
     # The archive is its own inbox: archived conversations show only there.
     query = query.where(Conversation.archived_at.is_not(None) if archived else Conversation.archived_at.is_(None))
+    if channel is not None:
+        if channel not in _TEAM_CHANNELS:
+            raise HTTPException(status_code=422, detail="Unknown inbox channel")
+        query = query.where(Conversation.channel == channel)
     if team is not None:
         query = query.where(Conversation.team_id == team)
     if assignee == "me" and user:
@@ -824,7 +842,17 @@ def portal_contact_conversations(
 WINDOW_CLOSED = "The 24-hour reply window is closed. Send an approved template to reach this person."
 
 
+def _require_open_conversation(conversation: Conversation) -> None:
+    try:
+        ensure_open(conversation)
+    except ConversationClosed as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 def _require_open_window(conversation: Conversation) -> None:
+    if conversation.channel in ("instagram", "messenger"):
+        from ..services.social_policy import require_reply
+        require_reply(conversation, human=True)
     if conversation.channel == "whatsapp_cloud" and not window_is_open(_last_inbound_at(conversation)):
         raise HTTPException(status_code=409, detail=WINDOW_CLOSED)
 
@@ -850,7 +878,12 @@ def _template_credentials(channel: WhatsAppCloudChannel | None) -> tuple[str, st
 def portal_channels(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
     """Which WhatsApp lines this business has, so the portal knows how it can
     reach a contact first."""
-    out = []
+    from ..models import SocialChannel
+    from ..services.social_policy import CAPABILITIES
+    out = [{"id": item.id, "channel": item.provider, "status": item.status,
+            "external_account_id": item.external_account_id, "display_name": item.display_name,
+            "username": item.username, "capabilities": CAPABILITIES.copy()} for item in db.scalars(
+        select(SocialChannel).where(SocialChannel.client_id == client.id, SocialChannel.is_enabled.is_(True)))]
     cloud = _cloud_channel(db, client)
     if cloud and cloud.is_enabled:
         out.append({
@@ -988,6 +1021,10 @@ def portal_report(
     start = datetime.combine(from_, time.min, tzinfo=timezone.utc) + shift
     end = datetime.combine(to, time.min, tzinfo=timezone.utc) + shift + timedelta(days=1)
     conv_filters = [Conversation.client_id == client.id, Conversation.channel != PLAYGROUND]
+    # Imported archives did not start or resolve a case in this inbox.
+    conv_filters.append(or_(Conversation.social_channel_id.is_(None), exists(
+        select(Message.id).where(Message.conversation_id == Conversation.id,
+            Message.kind == "message", Message.is_historical.is_(False)).correlate(Conversation))))
     if channel:
         conv_filters.append(Conversation.channel == channel)
     if assignee_id:
@@ -1037,6 +1074,7 @@ def portal_report(
         .where(
             *conv_filters,
             Message.kind == "message",
+            Message.is_historical.is_(False),
             Message.created_at >= start,
             Message.created_at < end,
         )
@@ -1081,6 +1119,7 @@ def portal_report(
                 Message.kind == "message",
                 human_reply,
                 Message.portal_user_id.is_not(None),
+                Message.is_historical.is_(False),
                 Message.created_at >= start,
                 Message.created_at < end,
             )
@@ -1256,6 +1295,7 @@ async def portal_reply_template(
 ):
     """Reach a person again after the window closed."""
     conversation = _detail(db, client, conversation_id)
+    _require_open_conversation(conversation)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
     if conversation.channel != "whatsapp_cloud" or not conversation.external_chat_id:
@@ -1292,6 +1332,7 @@ def portal_inbox_summary(
         .where(
             Message.conversation_id == Conversation.id,
             Message.sender_type == "visitor",
+            Message.is_historical.is_(False),
             or_(Conversation.operator_read_at.is_(None), Message.created_at > Conversation.operator_read_at),
         )
         .exists()
@@ -1500,15 +1541,35 @@ def portal_status(
 
 
 @router.get("/{slug}/conversations/{conversation_id}/attachments/{attachment_id}")
-def portal_attachment(
+async def portal_attachment(
     slug: str,
     conversation_id: uuid.UUID,
     attachment_id: uuid.UUID,
+    playback_format: str | None = Query(default=None, alias="format", pattern="^m4a$"),
     client: Client = Depends(_portal_client),
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
-    return attachment_response(conversation_attachment(db, conversation, attachment_id))
+    attachment = conversation_attachment(db, conversation, attachment_id)
+    if playback_format is None:
+        return attachment_response(attachment)
+    if attachment.kind != "audio":
+        raise HTTPException(status_code=422, detail="Playback conversion is only available for audio")
+    from ..services.audio import to_native_audio
+
+    converted = await to_native_audio(attachment.data)
+    if converted is None:
+        raise HTTPException(status_code=422, detail="This audio could not be prepared for playback")
+    return Response(
+        content=converted,
+        media_type="audio/mp4",
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "Vary": "Origin",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": 'inline; filename="voice-note.m4a"',
+        },
+    )
 
 
 @router.post("/{slug}/conversations/{conversation_id}/reply-media", response_model=ConversationDetail)
@@ -1523,6 +1584,7 @@ async def portal_reply_media(
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
+    _require_open_conversation(conversation)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
     _require_open_window(conversation)
@@ -1543,9 +1605,21 @@ async def portal_reply(
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
+    _require_open_conversation(conversation)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
     _require_open_window(conversation)
+    if conversation.channel in ("instagram", "messenger"):
+        from ..services.social_delivery import queue_message
+        if payload.quoted_message_id:
+            raise HTTPException(status_code=422, detail="Quoted replies are not supported by this channel.")
+        message = Message(conversation_id=conversation.id, role="assistant", content=payload.content.strip(),
+            sender_type="human", sender_name=sender_name, portal_user_id=user.id if user else None)
+        db.add(message)
+        queue_message(db, conversation, message)
+        conversation.updated_at = now_utc()
+        db.commit()
+        return _present(_detail(db, client, conversation_id))
     quoted_id, quoted_external = resolve_quote(db, conversation, payload.quoted_message_id)
     external_message_id = await send_channel_message(
         db, conversation, payload.content.strip(), quoted_external_id=quoted_external
@@ -1580,6 +1654,7 @@ async def portal_react(
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
+    _require_open_conversation(conversation)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before reacting")
     target = db.scalar(select(Message).where(Message.id == message_id, Message.conversation_id == conversation.id))

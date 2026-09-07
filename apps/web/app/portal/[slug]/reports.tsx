@@ -8,7 +8,7 @@ import { useLanguage, useT } from "@/lib/i18n";
 import type { PortalReport, Team } from "@/types";
 
 const RANGES = [7, 30, 90] as const;
-const CHANNELS = ["whatsapp", "whatsapp_cloud", "widget", "playground"] as const;
+const CHANNELS = ["whatsapp", "whatsapp_cloud", "instagram", "messenger", "widget", "playground"] as const;
 const STARTED_COLOR = "#635bff";
 const RESOLVED_COLOR = "#0f8b76";
 
@@ -75,6 +75,8 @@ export function ReportsView({ slug }: { slug: string }) {
     if (value === "playground") return t("inbox.channelPlayground");
     if (value === "whatsapp") return t("inbox.channelWhatsapp");
     if (value === "whatsapp_cloud") return t("inbox.channelWhatsappCloud");
+    if (value === "instagram") return t("social.instagram.title");
+    if (value === "messenger") return t("social.messenger.title");
     if (value === "widget") return t("inbox.channelWidget");
     return value;
   };

@@ -1,165 +1,130 @@
 # The mobile inbox
 
-The inbox a client of an agency carries in their pocket. Sign in with the
-address of the agency's server plus the portal credentials the agency handed
-over, and the app shows that business's conversations, lets someone take over
-from the assistant and reply — with photos, files and voice notes, like they
-would from WhatsApp.
+A native Expo application for the client portal. It uses the same portal API,
+permissions and conversation state as the browser inbox. The server remains the
+source of truth for assignment, assistant takeover, routing, replies and access.
 
-**This app carries no brand.** No name, no logo, no bundle identifier, no
-preset pointing at anybody's hosted service. What is here is a working app and
-the machinery to make it yours: put your identity in a brand file, build, and
-publish it under your own name. See [WHITELABEL.md](./WHITELABEL.md).
+The source contains a placeholder identity for development. Publishers supply a
+brand file and their own assets; see [WHITELABEL.md](./WHITELABEL.md). Installing
+or upgrading the server does not require building this application.
 
-It is also not part of the server install. Nobody running the platform needs to
-build or deploy this to have it working — see [Effect on an existing
-install](#effect-on-an-existing-install).
+## Inbox behavior
 
-## What it does
+- Search and filter WhatsApp, Instagram, Facebook Messenger and web conversations by channel and inbox state. Social replies follow the server's response windows and attachment capabilities.
+- Open the complete conversation, with the contact and assistant context.
+- Take over a conversation, reply, and return it to an assistant.
+- Render incoming attachments and send photos, videos, documents and voice notes.
+- Use the phone's light/dark appearance and English/Spanish locale.
+- Resume a portal session with credentials held in Keychain/Android Keystore.
+- Register native notification tokens when the server supports delivery, and open
+  the referenced conversation when a notification is tapped.
 
-- **Any server.** The address is typed at sign-in, so the same build works
-  against a self-hosted instance or a hosted one. A build may add a preset for
-  a service its publisher runs; none here has one.
-- **The agency's colours.** Brand colour and logo arrive with the session and
-  drive the interface, so the same binary looks like whichever agency the person
-  belongs to.
-- **Conversations and replies.** List, open, take over from the assistant,
-  reply, hand back.
-- **Attachments both ways.** Photos, videos, files and voice notes: what
-  arrives renders in the conversation, and the composer can send the same.
-- **Light and dark**, and **English or Spanish** — both following the phone.
-- **Notifications when the server can send them** — see
-  [Notifications](#notifications).
+Native notifications require a physical device and matching delivery credentials.
+An app running on a simulator can exercise the inbox without them. Polling pauses
+when the app goes into the background and refreshes when it becomes active again.
+A temporary network failure does not invalidate a stored login.
 
-## Running it locally
+## Local development
 
-The app talks to a running server. Start one first (`make up` at the repo
-root), then:
+Start a disposable backend following the repository's development instructions,
+then run:
 
 ```bash
 cd apps/mobile
-npm install
-BRAND=example npm run ios      # or: npm run android
+npm ci
+BRAND=example APP_VARIANT=development npx expo run:ios
+# Or, with an Android emulator already running:
+BRAND=example APP_VARIANT=development npx expo run:android
 ```
 
-`brands/example.json` is a placeholder identity for exactly this — running it
-locally. It is not publishable, and it is not meant to be: copy it before you
-build anything you intend to ship.
+The app includes native modules, so use its development build rather than relying
+on Expo Go for verification. After the native application has been built, start
+Metro with `BRAND=example APP_VARIANT=development npx expo start --dev-client`.
 
-`BRAND` is required and has no default — see [WHITELABEL.md](./WHITELABEL.md)
-for why.
+The iOS simulator reaches a Mac backend at `http://localhost:8000`. Android's
+emulator uses `http://10.0.2.2:8000`. Physical phones need the Mac's LAN address
+and a backend listening on that network interface.
 
-On the iOS simulator `http://localhost:8000` reaches the server on your Mac. On
-a physical phone, use the Mac's address on the network (`http://192.168.x.x:8000`)
-and start the stack with `BIND_HOST=0.0.0.0` so it accepts connections beyond
-loopback.
+HTTP is enabled only for development variants. Release variants require HTTPS.
+The native network policy is compiled into the application, so changing
+`APP_VARIANT`, permissions, plugins or native dependencies requires rebuilding.
 
-### Skipping the sign-in form while developing
+### Optional development sign-in
 
-Create `apps/mobile/.env.local` (git-ignored):
+A git-ignored `.env.local` can prefill a disposable local account:
 
-```
+```dotenv
 EXPO_PUBLIC_DEV_SERVER=http://localhost:8000
-EXPO_PUBLIC_DEV_EMAIL=owner@thebusiness.com
-EXPO_PUBLIC_DEV_PASSWORD=their-portal-password
+EXPO_PUBLIC_DEV_EMAIL=owner@example.test
+EXPO_PUBLIC_DEV_PASSWORD=local-fixture-password
 ```
 
-With all three set the app signs in on launch. They are inlined at build time,
-so a build you ship must not define them.
+Automatic sign-in runs only in a development JavaScript bundle. Release config
+also refuses any nonempty `EXPO_PUBLIC_DEV_*` variable, and the EAS archive
+excludes `.env*`. Use fixture credentials only; never use a production account
+for automatic sign-in.
 
-### Checking the flow end to end
+### Validation
 
-Runs the same module the screens use against a real server: sign-in, branding,
-a wrong password, resuming a token, listing, takeover, replying, handing back.
+```bash
+npm run typecheck
+npm run test:native-contracts
+BRAND=example npx expo install --check
+BRAND=example APP_VARIANT=production npx expo config --type introspect
+```
+
+`test:native-contracts` exercises encrypted-session migration, sign-out,
+release credential guards and push registration behavior with mocked native
+adapters. It does not establish that a phone received an APNs/FCM notification.
+
+A real-server script exercises the API module used by the screens:
 
 ```bash
 SERVER=http://localhost:8000 \
-EMAIL=owner@thebusiness.com \
-PASSWORD=their-portal-password \
+EMAIL=owner@example.test \
+PASSWORD=local-fixture-password \
 npx tsx scripts/verify-flow.ts
 ```
 
-## How it fits the server
+Use only a disposable development account: this script changes conversation
+state and sends a test reply. Record native runtime checks separately from API
+checks and JavaScript compilation.
 
-Almost everything comes from the portal API the browser portal already uses.
-Two things a phone cannot do the way a browser does, and what was added for
-them, both in `apps/api/app/routers/mobile.py`:
+## Session and notification boundaries
 
-| Problem | Endpoint |
+`POST /api/mobile/sign-in` accepts portal-user credentials and resolves the
+client without requiring a portal slug. `GET /api/mobile/session` validates the
+bearer session and returns current branding and push capability.
+Other inbox calls use the portal routes with that bearer token.
+
+Only the server address and token are persisted. Existing AsyncStorage sessions
+are migrated into encrypted storage, then removed from plaintext storage. Browser
+previews keep their token in memory. Branding and permissions are refreshed from
+the backend rather than persisted with the credential.
+
+Push delivery is provider-neutral in the application. It registers an APNs token
+on iOS or an FCM token on Android, and the configured server provider delivers to
+it. Android creates the messages notification channel before asking permission.
+Rotated device tokens are registered again. Signing out releases the registered
+device, and notification navigation still fetches the conversation through the
+current authenticated session.
+
+## Source layout
+
+| File | Responsibility |
 | --- | --- |
-| The portal is addressed by slug, which nobody types | `POST /api/mobile/sign-in` resolves the portal from the credentials |
-| Sessions live in an httpOnly cookie, which native clients lose | The same token comes back in the body and is sent as `Authorization: Bearer` |
+| `App.tsx` | Session lifecycle, screen stack and notification navigation |
+| `app.config.ts` | Brand identity, native plugins and release guards |
+| `eas.json` | Development, simulator, preview and production profiles |
+| `plugins/withNetworkPolicy.js` | Native HTTP policy per build variant |
+| `src/api.ts` | Typed portal/mobile API and attachment requests |
+| `src/session.ts` | Secure persistence and legacy migration |
+| `src/push.ts` | Optional native token registration |
+| `src/i18n.ts` | Typed English and Spanish strings |
+| `src/screens/` | Sign-in, inbox and conversation screens |
+| `src/components/` | Composer and attachment UI |
 
-`_portal_client` in the portal router accepts that bearer token alongside the
-cookie. Nothing else changed, and **there is no database migration**.
-
-## Layout
-
-```
-apps/mobile/
-  App.tsx                    three screens, no navigation library
-  app.config.ts              builds the app identity from a brand file
-  brands/                    one JSON per published app
-  src/api.ts                 every call to the server
-  src/session.ts             the stored token
-  src/theme.ts               palette and brand-colour helpers
-  src/screens/               sign-in, conversations, chat
-  scripts/verify-flow.ts     end-to-end check against a server
-```
-
-## Language
-
-English and Spanish, chosen by the phone. There is deliberately no picker:
-someone answering their business's messages should not have to set one, and the
-device already knows. Anything else falls back to English.
-
-Both dictionaries live in [`src/i18n.ts`](./src/i18n.ts) and `es` is typed as
-`typeof en`, so a key present in one and missing from the other is a compile
-error rather than a blank label someone finds in production. Adding a language
-is one more object and one more entry in the lookup.
-
-Dates and times are formatted by the phone, so they follow its locale without
-the app knowing anything about it.
-
-## Notifications
-
-The app asks the operating system for the native push token — APNs on iOS, FCM
-on Android — and hands it to the server, which delivers through whatever it was
-configured with. No push vendor's SDK is compiled in, on purpose: one build has
-to work against a server that sends nothing and one that does, without either
-borrowing the other's account.
-
-So the server decides. `GET /api/mobile/session` reports `push.provider`, and
-when it is `none` the app asks for no permission and registers nothing —
-a prompt that leads to no notifications only teaches people to say no.
-
-The part that surprises everyone: push credentials belong to the **app binary**,
-not the server. A build can only be notified by a server sending through the
-provider it was signed for. A build somebody else published can read
-and answer everything on a self-hosted server, but cannot be notified by it. To
-get push on your own server, publish your own build (see `WHITELABEL.md`) and
-register a provider on the server side — the whole seam is documented in
-[`docs/push-notifications.md`](../../docs/push-notifications.md).
-
-## What is missing
-
-Worth knowing before planning around it:
-
-- **Attachments.** Conversations carrying images or voice notes show a
-  placeholder; the server already stores and serves them. Sending them from the
-  app is not built yet either.
-- **Deep links from a notification.** The payload already carries
-  `conversation_id`; opening straight into that conversation is not wired up.
-
-## Effect on an existing install
-
-Nothing changes for someone who upgrades and never touches the app. No new
-service, no new required setting, and this directory is not installed with the
-platform — it has its own `package.json`, the repo has no workspaces, and
-nothing in `apps/api`, `apps/web` or `apps/whatsapp` imports from here.
-
-On the server there is one migration, `0020`. It adds portal users and a device
-registry, and copies each existing portal login into a user of its client, so
-everyone keeps signing in with exactly the credentials they had. The old columns
-stay and still authenticate. Notifications default to off and need no
-configuration to stay that way.
+The app is a separate package: it is not installed by the API, web or bridge
+packages. Its API dependencies still have to exist on the server before a new
+binary can be distributed; test the app against the server revision being
+released.

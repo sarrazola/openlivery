@@ -18,12 +18,12 @@ Docker stack; run `alembic upgrade head` on local setups).
   and their conversations leave the inboxes until they are unblocked; the
   backlog is never answered, the next message opens a fresh conversation.
   `POST /api/portal/{slug}/contacts/{id}/block`, `contacts.blocked_at`
-  (migration 0035).
+  (migration 0036).
 - Conversations can be **archived** from the portal, one at a time or every
   resolved one at once. Archived conversations leave the inboxes, keep their
   messages, still count in reports and can be restored. Deleting is only
   possible from the Archived inbox, after typing a confirmation word; it
-  removes the conversation and its messages for good. Migration 0035 adds
+  removes the conversation and its messages for good. Migration 0036 adds
   `conversations.archived_at`.
 - Agents can be **deleted** from their editor. Their knowledge, tools,
   questions and answers, rules and configuration go; the conversations they
