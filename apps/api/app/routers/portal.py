@@ -58,7 +58,7 @@ from ..services.whatsapp_templates import (
 )
 from ..services.conversation_state import record_activity
 from ..security import decrypt_secret
-from ..services.conversation_state import ConversationClosed, assign, note_reply, set_mode, set_status, set_team
+from ..services.conversation_state import ConversationClosed, assign, ensure_open, note_reply, set_mode, set_status, set_team
 from ..services.routing import route_conversation
 from ..services.notifications import notify_assigned
 from ..services.attachments import attachment_response, conversation_attachment, logo_response
@@ -104,6 +104,15 @@ def _portal_client(
     client = db.scalar(select(Client).where(Client.id == client_id, Client.portal_slug == slug, Client.portal_enabled.is_(True)))
     if not client:
         raise HTTPException(status_code=401, detail="The portal is no longer available")
+    # A named session must stay tied to an active member of this portal.
+    # Removing a member cannot turn their token into an anonymous legacy one.
+    if payload.get("pu"):
+        try:
+            user = db.get(PortalUser, uuid.UUID(payload["pu"]))
+        except (ValueError, TypeError):
+            user = None
+        if not user or not user.is_active or user.client_id != client.id:
+            raise HTTPException(status_code=401, detail="This account is no longer active")
     return client
 
 
@@ -294,7 +303,7 @@ def portal_members(slug: str, client: Client = Depends(_portal_client), db: Sess
     rows = db.scalars(
         select(PortalUser).where(PortalUser.client_id == client.id, PortalUser.is_active.is_(True)).order_by(PortalUser.name, PortalUser.email)
     ).all()
-    return [{"id": row.id, "name": row.name.strip() or row.email, "email": row.email} for row in rows]
+    return [{"id": row.id, "name": row.name.strip() or row.email, "email": row.email, "availability": row.availability} for row in rows]
 
 
 _TEAM_CHANNELS = {"whatsapp", "whatsapp_cloud", "widget", "instagram", "messenger"}
@@ -788,6 +797,13 @@ def portal_contact_conversations(
 WINDOW_CLOSED = "The 24-hour reply window is closed. Send an approved template to reach this person."
 
 
+def _require_open_conversation(conversation: Conversation) -> None:
+    try:
+        ensure_open(conversation)
+    except ConversationClosed as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 def _require_open_window(conversation: Conversation) -> None:
     if conversation.channel in ("instagram", "messenger"):
         from ..services.social_policy import require_reply
@@ -1234,6 +1250,7 @@ async def portal_reply_template(
 ):
     """Reach a person again after the window closed."""
     conversation = _detail(db, client, conversation_id)
+    _require_open_conversation(conversation)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
     if conversation.channel != "whatsapp_cloud" or not conversation.external_chat_id:
@@ -1398,15 +1415,35 @@ def portal_status(
 
 
 @router.get("/{slug}/conversations/{conversation_id}/attachments/{attachment_id}")
-def portal_attachment(
+async def portal_attachment(
     slug: str,
     conversation_id: uuid.UUID,
     attachment_id: uuid.UUID,
+    playback_format: str | None = Query(default=None, alias="format", pattern="^m4a$"),
     client: Client = Depends(_portal_client),
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
-    return attachment_response(conversation_attachment(db, conversation, attachment_id))
+    attachment = conversation_attachment(db, conversation, attachment_id)
+    if playback_format is None:
+        return attachment_response(attachment)
+    if attachment.kind != "audio":
+        raise HTTPException(status_code=422, detail="Playback conversion is only available for audio")
+    from ..services.audio import to_native_audio
+
+    converted = await to_native_audio(attachment.data)
+    if converted is None:
+        raise HTTPException(status_code=422, detail="This audio could not be prepared for playback")
+    return Response(
+        content=converted,
+        media_type="audio/mp4",
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "Vary": "Origin",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": 'inline; filename="voice-note.m4a"',
+        },
+    )
 
 
 @router.post("/{slug}/conversations/{conversation_id}/reply-media", response_model=ConversationDetail)
@@ -1421,6 +1458,7 @@ async def portal_reply_media(
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
+    _require_open_conversation(conversation)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
     _require_open_window(conversation)
@@ -1441,6 +1479,7 @@ async def portal_reply(
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
+    _require_open_conversation(conversation)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
     _require_open_window(conversation)
@@ -1489,6 +1528,7 @@ async def portal_react(
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
+    _require_open_conversation(conversation)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before reacting")
     target = db.scalar(select(Message).where(Message.id == message_id, Message.conversation_id == conversation.id))

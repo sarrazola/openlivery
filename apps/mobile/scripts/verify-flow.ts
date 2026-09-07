@@ -13,6 +13,10 @@ import {
   authHeaders,
   forgetDevice,
   getConversation,
+  getInboxSummary,
+  listMembers,
+  listTeams,
+  markRead,
   listConversations,
   normalizeServerUrl,
   registerDevice,
@@ -68,16 +72,26 @@ async function main() {
   }
 
   console.log("\nConversations");
-  const conversations = await listConversations(SERVER, session);
+  const conversations = await listConversations(SERVER, session, { status: "open", limit: 200 });
   check("lists conversations", Array.isArray(conversations), `${conversations.length} found`);
   if (!conversations.length) {
     console.log("\nNo conversations to open; send one message to the agent first.");
     process.exit(failures ? 1 : 0);
   }
 
-  const target = conversations[0];
+  // A verification reply must never reach a real WhatsApp contact.
+  const target = conversations.find((row) => row.channel === "widget");
+  if (!target) throw new Error("Create a disposable, open web-chat conversation before running this check.");
+  const summary = await getInboxSummary(SERVER, session);
+  check("summary separates open and resolved cases", Number.isInteger(summary.open) && Number.isInteger(summary.resolved));
+  check("loads the operator directory", Array.isArray(await listMembers(SERVER, session)));
+  check("loads team routing options", Array.isArray(await listTeams(SERVER, session)));
   const detail = await getConversation(SERVER, session, target.id);
   check("opens one and returns its messages", Array.isArray(detail.messages), `${detail.messages.length} messages`);
+
+  await markRead(SERVER, session, target.id);
+  check("acknowledges reading the thread", true);
+  check("carries lifecycle state", detail.status === "open" && typeof detail.reply_window_open === "boolean");
 
   console.log("\nHuman takeover");
   const taken = await setMode(SERVER, session, target.id, "human");
@@ -85,7 +99,7 @@ async function main() {
 
   const text = `Automated check ${new Date().toISOString()}`;
   const afterReply = await reply(SERVER, session, target.id, text);
-  const landed = afterReply.messages.some((m) => m.content === text);
+  const landed = afterReply.messages.some((m) => m.kind === "message" && m.content === text);
   check("the reply is stored in the conversation", landed);
 
   console.log("\nAttachments");

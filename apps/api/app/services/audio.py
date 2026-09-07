@@ -15,7 +15,7 @@ import tempfile
 FFMPEG_TIMEOUT = 60
 
 
-async def _run_ffmpeg(args: list[str], stdin_data: bytes | None = None) -> bytes | None:
+async def _run_ffmpeg(args: list[str], stdin_data: bytes | None = None, *, timeout: float = FFMPEG_TIMEOUT) -> bytes | None:
     """Run ffmpeg returning stdout, or None when it fails or times out."""
     process = None
     try:
@@ -25,7 +25,7 @@ async def _run_ffmpeg(args: list[str], stdin_data: bytes | None = None) -> bytes
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        out, _ = await asyncio.wait_for(process.communicate(stdin_data), timeout=FFMPEG_TIMEOUT)
+        out, _ = await asyncio.wait_for(process.communicate(stdin_data), timeout=timeout)
     except (OSError, asyncio.TimeoutError, asyncio.CancelledError) as exc:
         if process is not None and process.returncode is None:
             try:
@@ -55,7 +55,20 @@ async def to_whatsapp_voice(data: bytes, mime: str) -> tuple[bytes, str]:
     base_mime = (mime or "").split(";")[0].strip().lower()
     if base_mime == "audio/ogg" or not shutil.which("ffmpeg"):
         return data, mime
-    wav = await _run_ffmpeg(["-i", "pipe:0", "-vn", "-f", "wav", "pipe:1"], data)
+    # Native recorders often write MP4 metadata after the audio packets.
+    # Reading that container through stdin can produce an empty WAV without a
+    # process error: ffmpeg must seek back after finding the metadata.
+    with tempfile.TemporaryDirectory(prefix="audio-outbound-") as folder:
+        source = os.path.join(folder, "source.audio")
+        with open(source, "wb") as handle:
+            handle.write(data)
+        wav = await _run_ffmpeg(
+            [
+                "-protocol_whitelist", "file,pipe",
+                "-format_whitelist", "ogg,matroska,webm,mov,mp3,wav,flac,aac,amr,aiff,au,caf",
+                "-i", source, "-map", "0:a:0", "-vn", "-f", "wav", "pipe:1",
+            ]
+        )
     if wav is None:
         return data, mime
     out = await _run_ffmpeg(
@@ -95,3 +108,30 @@ async def audio_duration_seconds(data: bytes) -> int | None:
                 os.unlink(path)
             except OSError:
                 pass
+
+
+async def to_native_audio(data: bytes) -> bytes | None:
+    """Produce an AAC/M4A playback copy without changing the stored attachment.
+
+    Native players do not share a browser's full container support. AAC in
+    MPEG-4 works on both mobile platforms, including older supported devices.
+    Local files allow ffmpeg to seek inputs whose metadata lives at the end.
+    The process cannot fetch external resources and has a bounded lifetime.
+    """
+    if not data or not shutil.which("ffmpeg"):
+        return None
+    with tempfile.TemporaryDirectory(prefix="audio-playback-") as folder:
+        source = os.path.join(folder, "source.audio")
+        with open(source, "wb") as handle:
+            handle.write(data)
+        return await _run_ffmpeg(
+            [
+                "-protocol_whitelist", "file,pipe",
+                "-format_whitelist", "ogg,matroska,webm,mov,mp3,wav,flac,aac,amr,aiff,au,caf",
+                "-threads", "1", "-i", source,
+                "-map", "0:a:0", "-vn", "-sn", "-dn", "-c:a", "aac", "-b:a", "96k",
+                "-ar", "44100", "-ac", "1", "-threads", "1", "-map_metadata", "-1",
+                "-movflags", "+frag_keyframe+empty_moov", "-f", "mp4", "pipe:1",
+            ],
+            timeout=20,
+        )

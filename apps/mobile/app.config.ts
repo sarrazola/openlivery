@@ -11,11 +11,8 @@ import type { ExpoConfig } from "expo/config";
  *   BRAND=example  npx expo start
  *   BRAND=myagency eas build --platform ios
  *
- * There is deliberately no default. An agency publishing to the stores must
- * ship its own name, bundle identifier and icon - a build that is a copy of
- * another one with a different colour is what store review rejects - so
- * forgetting to pick a brand fails the build instead of quietly producing a
- * duplicate.
+ * There is deliberately no default: forgetting to pick a brand fails the
+ * build instead of quietly compiling another publisher's identity.
  */
 
 type HostedPreset = {
@@ -34,6 +31,14 @@ type Brand = {
   androidPackage: string;
   primaryColor: string;
   defaultServer?: string;
+  version?: string;
+  iosBuildNumber?: string;
+  iosAppleTeamId?: string;
+  androidVersionCode?: number;
+  androidGoogleServicesFile?: string;
+  easProjectId?: string;
+  owner?: string;
+  nativePlugins?: string[];
   /**
    * A preset for a service whoever publishes this build runs, offered on the
    * sign-in screen alongside typing an address. No brand file here has one:
@@ -50,6 +55,7 @@ function loadBrand(): Brand {
         "Publishing your own app? Copy brands/example.json and use your own identifiers.",
     );
   }
+  if (!/^[a-zA-Z0-9_-]+$/.test(name)) throw new Error("BRAND must be a filename from brands/.");
   const path = join(__dirname, "brands", `${name}.json`);
   let raw: string;
   try {
@@ -59,18 +65,33 @@ function loadBrand(): Brand {
   }
   const brand = JSON.parse(raw) as Brand;
   for (const key of ["name", "slug", "scheme", "iosBundleIdentifier", "androidPackage", "primaryColor"] as const) {
-    if (!brand[key]) throw new Error(`brands/${name}.json is missing "${key}"`);
+    if (typeof brand[key] !== "string" || !brand[key].trim()) throw new Error(`brands/${name}.json is missing "${key}"`);
+  }
+  if (!/^#[0-9a-f]{6}$/i.test(brand.primaryColor)) throw new Error("primaryColor must be a six-digit hex color.");
+  if (brand.nativePlugins !== undefined && (!Array.isArray(brand.nativePlugins) || brand.nativePlugins.some((plugin) => typeof plugin !== "string" || !plugin.trim()))) {
+    throw new Error("nativePlugins must be a list of Expo config plugin paths.");
+  }
+  if (brand.hosted && (!brand.hosted.label || !/^https:\/\/[^/]*\{workspace\}[^/]+$/.test(brand.hosted.serverTemplate))) {
+    throw new Error("hosted must have a label and an HTTPS serverTemplate containing {workspace}.");
   }
   return brand;
 }
 
 export default (): ExpoConfig => {
+  if (process.env.EAS_BUILD_PROFILE === "production" && process.env.APP_VARIANT === "development") {
+    throw new Error("The production profile cannot enable the development network policy.");
+  }
+  const release = process.env.NODE_ENV === "production" || process.env.APP_VARIANT === "production" || process.env.EAS_BUILD_PROFILE === "production";
+  if (release && Object.keys(process.env).some((key) => key.startsWith("EXPO_PUBLIC_DEV_") && process.env[key])) {
+    throw new Error("Release builds must not contain EXPO_PUBLIC_DEV_* credentials. Remove development variables before building.");
+  }
   const brand = loadBrand();
   return {
     name: brand.name,
     slug: brand.slug,
     scheme: brand.scheme,
-    version: "0.1.0",
+    version: brand.version || "0.2.0",
+    ...(brand.owner ? { owner: brand.owner } : {}),
     orientation: "portrait",
     icon: "./assets/icon.png",
     // Follow the phone. An app that stays white while the system is dark is
@@ -79,9 +100,17 @@ export default (): ExpoConfig => {
     ios: {
       supportsTablet: true,
       bundleIdentifier: brand.iosBundleIdentifier,
+      buildNumber: brand.iosBuildNumber || "1",
+      ...(brand.iosAppleTeamId || process.env.APPLE_TEAM_ID ? { appleTeamId: brand.iosAppleTeamId || process.env.APPLE_TEAM_ID } : {}),
+      config: { usesNonExemptEncryption: false },
     },
     android: {
       package: brand.androidPackage,
+      versionCode: brand.androidVersionCode || 1,
+      ...(process.env.GOOGLE_SERVICES_JSON || brand.androidGoogleServicesFile
+        ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON || brand.androidGoogleServicesFile }
+        : {}),
+      softwareKeyboardLayoutMode: "resize",
       adaptiveIcon: {
         backgroundColor: brand.primaryColor,
         foregroundImage: "./assets/android-icon-foreground.png",
@@ -96,7 +125,18 @@ export default (): ExpoConfig => {
     // src/push.ts). The plugin is still declared here because the entitlement
     // and the notification icon have to be baked into the build either way.
     plugins: [
-      ["expo-notifications", { color: brand.primaryColor }],
+      ["expo-dev-client", { toolsButton: false, showMenuAtLaunch: false }],
+      ["expo-notifications", { color: brand.primaryColor, defaultChannel: "messages" }],
+      ["expo-secure-store", { configureAndroidBackup: true, faceIDPermission: false }],
+      "expo-sharing",
+      "expo-image",
+      ["./plugins/withNetworkPolicy", { allowLocalHttp: process.env.APP_VARIANT === "development" }],
+      ["expo-splash-screen", {
+        image: "./assets/splash-icon.png",
+        imageWidth: 180,
+        backgroundColor: "#ffffff",
+        dark: { backgroundColor: "#111827" },
+      }],
       // iOS refuses to show a permission prompt without a reason string, and
       // rejects a build that asks for these without one.
       [
@@ -108,8 +148,13 @@ export default (): ExpoConfig => {
       ],
       [
         "expo-audio",
-        { microphonePermission: "Lets you record a voice note to send into a conversation." },
+        {
+          microphonePermission: "Lets you record a voice note to send into a conversation.",
+          enableBackgroundRecording: false,
+          enableBackgroundPlayback: false,
+        },
       ],
+      ...(brand.nativePlugins || []),
     ],
     extra: {
       // Pre-fills the server field. The colour here only covers the sign-in
@@ -119,6 +164,7 @@ export default (): ExpoConfig => {
       // Absent unless a brand file adds one, in which case sign-in offers it as
       // a choice instead of only asking for an address.
       hosted: brand.hosted || null,
+      ...(brand.easProjectId ? { eas: { projectId: brand.easProjectId } } : {}),
     },
   };
 };

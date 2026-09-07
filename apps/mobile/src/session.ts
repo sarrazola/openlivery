@@ -1,41 +1,69 @@
-/**
- * Keeps the signed-in session on the device.
- *
- * Only the server address and the token are persisted; branding is re-fetched
- * on launch so a colour or logo the agency changes shows up without signing in
- * again. AsyncStorage is not a secure store - the token is a portal session
- * scoped to one client, which is the same exposure as leaving the browser
- * portal open, and a stolen device is out of scope for this app.
- */
-
+/** Store bearer credentials in the operating system's encrypted credential store. */
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
+import * as SecureStore from "expo-secure-store";
 
-const KEY = "inbox.session.v1";
+const LEGACY_KEY = "inbox.session.v1";
+const KEY = "inbox.session.v2";
+const OPTIONS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+};
 
 export type StoredSession = { server: string; token: string };
 
-export async function loadStored(): Promise<StoredSession | null> {
+// A browser preview has no native credential store. Keep its session in memory.
+let previewSession: StoredSession | null = null;
+
+function parse(raw: string | null): StoredSession | null {
+  if (!raw) return null;
   try {
-    const raw = await AsyncStorage.getItem(KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (typeof parsed?.server === "string" && typeof parsed?.token === "string") return parsed;
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== "object") return null;
+    const session = value as Partial<StoredSession>;
+    if (typeof session.server !== "string" || typeof session.token !== "string" || !session.token) return null;
+    const url = new URL(session.server);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
+    return { server: session.server, token: session.token };
+  } catch {
     return null;
+  }
+}
+
+export async function loadStored(): Promise<StoredSession | null> {
+  if (Platform.OS === "web") return previewSession;
+  try {
+    const stored = parse(await SecureStore.getItemAsync(KEY, OPTIONS));
+    if (stored) {
+      await AsyncStorage.removeItem(LEGACY_KEY).catch(() => {});
+      return stored;
+    }
+    // Existing installs migrate once. Delete plaintext only after the encrypted
+    // write succeeds, so a temporarily locked Keychain does not lose the login.
+    const legacy = parse(await AsyncStorage.getItem(LEGACY_KEY));
+    if (!legacy) return null;
+    await SecureStore.setItemAsync(KEY, JSON.stringify(legacy), OPTIONS);
+    await AsyncStorage.removeItem(LEGACY_KEY).catch(() => {});
+    return legacy;
   } catch {
     return null;
   }
 }
 
 export async function store(session: StoredSession): Promise<void> {
-  try {
-    await AsyncStorage.setItem(KEY, JSON.stringify(session));
-  } catch {
-    // A device that cannot persist still works for the current session.
+  if (Platform.OS === "web") {
+    previewSession = session;
+    return;
   }
+  // Never fall back to plaintext if the device cannot persist a credential.
+  await SecureStore.setItemAsync(KEY, JSON.stringify(session), OPTIONS);
+  await AsyncStorage.removeItem(LEGACY_KEY).catch(() => {});
 }
 
 export async function clearStored(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(KEY);
-  } catch {}
+  previewSession = null;
+  if (Platform.OS === "web") return;
+  // If removing a legacy token fails, report sign-out failure. Otherwise a
+  // later launch could migrate that token back and silently sign in again.
+  await AsyncStorage.removeItem(LEGACY_KEY);
+  await SecureStore.deleteItemAsync(KEY, OPTIONS);
 }

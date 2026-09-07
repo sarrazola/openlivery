@@ -28,11 +28,54 @@ const en = {
     passwordLabel: "Password",
     submit: "Sign in",
     failed: "Could not sign in",
+    invalidWorkspace:
+      "Enter the workspace name using letters, numbers or hyphens.",
+    invalidServer: "Enter a valid server address.",
+  },
+  inbox: {
+    title: "Inbox",
+    all: "All",
+    unread: "Unread",
+    mine: "Mine",
+    ai: "AI",
+    open: "Open",
+    resolved: "Resolved",
+    search: "Search name, phone or message",
+    filters: "Filters",
+    teams: "Teams",
+    allTeams: "All teams",
+    allChannels: "All channels",
+    done: "Done",
+    retry: "Try again",
+    loadingMore: "Loading more…",
+    loadMore: "Load more",
+    noResults: "No matching conversations",
+    noResultsBody: "Try another search or filter.",
+    clearFilters: "Clear filters",
+    account: "Your account",
+    online: "Available",
+    away: "Away",
+    availabilityHint: "Available team members can receive new assignments.",
+    aiHandling: "AI is replying",
+    assignedTo: "Assigned to",
+    legacyHuman: "Human support",
+    signOutTitle: "Sign out of this inbox?",
+    cancel: "Cancel",
+    signOut: "Sign out",
+    reconnectTitle: "Could not connect",
+    reconnectBody:
+      "Your session is saved. Check your connection and try again.",
+    sessionExpired: "Your session expired. Sign in again.",
+    notificationUnavailable: "This conversation is no longer available.",
+    contacts: "Contacts",
+    connectionError:
+      "Could not refresh. Showing the last loaded conversations.",
   },
   list: {
     signOut: "Sign out",
     emptyTitle: "No conversations yet",
-    emptyBody: "When someone writes to your assistant, the conversation shows up here.",
+    emptyBody:
+      "When someone writes to your assistant, the conversation shows up here.",
     loadFailed: "Could not load conversations",
     noMessages: "No messages yet",
     youReply: "You reply",
@@ -87,6 +130,8 @@ const en = {
   },
   channels: {
     whatsapp: "WhatsApp",
+    instagram: "Instagram",
+    messenger: "Facebook Messenger",
     widget: "Web chat",
     playground: "Playground",
   },
@@ -95,7 +140,8 @@ const en = {
     yesterday: "Yesterday",
   },
   errors: {
-    unreachable: "Could not reach that server. Check the address and that you are on the same network.",
+    unreachable:
+      "Could not reach that server. Check the address and that you are on the same network.",
     generic: "Something went wrong",
     sendFile: "Could not send that file",
   },
@@ -116,11 +162,55 @@ const es: typeof en = {
     passwordLabel: "Contraseña",
     submit: "Entrar",
     failed: "No pudimos iniciar sesión",
+    invalidWorkspace:
+      "Escribe el nombre del espacio con letras, números o guiones.",
+    invalidServer: "Escribe una dirección de servidor válida.",
+  },
+  inbox: {
+    title: "Bandeja de entrada",
+    all: "Todos",
+    unread: "No leídos",
+    mine: "Míos",
+    ai: "IA",
+    open: "Abiertos",
+    resolved: "Resueltos",
+    search: "Busca un nombre, teléfono o mensaje",
+    filters: "Filtros",
+    teams: "Equipos",
+    allTeams: "Todos los equipos",
+    allChannels: "Todos los canales",
+    done: "Listo",
+    retry: "Reintentar",
+    loadingMore: "Cargando más…",
+    loadMore: "Cargar más",
+    noResults: "No hay conversaciones que coincidan",
+    noResultsBody: "Prueba otra búsqueda o filtro.",
+    clearFilters: "Quitar filtros",
+    account: "Tu cuenta",
+    online: "Disponible",
+    away: "Ausente",
+    availabilityHint:
+      "Los miembros disponibles pueden recibir nuevas asignaciones.",
+    aiHandling: "Responde la IA",
+    assignedTo: "Asignado a",
+    legacyHuman: "Atención humana",
+    signOutTitle: "¿Salir de esta bandeja?",
+    cancel: "Cancelar",
+    signOut: "Salir",
+    reconnectTitle: "No pudimos conectar",
+    reconnectBody:
+      "Tu sesión está guardada. Revisa la conexión e inténtalo de nuevo.",
+    sessionExpired: "Tu sesión venció. Vuelve a entrar.",
+    notificationUnavailable: "Esta conversación ya no está disponible.",
+    contacts: "Contactos",
+    connectionError:
+      "No pudimos actualizar. Mostramos las últimas conversaciones cargadas.",
   },
   list: {
     signOut: "Salir",
     emptyTitle: "Todavía no hay conversaciones",
-    emptyBody: "Cuando alguien le escriba a tu asistente, la conversación aparece aquí.",
+    emptyBody:
+      "Cuando alguien le escriba a tu asistente, la conversación aparece aquí.",
     loadFailed: "No pudimos cargar las conversaciones",
     noMessages: "Sin mensajes todavía",
     youReply: "Respondes tú",
@@ -175,6 +265,8 @@ const es: typeof en = {
   },
   channels: {
     whatsapp: "WhatsApp",
+    instagram: "Instagram",
+    messenger: "Facebook Messenger",
     widget: "Chat web",
     playground: "Pruebas",
   },
@@ -183,7 +275,8 @@ const es: typeof en = {
     yesterday: "Ayer",
   },
   errors: {
-    unreachable: "No pudimos llegar a ese servidor. Revisa la dirección y que estés en la misma red.",
+    unreachable:
+      "No pudimos llegar a ese servidor. Revisa la dirección y que estés en la misma red.",
     generic: "Algo salió mal",
     sendFile: "No se pudo enviar ese archivo",
   },
@@ -209,7 +302,8 @@ function pick(languageCode: string | null | undefined): Strings {
  */
 export function strings(): Strings {
   try {
-    const { getLocales } = require("expo-localization") as typeof import("expo-localization");
+    const { getLocales } =
+      require("expo-localization") as typeof import("expo-localization");
     return pick(getLocales()[0]?.languageCode);
   } catch {
     return en;
