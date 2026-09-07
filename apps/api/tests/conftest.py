@@ -10,10 +10,10 @@ os.environ["DATABASE_URL"] = os.getenv(
     "postgresql+psycopg://openlivery:openlivery@localhost:5432/openlivery_test",
 )
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
-os.environ.setdefault("REPLY_DEBOUNCE_SECONDS", "0")
 
 from app.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services import whatsapp_inbound  # noqa: E402
 
 
 test_engine = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
@@ -26,6 +26,17 @@ def override_get_db():
         yield db
     finally:
         db.close()
+
+
+@pytest.fixture(autouse=True)
+def immediate_replies(monkeypatch):
+    """Answer inbound WhatsApp messages synchronously, whatever the agent's delay.
+
+    The reply delay is a per-agent setting with a non-zero default, and most
+    tests want the reply back in the inbound response. Tests of the delayed
+    path patch a short delay of their own on top of this.
+    """
+    monkeypatch.setattr(whatsapp_inbound, "reply_delay_seconds", lambda agent: 0.0)
 
 
 @pytest.fixture(autouse=True)

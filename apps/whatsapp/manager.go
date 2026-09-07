@@ -342,7 +342,7 @@ func (m *manager) processIncoming(ctx context.Context, runtime *channelRuntime, 
 	}
 
 	var result inboundResult
-	// A synchronous AI reply (REPLY_DEBOUNCE_SECONDS=0) can take a while.
+	// A synchronous AI reply (agent reply delay at 0) can take a while.
 	if err := m.api.call(ctx, http.MethodPost, "/channels/"+runtime.channelID+"/inbound", body, &result, 120*time.Second); err != nil {
 		return err
 	}

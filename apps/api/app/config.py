@@ -38,10 +38,6 @@ class Settings(BaseSettings):
     # Meta Graph API root used by the WhatsApp Cloud API channel; override to
     # point at a mock server in tests.
     meta_graph_base_url: str = "https://graph.facebook.com/v23.0"
-    # Quiet window before the AI answers a WhatsApp message: while new visitor
-    # messages keep arriving the timer restarts, and the whole burst is answered
-    # with a single reply. 0 restores the immediate one-reply-per-message flow.
-    reply_debounce_seconds: float = 8.0
     # Conversations the AI is answering resolve themselves after this many
     # hours without a message from either side. Conversations a person took
     # over are never closed automatically: only that person decides. 0 disables.

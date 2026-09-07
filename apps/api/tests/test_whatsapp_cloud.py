@@ -287,7 +287,6 @@ def test_receipts_land_on_the_outbound_message(authenticated_client: TestClient,
     _customer, _agent, channel = _setup_channel(client)
     monkeypatch.setattr(whatsapp_inbound_service, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Hi")))
     monkeypatch.setattr(webhook_router, "send_text", AsyncMock(return_value="wamid.out-1"))
-    monkeypatch.setattr(whatsapp_inbound_service.get_settings(), "reply_debounce_seconds", 0)
     _post_signed(client, channel["id"], _webhook_payload([{"from": "5730011", "id": "wamid.in-1", "type": "text", "text": {"body": "Hola"}}]))
     conversation_id = client.get("/api/conversations/inbox").json()[0]["id"]
 

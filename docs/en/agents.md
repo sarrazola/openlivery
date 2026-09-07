@@ -49,6 +49,7 @@ Both features use OpenAI models, so they require an OpenAI key regardless of the
 | Temperature | `temperature` | Sampling randomness, `0.0`–`2.0` (default `0.7`). |
 | Max tokens | `max_tokens` | Maximum tokens per reply, `1`–`32000` (default `2048`). |
 | Memory limit | `memory_limit` | How many past messages are kept as conversation memory, `0`–`200` (default `30`). |
+| Reply delay | `reply_delay_min_seconds`, `reply_delay_max_seconds` | Quiet window before the agent answers a WhatsApp message, drawn at random between the two bounds, `0`–`60` seconds each (default `6` to `9`). The window restarts with each new visitor message, so a burst gets one reply. Both at `0` answer every message immediately. The maximum must be greater than or equal to the minimum. |
 | Image recognition | `image_enabled`, `image_model` | Enable vision and pick the model that describes inbound images. |
 | Audio transcription | `audio_enabled`, `audio_model` | Enable transcription and pick the model that transcribes inbound audio (default `whisper-1`). |
 

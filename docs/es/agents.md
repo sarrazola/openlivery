@@ -49,6 +49,7 @@ Ambas funciones usan modelos de OpenAI, por lo que requieren una clave de OpenAI
 | Temperatura | `temperature` | Aleatoriedad del muestreo, `0.0`–`2.0` (por defecto `0.7`). |
 | Tokens máximos | `max_tokens` | Máximo de tokens por respuesta, `1`–`32000` (por defecto `2048`). |
 | Límite de memoria | `memory_limit` | Cuántos mensajes pasados se conservan como memoria de conversación, `0`–`200` (por defecto `30`). |
+| Espera antes de responder | `reply_delay_min_seconds`, `reply_delay_max_seconds` | Ventana de silencio antes de que el agente responda un mensaje de WhatsApp, elegida al azar entre los dos límites, `0`–`60` segundos cada uno (por defecto `6` a `9`). La ventana se reinicia con cada mensaje nuevo del visitante, así una ráfaga recibe una sola respuesta. Ambos en `0` responden cada mensaje de inmediato. El máximo debe ser mayor o igual que el mínimo. |
 | Reconocimiento de imágenes | `image_enabled`, `image_model` | Activa la visión y elige el modelo que describe las imágenes entrantes. |
 | Transcripción de audio | `audio_enabled`, `audio_model` | Activa la transcripción y elige el modelo que transcribe el audio entrante (por defecto `whisper-1`). |
 

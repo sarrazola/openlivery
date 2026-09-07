@@ -67,6 +67,8 @@ export type Agent = {
   temperature: number;
   max_tokens: number;
   memory_limit: number;
+  reply_delay_min_seconds: number;
+  reply_delay_max_seconds: number;
   image_enabled: boolean;
   image_model: string;
   audio_enabled: boolean;

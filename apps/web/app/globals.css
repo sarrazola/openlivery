@@ -1333,9 +1333,10 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .context-bar small { color: var(--muted); font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
 .slider-field { display: flex; flex-direction: column; gap: 8px; }
 .slider-head { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
-.slider-head span { color: var(--ink); font-weight: 500; }
+.slider-head > span { display: inline-flex; align-items: center; gap: 5px; color: var(--ink); font-weight: 500; }
 .slider-head strong { color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
-.slider-field input[type="range"] { width: 100%; height: 6px; margin: 0; padding: 0; accent-color: #635bff; cursor: pointer; }
+.slider-field input[type="range"] { width: 100%; height: 6px; min-height: 0; margin: 4px 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; accent-color: #635bff; cursor: pointer; }
+.slider-field .field-help { margin: 0; }
 .combo { position: relative; }
 .combo-value { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: white; font-size: 14px; color: var(--ink); cursor: pointer; text-align: left; font-family: inherit; }
 .combo-value:hover { border-color: #c9cdd6; }
@@ -1361,9 +1362,9 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .capability-head strong { font-size: 14px; }
 .capability-head small { color: var(--muted); font-size: 12px; }
 .capability-model { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); padding-left: 28px; }
-.capabilities-intro { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
-.capabilities-intro strong { font-size: 13px; color: #39415b; }
-.capabilities-intro .field-help { margin: 0; }
+.capabilities-intro, .group-intro { display: flex; flex-direction: column; gap: 3px; padding-top: 16px; border-top: 1px solid var(--line); }
+.capabilities-intro strong, .group-intro strong { font-size: 13px; color: #39415b; }
+.capabilities-intro .field-help, .group-intro .field-help { margin: 0; line-height: 1.5; }
 .review-list { margin: 0; display: flex; flex-direction: column; gap: 1px; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 .review-list > div { display: grid; grid-template-columns: 200px 1fr; gap: 12px; padding: 13px 16px; background: white; border-bottom: 1px solid #edf0f3; }
 .review-list > div:last-child { border-bottom: 0; }
@@ -1395,6 +1396,8 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .advanced-options summary { color: #39415b; cursor: pointer; font-size: 12px; font-weight: 700; }
 .advanced-options[open] summary { margin-bottom: 12px; }
 .advanced-options { display: flex; flex-direction: column; gap: 12px; }
+/* A <details> element lays out summary and content as its only two flex items, so the gap above never reaches the fields inside; space them by hand. */
+.advanced-options > * + *:not(summary) { margin-top: 12px; }
 .transport-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .transport-toggle button { min-height: 40px; border: 1px solid #d8dde5; border-radius: 10px; background: white; color: #3b4252; font-weight: 600; }
 .transport-toggle button.active { color: white; border-color: var(--purple); background: var(--purple); }
@@ -1425,6 +1428,7 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .field-block { display: flex; flex-direction: column; gap: 12px; }
 .model-group { display: flex; flex-direction: column; gap: 8px; }
 .wizard-advanced { padding: 14px 16px; border: 1px solid var(--line); border-radius: 9px; background: #fafbfc; gap: 14px; }
+.wizard-advanced > * + *:not(summary) { margin-top: 14px; }
 .wizard-advanced summary { font-size: 13px; font-weight: 600; }
 .model-group-head { display: flex; flex-direction: column; gap: 3px; }
 .model-group-head small { color: #687082; font-size: 12px; line-height: 1.4; }
