@@ -51,3 +51,22 @@ Instead of the shared `/portal/<slug>` path, you can point the portal at a domai
 - `docker/Caddyfile.ondemand` gates on-demand TLS with the same endpoint as its `ask` hook, so a certificate is issued only for verified portal domains and never for arbitrary hosts pointed at the server.
 
 The on-demand gateway is opt-in. See [Self-hosting](self-hosting.md) for mounting the override and publishing ports 80 and 443.
+
+## Archiving and deleting conversations
+
+Conversations are the client's history, so nothing removes them in one step.
+
+- **Archive** a resolved conversation from its header, or every resolved conversation at once from the Resolved inbox. Archived conversations leave the inboxes, keep every message, still count in reports, and can be restored (they come back as resolved). Archiving an open conversation resolves it first.
+- **Delete** only from the Archived inbox, one at a time or all of them, after typing the confirmation word. Deleting removes the conversation and its messages from the database for good.
+
+Deleting an agent from the dashboard never touches conversations: they stay in the portal under the agent's name. Deleting a client does remove them, together with everything else under the client.
+
+API: `GET /api/portal/{slug}/conversations?archived=1`, `PATCH .../conversations/{id}/archive` with `{"archived": true|false}`, `POST .../conversations/archive-resolved`, `DELETE .../conversations/{id}` (archived only), `POST .../conversations/delete-archived`. The inbox summary carries an `archived` count.
+
+## Blocking a contact
+
+A contact that spams the number can be **blocked** from Contacts or from the conversation header. Blocked, their messages are still stored but nobody answers them: the agent does not reply and spends no tokens, no notification fires, and their conversations leave every inbox (they stay readable from the contact's history). They can keep writing; they just get no response.
+
+**Unblocking** does not answer the backlog. The open conversation is resolved with a note in the thread, and the contact's next message opens a fresh conversation that the agent handles as usual.
+
+API: `POST /api/portal/{slug}/contacts/{id}/block` with `{"blocked": true|false}`; `ContactOut.blocked_at` says whether a contact is blocked. This is an internal block: WhatsApp itself is not told, so the contact sees their messages as delivered.

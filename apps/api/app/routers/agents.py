@@ -5,13 +5,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from pypdf import PdfReader
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import Agent, AgentQA, Client, EscalationRule, KnowledgeDocument, PortalUser, Team, User, WhatsAppChannel, WhatsAppCloudChannel, WidgetChannel
+from ..models import Agent, AgentQA, AgentTool, Client, EscalationRule, KnowledgeChunk, KnowledgeDocument, PortalUser, Team, User, WhatsAppChannel, WhatsAppCloudChannel, WidgetChannel, now_utc
 from ..schemas import AgentCreate, AgentOut, AgentPromptOut, AgentUpdate, DocumentOut, EscalationConfigIn, EscalationConfigOut, QAPairCreate, QAPairOut, check_reply_delay
 from ..services.knowledge import build_system_prompt, embed_document_chunks
 
@@ -24,7 +24,7 @@ def _agent(db: Session, user: User, agent_id: uuid.UUID) -> Agent:
     agent = db.scalar(
         select(Agent)
         .options(joinedload(Agent.client).selectinload(Client.agents))
-        .where(Agent.id == agent_id, Agent.agency_id == user.agency_id)
+        .where(Agent.id == agent_id, Agent.agency_id == user.agency_id, Agent.deleted_at.is_(None))
     )
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -53,7 +53,7 @@ def list_agents(db: Session = Depends(get_db), user: User = Depends(get_current_
     return db.scalars(
         select(Agent)
         .options(joinedload(Agent.client).selectinload(Client.agents))
-        .where(Agent.agency_id == user.agency_id)
+        .where(Agent.agency_id == user.agency_id, Agent.deleted_at.is_(None))
         .order_by(Agent.created_at.desc())
     ).unique().all()
 
@@ -98,13 +98,26 @@ def update_agent(agent_id: uuid.UUID, payload: AgentUpdate, db: Session = Depend
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_agent(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Delete the agent's configuration and knowledge; keep its conversations.
+
+    The conversations it handled are the client's history and stay in the
+    portal under the agent's name, so the row remains as a tombstone
+    (``deleted_at``) and everything it owned is purged.
+    """
     agent = _agent(db, user, agent_id)
     if _channels_of(db, agent):
         raise HTTPException(
             status_code=409,
             detail="This agent answers a channel of its client. Assign another agent to it before deleting this one.",
         )
-    db.delete(agent)
+    for model in (AgentTool, AgentQA, KnowledgeChunk, KnowledgeDocument, EscalationRule):
+        db.execute(delete(model).where(model.agent_id == agent.id))
+    for field in ("instructions", "personality", "brief_summary", "brief_products", "brief_audience", "brief_policies", "brief_dos", "brief_donts"):
+        setattr(agent, field, "")
+    agent.escalation_team_id = None
+    agent.escalation_assignee_id = None
+    agent.is_active = False
+    agent.deleted_at = now_utc()
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

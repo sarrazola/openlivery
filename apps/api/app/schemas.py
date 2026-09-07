@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 class ORMModel(BaseModel):
@@ -90,6 +90,13 @@ class ClientOut(ORMModel):
     created_at: datetime
     updated_at: datetime
     agents: list[AgentSummary] = []
+
+    @field_validator("agents", mode="before")
+    @classmethod
+    def _living_agents(cls, value):
+        # Deleted agents keep their row for the conversations they handled;
+        # they are not part of the client anymore.
+        return [item for item in value if getattr(item, "deleted_at", None) is None]
 
 
 class PortalUserCreate(BaseModel):
@@ -310,6 +317,7 @@ class ConversationOut(ORMModel):
     updated_at: datetime
     status: str = "open"
     resolved_at: datetime | None = None
+    archived_at: datetime | None = None
     first_reply_at: datetime | None = None
     taken_over_at: datetime | None = None
     waiting_since: datetime | None = None
@@ -407,6 +415,30 @@ class ConversationModeUpdate(BaseModel):
 
 class ConversationStatusUpdate(BaseModel):
     status: str = Field(pattern=r"^(open|resolved)$")
+
+
+class ConversationArchiveUpdate(BaseModel):
+    archived: bool
+
+
+class ConversationSelection(BaseModel):
+    """Which archived conversations to delete; none means all of them."""
+
+    ids: list[uuid.UUID] | None = None
+
+
+class BulkResult(BaseModel):
+    count: int
+
+
+class ClientDeletionPreview(BaseModel):
+    """What goes with the client, so the person deleting it sees it first."""
+
+    agents: int = 0
+    channels: int = 0
+    conversations: int = 0
+    contacts: int = 0
+    portal_users: int = 0
 
 
 class ConversationAssignmentUpdate(BaseModel):
@@ -622,6 +654,11 @@ class ContactOut(BaseModel):
     conversation_count: int = 0
     open_count: int = 0
     last_activity_at: datetime | None = None
+    blocked_at: datetime | None = None
+
+
+class ContactBlockUpdate(BaseModel):
+    blocked: bool
 
 
 class ContactMergeRequest(BaseModel):
@@ -633,6 +670,7 @@ class ContactMergeRequest(BaseModel):
 class PortalInboxSummary(BaseModel):
     open: int = 0
     resolved: int = 0
+    archived: int = 0
     human: int = 0
     ai: int = 0
     unread: int = 0
