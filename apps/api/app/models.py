@@ -165,6 +165,12 @@ class Agent(Base):
     max_tokens: Mapped[int] = mapped_column(Integer, default=2048, server_default="2048")
     # How many past messages are kept as conversation memory.
     memory_limit: Mapped[int] = mapped_column(Integer, default=30, server_default="30")
+    # Quiet window before the agent answers a WhatsApp message, drawn at random
+    # between these two bounds (seconds) so the pace varies like a person's.
+    # The window restarts on every new visitor message, batching a burst into
+    # one reply. Both at 0 answers each message immediately.
+    reply_delay_min_seconds: Mapped[int] = mapped_column(Integer, default=6, server_default="6")
+    reply_delay_max_seconds: Mapped[int] = mapped_column(Integer, default=9, server_default="9")
     # Multimodal capabilities. When enabled, inbound images are described by a
     # vision model and inbound audio is transcribed before reaching the agent.
     # On by default: a new agent should understand what customers send it.

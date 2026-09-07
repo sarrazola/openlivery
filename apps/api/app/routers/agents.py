@@ -12,7 +12,7 @@ from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_user
 from ..models import Agent, AgentQA, Client, EscalationRule, KnowledgeDocument, PortalUser, Team, User, WhatsAppChannel, WhatsAppCloudChannel, WidgetChannel
-from ..schemas import AgentCreate, AgentOut, AgentPromptOut, AgentUpdate, DocumentOut, EscalationConfigIn, EscalationConfigOut, QAPairCreate, QAPairOut
+from ..schemas import AgentCreate, AgentOut, AgentPromptOut, AgentUpdate, DocumentOut, EscalationConfigIn, EscalationConfigOut, QAPairCreate, QAPairOut, check_reply_delay
 from ..services.knowledge import build_system_prompt, embed_document_chunks
 
 
@@ -81,6 +81,13 @@ def update_agent(agent_id: uuid.UUID, payload: AgentUpdate, db: Session = Depend
             detail="This agent answers a channel of its client. Assign another agent to it before changing the client.",
         )
     _validate_client(db, user, client_id)
+    try:
+        check_reply_delay(
+            values.get("reply_delay_min_seconds", agent.reply_delay_min_seconds),
+            values.get("reply_delay_max_seconds", agent.reply_delay_max_seconds),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     for key, value in values.items():
         setattr(agent, key, value)
     db.commit()

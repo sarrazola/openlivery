@@ -13,6 +13,13 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- Each agent sets how long it waits before answering on WhatsApp, as a
+  minimum and a maximum in seconds (`reply_delay_min_seconds`,
+  `reply_delay_max_seconds`, sliders under the agent's advanced options): every
+  reply draws a random wait between the two, and the wait restarts with each
+  new visitor message so a burst still gets one answer. Every agent starts
+  at 6 to 9 seconds. This replaces the process-wide `REPLY_DEBOUNCE_SECONDS`
+  setting.
 - The agent wizard asks for the three essentials (what the business does,
   key info and policies, what the agent does) instead of a free prompt, picks
   the model from a searchable dropdown with recommended and tier tags, and

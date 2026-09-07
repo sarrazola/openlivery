@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class ORMModel(BaseModel):
@@ -147,6 +147,16 @@ class ProviderOut(BaseModel):
     api_key_masked: str = ""
 
 
+# Upper bound of the reply delay sliders, in seconds.
+REPLY_DELAY_MAX_SECONDS = 60
+REPLY_DELAY_ORDER_ERROR = "The maximum reply delay must be greater than or equal to the minimum."
+
+
+def check_reply_delay(minimum: int, maximum: int) -> None:
+    if maximum < minimum:
+        raise ValueError(REPLY_DELAY_ORDER_ERROR)
+
+
 class AgentBase(BaseModel):
     client_id: uuid.UUID
     name: str = Field(min_length=1, max_length=180)
@@ -165,11 +175,18 @@ class AgentBase(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=2048, ge=1, le=32000)
     memory_limit: int = Field(default=30, ge=0, le=200)
+    reply_delay_min_seconds: int = Field(default=6, ge=0, le=REPLY_DELAY_MAX_SECONDS)
+    reply_delay_max_seconds: int = Field(default=9, ge=0, le=REPLY_DELAY_MAX_SECONDS)
     image_enabled: bool = True
     image_model: str = Field(default="", max_length=180)
     audio_enabled: bool = True
     audio_model: str = Field(default="whisper-1", max_length=180)
     is_active: bool = True
+
+    @model_validator(mode="after")
+    def _reply_delay_bounds(self) -> "AgentBase":
+        check_reply_delay(self.reply_delay_min_seconds, self.reply_delay_max_seconds)
+        return self
 
 
 class AgentCreate(AgentBase):
@@ -194,6 +211,8 @@ class AgentUpdate(BaseModel):
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1, le=32000)
     memory_limit: int | None = Field(default=None, ge=0, le=200)
+    reply_delay_min_seconds: int | None = Field(default=None, ge=0, le=REPLY_DELAY_MAX_SECONDS)
+    reply_delay_max_seconds: int | None = Field(default=None, ge=0, le=REPLY_DELAY_MAX_SECONDS)
     image_enabled: bool | None = None
     image_model: str | None = Field(default=None, max_length=180)
     audio_enabled: bool | None = None
@@ -220,6 +239,8 @@ class AgentOut(ORMModel):
     temperature: float
     max_tokens: int
     memory_limit: int
+    reply_delay_min_seconds: int
+    reply_delay_max_seconds: int
     image_enabled: bool
     image_model: str
     audio_enabled: bool

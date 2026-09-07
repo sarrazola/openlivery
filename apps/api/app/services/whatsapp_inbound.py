@@ -7,6 +7,7 @@ taken over. The caller is responsible for actually delivering the reply.
 """
 
 import asyncio
+import random
 import uuid
 from dataclasses import dataclass
 
@@ -14,7 +15,6 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from ..config import get_settings
 from ..database import new_session
 from .contacts import display_name, phone_from_chat_id, previous_conversation_recap, rename_conversations, resolve_contact
 from .conversation_state import exchanged_only, note_inbound, note_reply
@@ -210,8 +210,9 @@ async def process_inbound(
         await notify_needs_human(db, conversation, display_content or llm_content)
         return InboundResult(accepted=True, conversation_id=conversation.id, mode="human")
 
-    if get_settings().reply_debounce_seconds > 0:
-        schedule_debounced_reply(conversation.id)
+    delay = reply_delay_seconds(channel.agent)
+    if delay > 0:
+        schedule_debounced_reply(conversation.id, delay)
         return InboundResult(accepted=True, conversation_id=conversation.id, mode="ai")
 
     await _signal_read_and_typing(db, conversation, [inbound.external_message_id])
@@ -390,7 +391,22 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
 _pending_replies: dict[uuid.UUID, "asyncio.Task[None]"] = {}
 
 
-def schedule_debounced_reply(conversation_id: uuid.UUID) -> None:
+def reply_delay_seconds(agent: Agent) -> float:
+    """How long to wait before answering, drawn between the agent's bounds.
+
+    A fresh draw per inbound message, so the pace varies within the range the
+    operator chose. 0 (both bounds at zero) means answer synchronously.
+    """
+    low = float(agent.reply_delay_min_seconds)
+    high = float(agent.reply_delay_max_seconds)
+    if high <= 0:
+        return 0.0
+    if high < low:
+        high = low
+    return random.uniform(low, high)
+
+
+def schedule_debounced_reply(conversation_id: uuid.UUID, delay: float) -> None:
     """(Re)start the conversation's quiet-window timer.
 
     Every inbound message cancels the previous timer, so the reply fires only
@@ -401,7 +417,7 @@ def schedule_debounced_reply(conversation_id: uuid.UUID) -> None:
     previous = _pending_replies.pop(conversation_id, None)
     if previous is not None and not previous.done():
         previous.cancel()
-    task = asyncio.get_running_loop().create_task(_debounced_reply(conversation_id))
+    task = asyncio.get_running_loop().create_task(_debounced_reply(conversation_id, delay))
     _pending_replies[conversation_id] = task
 
     def _cleanup(finished: "asyncio.Task[None]") -> None:
@@ -411,8 +427,8 @@ def schedule_debounced_reply(conversation_id: uuid.UUID) -> None:
     task.add_done_callback(_cleanup)
 
 
-async def _debounced_reply(conversation_id: uuid.UUID) -> None:
-    await asyncio.sleep(get_settings().reply_debounce_seconds)
+async def _debounced_reply(conversation_id: uuid.UUID, delay: float) -> None:
+    await asyncio.sleep(delay)
     db = new_session()
     try:
         conversation = db.get(Conversation, conversation_id)

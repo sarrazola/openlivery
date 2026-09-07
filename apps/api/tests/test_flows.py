@@ -771,7 +771,6 @@ def test_activity_never_reaches_the_model_and_a_resolved_case_stays_closed(authe
     headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
     completion = AsyncMock(return_value=ai_service.Completion(text="Hello!", input_tokens=1, output_tokens=1))
     monkeypatch.setattr(whatsapp_inbound_service, "run_completion", completion)
-    monkeypatch.setattr(whatsapp_inbound_service.get_settings(), "reply_debounce_seconds", 0)
 
     def inbound(message_id: str, text: str):
         return client.post(

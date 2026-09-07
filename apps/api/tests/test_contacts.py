@@ -60,7 +60,6 @@ def test_inbound_creates_the_contact_and_a_new_case_after_resolution(authenticat
     headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
     completion = AsyncMock(return_value=ai_service.Completion(text="Hello!", input_tokens=1, output_tokens=1))
     monkeypatch.setattr(whatsapp_inbound_service, "run_completion", completion)
-    monkeypatch.setattr(whatsapp_inbound_service.get_settings(), "reply_debounce_seconds", 0)
 
     def inbound(message_id: str, text: str, name: str | None = "Sam"):
         return client.post(
@@ -119,7 +118,6 @@ def test_merge_contacts_moves_conversations_and_fills_blanks(authenticated_clien
     channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
     headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
     monkeypatch.setattr(whatsapp_inbound_service, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Hola!", input_tokens=1, output_tokens=1)))
-    monkeypatch.setattr(whatsapp_inbound_service.get_settings(), "reply_debounce_seconds", 0)
 
     # The person wrote in by WhatsApp (that contact has the phone), and someone
     # also created a manual profile for them with the email.
