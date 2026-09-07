@@ -17,6 +17,7 @@ FFMPEG_TIMEOUT = 60
 
 async def _run_ffmpeg(args: list[str], stdin_data: bytes | None = None) -> bytes | None:
     """Run ffmpeg returning stdout, or None when it fails or times out."""
+    process = None
     try:
         process = await asyncio.create_subprocess_exec(
             "ffmpeg", "-hide_banner", "-loglevel", "error", *args,
@@ -25,7 +26,16 @@ async def _run_ffmpeg(args: list[str], stdin_data: bytes | None = None) -> bytes
             stderr=asyncio.subprocess.DEVNULL,
         )
         out, _ = await asyncio.wait_for(process.communicate(stdin_data), timeout=FFMPEG_TIMEOUT)
-    except (OSError, asyncio.TimeoutError):
+    except (OSError, asyncio.TimeoutError, asyncio.CancelledError) as exc:
+        if process is not None and process.returncode is None:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+            # Drain the pipes and reap the child after timeout or cancellation.
+            await process.communicate()
+        if isinstance(exc, asyncio.CancelledError):
+            raise
         return None
     if process.returncode != 0 or not out:
         return None

@@ -322,6 +322,11 @@ class ConversationOut(ORMModel):
     # when the contact never wrote; ``reply_window_open`` says what applies.
     reply_window_until: datetime | None = None
     reply_window_open: bool = True
+    human_reply_window_until: datetime | None = None
+    human_reply_window_open: bool = True
+    reply_block_reason: str | None = None
+    channel_capabilities: dict[str, bool] | None = None
+    social_channel_id: uuid.UUID | None = None
     preview: str = ""
     unread: bool = False
     unread_count: int = 0
@@ -348,6 +353,7 @@ class MessageOut(ORMModel):
     id: uuid.UUID
     role: str
     kind: str = "message"
+    is_historical: bool = False
     activity: dict | None = None
     content: str
     sources: list[dict] = []
@@ -494,11 +500,15 @@ class PortalAvailabilityUpdate(BaseModel):
 
 
 class PortalChannelOut(BaseModel):
+    id: uuid.UUID | None = None
     channel: str
     status: str
     phone_number: str | None = None
     display_name: str | None = None
     supports_templates: bool = False
+    external_account_id: str | None = None
+    username: str | None = None
+    capabilities: dict[str, bool] | None = None
 
 
 class TemplateOut(BaseModel):

@@ -1,12 +1,12 @@
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import Agent, Client, Conversation, Message, UsageRecord, User, WhatsAppChannel, now_utc
+from ..models import Agent, Client, Conversation, Message, SocialChannel, UsageRecord, User, WhatsAppChannel, WhatsAppCloudChannel, now_utc
 from ..schemas import DashboardMetrics, DashboardOut
 
 
@@ -36,6 +36,10 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
             WhatsAppChannel.status == "connected",
         )
     ) or 0
+    for model in (WhatsAppCloudChannel, SocialChannel):
+        channels += db.scalar(select(func.count(model.id)).where(model.agency_id == agency_id)) or 0
+        connected_channels += db.scalar(select(func.count(model.id)).where(
+            model.agency_id == agency_id, model.status == "connected", model.is_enabled.is_(True))) or 0
     recent_agents = db.scalars(
         select(Agent).where(Agent.agency_id == agency_id).order_by(Agent.created_at.desc()).limit(5)
     ).all()
@@ -60,21 +64,24 @@ def dashboard_metrics(
     agency_id = user.agency_id
     start_date = (now_utc() - timedelta(days=days - 1)).date()
     since = now_utc() - timedelta(days=days)
+    active_case = or_(Conversation.social_channel_id.is_(None), exists(
+        select(Message.id).where(Message.conversation_id == Conversation.id,
+            Message.kind == "message", Message.is_historical.is_(False)).correlate(Conversation)))
 
     messages = db.scalar(
         select(func.count(Message.id))
         .join(Conversation, Message.conversation_id == Conversation.id)
-        .where(Conversation.agency_id == agency_id, Message.created_at >= since)
+        .where(Conversation.agency_id == agency_id, Message.created_at >= since, Message.is_historical.is_(False))
     ) or 0
     human_conversations = db.scalar(
         select(func.count(Conversation.id)).where(
-            Conversation.agency_id == agency_id, Conversation.mode == "human", Conversation.created_at >= since
+            Conversation.agency_id == agency_id, Conversation.mode == "human", Conversation.created_at >= since, active_case
         )
     ) or 0
 
     channel_rows = db.execute(
         select(Conversation.channel, func.count(Conversation.id))
-        .where(Conversation.agency_id == agency_id, Conversation.created_at >= since)
+        .where(Conversation.agency_id == agency_id, Conversation.created_at >= since, active_case)
         .group_by(Conversation.channel)
     ).all()
     by_channel = {channel: count for channel, count in channel_rows}
@@ -83,7 +90,7 @@ def dashboard_metrics(
     day = func.date(Conversation.created_at)
     daily_rows = db.execute(
         select(day, func.count(Conversation.id))
-        .where(Conversation.agency_id == agency_id, day >= start_date)
+        .where(Conversation.agency_id == agency_id, day >= start_date, active_case)
         .group_by(day)
     ).all()
     counts = {str(d): c for d, c in daily_rows}
@@ -95,7 +102,7 @@ def dashboard_metrics(
     top_rows = db.execute(
         select(Agent.id, Agent.name, func.count(Conversation.id))
         .join(Conversation, Conversation.agent_id == Agent.id)
-        .where(Agent.agency_id == agency_id, Conversation.created_at >= since)
+        .where(Agent.agency_id == agency_id, Conversation.created_at >= since, active_case)
         .group_by(Agent.id, Agent.name)
         .order_by(func.count(Conversation.id).desc())
         .limit(5)

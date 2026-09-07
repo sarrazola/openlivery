@@ -216,8 +216,12 @@ def delete_client_domain(client_id: uuid.UUID, db: Session = Depends(get_db), us
 
 
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_client(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+async def delete_client(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     client = _client(db, user, client_id)
+    from ..models import SocialChannel
+    from ..services.social_connections import disconnect_channel
+    for channel in db.scalars(select(SocialChannel).where(SocialChannel.client_id == client.id)).all():
+        await disconnect_channel(db, channel)
     db.delete(client)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

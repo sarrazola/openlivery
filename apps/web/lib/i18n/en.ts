@@ -6,6 +6,7 @@ import { home } from "./dicts/home";
 import { clients } from "./dicts/clients";
 import { agents } from "./dicts/agents";
 import { channels } from "./dicts/channels";
+import { social } from "./dicts/social";
 import { settings } from "./dicts/settings";
 import { playground } from "./dicts/playground";
 import { portal } from "./dicts/portal";
@@ -18,6 +19,7 @@ export const en = {
   clients: clients.en,
   agents: agents.en,
   channels: channels.en,
+  social: social.en,
   settings: settings.en,
   playground: playground.en,
   portal: portal.en,
