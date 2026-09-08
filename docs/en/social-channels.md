@@ -52,7 +52,7 @@ settings; do not assume they match the parent application's credentials.
    `https://YOUR_ORIGIN/api/public/social/instagram/webhook` and the configured
    verification token.
 4. Enable `messages`, `messaging_postbacks`, `messaging_seen`,
-   `messaging_reactions`, `messaging_referrals`, `messaging_handover`, and
+   `message_reactions`, `messaging_referral`, `messaging_handover`, and
    `standby` subscriptions.
 5. Complete review and access requirements for the accounts being served.
 6. In the client's Instagram channel settings, choose an agent, authorize the
@@ -235,6 +235,7 @@ real-account delivery.
 - [Instagram authorization and token refresh](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login)
 - [Instagram messaging](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api)
 - [Instagram webhooks](https://developers.facebook.com/documentation/instagram-platform/webhooks)
+- [Instagram subscription field names in Meta's SDK](https://github.com/facebook/facebook-python-business-sdk/blob/25.0.0/facebook_business/adobjects/iguserforigonlyapi.py#L672)
 - [Instagram access review](https://developers.facebook.com/documentation/instagram-platform/app-review)
 - [Messenger overview](https://developers.facebook.com/documentation/business-messaging/messenger-platform/overview)
 - [Messenger webhooks](https://developers.facebook.com/documentation/business-messaging/messenger-platform/webhooks)

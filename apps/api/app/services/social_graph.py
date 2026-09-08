@@ -19,7 +19,7 @@ SCOPES = {
     "messenger": {"pages_show_list", "pages_messaging", "pages_manage_metadata", "pages_read_engagement", "business_management"},
 }
 SUBSCRIPTIONS = {
-    "instagram": {"messages", "messaging_postbacks", "messaging_seen", "messaging_reactions", "messaging_referrals", "messaging_handover", "standby"},
+    "instagram": {"messages", "messaging_postbacks", "messaging_seen", "message_reactions", "messaging_referral", "messaging_handover", "standby"},
     "messenger": {"messages", "messaging_postbacks", "message_deliveries", "message_reads", "messaging_referrals", "message_echoes", "messaging_handovers", "standby"},
 }
 

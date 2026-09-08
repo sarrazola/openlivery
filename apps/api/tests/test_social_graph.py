@@ -67,6 +67,29 @@ def test_subscription_requires_matching_app_and_fields_and_cleans_failed_new_sub
     assert request.call_args_list[-1].args[1] == "DELETE"
 
 
+@pytest.mark.parametrize("provider, expected_fields", [
+    ("instagram", {"messages", "messaging_postbacks", "messaging_seen", "message_reactions",
+                   "messaging_referral", "messaging_handover", "standby"}),
+    ("messenger", {"messages", "messaging_postbacks", "message_deliveries", "message_reads",
+                   "messaging_referrals", "message_echoes", "messaging_handovers", "standby"}),
+])
+def test_subscription_uses_provider_field_names_and_accepts_confirmed_readback(monkeypatch, provider, expected_fields):
+    request = AsyncMock(side_effect=[
+        {"data": []},
+        {"success": True},
+        {"data": [{"id": "999", "subscribed_fields": sorted(expected_fields)}]},
+        {"success": True},
+    ])
+    monkeypatch.setattr(graph, "request", request)
+
+    assert asyncio.run(graph.subscribe(provider, "token", "111", "999", "secret")) is True
+
+    subscription = request.call_args_list[1]
+    assert subscription.args == (provider, "POST", "111/subscribed_apps", "token")
+    assert set(subscription.kwargs["data"]["subscribed_fields"].split(",")) == expected_fields
+    assert request.await_count == 3
+
+
 def test_instagram_code_exchange_keeps_scopes_and_long_lived_expiry(monkeypatch):
     http = AsyncMock(side_effect=[{"data": [{"access_token": "short", "user_id": "111", "permissions": ",".join(graph.SCOPES["instagram"])}]},
                                  {"access_token": "long", "expires_in": 5184000}])
