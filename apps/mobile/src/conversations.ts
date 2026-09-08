@@ -14,7 +14,10 @@ import type { Strings as Dictionary } from "./i18n";
 
 /** `573001234567@s.whatsapp.net` -> `+573001234567`. */
 export function phoneFrom(externalChatId: string | null | undefined): string | null {
-  const digits = (externalChatId || "").split("@")[0].replace(/\D/g, "");
+  const address = externalChatId || "";
+  // Group and linked-device identifiers are not telephone numbers.
+  if (/@(?:g\.us|lid)$/.test(address)) return null;
+  const digits = address.split("@")[0].split(":")[0].replace(/\D/g, "");
   // Short enough to be a group id or a placeholder rather than a number.
   return digits.length >= 7 ? `+${digits}` : null;
 }

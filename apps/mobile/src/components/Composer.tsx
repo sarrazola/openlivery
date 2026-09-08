@@ -1,21 +1,21 @@
 /**
  * Writing back: text, a photo, a file, or a voice note.
  *
- * Laid out the way WhatsApp lays it out, because the people using this already
- * answer their customers there and should not have to learn a second shape:
- * attach on the left, the field, then the camera, then a microphone that turns
- * into a send button the moment there is something to send.
+ * Saved replies sit above the message field. The attachment menu and microphone
+ * sit to its left, with sending on the right. Recording stays available with
+ * text already written; the attachment menu also provides camera access.
  *
  * Recording replaces the whole row - a level meter, the elapsed time, and
- * delete / pause / send - because a half-recorded voice note that still looks
- * like a text field is the fastest way to send silence.
+ * delete / pause / review. Review stages the original audio as an attachment
+ * with playback so the user can listen before sending it with their text.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
+  AppState,
   Animated,
   Platform,
   Pressable,
@@ -26,10 +26,15 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import { Image } from "expo-image";
+import { chatStrings } from "../chatStrings";
+import { createRecordingSession, RecordingUnavailableError } from "../recordingSession";
+import { setRecordingMode } from "../audioSession";
+import { LocalAudioPreview } from "./Attachments";
 import {
   AudioModule,
   RecordingPresets,
-  setAudioModeAsync,
   useAudioRecorder,
   useAudioRecorderState,
 } from "expo-audio";
@@ -38,11 +43,23 @@ import { contrastOn, tint, useColors } from "../theme";
 
 export type OutgoingFile = { uri: string; name: string; type: string };
 
+type Draft = { text: string; file: OutgoingFile | null };
+const sessionDrafts = new Map<string, Draft>();
+let draftSessionEpoch = 0;
+/** Called when a session ends; drafts never persist to disk. */
+export function clearComposerDrafts() { sessionDrafts.clear(); draftSessionEpoch += 1; }
+
 type Props = {
+  draftKey: string;
   brand: string;
   busy: boolean;
-  onSendText: (text: string) => void;
-  onSendFile: (file: OutgoingFile) => void;
+  onSendText: (text: string) => Promise<boolean>;
+  onSendFile: (file: OutgoingFile, caption: string) => Promise<boolean>;
+  insertedReply?: { text: string; key: number } | null;
+  onReplyInserted?: (key: number) => void;
+  onSavedReplies?: () => void;
+  onAttachmentSelected?: () => void;
+  onError: (message: string) => void;
 };
 
 function extensionFor(uri: string, fallback: string): string {
@@ -89,20 +106,51 @@ function Meter({ levels, color }: { levels: number[]; color: string }) {
   );
 }
 
-export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
+export function Composer({ draftKey, brand, busy, onSendText, onSendFile, insertedReply, onReplyInserted, onSavedReplies, onAttachmentSelected, onError }: Props) {
   const colors = useColors();
   const s = useStrings();
-  const [draft, setDraft] = useState("");
+  const c = chatStrings();
+  const [pendingFile, setPendingFile] = useState<OutgoingFile | null>(() => sessionDrafts.get(draftKey)?.file || null);
+  const sending = useRef(false);
+  const recordingEpoch = useRef(0);
+  const preparingRef = useRef(false);
+  const stoppingRef = useRef(false);
+  const changingPause = useRef(false);
+  const [stopping, setStopping] = useState(false);
+  const input = useRef<TextInput>(null);
+  const [draft, setDraft] = useState(() => sessionDrafts.get(draftKey)?.text || "");
+
+  useEffect(() => {
+    if (draft || pendingFile) {
+      sessionDrafts.set(draftKey, { text: draft, file: pendingFile });
+      if (sessionDrafts.size > 50) sessionDrafts.delete(sessionDrafts.keys().next().value!);
+    } else sessionDrafts.delete(draftKey);
+  }, [draftKey, draft, pendingFile]);
   const [sheetOpen, setSheetOpen] = useState(false);
   const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
   const recorderState = useAudioRecorderState(recorder, METER_INTERVAL_MS);
+  const recordingSession = useMemo(() => createRecordingSession({
+    record: () => recorder.record(), pause: () => recorder.pause(), stop: () => recorder.stop(),
+    isRecording: () => recorder.isRecording, duration: () => recorder.currentTime,
+    uri: () => recorder.uri, enable: setRecordingMode,
+  }), [recorder]);
   const [preparing, setPreparing] = useState(false);
   const [paused, setPaused] = useState(false);
   const [levels, setLevels] = useState<number[]>(() => new Array(BARS).fill(0.08));
   const blink = useRef(new Animated.Value(1)).current;
 
   const recording = recorderState.isRecording || paused;
-  const canSend = draft.trim().length > 0 && !busy;
+  const canSend = draft.trim().length > 0 || Boolean(pendingFile);
+
+  useEffect(() => { if (pendingFile) onAttachmentSelected?.(); }, [pendingFile, onAttachmentSelected]);
+
+  useEffect(() => {
+    if (insertedReply) {
+      setDraft(insertedReply.text);
+      input.current?.focus();
+      onReplyInserted?.(insertedReply.key);
+    }
+  }, [insertedReply, onReplyInserted]);
 
   // Keep the newest reading somewhere the timer below can see it without
   // becoming a dependency of it.
@@ -149,49 +197,60 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      recordingEpoch.current += 1;
     };
   }, []);
 
-  function send() {
-    if (!canSend) return;
-    const text = draft.trim();
-    setDraft("");
-    onSendText(text);
+  async function send() {
+    if (!canSend || busy || sending.current) return;
+    sending.current = true;
+    const submitted = { text: draft, file: pendingFile };
+    const sessionEpoch = draftSessionEpoch;
+    try {
+      const text = draft.trim();
+      const sent = pendingFile ? await onSendFile(pendingFile, text) : await onSendText(text);
+      if (sent) {
+        // API success can arrive after navigation unmounted this composer. Clear
+        // the matching saved draft immediately without erasing a newer draft.
+        const current = sessionDrafts.get(draftKey);
+        if (sessionEpoch === draftSessionEpoch && current?.text === submitted.text && current.file?.uri === submitted.file?.uri) sessionDrafts.delete(draftKey);
+        if (mounted.current) {
+          setDraft((currentText) => currentText === submitted.text ? "" : currentText);
+          setPendingFile((currentFile) => currentFile?.uri === submitted.file?.uri ? null : currentFile);
+        }
+      }
+    } catch (error) { if (mounted.current) onError(error instanceof Error ? error.message : s.chat.sendFailed); } finally { sending.current = false; }
   }
 
-  async function pick(from: "library" | "camera") {
+  async function pick(from: "library" | "camera" | "file") {
+    if (busy || sending.current) return;
     setSheetOpen(false);
-    const permission =
-      from === "camera"
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert(
-        from === "camera" ? s.composer.cameraDeniedTitle : s.composer.photosDeniedTitle,
-        s.composer.mediaDeniedBody,
-      );
-      return;
+    try {
+      if (from === "file") {
+        const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
+        if (!result.canceled && result.assets?.[0] && mounted.current) {
+          const asset = result.assets[0];
+          setPendingFile({ uri: asset.uri, name: asset.name, type: asset.mimeType || "application/octet-stream" });
+        }
+        return;
+      }
+      const permission = from === "camera" ? await ImagePicker.requestCameraPermissionsAsync() : { granted: true };
+      if (!permission.granted) {
+        Alert.alert(s.composer.cameraDeniedTitle, s.composer.mediaDeniedBody);
+        return;
+      }
+      const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ["images", "videos"], quality: 0.8, allowsMultipleSelection: false,
+      };
+      const result = from === "camera" ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
+      if (result.canceled || !result.assets?.length || !mounted.current) return;
+      const asset = result.assets[0];
+      const extension = extensionFor(asset.uri, asset.type === "video" ? "mp4" : "jpg");
+      const type = asset.mimeType || (asset.type === "video" ? `video/${extension}` : IMAGE_MIME[extension] || "image/jpeg");
+      setPendingFile({ uri: asset.uri, name: asset.fileName || `${asset.type === "video" ? "video" : "photo"}.${extension}`, type });
+    } catch (error) {
+      if (mounted.current) onError(error instanceof Error ? error.message : c.pickFailed);
     }
-    const options: ImagePicker.ImagePickerOptions = {
-      mediaTypes: ["images", "videos"],
-      quality: 0.8,
-      allowsMultipleSelection: false,
-    };
-    const result =
-      from === "camera"
-        ? await ImagePicker.launchCameraAsync(options)
-        : await ImagePicker.launchImageLibraryAsync(options);
-    if (result.canceled || !result.assets?.length) return;
-    const asset = result.assets[0];
-    const extension = extensionFor(asset.uri, asset.type === "video" ? "mp4" : "jpg");
-    const type =
-      asset.mimeType ||
-      (asset.type === "video" ? `video/${extension}` : IMAGE_MIME[extension] || "image/jpeg");
-    onSendFile({
-      uri: asset.uri,
-      name: asset.fileName || `${asset.type === "video" ? "video" : "photo"}.${extension}`,
-      type,
-    });
   }
 
   /** iOS has a real action sheet; on Android the inline rows are the native shape. */
@@ -203,75 +262,114 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
     ActionSheetIOS.showActionSheetWithOptions(
       {
         title: s.composer.sheetTitle,
-        options: [s.composer.fromLibrary, s.composer.fromCamera, s.composer.cancel],
-        cancelButtonIndex: 2,
+        options: [s.composer.fromLibrary, s.composer.fromCamera, c.file, s.composer.cancel],
+        cancelButtonIndex: 3,
       },
       (index) => {
         if (index === 0) pick("library");
-        if (index === 1) pick("camera");
+        if (index === 1) void pick("camera");
+        if (index === 2) void pick("file");
       },
     );
   }
 
   async function startRecording() {
-    const permission = await AudioModule.requestRecordingPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert(s.composer.micDeniedTitle, s.composer.micDeniedBody);
-      return;
-    }
+    if (busy || preparingRef.current || stoppingRef.current) return;
+    preparingRef.current = true;
+    const epoch = ++recordingEpoch.current;
     setPreparing(true);
+    let started = false;
     try {
-      // iOS refuses to record until the session allows it.
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-      if (!mounted.current) return;
+      const permission = await AudioModule.requestRecordingPermissionsAsync();
+      if (!mounted.current || epoch !== recordingEpoch.current) return;
+      if (!permission.granted) {
+        Alert.alert(s.composer.micDeniedTitle, s.composer.micDeniedBody);
+        return;
+      }
+      await setRecordingMode(true);
+      if (!mounted.current || epoch !== recordingEpoch.current) return;
       await recorder.prepareToRecordAsync();
       if (!mounted.current) return;
+      if (epoch !== recordingEpoch.current) { await recorder.stop(); return; }
       setLevels(new Array(BARS).fill(0.08));
       setPaused(false);
-      recorder.record();
-    } catch {
-      if (mounted.current) Alert.alert(s.composer.recordFailedTitle, s.composer.recordFailedBody);
-    } finally {
-      if (mounted.current) setPreparing(false);
-    }
-  }
-
-  function togglePause() {
-    try {
-      if (paused) {
-        recorder.record();
-        setPaused(false);
-      } else {
-        recorder.pause();
-        setPaused(true);
+      recordingSession.start();
+      started = true;
+    } catch (error) {
+      if (recordingSession.isActive()) {
+        try { await recordingSession.finish(); } catch {}
       }
-    } catch {
-      // A recorder that will not pause is still a recorder; leave it running.
+      if (mounted.current && epoch === recordingEpoch.current) Alert.alert(s.composer.recordFailedTitle, error instanceof RecordingUnavailableError ? c.micUnavailable : s.composer.recordFailedBody);
+    } finally {
+      preparingRef.current = false;
+      if (mounted.current) setPreparing(false);
+      if (!started || epoch !== recordingEpoch.current) void setRecordingMode(false).catch(() => {});
     }
   }
 
-  async function stopRecording(keep: boolean) {
-    let uri: string | null = null;
+  async function togglePause() {
+    if (changingPause.current || stoppingRef.current) return;
+    changingPause.current = true;
     try {
-      await recorder.stop();
-      // Read the file before yielding again: the recorder is a native object
-      // and this component may be on its way out.
-      uri = recorder.uri;
-      await setAudioModeAsync({ allowsRecording: false });
-    } catch {
-      return;
-    } finally {
-      if (mounted.current) setPaused(false);
+      if (recordingSession.isPaused()) await recordingSession.resume();
+      else await recordingSession.pause();
+    } catch { if (mounted.current) onError(c.recordFailed); }
+    finally {
+      changingPause.current = false;
+      if (mounted.current) setPaused(recordingSession.isPaused());
     }
-    if (!keep || !uri || !mounted.current) return;
-    onSendFile({ uri, name: `voice-note.${extensionFor(uri, "m4a")}`, type: "audio/m4a" });
   }
+
+  async function stopRecording(action: "discard" | "preserve") {
+    if (preparingRef.current) {
+      recordingEpoch.current += 1; setPreparing(false);
+      return;
+    }
+    if (stoppingRef.current || sending.current) return;
+    stoppingRef.current = true;
+    setStopping(true);
+    const sessionEpoch = draftSessionEpoch;
+    try {
+      const uri = await recordingSession.finish();
+      if (action === "discard" || !uri || sessionEpoch !== draftSessionEpoch) return;
+      if (recordingSession.duration() < 0.3) {
+        if (mounted.current) onError(c.recordingTooShort);
+        return;
+      }
+      const file = { uri, name: `voice-note.${extensionFor(uri, "m4a")}`, type: "audio/mp4" };
+      // Preserve an interrupted note even if navigation unmounted the screen
+      // while the native recorder was finalizing its file. Never auto-send it.
+      sessionDrafts.set(draftKey, { text: draft, file });
+      if (!mounted.current) return;
+      setPendingFile(file);
+    } catch (error) {
+      if (mounted.current) onError(error instanceof Error ? error.message : c.recordFailed);
+    } finally {
+      sending.current = false;
+      stoppingRef.current = false;
+      if (mounted.current) { setPaused(false); setStopping(false); }
+    }
+  }
+
+  const interruptRecording = useRef(() => {});
+  interruptRecording.current = () => { void stopRecording("preserve"); };
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") return;
+      // Permission prompts can make the app inactive before recording starts.
+      // Preserve a running/paused note on any interruption, but only cancel a
+      // pending preparation when the user actually backgrounds the app.
+      if (recordingSession.isActive() || state === "background") interruptRecording.current();
+    });
+    return () => subscription.remove();
+  }, [recordingSession]);
 
   if (recording || preparing) {
     return (
       <View style={[styles.bar, styles.recordBar]}>
         <Pressable
-          onPress={() => stopRecording(false)}
+          onPress={() => stopRecording("discard")}
+          disabled={stopping}
           hitSlop={10}
           style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
           accessibilityRole="button"
@@ -290,7 +388,7 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
 
         <Pressable
           onPress={togglePause}
-          disabled={preparing}
+          disabled={preparing || stopping}
           hitSlop={10}
           style={({ pressed }) => [styles.iconButton, (pressed || preparing) && styles.pressed]}
           accessibilityRole="button"
@@ -300,17 +398,18 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
         </Pressable>
 
         <Pressable
-          onPress={() => stopRecording(true)}
-          disabled={preparing}
+          onPress={() => stopRecording("preserve")}
+          disabled={preparing || stopping}
           style={({ pressed }) => [
-            styles.circle,
+            styles.reviewRecording,
             { backgroundColor: brand },
             (pressed || preparing) && styles.pressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={s.composer.sendVoice}
+          accessibilityLabel={c.reviewAudio}
         >
-          <Ionicons name="arrow-up" size={20} color={contrastOn(brand)} />
+          <Ionicons name="stop" size={16} color={contrastOn(brand)} />
+          <Text style={{ color: contrastOn(brand), fontWeight: "700", fontSize: 12 }}>{c.review}</Text>
         </Pressable>
       </View>
     );
@@ -318,11 +417,20 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
 
   return (
     <View>
+      {pendingFile ? <View style={{ borderBottomColor: colors.line, borderBottomWidth: StyleSheet.hairlineWidth }}><View style={styles.pending}>
+        {pendingFile.type.startsWith("image/") ? <Image source={{ uri: pendingFile.uri }} style={styles.thumbnail} contentFit="cover" /> : <Ionicons name={pendingFile.type.startsWith("audio/") ? "mic-outline" : "document-attach-outline"} size={26} color={brand} />}
+        <View style={{ flex: 1 }}><Text numberOfLines={1} style={{ color: colors.ink, fontWeight: "600" }}>{pendingFile.type.startsWith("audio/") ? c.audioReady : pendingFile.name}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{c.attached}</Text></View>
+        <Pressable disabled={busy} onPress={() => setPendingFile(null)} style={styles.iconButton} accessibilityRole="button" accessibilityLabel={c.removeFile}><Ionicons name="close-circle" size={24} color={colors.muted} /></Pressable>
+      </View>{pendingFile.type.startsWith("audio/") ? <View style={{ paddingHorizontal: 14, paddingBottom: 12 }}><LocalAudioPreview uri={pendingFile.uri} brand={brand} /></View> : null}</View> : null}
+      <View style={styles.shortcuts}>
+        {onSavedReplies ? <Pressable onPress={onSavedReplies} disabled={busy || stopping} style={styles.shortcut} accessibilityRole="button"><Ionicons name="flash-outline" size={17} color={brand} /><Text style={{ color: brand, fontSize: 12, fontWeight: "600" }}>{c.canned}</Text></Pressable> : null}
+      </View>
       {sheetOpen && Platform.OS !== "ios" ? (
         <View style={[styles.sheet, { borderTopColor: colors.line, backgroundColor: colors.surface }]}>
           {[
             { label: s.composer.fromLibrary, action: () => pick("library") },
             { label: s.composer.fromCamera, action: () => pick("camera") },
+            { label: c.file, action: () => pick("file") },
           ].map((option) => (
             <Pressable
               key={option.label}
@@ -340,6 +448,7 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
       <View style={styles.bar}>
         <Pressable
           onPress={openAttachMenu}
+          disabled={busy || stopping}
           hitSlop={8}
           style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
           accessibilityRole="button"
@@ -348,11 +457,25 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
           <Ionicons name="add" size={28} color={sheetOpen ? brand : colors.muted} />
         </Pressable>
 
+        <Pressable
+          onPress={startRecording}
+          disabled={busy || stopping || Boolean(pendingFile)}
+          style={({ pressed }) => [styles.recordButton, pressed && styles.pressed, pendingFile && { opacity: .5 }]}
+          accessibilityRole="button"
+          accessibilityLabel={c.recordAudio}
+          accessibilityState={{ disabled: busy || stopping || Boolean(pendingFile) }}
+        >
+          <Ionicons name="mic-outline" size={22} color={colors.muted} />
+        </Pressable>
+
         <TextInput
+          ref={input}
+          editable={!busy && !stopping}
+          accessibilityLabel={pendingFile ? c.caption : s.composer.placeholder}
           style={[styles.input, { borderColor: colors.line, color: colors.ink, backgroundColor: colors.canvas }]}
           value={draft}
           onChangeText={setDraft}
-          placeholder={s.composer.placeholder}
+          placeholder={pendingFile ? c.caption : s.composer.placeholder}
           placeholderTextColor={colors.subtle}
           multiline
           onFocus={() => setSheetOpen(false)}
@@ -361,10 +484,10 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
         {canSend ? (
           <Pressable
             onPress={send}
-            disabled={busy}
+            disabled={busy || stopping}
             style={({ pressed }) => [styles.circle, { backgroundColor: brand }, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel={s.composer.send}
+            accessibilityLabel={pendingFile?.type.startsWith("audio/") ? s.composer.sendVoice : s.composer.send}
           >
             {busy ? (
               <ActivityIndicator size="small" color={contrastOn(brand)} />
@@ -372,39 +495,22 @@ export function Composer({ brand, busy, onSendText, onSendFile }: Props) {
               <Ionicons name="arrow-up" size={20} color={contrastOn(brand)} />
             )}
           </Pressable>
-        ) : (
-          <>
-            <Pressable
-              onPress={() => pick("camera")}
-              disabled={busy}
-              hitSlop={8}
-              style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel={s.composer.fromCamera}
-            >
-              <Ionicons name="camera-outline" size={24} color={colors.muted} />
-            </Pressable>
-            <Pressable
-              onPress={startRecording}
-              disabled={busy}
-              hitSlop={8}
-              style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel={s.composer.record}
-            >
-              <Ionicons name="mic-outline" size={24} color={colors.muted} />
-            </Pressable>
-          </>
-        )}
+        ) : null}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  pending: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12 },
+  thumbnail: { width: 44, height: 44, borderRadius: 8 },
+  shortcuts: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 12, paddingTop: 6 },
+  shortcut: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44, paddingHorizontal: 10, borderRadius: 10 },
+  reviewRecording: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, minHeight: 44, paddingHorizontal: 10, borderRadius: 22 },
   bar: { flexDirection: "row", alignItems: "flex-end", gap: 4, paddingHorizontal: 8, paddingVertical: 8 },
   recordBar: { alignItems: "center", gap: 8 },
   iconButton: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
+  recordButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   input: {
     flex: 1,
     minHeight: 38,

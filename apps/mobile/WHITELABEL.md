@@ -1,47 +1,12 @@
-# Publishing your own build
+# Publishing a branded build
 
-An agency can publish this app under its own name, with its own icon, pointing
-at its own server. This page is the checklist.
+This application is a separate Expo package. A publisher supplies its identity,
+assets, server and signing credentials. No hosted service or delivery account is
+required by the source itself.
 
-The short version: copy a JSON file, build with `BRAND=` set, publish from your
-own developer account.
+## Identity and assets
 
-## Why you publish it, and not us
-
-Apple's guideline 4.2.6 covers apps built from a template or an app-generation
-service. It draws one line: **the owner of the content submits the app, not the
-provider of the template.** So we do not publish on your behalf. You download
-the source, build it with your brand, and submit from your own account. That is
-the compliant side of the line, and it is what Rocket.Chat, Mattermost,
-Nextcloud and Moodle forks already do.
-
-The same guideline has a second half that matters more than people expect: the
-apps must be genuinely distinct. An app that is another app with a different
-logo gets rejected — under 4.2.6 for still being a template app, or under 4.3
-as a duplicate. The licence of the source is irrelevant to that judgement.
-
-**What makes yours distinct, in the order reviewers notice:**
-
-| Signal | What to do |
-| --- | --- |
-| The server it talks to | Point it at your own domain, not someone else's |
-| Screenshots | Your own, with your data |
-| Store description | Write it yourself; do not paste a template |
-| Bundle identifier | Your own reverse-domain, e.g. `com.youragency.inbox` |
-| Name and icon | Yours |
-
-If your clients are a known list rather than the public, look at **unlisted
-distribution** on the App Store: the app installs from a direct link and does
-not appear in search. Less duplicate scrutiny, and a better fit for "this is for
-my clients", which is usually the truth.
-
-## 1. Your brand file
-
-```bash
-cp brands/example.json brands/youragency.json
-```
-
-Every field must be yours:
+Copy `brands/example.json` to `brands/youragency.json` and replace its values:
 
 ```json
 {
@@ -51,93 +16,108 @@ Every field must be yours:
   "iosBundleIdentifier": "com.youragency.inbox",
   "androidPackage": "com.youragency.inbox",
   "primaryColor": "#1f6feb",
-  "defaultServer": "https://chat.youragency.com"
+  "defaultServer": "https://chat.youragency.com",
+  "version": "0.2.0"
 }
 ```
 
-`defaultServer` pre-fills the sign-in field so your clients do not type an
-address. `primaryColor` only paints the sign-in screen — after signing in, the
-colour comes from your agency record on the server, so changing it there changes
-every installed app without a resubmission.
+Replace the icon, adaptive icon and splash images in `assets/`. The sign-in screen
+uses the compiled icon and app name. Once authenticated, the client's current
+branding is loaded from the server.
 
-If you run a service several agencies sign in to, add a `hosted` block and the
-sign-in screen offers it as a choice — someone names their workspace and the
-address is derived — with "Another server" alongside for anyone pointing
-elsewhere. `brands/_hosted-example.json` shows the shape:
+A publisher operating multiple workspaces may add a preset:
 
 ```json
 "hosted": {
-  "label": "Your Cloud",
+  "label": "Your Service",
   "serverTemplate": "https://{workspace}.yourdomain.com"
 }
 ```
 
-Only two fields, because the rest is interface copy the app already translates.
-If "agency" is the wrong word for your customers, `workspaceLabel` and
-`workspacePlaceholder` override it — in one language, so leave them out unless
-you need them.
+The screen offers this preset alongside a custom server address. Workspace names
+are validated as a single DNS label before building the address. Omit custom
+workspace labels to keep the built-in English and Spanish UI translations.
 
-Replace the icons in `assets/` with yours — the ones here are a plain
-placeholder, not a brand. Shipping somebody else's mark under
-your name is both a rejection risk and a trademark problem.
+Optional brand fields:
 
-## 2. Build
+| Field | Purpose |
+| --- | --- |
+| `version` | User-facing application version |
+| `iosBuildNumber`, `androidVersionCode` | Initial local native build versions |
+| `iosAppleTeamId` | Xcode team; `APPLE_TEAM_ID` can supply it instead |
+| `owner`, `easProjectId` | Existing EAS account/project association |
+| `androidGoogleServicesFile` | Local Firebase application config path |
+| `nativePlugins` | Optional Expo config-plugin paths for publisher-specific native integration |
+
+Use identifiers and assets you are entitled to publish. Store approval depends
+on the final application and publisher's submission; a brand file alone does not
+establish eligibility. Consult the current [Apple review guidelines](https://developer.apple.com/app-store/review/guidelines/)
+and [Google Play publication requirements](https://support.google.com/googleplay/android-developer/answer/9859348)
+for the account and distribution path being used.
+
+## Build profiles
+
+Install with `npm ci`. `eas.json` includes development, simulator, preview and
+production profiles. Set `build.<profile>.env.BRAND` to your brand in every
+profile you use. The example development profile selects the placeholder brand;
+preview and production deliberately have no publisher identity selected.
+
+EAS evaluates config both locally and on its builder. Exporting `BRAND` only in
+your terminal is insufficient: save the brand in the profile or its selected EAS
+environment. See [EAS build profiles](https://docs.expo.dev/build/eas-json/).
 
 ```bash
-BRAND=youragency npx expo run:ios      # local check
-BRAND=youragency eas build --platform all --profile production
+BRAND=youragency APP_VARIANT=development npx expo run:ios
+BRAND=youragency APP_VARIANT=development npx expo run:android
+BRAND=youragency npx eas-cli build --platform all --profile production
 ```
 
-There is no default brand on purpose: a build without `BRAND` fails instead of
-quietly producing something identical to another agency's app.
+The production profile increments native build versions using EAS remote version
+management. A successful build is an artifact; it does not submit or publish it.
+There is no automatic submission configured.
 
-## 3. Notifications (optional)
+`.easignore` excludes generated native projects so EAS regenerates them from
+`app.config.ts`. Keep native settings in that config, brand fields or plugins.
+After adding a native dependency or changing plugins locally, regenerate the
+native projects and rebuild. Preserve manual signing changes before using
+`expo prebuild --clean`.
 
-Push credentials belong to the build, so they are yours to set up and yours to
-pay for — which is also why a build of this app can never be notified through
-anybody else's account.
+Release config rejects embedded `EXPO_PUBLIC_DEV_*` credentials. Store builds use
+HTTPS; `APP_VARIANT=development` explicitly allows HTTP for disposable local
+backends. Never set that variant on a store profile. Browser preview sessions
+are memory-only; native sessions are held in the platform credential store.
 
-Two halves have to agree:
+## Optional notifications
 
-- **The build.** `eas credentials` uploads your APNs key (iOS) and FCM service
-  account (Android). Nothing else in this directory changes; the app already
-  asks the OS for a native token.
-- **The server.** Set `PUSH_PROVIDER` to a provider your server has
-  registered. `webhook` ships with it and needs no account anywhere — point it
-  at whatever you already use. Writing your own provider is about twenty lines;
-  see [`docs/push-notifications.md`](../../docs/push-notifications.md).
+The binary registers native APNs/FCM tokens with its authenticated server. The
+server must be able to deliver to the same application identifiers. No vendor
+SDK or notification-service account is shared by this source.
 
-Skip this entirely and the app still works: it polls while open, and asks for no
-notification permission at all.
+For Android, supply the Firebase application configuration for the package being
+built. `GOOGLE_SERVICES_JSON` can be a local path or an EAS file environment
+variable; it takes precedence over `androidGoogleServicesFile`. The server's
+FCM credentials must belong to that Firebase project. For iOS, configure the
+signing capabilities and matching APNs delivery credentials for the bundle ID.
+Native APNs/FCM delivery is separate from the optional Expo Push Service.
 
-## 4. Before you submit
+See [Expo notification configuration](https://docs.expo.dev/versions/latest/sdk/notifications/)
+and the repository's [push provider documentation](../../docs/push-notifications.md).
+Do not commit signing keys or service credentials. If notifications are disabled
+on the server, the application asks for no push permission.
 
-The ones that cause most rejections, in order:
+## Release verification
 
-- **A working demo account.** Apple's 2.1 requires reviewers to be able to sign
-  in. Give them a real portal login on your server with a conversation or two in
-  it. Forgetting this is an automatic rejection, not a maybe.
-- **Privacy details.** The app sends the e-mail, password and messages the user
-  types to the server *you* run. Declare that, and give a privacy policy URL
-  and a support URL of your own.
-- **An organisation account** if the app should appear under your company's name
-  rather than a person's. Apple requires a D-U-N-S number for that, which can
-  take weeks — start before you need it.
-- **Google Play closed testing.** New personal accounts must run a closed test
-  with 12 testers for 14 days before production. Organisation accounts are
-  exempt.
+Before distributing a candidate, run the package's typecheck and native contract
+tests, validate the native config, then test signed builds on both platforms
+against the API revision being released. Exercise session restoration, inbox
+filters, permissions, takeover/assignment, text and attachments, reconnecting,
+and notification navigation. Verify actual push delivery on a physical device.
 
-Costs: $99/year Apple, $25 once for Google.
+Provide reviewers with a working account, reachable backend and representative
+conversations. Supply current screenshots, support/privacy links and the data
+handling declarations for the actual deployment. Complete any testing or signing
+requirements shown by the publisher's store account.
 
-## 5. Keeping it updated
-
-Most changes here are JavaScript, which `eas update` can ship over the air
-without another review. Only changes to native code or app configuration need a
-new build and a resubmission. Set up an EAS project per brand so your updates go
-to your users and nobody else's.
-
-## Naming
-
-The MIT licence covers the code. It does not cover anybody's name or logo,
-including this project's — which is why nothing in this directory carries one.
-Publish under your own name and icon.
+Over-the-air updates are not configured by this package. Adding that capability
+requires a separate `expo-updates`/EAS Update setup and a native runtime policy;
+until then, distribute changes through new native builds.

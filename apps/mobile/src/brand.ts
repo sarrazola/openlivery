@@ -48,6 +48,7 @@ function usablePreset(value: HostedPreset | null | undefined): HostedPreset | nu
 
 export const DEFAULT_SERVER = extra.defaultServer || "";
 export const BRAND_COLOR = extra.primaryColor || "#2f3a4a";
+export const BRAND_NAME = Constants.expoConfig?.name || "Inbox";
 
 /**
  * A preset for a service whoever published this build runs.

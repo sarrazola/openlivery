@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -11,7 +12,7 @@ import {
   View,
 } from "react-native";
 import { ApiError, normalizeServerUrl, signIn, type Session } from "../api";
-import { BRAND_COLOR, DEFAULT_SERVER, HOSTED, hostedServerFor } from "../brand";
+import { BRAND_COLOR, BRAND_NAME, DEFAULT_SERVER, HOSTED, hostedServerFor } from "../brand";
 import { useStrings } from "../i18n";
 import { contrastOn, useColors } from "../theme";
 
@@ -31,11 +32,11 @@ import { contrastOn, useColors } from "../theme";
 // Filled from EXPO_PUBLIC_DEV_* when present, so a local run does not mean
 // retyping a server and credentials on every reload. These are inlined at build
 // time, so a release build must not define them.
-const DEV_SERVER = process.env.EXPO_PUBLIC_DEV_SERVER || "";
-const DEV_EMAIL = process.env.EXPO_PUBLIC_DEV_EMAIL || "";
-const DEV_PASSWORD = process.env.EXPO_PUBLIC_DEV_PASSWORD || "";
+const DEV_SERVER = __DEV__ ? process.env.EXPO_PUBLIC_DEV_SERVER || "" : "";
+const DEV_EMAIL = __DEV__ ? process.env.EXPO_PUBLIC_DEV_EMAIL || "" : "";
+const DEV_PASSWORD = __DEV__ ? process.env.EXPO_PUBLIC_DEV_PASSWORD || "" : "";
 
-export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, session: Session) => void }) {
+export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, session: Session) => void | Promise<void> }) {
   // Default to the hosted service when this build has one: it is what most of
   // its users want, and the others are one tap away.
   const [useHosted, setUseHosted] = useState(Boolean(HOSTED) && !DEV_SERVER);
@@ -51,6 +52,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
   const target = useHosted ? workspace : server;
   const canSubmit = target.trim().length > 0 && email.trim().length > 0 && password.length > 0 && !busy;
   const autoAttempted = useRef(false);
+  const submitting = useRef(false);
 
   // With all three dev variables set, go straight in. Only ever true on a local
   // run, since a release build has none of them defined.
@@ -62,15 +64,26 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
   }, []);
 
   async function submit() {
-    if (!canSubmit) return;
+    if (!canSubmit || submitting.current) return;
+    if (useHosted && !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(workspace.trim())) {
+      setError(s.signIn.invalidWorkspace);
+      return;
+    }
+    submitting.current = true;
     setBusy(true);
     setError(null);
     const base = useHosted ? hostedServerFor(workspace) : normalizeServerUrl(server);
     try {
+      const url = new URL(base);
+      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+        throw new ApiError(s.signIn.invalidServer, 0);
+      }
       const session = await signIn(base, email.trim(), password);
-      onSignedIn(base, session);
+      await onSignedIn(base, session);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : s.signIn.failed);
+      setError(err instanceof ApiError ? err.message : err instanceof TypeError ? s.signIn.invalidServer : s.signIn.failed);
+    } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -79,6 +92,8 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
     <KeyboardAvoidingView style={[styles.flex, { backgroundColor: colors.canvas }]} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
+          <Image source={require("../../assets/icon.png")} style={styles.brandIcon} accessibilityLabel={BRAND_NAME} />
+          <Text style={[styles.brandName, { color: colors.muted }]}>{BRAND_NAME}</Text>
           <Text style={[styles.title, { color: colors.ink }]}>{s.signIn.title}</Text>
           <Text style={[styles.subtitle, { color: colors.muted }]}>{s.signIn.subtitle}</Text>
         </View>
@@ -122,6 +137,9 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="next"
+                accessibilityLabel={HOSTED.workspaceLabel || s.signIn.workspaceLabel}
+                editable={!busy}
+                testID="sign-in-workspace"
               />
               {workspace.trim() ? <Text style={[styles.hint, { color: colors.subtle }]}>{hostedServerFor(workspace)}</Text> : null}
             </View>
@@ -138,6 +156,9 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
                 autoCorrect={false}
                 keyboardType="url"
                 returnKeyType="next"
+                accessibilityLabel={s.signIn.serverLabel}
+                editable={!busy}
+                testID="sign-in-server"
               />
               <Text style={[styles.hint, { color: colors.subtle }]}>{s.signIn.serverHint}</Text>
             </View>
@@ -155,6 +176,10 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
             keyboardType="email-address"
             textContentType="username"
             returnKeyType="next"
+            autoComplete="username"
+            accessibilityLabel={s.signIn.emailLabel}
+            editable={!busy}
+            testID="sign-in-email"
           />
 
           <Text style={[styles.label, { color: colors.ink }]}>{s.signIn.passwordLabel}</Text>
@@ -168,15 +193,21 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
             textContentType="password"
             returnKeyType="go"
             onSubmitEditing={submit}
+            autoComplete="current-password"
+            accessibilityLabel={s.signIn.passwordLabel}
+            editable={!busy}
+            testID="sign-in-password"
           />
 
-          {error ? <Text style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
+          {error ? <Text style={[styles.error, { color: colors.danger }]} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Text> : null}
 
           <TouchableOpacity
             style={[styles.button, { backgroundColor: BRAND_COLOR }, !canSubmit && styles.buttonDisabled]}
             onPress={submit}
             disabled={!canSubmit}
             accessibilityRole="button"
+            accessibilityState={{ disabled: !canSubmit, busy }}
+            testID="sign-in-submit"
           >
             {busy ? (
               <ActivityIndicator color={contrastOn(BRAND_COLOR)} />
@@ -194,6 +225,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { flexGrow: 1, justifyContent: "center", padding: 24 },
   header: { marginBottom: 28 },
+  brandIcon: { width: 68, height: 68, borderRadius: 17, marginBottom: 12 },
+  brandName: { fontSize: 13, fontWeight: "600", marginBottom: 8 },
   title: { fontSize: 30, fontWeight: "700", letterSpacing: -0.5 },
   subtitle: { marginTop: 8, fontSize: 15, lineHeight: 21 },
   form: { borderRadius: 16, padding: 20, borderWidth: StyleSheet.hairlineWidth },

@@ -20,7 +20,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -168,7 +168,7 @@ def _resolve(db: Session, authorization: str | None) -> tuple[Client, Agency, Po
         except (ValueError, TypeError):
             user = None
         # A user who was removed or disabled loses the session with them.
-        if user and (user.client_id != client.id or not user.is_active):
+        if not user or user.client_id != client.id or not user.is_active:
             raise HTTPException(status_code=401, detail="This account is no longer active")
     return client, agency, user, token
 
@@ -227,11 +227,15 @@ def forget_device(
     db: Session = Depends(get_db),
 ):
     """Stop notifying this install, on sign-out."""
-    client, _agency, _user, _token = _resolve(db, authorization)
-    device = db.scalar(
-        select(PushDevice).where(PushDevice.token == device_token, PushDevice.client_id == client.id)
+    client, _agency, user, _token = _resolve(db, authorization)
+    db.execute(
+        delete(PushDevice).where(
+            PushDevice.token == device_token,
+            PushDevice.client_id == client.id,
+            # A delayed sign-out cannot erase another person's registration.
+            # Legacy sessions only own registrations without a named operator.
+            PushDevice.portal_user_id == (user.id if user else None),
+        )
     )
-    if device:
-        db.delete(device)
-        db.commit()
+    db.commit()
     return None
