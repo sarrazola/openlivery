@@ -229,6 +229,13 @@ export type WhatsAppCloudChannel = {
   display_name: string | null;
   phone_number_id: string;
   waba_id: string | null;
+  coexistence: boolean;
+  coexistence_sync: {
+    started_at?: string;
+    offboarded_at?: string;
+    contacts?: { status: string; request_id?: string; error?: string };
+    history?: { status: string; progress?: number; request_id?: string; error?: string };
+  };
   has_access_token: boolean;
   has_app_secret: boolean;
   webhook_url: string;

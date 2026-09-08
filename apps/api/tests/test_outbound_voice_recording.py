@@ -79,7 +79,7 @@ def test_both_outbound_channels_receive_valid_voice_media(tmp_path, monkeypatch,
         channel=channel, whatsapp_channel_id="qr-line", whatsapp_cloud_channel_id="api-line",
         external_chat_id="573001234567",
     )
-    db = SimpleNamespace(get=lambda model, key: SimpleNamespace(encrypted_access_token="encrypted", phone_number_id="phone-id"))
+    db = SimpleNamespace(get=lambda model, key: SimpleNamespace(encrypted_access_token="encrypted", phone_number_id="phone-id", coexistence=False))
     result = asyncio.run(whatsapp.send_channel_media(
         db, conversation, kind="audio", data=original, mime="audio/mp4", filename="voice-note.m4a", caption="Listen to this",
     ))

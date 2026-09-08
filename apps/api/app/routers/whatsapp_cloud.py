@@ -41,6 +41,8 @@ def _public_channel(channel: WhatsAppCloudChannel) -> dict:
         "display_name": channel.display_name,
         "phone_number_id": channel.phone_number_id,
         "waba_id": channel.waba_id,
+        "coexistence": channel.coexistence,
+        "coexistence_sync": channel.coexistence_sync,
         "has_access_token": bool(channel.encrypted_access_token),
         "has_app_secret": bool(channel.encrypted_app_secret),
         "webhook_url": webhook_url,

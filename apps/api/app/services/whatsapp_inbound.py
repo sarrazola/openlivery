@@ -123,6 +123,9 @@ async def process_inbound(
     same fields used here. ``conversation_channel`` and ``channel_fk_field``
     select the Conversation channel label and FK column for the caller.
     """
+    if conversation_channel == "whatsapp_cloud" and channel.coexistence:
+        from .whatsapp_coexistence import lock_chats
+        lock_chats(db, channel.id, [inbound.external_chat_id])
     fk_column = getattr(Conversation, channel_fk_field)
 
     existing = db.scalar(
@@ -204,6 +207,9 @@ async def process_inbound(
     blocked = conversation.contact is not None and conversation.contact.blocked_at is not None
     if not blocked:
         note_inbound(db, conversation)
+    if conversation_channel == "whatsapp_cloud" and channel.coexistence:
+        occurred = inbound.occurred_at or now_utc()
+        conversation.social_last_inbound_at = max(conversation.social_last_inbound_at or occurred, occurred)
     if conversation_channel in ("instagram", "messenger") and inbound.occurred_at:
         last = conversation.social_last_inbound_at
         if not last or inbound.occurred_at > last:
@@ -239,7 +245,7 @@ async def process_inbound(
         return InboundResult(accepted=True, conversation_id=conversation.id, mode="ai")
 
     await _signal_read_and_typing(db, conversation, [inbound.external_message_id])
-    return await _reply_with_ai(db, channel, conversation, llm_content)
+    return await _reply_with_ai(db, channel, conversation, llm_content, expected_last_message_id=visitor_message.id)
 
 
 # Injected into the system prompt for WhatsApp conversations on both channels
@@ -320,6 +326,15 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     text on the synchronous path, or the whole visitor burst when debounced.
     """
     agent = channel.agent
+    db.refresh(conversation)
+    if conversation.mode == "human" or conversation.status == "resolved" or not channel.is_enabled:
+        return InboundResult(accepted=True, conversation_id=conversation.id, mode=conversation.mode)
+    if conversation.channel == "whatsapp_cloud" and channel.coexistence:
+        from .whatsapp_coexistence import require_reply
+        try:
+            require_reply(conversation)
+        except HTTPException:
+            return InboundResult(accepted=True, conversation_id=conversation.id, mode=conversation.mode)
     if not channel.client.is_active:
         # An inactive client is switched off everywhere: the message is kept
         # for the record, nobody answers it and no tokens are spent.
@@ -389,6 +404,20 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
         return InboundResult(accepted=True, conversation_id=conversation.id, mode=conversation.mode)
 
     reply_text = completion.text
+    if conversation.channel in ("whatsapp", "whatsapp_cloud"):
+        # A Business app echo or an operator may take over during generation.
+        # Re-read persisted state; cancelling an in-process timer is not enough
+        # when the webhook was received by another process or event loop.
+        db.refresh(conversation)
+        db.refresh(channel)
+        last_message = db.scalar(select(Message).where(Message.conversation_id == conversation.id,
+            Message.kind == "message", Message.is_historical.is_(False)).order_by(Message.created_at.desc()).limit(1))
+        if (conversation.mode == "human" or conversation.status == "resolved" or not channel.is_enabled
+                or (last_message and last_message.role != "user")
+                or (expected_last_message_id and (not last_message or last_message.id != expected_last_message_id))):
+            record_usage(db, agent.agency_id, agent.id, agent.provider, agent.model.strip(), completion)
+            db.commit()
+            return InboundResult(accepted=True, conversation_id=conversation.id, mode=conversation.mode)
     if conversation.channel in ("instagram", "messenger"):
         from .social_policy import require_reply
         db.refresh(conversation)
@@ -530,7 +559,7 @@ async def _debounced_reply(conversation_id: uuid.UUID, delay: float) -> None:
         # The loop walks newest-first; read receipts go oldest-first.
         await _signal_read_and_typing(db, conversation, list(reversed(burst_external_ids)))
         try:
-            result = await _reply_with_ai(db, channel, conversation, "\n".join(reversed(burst)))
+            result = await _reply_with_ai(db, channel, conversation, "\n".join(reversed(burst)), expected_last_message_id=last.id)
         except Exception as exc:
             channel.last_error = f"Message received, but the agent could not reply: {str(exc)[:400]}"
             channel.updated_at = now_utc()
