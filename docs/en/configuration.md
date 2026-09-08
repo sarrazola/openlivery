@@ -24,6 +24,7 @@ For a non-Docker local setup, the same variables go in a `.env` at the repo root
 | `SECRET_KEY` | Signs the JWT session tokens. Rotating it logs everyone out | dev placeholder |
 | `ENCRYPTION_KEY` | Encrypts AI API keys and WhatsApp session state before they hit the database | dev placeholder |
 | `ACCESS_TOKEN_MINUTES` | Session lifetime | `10080` (7 days) |
+| `ALLOW_MULTI_AGENCY` | Keep public agency registration open after the first agency is created; see [Agency registration](#agency-registration) | `false` |
 | `COOKIE_SECURE` | Send the session cookie only over HTTPS. Set `true` in production | `false` |
 | `COOKIE_SAMESITE` | Cookie SameSite policy. Use `none` when the frontend and API are on different sites (requires `COOKIE_SECURE=true`) | `lax` |
 | `RATE_LIMIT_ENABLED` | Per-IP rate limiting on public endpoints (auth, portal login, widget) | `true` |
@@ -35,6 +36,14 @@ For a non-Docker local setup, the same variables go in a `.env` at the repo root
 ### The ENCRYPTION_KEY warning
 
 `ENCRYPTION_KEY` must **never** change once secrets have been stored. It derives the key that decrypts every saved AI API key and WhatsApp session. If you rotate or lose it, those secrets become unrecoverable — you will have to re-enter API keys and re-link WhatsApp numbers. Treat it as permanent for the lifetime of your database.
+
+## Agency registration
+
+On an empty installation, the first agency can register even when `ALLOW_MULTI_AGENCY=false`. Once that agency exists, public agency registration closes by default: the **Create agency** option disappears and existing users sign in normally.
+
+One agency can already manage multiple client workspaces, each with its own agents and channels. Add clients within your agency; you do not need to reopen agency registration to serve more clients.
+
+Set `ALLOW_MULTI_AGENCY=true` only when you want the installation to accept additional agencies through public registration. It keeps that registration open after setup. This is an operator's choice about who can create agencies, not a requirement for adding clients.
 
 ## Host ports
 
