@@ -105,11 +105,14 @@ Docker stack; run `alembic upgrade head` on local setups).
   the members of its tray instead of every portal device.
 
 ### Fixed
-- Disconnecting an Instagram or Messenger channel now **releases the
-  account**: it can be connected under another client afterwards. The old
-  row keeps its conversations. Ownership follows the credentials, so an
-  account that is still connected elsewhere is still refused (migration
-  0037 narrows the unique index to rows holding a token).
+- Disconnecting an Instagram or Messenger channel now **removes it** and
+  releases the account: the page starts over with "Connect account" and the
+  account can be connected again, there or under another client. Its
+  conversations stay in the Inbox as history. The confirmation is the app's
+  own dialog instead of the browser prompt, and a revoked authorization no
+  longer leaves a warning behind. An account that is still connected
+  elsewhere is still refused (migration 0037 narrows the unique index to
+  rows holding a token).
 - Switching a client off now stops its agents on WhatsApp and closes its
   portal, as the setting always claimed. It used to hide the web chat only.
 - Removing a person from a client's portal access now asks first, in a

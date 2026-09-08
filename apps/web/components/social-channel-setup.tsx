@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Bot, CheckCircle2, ChevronDown, CircleAlert, Facebook, Instagram, History, KeyRound, LoaderCircle, Plug, Power, ShieldCheck, Webhook } from "lucide-react";
-import { Alert } from "@/components/ui";
+import { Alert, Modal } from "@/components/ui";
 import { api, ApiError, messageFrom } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import type { Client, SocialChannel, SocialConfig, SocialHistoryJob, SocialPending, SocialProvider } from "@/types";
@@ -16,6 +16,7 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
   const [config, setConfig] = useState<SocialConfig[SocialProvider] | null>(null);
   const [channel, setChannel] = useState<SocialChannel | null>(null);
   const [pending, setPending] = useState<SocialPending | null>(null);
+  const [disconnectOpen, setDisconnectOpen] = useState(false);
   const [accountChoice, setAccountChoice] = useState("");
   const [agentId, setAgentId] = useState("");
   const [accountId, setAccountId] = useState("");
@@ -153,8 +154,12 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
   }
 
   async function disconnect() {
-    if (!window.confirm(t("social.confirmDisconnect"))) return;
-    await run(async () => { applyChannel(await api<SocialChannel>(`${path}/disconnect`, { method: "POST" })); });
+    await run(async () => {
+      await api(`${path}/disconnect`, { method: "POST" });
+      // The channel is gone: the page starts over as if nothing had been connected.
+      setDisconnectOpen(false); setChannel(null); setPending(null); setHistoryJob(null);
+      setAccountId(""); setAppId(""); setSaved(false);
+    });
   }
 
   if (loading) return <div className="page-loading"><LoaderCircle className="spin" /> {t("social.loading")}</div>;
@@ -178,7 +183,13 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
         {channel?.last_error && <Alert>{channel.last_error}</Alert>}
         {pending && <div className="social-selection"><h3>{t("social.chooseAccount")}</h3><p>{t("social.chooseAccountCopy")}</p><label>{t("social.chooseAccount")}<select value={accountChoice} onChange={(event) => setAccountChoice(event.target.value)} disabled={busy}><option value="">{t("social.accountPlaceholder")}</option>{pending.accounts.map((account) => <option key={account.id} value={account.id}>{account.name}{account.username ? ` (@${account.username})` : ""} · {account.id}</option>)}</select></label><button className="button primary" onClick={complete} disabled={!accountChoice || busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <CheckCircle2 size={17} />} {t("social.finish")}</button></div>}
         {!config.oauth_ready && <p className="social-setup-notice">{t(config.source === "managed" ? "social.managedNotReady" : "social.operatorNotReady")}</p>}
-        <div className="wa-actions"><button className="button primary" onClick={authorize} disabled={!config.oauth_ready || !agentId || busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Plug size={17} />} {t(channel || pending ? "social.reconnect" : "social.connect")}</button>{channel?.has_access_token && <button className="button secondary" disabled={busy} onClick={() => run(async () => { applyChannel(await api<SocialChannel>(`${path}/connect`, { method: "POST" })); setSaved(true); })}>{t(connected ? "social.verify" : "social.connectSaved")}</button>}{channel?.has_access_token && <button className="button danger" onClick={disconnect} disabled={busy}><Power size={17} /> {t("social.disconnect")}</button>}</div>
+        <div className="wa-actions"><button className="button primary" onClick={authorize} disabled={!config.oauth_ready || !agentId || busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Plug size={17} />} {t(channel || pending ? "social.reconnect" : "social.connect")}</button>{channel?.has_access_token && <button className="button secondary" disabled={busy} onClick={() => run(async () => { applyChannel(await api<SocialChannel>(`${path}/connect`, { method: "POST" })); setSaved(true); })}>{t(connected ? "social.verify" : "social.connectSaved")}</button>}{channel?.has_access_token && <button className="button danger" onClick={() => setDisconnectOpen(true)} disabled={busy}><Power size={17} /> {t("social.disconnect")}</button>}</div>
+        <Modal open={disconnectOpen} title={t("social.disconnectTitle", { name: channel?.display_name || channel?.username || channel?.external_account_id || "" })} onClose={() => setDisconnectOpen(false)}>
+          <div className="modal-form">
+            <p className="modal-copy">{t("social.disconnectCopy")}</p>
+            <div className="modal-actions"><button type="button" className="button" onClick={() => setDisconnectOpen(false)}>{t("common.cancel")}</button><button type="button" className="button danger" disabled={busy} onClick={disconnect}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Power size={15} /> {t("social.disconnect")}</>}</button></div>
+          </div>
+        </Modal>
         {channel?.token_expires_at && <p className="social-meta">{t("social.tokenExpires")}: {new Date(channel.token_expires_at).toLocaleString(lang)}</p>}
         {channel?.granted_scopes?.length ? <details className="social-permissions"><summary>{t("social.permissions")}</summary><ul>{channel.granted_scopes.map((scope) => <li key={scope}><code>{scope}</code></li>)}</ul></details> : null}
       </section>
