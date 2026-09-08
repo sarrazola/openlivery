@@ -286,6 +286,10 @@ const en = {
       mine: "Mine",
       ai: "AI",
     },
+    filters: {
+      label: "Filters",
+      clear: "Clear",
+    },
     assignment: {
       label: "Assigned to",
       pick: "Choose a person…",
@@ -639,6 +643,10 @@ const es: typeof en = {
       unread: "Sin leer",
       mine: "Mías",
       ai: "IA",
+    },
+    filters: {
+      label: "Filtros",
+      clear: "Limpiar",
     },
     assignment: {
       label: "Asignada a",

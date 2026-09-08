@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { Archive, ArchiveRestore, ArrowLeft, BadgeCheck, Ban, BarChart3, Bot, Building2, CheckCircle2, CheckSquare, Clock, Contact as ContactIcon, FileText, FlaskConical, Globe, Images, Inbox, LoaderCircle, LogOut, MessageCircle, MessageSquareText, Reply, Search, Send, ShieldCheck, SmilePlus, Square, Trash2, UserRound, Users, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, BadgeCheck, Ban, BarChart3, Bot, Building2, CheckCircle2, CheckSquare, ChevronDown, Clock, Contact as ContactIcon, FileText, Filter, FlaskConical, Globe, Images, Inbox, LoaderCircle, LogOut, MessageCircle, MessageSquareText, Reply, Search, Send, ShieldCheck, SmilePlus, Square, Trash2, UserRound, Users, X } from "lucide-react";
 import { useCannedReplies } from "./canned";
 import { ContactsView } from "./contacts";
 import { TeamsView } from "./teams";
@@ -160,6 +160,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [channelFilter, setChannelFilter] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -402,7 +403,6 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   );
   return <main className="portal-app" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><aside className="portal-nav"><div className="portal-brand">{portal.client_logo_url || portal.agency_logo_url ? <img src={`${portal.client_logo_url || portal.agency_logo_url}`} alt="Logo" /> : <span>{portal.client_name.slice(0, 1)}</span>}<strong>{portal.client_name}</strong></div><nav><a className={view === "inbox" ? "active" : ""} onClick={() => setView("inbox")}><Inbox size={18} /> {t("portal.inbox.nav.inbox")}{summary && summary.unread > 0 && view !== "inbox" && <em className="nav-count">{summary.unread}</em>}</a><a className={view === "contacts" ? "active" : ""} onClick={() => setView("contacts")}><ContactIcon size={18} /> {t("portal.inbox.nav.contacts")}</a><a className={view === "teams" ? "active" : ""} onClick={() => setView("teams")}><Users size={18} /> {t("portal.inbox.nav.teams")}</a><a className={view === "templates" ? "active" : ""} onClick={() => setView("templates")}><FileText size={18} /> {t("portal.inbox.nav.templates")}</a><a className={view === "reports" ? "active" : ""} onClick={() => setView("reports")}><BarChart3 size={18} /> {t("portal.inbox.nav.reports")}</a><a className="disabled"><Bot size={18} /> {t("portal.inbox.nav.agents")}</a></nav>{session.user_id && <button className={`availability-toggle ${availability}`} onClick={toggleAvailability} title={t("portal.availability.hint")}><i /><span className="availability-name"><strong>{session.user_name}</strong><small>{availability === "online" ? t("portal.availability.online") : t("portal.availability.away")}</small></span></button>}<LanguageSwitcher /><button onClick={logout}><LogOut size={17} /> {t("portal.inbox.nav.logout")}</button></aside><section className="portal-main"><header><div><small>{t("portal.inbox.header.eyebrow")}</small><h1>{view === "contacts" ? t("portal.inbox.nav.contacts") : view === "teams" ? t("portal.inbox.nav.teams") : view === "templates" ? t("portal.inbox.nav.templates") : view === "reports" ? t("portal.inbox.nav.reports") : portal.portal_title}</h1></div>{view === "inbox" && <span>{t("portal.inbox.header.conversationsCount", { count: items.length })}</span>}</header>{view === "templates" ? <TemplatesView slug={slug} supported={templatesSupported} /> : view === "reports" ? <ReportsView slug={slug} /> : view === "teams" ? <TeamsView slug={slug} /> : view === "contacts" ? <ContactsView slug={slug} channels={channels} openConversation={openFromContact} /> : <div className="portal-inbox"><aside onScroll={onListScroll}>
       <div className="inbox-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("inbox.searchPlaceholder")} /></div>
-      <label className="portal-channel-filter">{t("inbox.filterChannel")}<select value={channelFilter} onChange={(event) => { setChannelFilter(event.target.value); setSelected(null); }}><option value="">{t("inbox.allChannels")}</option>{INBOX_CHANNELS.filter((value) => value !== "playground").map((value) => <option key={value} value={value}>{channelLabel(value)}</option>)}</select></label>
       {status === "archived" ? <div className="archive-head">
         <button type="button" className="text-button" onClick={() => switchStatus("open")}><ArrowLeft size={14} /> {t("portal.inbox.archive.back")}</button>
         <strong><Archive size={14} /> {t("portal.inbox.status.archived")}{summary ? ` · ${summary.archived}` : ""}</strong>
@@ -410,13 +410,21 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
           <button type="button" className="text-button" onClick={() => setPicked(picked.length === visibleItems.length ? [] : visibleItems.map((item) => item.id))}>{picked.length === visibleItems.length ? <CheckSquare size={14} /> : <Square size={14} />} {t("portal.inbox.archive.selectAll")}</button>
           <button type="button" className="text-button danger-text" disabled={picked.length === 0} onClick={() => { setConfirmWord(""); setDeleting("picked"); }}><Trash2 size={14} /> {t("portal.inbox.archive.deletePicked", { count: String(picked.length) })}</button>
         </div>}
-      </div> : <div className="inbox-switch"><div className="segmented" role="tablist" aria-label={t("portal.inbox.status.open") + " / " + t("portal.inbox.status.resolved")}>
-        <button role="tab" aria-selected={status === "open"} className={status === "open" ? "active" : ""} onClick={() => switchStatus("open")}><Inbox size={14} /> {t("portal.inbox.status.open")}</button>
-        <button role="tab" aria-selected={status === "resolved"} className={status === "resolved" ? "active" : ""} onClick={() => switchStatus("resolved")}><CheckCircle2 size={14} /> {t("portal.inbox.status.resolved")}</button>
-      </div>
-      </div>}
-      {status !== "archived" && <div className="inbox-archive-link"><button type="button" className="text-button" onClick={() => switchStatus("archived")}><Archive size={13} /> {t("portal.inbox.archive.open")}{summary && summary.archived > 0 ? ` · ${summary.archived}` : ""}</button></div>}
-      {teams.length > 0 && <div className="inbox-team-filter"><Users size={14} /><select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} aria-label={t("portal.inbox.nav.teams")}><option value="">{t("portal.teams.filterAll")}</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.unassigned_count > 0 ? ` (${team.unassigned_count})` : ""}</option>)}</select></div>}
+      </div> : <>
+        {(() => { const activeFilters = (channelFilter ? 1 : 0) + (teamFilter ? 1 : 0); return <div className="inbox-filters">
+          <button type="button" className={`inbox-filters-toggle${activeFilters ? " has-active" : ""}`} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}><Filter size={14} /> {t("portal.inbox.filters.label")}{activeFilters > 0 && <em>{activeFilters}</em>}<ChevronDown size={14} className="inbox-filters-caret" /></button>
+          {filtersOpen && <div className="inbox-filters-panel">
+            <label title={t("inbox.filterChannel")}><MessageCircle size={14} /><select aria-label={t("inbox.filterChannel")} value={channelFilter} onChange={(event) => { setChannelFilter(event.target.value); setSelected(null); }}><option value="">{t("inbox.allChannels")}</option>{INBOX_CHANNELS.filter((value) => value !== "playground").map((value) => <option key={value} value={value}>{channelLabel(value)}</option>)}</select></label>
+            {teams.length > 0 && <label title={t("portal.inbox.nav.teams")}><Users size={14} /><select aria-label={t("portal.inbox.nav.teams")} value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}><option value="">{t("portal.teams.filterAll")}</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.unassigned_count > 0 ? ` (${team.unassigned_count})` : ""}</option>)}</select></label>}
+            {activeFilters > 0 && <button type="button" className="text-button" onClick={() => { setChannelFilter(""); setTeamFilter(""); setSelected(null); }}>{t("portal.inbox.filters.clear")}</button>}
+          </div>}
+        </div>; })()}
+        <div className="inbox-switch"><div className="segmented" role="tablist" aria-label={t("portal.inbox.status.open") + " / " + t("portal.inbox.status.resolved")}>
+          <button role="tab" aria-selected={status === "open"} className={status === "open" ? "active" : ""} onClick={() => switchStatus("open")}><Inbox size={14} /> {t("portal.inbox.status.open")}</button>
+          <button role="tab" aria-selected={status === "resolved"} className={status === "resolved" ? "active" : ""} onClick={() => switchStatus("resolved")}><CheckCircle2 size={14} /> {t("portal.inbox.status.resolved")}</button>
+        </div></div>
+        {summary && summary.archived > 0 && <div className="inbox-archive-link"><button type="button" className="text-button" onClick={() => switchStatus("archived")}><Archive size={13} /> {t("portal.inbox.archive.open")} · {summary.archived}</button></div>}
+      </>}
       {status === "open" && <div className="inbox-tabs">
         <button className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>{t("portal.inbox.folders.all")}</button>
         <button className={tab === "unread" ? "active" : ""} onClick={() => setTab("unread")}>{t("portal.inbox.folders.unread")}{summary && summary.unread > 0 && <em>{summary.unread > 99 ? "99+" : summary.unread}</em>}</button>

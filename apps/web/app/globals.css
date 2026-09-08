@@ -634,7 +634,7 @@ textarea { line-height: 1.55; }
 .mini-badge.blocked { color: var(--red); background: var(--red-soft); }
 .status-toggle.danger { border-color: #f0c3c3; color: var(--red); background: var(--red-soft); }
 .inbox-switch { display: flex; align-items: center; gap: 8px; }
-.inbox-archive-link { margin: -8px 12px 4px; display: flex; justify-content: center; }
+.inbox-archive-link { margin: 2px 12px 4px; display: flex; justify-content: center; }
 .inbox-archive-link.footer { margin: 0; padding: 14px; }
 .portal-inbox > aside .inbox-archive-link .text-button { width: auto; padding: 4px 8px; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 6px; font-size: 12px; color: #8a93a8; }
 .portal-inbox > aside .inbox-archive-link .text-button:hover { color: var(--ink); background: #eef1f5; }
@@ -822,8 +822,20 @@ textarea { line-height: 1.55; }
 .team-member.away i { background: #c2c9d4; }
 .team-channel-options { display: flex; gap: 14px; flex-wrap: wrap; }
 .mini-badge.team { color: #4a5568; border-color: #d7dce4; background: #eef1f5; }
-.inbox-team-filter { margin: 0 12px 10px; display: flex; align-items: center; gap: 7px; color: #687082; }
-.inbox-team-filter select { flex: 1; min-height: 34px; font-size: 13px; }
+.inbox-filters { margin: 0 12px 10px; }
+.inbox-filters-toggle { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: white; color: #687082; font-size: 13px; font-weight: 500; }
+.inbox-filters-toggle:hover { background: #f7f8fa; }
+.inbox-filters-toggle.has-active { border-color: var(--purple); color: var(--ink); }
+.inbox-filters-toggle em { font-style: normal; min-width: 18px; height: 18px; padding: 0 5px; display: inline-grid; place-items: center; font-size: 11px; font-weight: 600; color: white; background: var(--purple); border-radius: 20px; }
+.inbox-filters-caret { flex-shrink: 0; margin-left: auto; transition: transform .15s; }
+.inbox-filters-toggle[aria-expanded="true"] .inbox-filters-caret { transform: rotate(180deg); }
+.inbox-filters-panel { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; padding: 11px; border: 1px solid var(--line); border-radius: 8px; background: white; }
+.inbox-filters-panel label { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 9px; min-height: 33px; border: 1px solid var(--line); border-radius: 7px; background: white; color: #687082; }
+.inbox-filters-panel label:focus-within { border-color: var(--purple); }
+.inbox-filters-panel label svg { flex-shrink: 0; }
+.inbox-filters-panel select { flex: 1; min-width: 0; border: none; background: transparent; padding: 0; font-size: 12.5px; color: var(--ink); outline: none; }
+.inbox-filters-panel select:focus, .inbox-filters-panel select:focus-visible { border: none; outline: none; box-shadow: none; }
+.inbox-filters-panel .text-button { flex-basis: 100%; justify-self: start; font-size: 12px; }
 .availability-toggle { display: flex; align-items: center; gap: 9px; padding: 8px 12px; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: white; font-size: 13px; cursor: pointer; }
 /* The chip anchors the bottom group: its auto margin absorbs the free
  * space, so the language switcher's must not, or the space splits and the
@@ -1733,9 +1745,6 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .reply-policy-notice svg { flex-shrink: 0; margin-top: 2px; }
 .reply-policy-notice.human { background: #eef5ff; border-color: #cedff7; color: #285b93; }
 @media (max-width: 640px) { .social-page .wa-cloud-form { grid-template-columns: 1fr; } }
-
-.portal-channel-filter { display: grid; gap: 6px; margin: 0 14px 12px; color: #687082; font-size: 12px; }
-.portal-channel-filter select { padding: 7px 10px; font-size: 12px; }
 
 .social-setup-notice { padding: 14px; background: #f1f6fb; border: 1px solid #d5e2ee; border-radius: 8px; color: #43617f; font-size: 13px; line-height: 1.5; }
 .social-disclosure { margin-left: auto; flex-shrink: 0; transition: transform .15s; }
