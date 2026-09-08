@@ -1,8 +1,4 @@
-"""Contacts: the people behind the chats, one record per client and phone.
-
-WhatsApp identifies a person by number, so that is the key. Widget and
-playground conversations carry no number and therefore no contact.
-"""
+"""Contacts and their phone or account-scoped messaging identities."""
 
 from __future__ import annotations
 
@@ -13,6 +9,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..models import Contact, ContactIdentity, Conversation, Message, now_utc
+from .whatsapp_identity import is_user_id
 
 
 _NON_DIGITS = re.compile(r"[^0-9]")
@@ -21,6 +18,8 @@ _NON_DIGITS = re.compile(r"[^0-9]")
 def normalize_phone(raw: str | None) -> str | None:
     """Digits only, no plus sign, the way WhatsApp reports numbers. None when
     what is left is too short to be a phone number."""
+    if is_user_id(raw):
+        return None
     digits = _NON_DIGITS.sub("", raw or "")
     return digits if len(digits) >= 7 else None
 

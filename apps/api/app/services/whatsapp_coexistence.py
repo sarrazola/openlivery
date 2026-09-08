@@ -22,9 +22,10 @@ from ..database import new_session
 from ..models import Contact, Conversation, Message, WhatsAppCloudChannel, WhatsAppCoexistenceEvent, new_uuid, now_utc
 from ..security import decrypt_secret
 from .attachments import ensure_uploadable, store_attachment
-from .contacts import normalize_phone
+from .contacts import display_name, normalize_phone
 from .social_inbound import event_time
 from .whatsapp_cloud import _graph_request, _graph_url, fetch_media
+from .whatsapp_identity import is_user_id, peer_id, resolve_peer_contact, user_id
 
 logger = logging.getLogger(__name__)
 FIELDS = frozenset({"history", "smb_app_state_sync", "smb_message_echoes", "account_update"})
@@ -92,49 +93,65 @@ def _text(raw):
 
 def _messages(db, channel, rows, *, historical):
     """Bulk lookups keep a large history chunk from issuing queries per message."""
-    rows = [(peer, raw) for peer, raw in rows if normalize_phone(peer) and raw.get("id") and event_time(raw.get("timestamp"))]
+    rows = [(peer, raw) for peer, raw in rows if (normalize_phone(peer) or is_user_id(peer)) and raw.get("id") and event_time(raw.get("timestamp"))]
     if not rows:
         return
     peers = {peer for peer, _ in rows}
-    lock_chats(db, channel.id, peers)
+    business = normalize_phone(channel.phone_number)
+    identities = {}
+    for peer, raw in rows:
+        outgoing = not historical or (business and normalize_phone(raw.get("from")) == business) or peer_id(raw, "to") == peer
+        identity = user_id(raw, "to" if outgoing else "from")
+        if identity:
+            identities[peer] = identity
+    lock_chats(db, channel.id, peers | set(identities.values()))
     existing = {m.external_message_id: m for m in db.scalars(select(Message).join(Conversation).where(
         Conversation.whatsapp_cloud_channel_id == channel.id,
         Message.external_message_id.in_([str(raw["id"]) for _, raw in rows]))).all()}
     contacts = {c.phone: c for c in db.scalars(select(Contact).where(Contact.client_id == channel.client_id, Contact.phone.in_(peers)))}
-    missing = peers - contacts.keys()
+    missing = {peer for peer in peers - contacts.keys() if not is_user_id(peer) and peer not in identities}
     if missing:
         db.execute(insert(Contact).values([dict(id=new_uuid(), client_id=channel.client_id, phone=peer, name="") for peer in missing])
                    .on_conflict_do_nothing(index_elements=["client_id", "phone"], index_where=Contact.phone.is_not(None)))
         contacts = {c.phone: c for c in db.scalars(select(Contact).where(Contact.client_id == channel.client_id, Contact.phone.in_(peers)))}
+    for peer in peers:
+        if is_user_id(peer) or peer in identities:
+            contacts[peer] = resolve_peer_contact(db, channel, peer, sender_user_id=identities.get(peer))
     conversations = db.scalars(select(Conversation).where(Conversation.whatsapp_cloud_channel_id == channel.id,
-        Conversation.external_chat_id.in_(peers)).order_by(Conversation.created_at.desc())).all()
+        or_(Conversation.external_chat_id.in_(peers), Conversation.contact_id.in_([c.id for c in contacts.values()]))
+        ).order_by(Conversation.created_at.desc())).all()
     by_peer = {}
+    by_contact = {}
     for conversation in conversations:
         wanted = conversation.id == uuid.uuid5(channel.id, "history:" + conversation.external_chat_id) if historical else conversation.status != "resolved"
         if wanted:
             by_peer.setdefault(conversation.external_chat_id, conversation)
-    business = normalize_phone(channel.phone_number)
+            if not historical:
+                by_contact.setdefault(conversation.contact_id, conversation)
     for peer, raw in rows:
         mid = str(raw["id"])
         if mid in existing:
             continue
         occurred = event_time(raw["timestamp"])
-        outgoing = not historical or normalize_phone(raw.get("from")) == business or raw.get("to") == peer
+        outgoing = not historical or (business and normalize_phone(raw.get("from")) == business) or peer_id(raw, "to") == peer
         contact = contacts[peer]
-        conversation = by_peer.get(peer)
+        conversation = by_peer.get(peer) or by_contact.get(contact.id)
         if not conversation:
             conversation = Conversation(id=uuid.uuid5(channel.id, "history:" + peer) if historical else new_uuid(),
                 agency_id=channel.agency_id, client_id=channel.client_id, agent_id=channel.agent_id,
                 channel="whatsapp_cloud", whatsapp_cloud_channel_id=channel.id, external_chat_id=peer,
-                title=(contact.name or "+" + peer)[:240], contact_id=contact.id, contact_name=contact.name or None,
+                title=display_name(contact)[:240], contact_id=contact.id, contact_name=contact.name or None,
                 mode="human", status="resolved" if historical else "open", created_at=occurred, updated_at=occurred,
                 resolved_at=occurred if historical else None)
             db.add(conversation)
             by_peer[peer] = conversation
+            if not historical:
+                by_contact[contact.id] = conversation
         if historical:
             conversation.created_at = min(conversation.created_at, occurred)
             conversation.resolved_at = max(conversation.resolved_at or occurred, occurred)
         else:
+            conversation.external_chat_id = peer
             # A retry is deduplicated above, so it cannot take over again after
             # an operator has explicitly returned the conversation to the AI.
             conversation.mode = "human"
@@ -183,7 +200,7 @@ def accept_change(db, channel, field: str, value: dict, *, waba_id: str = "") ->
         return False
     if field == "smb_message_echoes":
         business = normalize_phone(channel.phone_number)
-        rows = [(normalize_phone(raw.get("to")), raw) for raw in value.get("message_echoes", [])
+        rows = [(peer_id(raw, "to"), raw) for raw in value.get("message_echoes", [])
                 if business and normalize_phone(raw.get("from")) == business]
         _messages(db, channel, rows, historical=False)
     else:
@@ -230,7 +247,10 @@ async def request_sync(db, channel):
 def _history_rows(value):
     for batch in value.get("history", []):
         for thread in batch.get("threads", []):
-            peer = normalize_phone(thread.get("id"))
+            context = thread.get("context") or {}
+            peer = normalize_phone(thread.get("id") or context.get("wa_id"))
+            if not peer:
+                peer = next((value for value in (context.get("user_id"), context.get("parent_user_id"), thread.get("id")) if is_user_id(value)), None)
             if peer:
                 for raw in thread.get("messages", []):
                     yield peer, raw

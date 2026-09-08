@@ -9,6 +9,7 @@ import httpx
 from fastapi import HTTPException
 
 from ..config import get_settings
+from .whatsapp_identity import recipient_fields
 
 MAX_MEDIA_BYTES = 20 * 1024 * 1024
 # Hard limit of the Cloud API for a text message body.
@@ -61,7 +62,7 @@ async def send_text(
     on the referenced message."""
     payload = {
         "messaging_product": "whatsapp",
-        "to": to,
+        **recipient_fields(to),
         "type": "text",
         "text": {"body": body[:MAX_TEXT_LENGTH]},
     }
@@ -82,7 +83,7 @@ async def send_reaction(access_token: str, phone_number_id: str, to: str, messag
     Raises on failure so the caller decides whether the gesture matters."""
     payload = {
         "messaging_product": "whatsapp",
-        "to": to,
+        **recipient_fields(to),
         "type": "reaction",
         "reaction": {"message_id": message_id, "emoji": emoji},
     }
@@ -158,7 +159,7 @@ async def send_media(
         media_object["caption"] = caption[:1024]
     if filename and kind == "document":
         media_object["filename"] = filename
-    payload = {"messaging_product": "whatsapp", "to": to, "type": kind, kind: media_object}
+    payload = {"messaging_product": "whatsapp", **recipient_fields(to), "type": kind, kind: media_object}
     response = await _graph_request("POST", _graph_url(f"{phone_number_id}/messages"), access_token, json=payload)
     if response.status_code >= 400:
         raise HTTPException(status_code=502, detail=f"WhatsApp could not send the file: {_graph_error(response)}")

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..database import new_session
@@ -36,6 +36,7 @@ from .escalation import (
 )
 from .whatsapp import deliver_reaction, send_channel_message, signal_channel_read
 from .whatsapp_format import parse_reply_directives
+from .whatsapp_identity import resolve_peer_contact
 
 
 @dataclass
@@ -50,6 +51,7 @@ class InboundMessage:
     # External id of the message the visitor replied to (swipe-to-reply).
     quoted_external_id: str | None = None
     occurred_at: datetime | None = None
+    sender_user_id: str | None = None
 
 
 @dataclass
@@ -125,7 +127,7 @@ async def process_inbound(
     """
     if conversation_channel == "whatsapp_cloud" and channel.coexistence:
         from .whatsapp_coexistence import lock_chats
-        lock_chats(db, channel.id, [inbound.external_chat_id])
+        lock_chats(db, channel.id, [peer for peer in (inbound.external_chat_id, inbound.sender_user_id) if peer])
     fk_column = getattr(Conversation, channel_fk_field)
 
     existing = db.scalar(
@@ -139,13 +141,21 @@ async def process_inbound(
     if existing:
         return InboundResult(accepted=False, conversation_id=existing.conversation_id)
 
+    contact = None
+    peer_filter = Conversation.external_chat_id == inbound.external_chat_id
+    if conversation_channel == "whatsapp_cloud":
+        contact = resolve_peer_contact(db, channel, inbound.external_chat_id,
+            name=inbound.sender_name, sender_user_id=inbound.sender_user_id)
+        if contact:
+            peer_filter = or_(peer_filter, Conversation.contact_id == contact.id)
+
     # A message joins the chat's open conversation; once that is resolved the
     # next message starts a new case, so the same chat id can hold many.
     conversation = db.scalar(
         select(Conversation)
         .where(
             fk_column == channel.id,
-            Conversation.external_chat_id == inbound.external_chat_id,
+            peer_filter,
             Conversation.status != "resolved",
         )
         .order_by(Conversation.created_at.desc())
@@ -156,7 +166,7 @@ async def process_inbound(
             contact = resolve_contact(db, channel.client_id, provider=conversation_channel,
                 external_account_id=channel.external_account_id, external_user_id=inbound.external_chat_id,
                 name=inbound.sender_name)
-        else:
+        elif conversation_channel != "whatsapp_cloud":
             phone = phone_from_chat_id(inbound.external_chat_id)
             contact = resolve_contact(db, channel.client_id, phone=phone, name=inbound.sender_name) if phone else None
         if contact:
@@ -182,6 +192,13 @@ async def process_inbound(
         if contact and not contact.name.strip():
             contact.name = inbound.sender_name.strip()[:180]
             rename_conversations(db, contact)
+
+    # The same person can stop sharing their phone number between messages.
+    # Preserve the case and its takeover state while updating the reply address.
+    if conversation_channel == "whatsapp_cloud":
+        conversation.external_chat_id = inbound.external_chat_id
+        if contact:
+            conversation.contact_id = contact.id
 
     display_content, llm_content = await resolve_inbound_content(db, channel.agent, inbound)
     visitor_message = Message(
