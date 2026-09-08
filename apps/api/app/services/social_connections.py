@@ -182,25 +182,19 @@ async def connect_account(db: Session, user: User, client_id, agent_id, provider
     return channel
 
 
-async def disconnect_account(db: Session, channel: SocialChannel) -> SocialChannel:
-    remote_error = None
+async def disconnect_account(db: Session, channel: SocialChannel) -> None:
+    """Remove the channel. The provider is asked to stop delivering first,
+    but a revoked authorization must not keep the row alive: the account is
+    released either way and its conversations stay as history."""
     if channel.encrypted_access_token and channel.encrypted_app_secret and channel.external_account_id:
         try:
             await graph.unsubscribe(channel.provider, decrypt_secret(channel.encrypted_access_token), channel.external_account_id, decrypt_secret(channel.encrypted_app_secret))
         except HTTPException:
-            remote_error = "Disconnected locally. Remove the application from the account settings if its remote authorization is still present"
+            pass
     for hook in _connection_hooks:
         hook(db, channel, "unlinked")
-    channel.status = "disconnected"
-    channel.is_enabled = False
-    channel.encrypted_access_token = None
-    channel.encrypted_app_secret = None
-    channel.token_expires_at = None
-    channel.last_error = remote_error
-    channel.updated_at = now_utc()
+    db.delete(channel)
     db.commit()
-    db.refresh(channel)
-    return channel
 
 
 def _payload(state: SocialOAuthState) -> dict:

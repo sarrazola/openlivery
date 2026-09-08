@@ -75,9 +75,9 @@ async def connect_channel(provider: str, client_id: uuid.UUID, db: Session = Dep
         account, config, source=channel.connection_source, human_agent_enabled=channel.human_agent_enabled))
 
 
-@router.post("/{provider}/channels/{client_id}/disconnect", response_model=SocialChannelOut)
+@router.post("/{provider}/channels/{client_id}/disconnect", status_code=204)
 async def disconnect_channel(provider: str, client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return connections.public_channel(await connections.disconnect_account(db, connections.owned_channel(db, user, client_id, provider)))
+    await connections.disconnect_account(db, connections.owned_channel(db, user, client_id, provider))
 
 
 @router.post("/{provider}/oauth/start")

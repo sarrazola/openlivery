@@ -84,15 +84,15 @@ def test_disconnecting_releases_the_account_for_another_client(authenticated_cli
     second, other_agent = resources(client)
     assert manual(client, first, agent).status_code == 200
     assert manual(client, second, other_agent).status_code == 409
-    assert client.post(f"/api/social/instagram/channels/{first['id']}/disconnect").status_code == 200
+    assert client.post(f"/api/social/instagram/channels/{first['id']}/disconnect").status_code == 204
+    assert client.get(f"/api/social/instagram/channels/{first['id']}").status_code == 404
     moved = manual(client, second, other_agent)
     assert moved.status_code == 200, moved.text
-    # The first client keeps its row for history, but the account now belongs to the second.
+    # The account now belongs to the second client and nothing else holds it.
     assert manual(client, first, agent).status_code == 409
     with TestingSession() as db:
         rows = db.scalars(select(SocialChannel).where(SocialChannel.external_account_id == "111")).all()
-        assert {str(row.client_id) for row in rows} == {first["id"], second["id"]}
-        assert sum(1 for row in rows if row.encrypted_access_token) == 1
+        assert [str(row.client_id) for row in rows] == [second["id"]]
 
 
 def test_another_agency_cannot_read_or_change_channel(authenticated_client, monkeypatch):
@@ -225,16 +225,19 @@ def test_oauth_rejects_unsafe_return_path_and_expired_state(authenticated_client
     assert client.get("/api/social/oauth/callback/instagram", params={"state": state, "code": "code"}).status_code == 400
 
 
-def test_disconnect_clears_credentials_even_after_remote_revocation(authenticated_client, monkeypatch):
+def test_disconnect_removes_the_channel_even_after_remote_revocation(authenticated_client, monkeypatch):
     client = authenticated_client
     customer, agent = resources(client)
     assert manual(client, customer, agent).status_code == 200
+    unlinked = []
+    service.register_connection_hook(lambda db, channel, event: unlinked.append(event))
     monkeypatch.setattr(graph, "unsubscribe", AsyncMock(side_effect=HTTPException(401, "Revoked")))
     response = client.post(f"/api/social/instagram/channels/{customer['id']}/disconnect")
-    assert response.status_code == 200
-    assert not response.json()["has_access_token"]
-    assert not response.json()["is_enabled"]
-    assert response.json()["last_error"]
+    assert response.status_code == 204
+    assert unlinked == ["unlinked"]
+    assert client.get(f"/api/social/instagram/channels/{customer['id']}").status_code == 404
+    # The page starts over: a fresh manual setup is accepted for the same account.
+    assert manual(client, customer, agent).status_code == 200
 
 
 def test_refresh_throttles_failures_and_does_not_refresh_expired_tokens(authenticated_client, monkeypatch):
