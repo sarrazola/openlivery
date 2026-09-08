@@ -2,8 +2,8 @@
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0037_whatsapp_coexistence"
-down_revision = "0036_archive_and_agent_tombstone"
+revision = "0038_whatsapp_coexistence"
+down_revision = "0037_release_social_accounts"
 branch_labels = None
 depends_on = None
 
