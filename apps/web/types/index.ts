@@ -234,6 +234,7 @@ export type WhatsAppCloudChannel = {
     started_at?: string;
     offboarded_at?: string;
     contacts?: { status: string; request_id?: string; error?: string };
+    media?: { status: string; error?: string };
     history?: { status: string; progress?: number; request_id?: string; error?: string };
   };
   has_access_token: boolean;
