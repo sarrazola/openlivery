@@ -78,6 +78,23 @@ def test_account_rebind_and_cross_client_assignment_are_rejected(authenticated_c
     assert manual(client, first, other_agent).status_code == 400
 
 
+def test_disconnecting_releases_the_account_for_another_client(authenticated_client):
+    client = authenticated_client
+    first, agent = resources(client)
+    second, other_agent = resources(client)
+    assert manual(client, first, agent).status_code == 200
+    assert manual(client, second, other_agent).status_code == 409
+    assert client.post(f"/api/social/instagram/channels/{first['id']}/disconnect").status_code == 200
+    moved = manual(client, second, other_agent)
+    assert moved.status_code == 200, moved.text
+    # The first client keeps its row for history, but the account now belongs to the second.
+    assert manual(client, first, agent).status_code == 409
+    with TestingSession() as db:
+        rows = db.scalars(select(SocialChannel).where(SocialChannel.external_account_id == "111")).all()
+        assert {str(row.client_id) for row in rows} == {first["id"], second["id"]}
+        assert sum(1 for row in rows if row.encrypted_access_token) == 1
+
+
 def test_another_agency_cannot_read_or_change_channel(authenticated_client, monkeypatch):
     client = authenticated_client
     customer, agent = resources(client)

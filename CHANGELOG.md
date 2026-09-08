@@ -13,6 +13,11 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- Instagram and Messenger contacts get the sender's **name**. Webhooks only
+  carry the sender id, so the first message from an unnamed contact looks the
+  profile up on the provider (name and surname on Messenger, name and handle
+  on Instagram) and titles the conversation with it. A failed lookup leaves
+  the message untouched and the contact is named on a later message.
 - Contacts can be **blocked** from the portal. Their messages are still
   stored but the agent does not answer them (no tokens spent), nothing rings,
   and their conversations leave the inboxes until they are unblocked; the
@@ -100,6 +105,11 @@ Docker stack; run `alembic upgrade head` on local setups).
   the members of its tray instead of every portal device.
 
 ### Fixed
+- Disconnecting an Instagram or Messenger channel now **releases the
+  account**: it can be connected under another client afterwards. The old
+  row keeps its conversations. Ownership follows the credentials, so an
+  account that is still connected elsewhere is still refused (migration
+  0037 narrows the unique index to rows holding a token).
 - Switching a client off now stops its agents on WhatsApp and closes its
   portal, as the setting always claimed. It used to hide the web chat only.
 - Removing a person from a client's portal access now asks first, in a

@@ -40,6 +40,7 @@ def isolated_providers(monkeypatch):
     monkeypatch.setattr(notifications, "notify_needs_human", AsyncMock(return_value=0))
     monkeypatch.setattr(escalation, "notify_needs_human", notifications.notify_needs_human)
     monkeypatch.setattr(social_inbound, "reply_delay_seconds", lambda agent: 0)
+    monkeypatch.setattr(social_graph, "sender_profile", AsyncMock(return_value={"name": "", "username": None}))
 
 
 def resources(client, *, provider="instagram", account="111", human_agent=True):
@@ -158,6 +159,45 @@ def test_social_digit_ids_are_account_scoped_and_never_phone_numbers(authenticat
         assert db.get(Contact, b.contact_id).phone is None
         identities = db.scalars(select(ContactIdentity).where(ContactIdentity.external_user_id == PERSON)).all()
         assert {(i.provider, i.external_account_id) for i in identities} == {("instagram", "111"), ("instagram", "222")}
+
+
+def test_sender_profile_names_the_contact_once_and_titles_the_case(authenticated_client, monkeypatch):
+    resource = resources(authenticated_client, provider="messenger", account="222")
+    lookup = AsyncMock(return_value={"name": "Ana Perez", "username": None})
+    monkeypatch.setattr(social_graph, "sender_profile", lookup)
+    with TestingSession() as db:
+        first = inbound(db, resource, mid="named-1")
+        assert first.title == "Ana Perez"
+        contact = db.get(Contact, first.contact_id)
+        assert contact.name == "Ana Perez" and contact.phone is None
+        second = inbound(db, resource, mid="named-2")
+        assert second.id == first.id
+    lookup.assert_awaited_once()
+    assert lookup.await_args.args[0] == "messenger" and lookup.await_args.args[3] == PERSON
+
+
+def test_instagram_handle_names_the_contact_when_no_name_is_shared(authenticated_client, monkeypatch):
+    resource = resources(authenticated_client)
+    monkeypatch.setattr(social_graph, "sender_profile", AsyncMock(return_value={"name": "", "username": "ana.shop"}))
+    with TestingSession() as db:
+        conversation = inbound(db, resource, mid="handle-1")
+        assert conversation.title == "ana.shop"
+        identity = db.scalar(select(ContactIdentity).where(ContactIdentity.contact_id == conversation.contact_id))
+        assert identity.username == "ana.shop"
+
+
+def test_unnamed_contact_is_named_on_a_later_message_and_lookup_failures_never_block(authenticated_client, monkeypatch):
+    resource = resources(authenticated_client)
+    monkeypatch.setattr(social_graph, "sender_profile", AsyncMock(side_effect=HTTPException(502, "Unreachable")))
+    with TestingSession() as db:
+        first = inbound(db, resource, mid="late-1")
+        assert first.title == "Contact"
+        assert db.scalar(select(func.count()).select_from(Message).where(Message.conversation_id == first.id)) >= 1
+    monkeypatch.setattr(social_graph, "sender_profile", AsyncMock(return_value={"name": "Ana Perez", "username": "ana"}))
+    with TestingSession() as db:
+        again = inbound(db, resource, mid="late-2")
+        assert again.id == first.id and again.title == "Ana Perez"
+        assert db.get(Contact, again.contact_id).name == "Ana Perez"
 
 
 def test_contact_merge_preserves_both_phone_aliases_and_social_identity(authenticated_client):
