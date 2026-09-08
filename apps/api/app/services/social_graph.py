@@ -110,6 +110,19 @@ async def request(provider: str, method: str, path: str, token: str, **kwargs) -
     return await _http(method, graph_url(provider, path), token=token, **kwargs)
 
 
+async def sender_profile(provider: str, token: str, secret: str, user_id: str) -> dict:
+    """Name and handle of a person who wrote to the account. Webhooks carry
+    only the sender id; the profile is a separate read on the same token."""
+    fields = "name,username" if provider == "instagram" else "first_name,last_name,name"
+    data = await request(provider, "GET", object_id(user_id), token,
+                         params={"fields": fields, "appsecret_proof": _proof(token, secret)})
+    name = str(data.get("name") or "").strip()
+    if not name:
+        name = " ".join(str(part).strip() for part in (data.get("first_name"), data.get("last_name")) if part)
+    username = str(data.get("username") or "").strip()
+    return {"name": name[:180], "username": username[:180] or None}
+
+
 def _proof(token: str, secret: str) -> str:
     return hmac.new(secret.encode(), token.encode(), hashlib.sha256).hexdigest()
 

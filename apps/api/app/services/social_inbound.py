@@ -10,7 +10,9 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
-from ..models import Conversation, Message, SocialChannel, SocialOutbox, SocialWebhookEvent, new_uuid, now_utc
+from ..models import ContactIdentity, Conversation, Message, SocialChannel, SocialOutbox, SocialWebhookEvent, new_uuid, now_utc
+from ..security import decrypt_secret
+from . import social_graph
 from .attachments import store_attachment
 from .conversation_state import set_mode
 from .social_media import fetch_inbound_media
@@ -76,6 +78,34 @@ def enqueue_webhook(db: Session, provider: str, payload: dict, channel: SocialCh
 def _conversation(db: Session, channel: SocialChannel, person: str) -> Conversation | None:
     return db.scalar(select(Conversation).where(Conversation.social_channel_id == channel.id,
         Conversation.external_chat_id == person).order_by(Conversation.created_at.desc()).limit(1))
+
+
+async def _name_contact(db: Session, channel: SocialChannel, person: str, sender: dict) -> None:
+    """Give the sender's contact a name the first time it is needed.
+    Webhooks only carry the sender id, so an unnamed contact is looked up on
+    the provider once; a failed lookup leaves the message untouched."""
+    from .contacts import rename_conversations, resolve_contact
+    identity = db.scalar(select(ContactIdentity).where(
+        ContactIdentity.client_id == channel.client_id, ContactIdentity.provider == channel.provider,
+        ContactIdentity.external_account_id == channel.external_account_id, ContactIdentity.external_user_id == person))
+    if identity and identity.contact.name.strip():
+        return
+    name = str(sender.get("name") or "").strip()
+    username = str(sender.get("username") or "").strip() or None
+    if not name and channel.encrypted_access_token and channel.encrypted_app_secret:
+        try:
+            profile = await social_graph.sender_profile(channel.provider, decrypt_secret(channel.encrypted_access_token),
+                                                        decrypt_secret(channel.encrypted_app_secret), person)
+            name = profile.get("name") or ""
+            username = profile.get("username") or username
+        except Exception as exc:
+            logger.info("Sender profile unavailable on %s: %s", channel.provider, type(exc).__name__)
+    name = name or username or ""
+    if not name:
+        return
+    contact = resolve_contact(db, channel.client_id, provider=channel.provider, external_account_id=channel.external_account_id,
+                              external_user_id=person, name=name, username=username)
+    rename_conversations(db, contact)
 
 
 def _message(db: Session, channel: SocialChannel, mid: str) -> Message | None:
@@ -251,6 +281,7 @@ async def process_event(db: Session, channel: SocialChannel, event: dict) -> Non
         conversation.updated_at = now_utc()
         db.commit()
         return
+    await _name_contact(db, channel, person, event.get("sender") or {})
     inbound = InboundMessage(external_message_id=mid, external_chat_id=person,
         text=text, media_kind=kind if kind in ("image", "audio", "video", "file") else None,
         sender_name=(event.get("sender") or {}).get("name") or (event.get("sender") or {}).get("username"),

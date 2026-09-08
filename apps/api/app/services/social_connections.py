@@ -126,7 +126,10 @@ async def connect_account(db: Session, user: User, client_id, agent_id, provider
     owned_client(db, user, client_id, agent_id)
     account_id = graph.object_id(account["id"])
     app_id = graph.object_id(config.app_id)
-    collision = db.scalar(select(SocialChannel.id).where(SocialChannel.provider == provider, SocialChannel.external_account_id == account_id, SocialChannel.client_id != client_id))
+    # A disconnected channel keeps its row for history but holds no credentials,
+    # so the account is free to be connected under another client.
+    collision = db.scalar(select(SocialChannel.id).where(SocialChannel.provider == provider, SocialChannel.external_account_id == account_id,
+        SocialChannel.client_id != client_id, SocialChannel.encrypted_access_token.is_not(None)))
     if collision:
         raise HTTPException(409, "This account is already connected to another client")
     channel = db.scalar(select(SocialChannel).where(SocialChannel.client_id == client_id, SocialChannel.agency_id == user.agency_id, SocialChannel.provider == provider).with_for_update())

@@ -757,7 +757,7 @@ class SocialChannel(Base):
     __table_args__ = (
         UniqueConstraint("client_id", "provider", name="uq_social_channels_client_provider"),
         Index("uq_social_channels_account", "provider", "external_account_id", unique=True,
-              postgresql_where=text("external_account_id <> ''")),
+              postgresql_where=text("external_account_id <> '' AND encrypted_access_token IS NOT NULL")),
     )
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     agency_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agencies.id", ondelete="CASCADE"), index=True)
