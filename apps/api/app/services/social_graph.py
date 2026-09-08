@@ -160,16 +160,14 @@ async def verify_account(provider: str, token: str, account_id: str, app_id: str
             "username": profile.get("username"), "scopes": sorted(granted), "expires_at": expires_at}
 
 
-def _subscription_for_app(provider: str, payload: dict, app_id: str) -> dict | None:
+def _messenger_subscription_for_app(payload: dict, app_id: str) -> dict | None:
     rows = payload.get("data")
     if not isinstance(rows, list):
         return None
-    identity_field = "app_id" if provider == "instagram" else "id"
-    other_field = "id" if provider == "instagram" else "app_id"
     for row in rows:
-        if not isinstance(row, dict) or str(row.get(identity_field)) != app_id:
+        if not isinstance(row, dict) or str(row.get("id")) != app_id:
             continue
-        if other_field in row and str(row[other_field]) != app_id:
+        if "app_id" in row and str(row["app_id"]) != app_id:
             continue
         return row
     return None
@@ -197,17 +195,34 @@ def _log_subscription_mismatch(provider: str, app_id: str, payload: dict) -> Non
 
 
 async def subscribe(provider: str, token: str, account_id: str, app_id: str, app_secret: str) -> bool:
-    """Subscribe and read back this app's fields. Return whether it was new."""
+    """Confirm subscription; return True only when safe to undo a new one."""
     account_id, app_id = object_id(account_id), object_id(app_id)
     proof = _proof(token, app_secret)
     path = f"{account_id}/subscribed_apps"
     before = await request(provider, "GET", path, token, params={"appsecret_proof": proof})
-    existing = _subscription_for_app(provider, before, app_id)
+    if provider == "instagram":
+        rows = before.get("data")
+        if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+            raise HTTPException(502, "The existing messaging webhook subscriptions could not be checked")
+        # Instagram confirms the token-bound subscription with success=true.
+        # Its subscription object IDs need not match the OAuth client ID. Do not use
+        # that unrelated comparison to reject or delete an acknowledged POST.
+        # https://developers.facebook.com/documentation/instagram-platform/webhooks
+        result = await request(provider, "POST", path, token, data={
+            "subscribed_fields": ",".join(sorted(SUBSCRIPTIONS[provider])), "appsecret_proof": proof,
+        })
+        if result.get("success") is not True:
+            raise HTTPException(502, "The required messaging webhook subscription could not be confirmed")
+        # An opaque or paginated pre-existing list cannot prove this is new.
+        # A later database failure must not unsubscribe an existing integration.
+        return not rows and not before.get("paging")
+
+    existing = _messenger_subscription_for_app(before, app_id)
     fields = SUBSCRIPTIONS[provider] | set((existing or {}).get("subscribed_fields") or [])
     await request(provider, "POST", path, token, data={"subscribed_fields": ",".join(sorted(fields)), "appsecret_proof": proof})
     try:
         after = await request(provider, "GET", path, token, params={"appsecret_proof": proof})
-        ours = _subscription_for_app(provider, after, app_id)
+        ours = _messenger_subscription_for_app(after, app_id)
         if not ours or not SUBSCRIPTIONS[provider].issubset(set(ours.get("subscribed_fields") or [])):
             _log_subscription_mismatch(provider, app_id, after)
             raise HTTPException(502, "The required messaging webhook subscription could not be confirmed")

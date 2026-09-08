@@ -67,6 +67,19 @@ Meta documents separate Instagram Login and Facebook Login setup modes. Do not
 mix their tokens, API hosts, permissions, or account IDs. This implementation
 uses direct Instagram Login and a separate Messenger connector.
 
+Instagram confirms account webhook activation with `{"success": true}` from
+the authenticated `POST /ACCOUNT_ID/subscribed_apps`. OpenLivery requires that
+explicit boolean acknowledgement after verifying account identity and messaging
+access. It does not compare subscription object IDs with the OAuth client ID.
+The preliminary subscription list is used only to decide whether rollback can
+safely remove a newly created subscription; a nonempty or paginated list is
+treated conservatively as an existing subscription.
+
+Meta's [Instagram webhook setup](https://developers.facebook.com/documentation/instagram-platform/webhooks)
+documents this acknowledgement and explains that account-level webhook field
+customization is not supported: a subscribed account receives the fields enabled
+for its application. Keep the app-level fields configured in the dashboard.
+
 ### Facebook Messenger
 
 Use a **Facebook Page**, Facebook Login for Business, and the Messenger product.
@@ -111,8 +124,9 @@ long-lived Instagram User token; for Messenger, provide a Page token.
 2. Configure Meta to call the displayed per-channel URL
    `/api/public/social/channels/CHANNEL_ID/webhook`, using the displayed token.
 3. Enable the provider's webhook fields listed above.
-4. Press **Connect**. OpenLivery subscribes the account, reads the subscription
-   back, and activates the connection only after confirmation.
+4. Press **Connect**. OpenLivery subscribes the account and activates the
+   connection only after confirmation. Instagram requires the explicit success
+   acknowledgement; Messenger reads back the matching application and fields.
 
 The API keeps saved credentials when their form fields are submitted blank.
 A connected channel cannot be repointed to a different external account: old

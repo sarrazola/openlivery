@@ -59,11 +59,23 @@ def test_manual_token_identity_is_verified_before_subscription(monkeypatch):
     assert request.await_count == 1
 
 
-def test_subscription_requires_matching_app_and_fields_and_cleans_failed_new_subscription(monkeypatch):
+def test_instagram_subscription_accepts_acknowledgement_with_different_graph_object_id(monkeypatch):
+    request = AsyncMock(side_effect=[
+        {"data": []}, {"success": True},
+        {"data": [{"id": "888", "subscribed_fields": sorted(graph.SUBSCRIPTIONS["instagram"])}]},
+        {"success": True},
+    ])
+    monkeypatch.setattr(graph, "request", request)
+
+    assert asyncio.run(graph.subscribe("instagram", "token", "111", "999", "secret")) is True
+    assert [call.args[1] for call in request.call_args_list] == ["GET", "POST"]
+
+
+def test_messenger_requires_matching_app_and_fields_and_cleans_failed_new_subscription(monkeypatch):
     request = AsyncMock(side_effect=[{"data": []}, {"success": True}, {"data": [{"id": "different"}]}, {"success": True}])
     monkeypatch.setattr(graph, "request", request)
     with pytest.raises(HTTPException):
-        asyncio.run(graph.subscribe("instagram", "token", "111", "999", "secret"))
+        asyncio.run(graph.subscribe("messenger", "token", "111", "999", "secret"))
     assert request.call_args_list[-1].args[1] == "DELETE"
 
 
@@ -74,11 +86,10 @@ def test_subscription_requires_matching_app_and_fields_and_cleans_failed_new_sub
                    "messaging_referrals", "message_echoes", "messaging_handovers", "standby"}),
 ])
 def test_subscription_uses_provider_field_names_and_accepts_confirmed_readback(monkeypatch, provider, expected_fields):
-    identity_field = "app_id" if provider == "instagram" else "id"
     request = AsyncMock(side_effect=[
         {"data": []},
         {"success": True},
-        {"data": [{identity_field: "999", "subscribed_fields": sorted(expected_fields)}]},
+        {"data": [{"id": "999", "subscribed_fields": sorted(expected_fields)}]},
         {"success": True},
     ])
     monkeypatch.setattr(graph, "request", request)
@@ -88,22 +99,15 @@ def test_subscription_uses_provider_field_names_and_accepts_confirmed_readback(m
     subscription = request.call_args_list[1]
     assert subscription.args == (provider, "POST", "111/subscribed_apps", "token")
     assert set(subscription.kwargs["data"]["subscribed_fields"].split(",")) == expected_fields
-    assert request.await_count == 3
+    assert subscription.kwargs["data"]["appsecret_proof"] == graph._proof("token", "secret")
+    assert request.await_count == (2 if provider == "instagram" else 3)
 
 
-@pytest.mark.parametrize("provider, identity", [
-    ("instagram", {}),
-    ("instagram", {"app_id": ""}),
-    ("instagram", {"id": "999"}),
-    ("instagram", {"app_id": "123"}),
-    ("instagram", {"app_id": "999", "id": "123"}),
-    ("instagram", {"app_id": "123", "id": "999"}),
-    ("messenger", {"app_id": "999"}),
-    ("messenger", {"id": "123"}),
-    ("messenger", {"id": "999", "app_id": "123"}),
-    ("messenger", {"id": "123", "app_id": "999"}),
+@pytest.mark.parametrize("identity", [
+    {}, {"id": ""}, {"app_id": "999"}, {"id": "123"},
+    {"id": "999", "app_id": "123"}, {"id": "123", "app_id": "999"},
 ])
-def test_subscription_rejects_missing_foreign_and_conflicting_app_ids(monkeypatch, provider, identity):
+def test_messenger_rejects_missing_foreign_and_conflicting_app_ids(monkeypatch, identity):
     fields = ["messages", "messaging_postbacks", "messaging_seen", "message_reactions",
               "messaging_referral", "messaging_handover", "standby", "message_deliveries",
               "message_reads", "messaging_referrals", "message_echoes", "messaging_handovers"]
@@ -114,18 +118,16 @@ def test_subscription_rejects_missing_foreign_and_conflicting_app_ids(monkeypatc
     monkeypatch.setattr(graph, "request", request)
 
     with pytest.raises(HTTPException) as error:
-        asyncio.run(graph.subscribe(provider, "token", "111", "999", "secret"))
+        asyncio.run(graph.subscribe("messenger", "token", "111", "999", "secret"))
 
     assert error.value.status_code == 502
     assert request.call_args_list[-1].args[1] == "DELETE"
 
 
-def test_instagram_existing_subscription_is_preserved_when_readback_loses_a_required_field(monkeypatch):
-    fields = ["messages", "messaging_postbacks", "messaging_seen", "message_reactions",
-              "messaging_referral", "messaging_handover", "standby"]
+@pytest.mark.parametrize("result", [{}, {"success": False}, {"success": None}, {"success": "true"}, {"success": 1}])
+def test_instagram_requires_explicit_boolean_acknowledgement(monkeypatch, result):
     request = AsyncMock(side_effect=[
-        {"data": [{"app_id": "999", "subscribed_fields": fields}]}, {"success": True},
-        {"data": [{"app_id": "999", "subscribed_fields": fields[:-1]}]}, {"success": True},
+        {"data": [{"id": "888", "subscribed_fields": ["messages"]}]}, result,
     ])
     monkeypatch.setattr(graph, "request", request)
 
@@ -133,21 +135,68 @@ def test_instagram_existing_subscription_is_preserved_when_readback_loses_a_requ
         asyncio.run(graph.subscribe("instagram", "token", "111", "999", "secret"))
 
     assert error.value.status_code == 502
-    assert [call.args[1] for call in request.call_args_list] == ["GET", "POST", "GET"]
+    assert [call.args[1] for call in request.call_args_list] == ["GET", "POST"]
 
 
-def test_instagram_reconnection_preserves_existing_fields_and_is_not_a_new_subscription(monkeypatch):
-    fields = ["messages", "messaging_postbacks", "messaging_seen", "message_reactions",
-              "messaging_referral", "messaging_handover", "standby", "comments"]
+@pytest.mark.parametrize("before", [
+    {"data": [{"id": "888", "subscribed_fields": ["comments"]}]},
+    {"data": [{"app_id": "999", "subscribed_fields": ["comments"]}]},
+    {"data": [{"id": "888"}, {"id": "777"}]},
+    {"data": [], "paging": {"next": "https://graph.instagram.com/next"}},
+])
+def test_instagram_existing_or_paginated_subscriptions_are_never_treated_as_new(monkeypatch, before):
     request = AsyncMock(side_effect=[
-        {"data": [{"app_id": "999", "subscribed_fields": ["comments"]}]}, {"success": True},
-        {"data": [{"app_id": "999", "subscribed_fields": fields}]},
+        before, {"success": True},
     ])
     monkeypatch.setattr(graph, "request", request)
 
     assert asyncio.run(graph.subscribe("instagram", "token", "111", "999", "secret")) is False
 
-    assert set(request.call_args_list[1].kwargs["data"]["subscribed_fields"].split(",")) == set(fields)
+    assert set(request.call_args_list[1].kwargs["data"]["subscribed_fields"].split(",")) == graph.SUBSCRIPTIONS["instagram"]
+    assert [call.args[1] for call in request.call_args_list] == ["GET", "POST"]
+
+
+@pytest.mark.parametrize("before", [{}, {"data": None}, {"data": {}}, {"data": [None]}])
+def test_instagram_malformed_preflight_fails_before_changing_subscription(monkeypatch, before):
+    request = AsyncMock(return_value=before)
+    monkeypatch.setattr(graph, "request", request)
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(graph.subscribe("instagram", "token", "111", "999", "secret"))
+    assert error.value.status_code == 502
+    assert [call.args[1] for call in request.call_args_list] == ["GET"]
+
+
+@pytest.mark.parametrize("status", [401, 403, 429, 502])
+def test_instagram_rejected_post_does_not_delete_a_previous_subscription(monkeypatch, status):
+    request = AsyncMock(side_effect=[{"data": [{"id": "888"}]}, HTTPException(status, "Provider rejected request")])
+    monkeypatch.setattr(graph, "request", request)
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(graph.subscribe("instagram", "token", "111", "999", "secret"))
+    assert error.value.status_code == status
+    assert [call.args[1] for call in request.call_args_list] == ["GET", "POST"]
+
+
+def test_messenger_reconnection_preserves_existing_fields(monkeypatch):
+    fields = graph.SUBSCRIPTIONS["messenger"] | {"feed"}
+    request = AsyncMock(side_effect=[
+        {"data": [{"id": "999", "subscribed_fields": ["feed"]}]}, {"success": True},
+        {"data": [{"id": "999", "subscribed_fields": sorted(fields)}]},
+    ])
+    monkeypatch.setattr(graph, "request", request)
+    assert asyncio.run(graph.subscribe("messenger", "token", "111", "999", "secret")) is False
+    assert set(request.call_args_list[1].kwargs["data"]["subscribed_fields"].split(",")) == fields
+
+
+def test_messenger_existing_subscription_is_preserved_when_readback_loses_a_required_field(monkeypatch):
+    fields = sorted(graph.SUBSCRIPTIONS["messenger"])
+    request = AsyncMock(side_effect=[
+        {"data": [{"id": "999", "subscribed_fields": fields}]}, {"success": True},
+        {"data": [{"id": "999", "subscribed_fields": fields[:-1]}]},
+    ])
+    monkeypatch.setattr(graph, "request", request)
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(graph.subscribe("messenger", "token", "111", "999", "secret"))
+    assert error.value.status_code == 502
     assert [call.args[1] for call in request.call_args_list] == ["GET", "POST", "GET"]
 
 
@@ -159,7 +208,7 @@ def test_subscription_diagnostics_include_only_safe_identity_and_field_metadata(
     monkeypatch.setattr(graph, "request", request)
 
     with caplog.at_level(logging.WARNING), pytest.raises(HTTPException):
-        asyncio.run(graph.subscribe("instagram", "private-token", "111", "999", "private-secret"))
+        asyncio.run(graph.subscribe("messenger", "private-token", "111", "999", "private-secret"))
 
     assert "subscription readback" in caplog.text
     assert "999" in caplog.text and "123" in caplog.text and "messages" in caplog.text

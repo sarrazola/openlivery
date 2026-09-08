@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 import json
 from datetime import timedelta
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -10,10 +10,11 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.config import get_settings
-from app.models import SocialChannel, SocialOAuthState, now_utc
+from app.models import SocialChannel, SocialOAuthState, User, now_utc
 from app.security import decrypt_secret
 from app.services import social_connections as service
 from app.services import social_graph as graph
+from app.services.social_graph import subscribe as subscribe_with_provider, verify_account as verify_provider_account
 from conftest import TestingSession
 
 
@@ -127,6 +128,70 @@ def test_oauth_state_single_use_pending_selection_and_no_tokens_in_redirect(auth
     assert client.post("/api/social/instagram/oauth/complete", json={"setup_id": setup, "external_account_id": "111"}).status_code == 400
     with TestingSession() as db:
         assert "oauth-private" not in decrypt_secret(db.get(SocialOAuthState, setup).encrypted_payload)
+
+
+@pytest.mark.parametrize("acknowledged", [True, False])
+def test_instagram_oauth_persists_only_after_account_checks_and_subscription_acknowledgement(authenticated_client, monkeypatch, acknowledged):
+    client = authenticated_client
+    customer, agent = resources(client)
+    monkeypatch.setattr(graph, "subscribe", subscribe_with_provider)
+    monkeypatch.setattr(graph, "verify_account", verify_provider_account)
+    monkeypatch.setattr(graph, "exchange_code", AsyncMock(return_value=[{
+        "id": "111", "name": "Shop", "access_token": "oauth-private",
+        "scopes": list(graph.SCOPES["instagram"]), "expires_at": (now_utc() + timedelta(days=60)).isoformat(),
+    }]))
+    request = AsyncMock(side_effect=[
+        {"id": "222", "user_id": "111", "username": "shop"},
+        {"data": []},
+        {"data": [{"id": "888", "subscribed_fields": ["messages"]}]},
+        {"success": acknowledged},
+    ])
+    monkeypatch.setattr(graph, "request", request)
+    url = client.post("/api/social/instagram/oauth/start", json={"client_id": customer["id"], "agent_id": agent["id"]}).json()["authorization_url"]
+    state = parse_qs(urlsplit(url).query)["state"][0]
+    assert client.get("/api/social/oauth/callback/instagram", params={"state": state, "code": "code"}, follow_redirects=False).status_code == 303
+    setup = client.get("/api/social/instagram/oauth/pending", params={"client_id": customer["id"]}).json()["setup_id"]
+
+    response = client.post("/api/social/instagram/oauth/complete", json={"setup_id": setup, "external_account_id": "111"})
+
+    assert response.status_code == (200 if acknowledged else 502), response.text
+    assert "oauth-private" not in response.text and "server-secret" not in response.text
+    assert [(call.args[1], call.args[2]) for call in request.call_args_list] == [
+        ("GET", "me"), ("GET", "111/conversations"),
+        ("GET", "111/subscribed_apps"), ("POST", "111/subscribed_apps"),
+    ]
+    with TestingSession() as db:
+        channel = db.scalar(select(SocialChannel))
+        payload = json.loads(decrypt_secret(db.get(SocialOAuthState, setup).encrypted_payload))
+        if acknowledged:
+            assert channel.status == "connected" and channel.is_enabled
+            assert channel.app_id == "999" and channel.external_account_id == "111"
+            assert str(channel.client_id) == customer["id"] and str(channel.agent_id) == agent["id"]
+            assert decrypt_secret(channel.encrypted_access_token) == "oauth-private"
+            assert payload == {"phase": "completed"}
+        else:
+            assert channel is None
+            assert payload["phase"] == "pending"
+    graph.unsubscribe.assert_not_awaited()
+
+
+@pytest.mark.parametrize("before, should_unsubscribe", [
+    ({"data": []}, True),
+    ({"data": [{"id": "888"}]}, False),
+    ({"data": [], "paging": {"next": "https://graph.instagram.com/next"}}, False),
+])
+def test_instagram_commit_failure_only_unsubscribes_a_proven_new_subscription(authenticated_client, monkeypatch, before, should_unsubscribe):
+    customer, agent = resources(authenticated_client)
+    monkeypatch.setattr(graph, "subscribe", subscribe_with_provider)
+    monkeypatch.setattr(graph, "request", AsyncMock(side_effect=[before, {"success": True}]))
+    with TestingSession() as db:
+        user = db.scalar(select(User))
+        monkeypatch.setattr(db, "commit", Mock(side_effect=RuntimeError("Test commit failure")))
+        with pytest.raises(RuntimeError, match="Test commit failure"):
+            asyncio.run(service.connect_account(db, user, customer["id"], agent["id"], "instagram",
+                {"id": "111", "access_token": "private-token"}, service.get_app_config("instagram"), source="oauth"))
+        assert db.scalar(select(SocialChannel)) is None
+    assert graph.unsubscribe.await_count == int(should_unsubscribe)
 
 
 def test_oauth_rejects_unsafe_return_path_and_expired_state(authenticated_client):
