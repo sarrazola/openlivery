@@ -272,6 +272,8 @@ class WhatsAppCloudChannel(Base):
     display_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
     phone_number_id: Mapped[str] = mapped_column(String(80), default="", server_default="")
     waba_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    coexistence: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    coexistence_sync: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     encrypted_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     encrypted_app_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Token the owner pastes into their Meta app's webhook config; it must be
@@ -286,6 +288,25 @@ class WhatsAppCloudChannel(Base):
     client: Mapped[Client] = relationship(back_populates="whatsapp_cloud_channel")
     agent: Mapped[Agent] = relationship(back_populates="whatsapp_cloud_channels")
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="whatsapp_cloud_channel")
+
+
+class WhatsAppCoexistenceEvent(Base):
+    """Durable imports and media enrichment, deduplicated before acknowledgement."""
+
+    __tablename__ = "whatsapp_coexistence_events"
+    __table_args__ = (UniqueConstraint("channel_id", "event_key", name="uq_whatsapp_coexistence_event"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("whatsapp_cloud_channels.id", ondelete="CASCADE"), index=True)
+    event_key: Mapped[str] = mapped_column(String(64))
+    field: Mapped[str] = mapped_column(String(40))
+    payload: Mapped[dict] = mapped_column(JSON)
+    cursor: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
 
 class AgentQA(Base):
@@ -386,6 +407,8 @@ class Contact(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(180), default="")
+    whatsapp_contact_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    whatsapp_contact_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Digits only, as WhatsApp reports it. None for people without a number.
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -486,6 +509,9 @@ class Conversation(Base):
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")
 
     def _reply_policy(self) -> dict:
+        if self.channel == "whatsapp_cloud" and self.whatsapp_cloud_channel and self.whatsapp_cloud_channel.coexistence:
+            from .services.whatsapp_coexistence import window_fields
+            return window_fields(self)
         if self.channel in ("instagram", "messenger"):
             from .services.social_policy import window_fields
             return window_fields(self)

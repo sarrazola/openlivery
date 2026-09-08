@@ -368,7 +368,7 @@ def test_transcoded_voice_note_uploads_with_ogg_filename(monkeypatch):
     monkeypatch.setattr(whatsapp_service, "send_media", fake_send)
     monkeypatch.setattr(whatsapp_service, "decrypt_secret", lambda value: "token")
 
-    channel = SimpleNamespace(encrypted_access_token="enc", phone_number_id="111")
+    channel = SimpleNamespace(encrypted_access_token="enc", phone_number_id="111", coexistence=False)
     conversation = SimpleNamespace(
         channel="whatsapp_cloud", whatsapp_cloud_channel_id="ch-1", external_chat_id="573001"
     )

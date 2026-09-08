@@ -153,11 +153,15 @@ async def _loop() -> None:
 def start_worker() -> None:
     global _task
     if get_settings().social_worker_enabled and (_task is None or _task.done()):
+        from . import whatsapp_coexistence
+        whatsapp_coexistence.start_worker()
         _task = asyncio.create_task(_loop())
 
 
 async def stop_worker() -> None:
     global _task
+    from . import whatsapp_coexistence
+    await whatsapp_coexistence.stop_worker()
     task, _task = _task, None
     if task:
         task.cancel()

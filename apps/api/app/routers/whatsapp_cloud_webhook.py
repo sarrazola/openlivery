@@ -60,10 +60,12 @@ def _parse_message(message: dict, contacts: dict[str, str]) -> InboundMessage | 
     """Map one Cloud API message to the shared inbound shape; None to skip."""
     kind = message.get("type")
     sender = message.get("from") or ""
+    from ..services.social_inbound import event_time
     base = {
         "external_message_id": message.get("id") or "",
         "external_chat_id": sender,
         "sender_name": contacts.get(sender),
+        "occurred_at": event_time(message.get("timestamp")),
     }
     if not base["external_message_id"] or not sender:
         return None
@@ -133,6 +135,10 @@ async def receive_webhook(channel_id: uuid.UUID, request: Request, db: Session =
     access_token = decrypt_secret(channel.encrypted_access_token) if channel.encrypted_access_token else None
     for entry in payload.get("entry") or []:
         for change in entry.get("changes") or []:
+            from ..services.whatsapp_coexistence import FIELDS, accept_change
+            if change.get("field") in FIELDS:
+                accept_change(db, channel, change["field"], change.get("value") or {}, waba_id=str(entry.get("id") or ""))
+                continue
             if change.get("field") != "messages":
                 continue
             value = change.get("value") or {}
