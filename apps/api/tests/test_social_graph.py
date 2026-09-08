@@ -74,10 +74,11 @@ def test_subscription_requires_matching_app_and_fields_and_cleans_failed_new_sub
                    "messaging_referrals", "message_echoes", "messaging_handovers", "standby"}),
 ])
 def test_subscription_uses_provider_field_names_and_accepts_confirmed_readback(monkeypatch, provider, expected_fields):
+    identity_field = "app_id" if provider == "instagram" else "id"
     request = AsyncMock(side_effect=[
         {"data": []},
         {"success": True},
-        {"data": [{"id": "999", "subscribed_fields": sorted(expected_fields)}]},
+        {"data": [{identity_field: "999", "subscribed_fields": sorted(expected_fields)}]},
         {"success": True},
     ])
     monkeypatch.setattr(graph, "request", request)
@@ -88,6 +89,83 @@ def test_subscription_uses_provider_field_names_and_accepts_confirmed_readback(m
     assert subscription.args == (provider, "POST", "111/subscribed_apps", "token")
     assert set(subscription.kwargs["data"]["subscribed_fields"].split(",")) == expected_fields
     assert request.await_count == 3
+
+
+@pytest.mark.parametrize("provider, identity", [
+    ("instagram", {}),
+    ("instagram", {"app_id": ""}),
+    ("instagram", {"id": "999"}),
+    ("instagram", {"app_id": "123"}),
+    ("instagram", {"app_id": "999", "id": "123"}),
+    ("instagram", {"app_id": "123", "id": "999"}),
+    ("messenger", {"app_id": "999"}),
+    ("messenger", {"id": "123"}),
+    ("messenger", {"id": "999", "app_id": "123"}),
+    ("messenger", {"id": "123", "app_id": "999"}),
+])
+def test_subscription_rejects_missing_foreign_and_conflicting_app_ids(monkeypatch, provider, identity):
+    fields = ["messages", "messaging_postbacks", "messaging_seen", "message_reactions",
+              "messaging_referral", "messaging_handover", "standby", "message_deliveries",
+              "message_reads", "messaging_referrals", "message_echoes", "messaging_handovers"]
+    request = AsyncMock(side_effect=[
+        {"data": []}, {"success": True},
+        {"data": [{**identity, "subscribed_fields": fields}]}, {"success": True},
+    ])
+    monkeypatch.setattr(graph, "request", request)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(graph.subscribe(provider, "token", "111", "999", "secret"))
+
+    assert error.value.status_code == 502
+    assert request.call_args_list[-1].args[1] == "DELETE"
+
+
+def test_instagram_existing_subscription_is_preserved_when_readback_loses_a_required_field(monkeypatch):
+    fields = ["messages", "messaging_postbacks", "messaging_seen", "message_reactions",
+              "messaging_referral", "messaging_handover", "standby"]
+    request = AsyncMock(side_effect=[
+        {"data": [{"app_id": "999", "subscribed_fields": fields}]}, {"success": True},
+        {"data": [{"app_id": "999", "subscribed_fields": fields[:-1]}]}, {"success": True},
+    ])
+    monkeypatch.setattr(graph, "request", request)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(graph.subscribe("instagram", "token", "111", "999", "secret"))
+
+    assert error.value.status_code == 502
+    assert [call.args[1] for call in request.call_args_list] == ["GET", "POST", "GET"]
+
+
+def test_instagram_reconnection_preserves_existing_fields_and_is_not_a_new_subscription(monkeypatch):
+    fields = ["messages", "messaging_postbacks", "messaging_seen", "message_reactions",
+              "messaging_referral", "messaging_handover", "standby", "comments"]
+    request = AsyncMock(side_effect=[
+        {"data": [{"app_id": "999", "subscribed_fields": ["comments"]}]}, {"success": True},
+        {"data": [{"app_id": "999", "subscribed_fields": fields}]},
+    ])
+    monkeypatch.setattr(graph, "request", request)
+
+    assert asyncio.run(graph.subscribe("instagram", "token", "111", "999", "secret")) is False
+
+    assert set(request.call_args_list[1].kwargs["data"]["subscribed_fields"].split(",")) == set(fields)
+    assert [call.args[1] for call in request.call_args_list] == ["GET", "POST", "GET"]
+
+
+def test_subscription_diagnostics_include_only_safe_identity_and_field_metadata(monkeypatch, caplog):
+    response = {"data": [{"app_id": "123", "id": "private-id-value", "access_token": "private-token",
+                          "subscribed_fields": ["messages", "private-value=https://private.example"]}],
+                "paging": {"next": "https://private.example/?access_token=private-token"}}
+    request = AsyncMock(side_effect=[{"data": []}, {"success": True}, response, {"success": True}])
+    monkeypatch.setattr(graph, "request", request)
+
+    with caplog.at_level(logging.WARNING), pytest.raises(HTTPException):
+        asyncio.run(graph.subscribe("instagram", "private-token", "111", "999", "private-secret"))
+
+    assert "subscription readback" in caplog.text
+    assert "999" in caplog.text and "123" in caplog.text and "messages" in caplog.text
+    assert "app_id" in caplog.text
+    assert "private" not in caplog.text
+    assert "https://" not in caplog.text
 
 
 def test_instagram_code_exchange_keeps_scopes_and_long_lived_expiry(monkeypatch):

@@ -236,6 +236,7 @@ real-account delivery.
 - [Instagram messaging](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api)
 - [Instagram webhooks](https://developers.facebook.com/documentation/instagram-platform/webhooks)
 - [Instagram subscription field names in Meta's SDK](https://github.com/facebook/facebook-python-business-sdk/blob/25.0.0/facebook_business/adobjects/iguserforigonlyapi.py#L672)
+- [Instagram subscription response fields in Meta's SDK](https://github.com/facebook/facebook-python-business-sdk/blob/25.0.0/facebook_business/adobjects/igusersubscribedappsdata.py#L26)
 - [Instagram access review](https://developers.facebook.com/documentation/instagram-platform/app-review)
 - [Messenger overview](https://developers.facebook.com/documentation/business-messaging/messenger-platform/overview)
 - [Messenger webhooks](https://developers.facebook.com/documentation/business-messaging/messenger-platform/webhooks)
