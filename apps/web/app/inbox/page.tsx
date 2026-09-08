@@ -1,14 +1,17 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BadgeCheck, FlaskConical, Globe, Images, Inbox as InboxIcon, LoaderCircle, MessageCircle, Search, UserRound } from "lucide-react";
+import { Images, Inbox as InboxIcon, LoaderCircle, Search, UserRound } from "lucide-react";
 import { PageHead } from "@/components/ui";
 import { AttachButton, MessageAttachments, PendingAttachment, RecordButton, useFileDrop, type GalleryImage } from "@/components/attachments";
 import { MediaPanel } from "@/components/media-panel";
+import { DeliveryTicks } from "@/components/delivery-ticks";
 import { RichText } from "@/components/rich-text";
 import { QuotedSnippet, ReactionBadge } from "@/components/message-gestures";
 import { ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
+import { ChannelIcon, channelLabel as labelForChannel, INBOX_CHANNELS, isSocialChannel } from "@/lib/channels";
+import { SocialReplyNotice, useReplyPolicy } from "@/components/reply-policy";
 import { api, ApiError, apiUrl, messageFrom } from "@/lib/api";
 import { formatTime, formatWhen, isNearBottom, isSameOpenThread } from "@/lib/datetime";
 import { useLanguage, useT } from "@/lib/i18n";
@@ -36,25 +39,13 @@ export default function InboxPage() {
   const [busy, setBusy] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [mediaOpen, setMediaOpen] = useState(false);
+  const policy = useReplyPolicy(selected);
 
   useEffect(() => { api<Agent[]>("/agents").then(setAgents).catch(() => {}); }, []);
   useEffect(() => { const id = setTimeout(() => setSearch(searchInput), 300); return () => clearTimeout(id); }, [searchInput]);
 
-  const channelLabel = (value: string) => {
-    if (value === "playground") return t("inbox.channelPlayground");
-    if (value === "whatsapp") return t("inbox.channelWhatsapp");
-    if (value === "whatsapp_cloud") return t("inbox.channelWhatsappCloud");
-    if (value === "widget") return t("inbox.channelWidget");
-    return value;
-  };
-
-  const channelIcon = (value: string) => {
-    if (value === "whatsapp") return <MessageCircle size={10} />;
-    if (value === "whatsapp_cloud") return <BadgeCheck size={10} />;
-    if (value === "widget") return <Globe size={10} />;
-    if (value === "playground") return <FlaskConical size={10} />;
-    return <MessageCircle size={10} />;
-  };
+  const channelLabel = (value: string) => labelForChannel(value, t);
+  const channelIcon = (value: string) => <ChannelIcon channel={value} />;
 
   const buildParams = useCallback((offsetValue: number) => {
     const params = new URLSearchParams();
@@ -155,6 +146,8 @@ export default function InboxPage() {
   }
 
   async function choose(id: string) {
+    setPendingFile(null);
+    if (composerRef.current) composerRef.current.value = "";
     selectedIdRef.current = id;
     try {
       setSelected(await api<Conversation>(`/conversations/${id}`));
@@ -175,7 +168,7 @@ export default function InboxPage() {
   const composerRef = useRef<HTMLInputElement>(null);
   async function reply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selected) return;
+    if (!selected || !policy.canReply || busy) return;
     if (pendingFile) {
       const file = pendingFile;
       setPendingFile(null);
@@ -193,7 +186,7 @@ export default function InboxPage() {
   }
 
   async function sendAttachment(file?: File) {
-    if (!file || !selected || selected.mode !== "human" || busy) return;
+    if (!file || !selected || !policy.canAttach || busy) return;
     setBusy(true);
     const caption = (composerRef.current?.value || "").trim();
     try {
@@ -205,7 +198,7 @@ export default function InboxPage() {
       loadFirst({ silent: true });
     } catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); composerRef.current?.focus(); }
   }
-  const { dropProps, overlay } = useFileDrop(setPendingFile, { enabled: Boolean(selected) && selected?.mode === "human" && !busy, label: t("chat.dropToSend") });
+  const { dropProps, overlay } = useFileDrop(setPendingFile, { enabled: policy.canAttach && !busy, label: t("chat.dropToSend") });
 
   const selectedId = selected?.id;
   const attachmentUrl = useCallback(
@@ -223,8 +216,8 @@ export default function InboxPage() {
     <PageHead eyebrow={t("inbox.eyebrow")} title={t("inbox.title")} description={t("inbox.description")} />
 
     <div className="toolbar filters">
-      <div className="filter-select"><span>{t("inbox.filterAgent")}</span><select value={agentId} onChange={(e) => setAgentId(e.target.value)}><option value="">{t("inbox.allAgents")}</option>{agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-      <div className="filter-select"><span>{t("inbox.filterChannel")}</span><select value={channel} onChange={(e) => setChannel(e.target.value)}><option value="">{t("inbox.allChannels")}</option><option value="playground">{t("inbox.channelPlayground")}</option><option value="whatsapp">{t("inbox.channelWhatsapp")}</option><option value="whatsapp_cloud">{t("inbox.channelWhatsappCloud")}</option><option value="widget">{t("inbox.channelWidget")}</option></select></div>
+      <div className="filter-select"><span>{t("inbox.filterAgent")}</span><select aria-label={t("inbox.filterAgent")} value={agentId} onChange={(e) => setAgentId(e.target.value)}><option value="">{t("inbox.allAgents")}</option>{agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+      <div className="filter-select"><span>{t("inbox.filterChannel")}</span><select aria-label={t("inbox.filterChannel")} value={channel} onChange={(e) => setChannel(e.target.value)}><option value="">{t("inbox.allChannels")}</option>{INBOX_CHANNELS.map((value) => <option key={value} value={value}>{channelLabel(value)}</option>)}</select></div>
     </div>
 
     <div className="inbox-layout">
@@ -277,7 +270,7 @@ export default function InboxPage() {
                   <div key={message.id} className={`inbox-message ${message.role}${grouped ? " grouped" : ""}`}>
                     {!grouped && <small>{message.sender_name || (message.role === "assistant" ? t("inbox.senderAgent") : t("inbox.senderVisitor"))}</small>}
                     <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={stamp} />
-                    {message.content && <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}</time></p>}
+                    {message.content && <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}{message.role === "assistant" && isSocialChannel(selected.channel) && <DeliveryTicks status={message.delivery_status} error={message.delivery_error} />}</time></p>}
                     <ReactionBadge emoji={message.reaction} />
                     <ReactionBadge emoji={message.incoming_reaction} incoming />
                     {!message.content && !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}
@@ -285,12 +278,13 @@ export default function InboxPage() {
                 );
               })}
             </div>
+            <SocialReplyNotice conversation={selected} blocked={policy.blocked} humanOnly={policy.humanOnly} />
             {pendingFile && <PendingAttachment file={pendingFile} onCancel={() => setPendingFile(null)} />}
             <form className="inbox-composer" onSubmit={reply}>
-              <AttachButton onFile={setPendingFile} disabled={selected.mode !== "human" || busy} title={t("chat.attachFile")} />
-              <RecordButton onRecorded={sendAttachment} onError={() => toast.error(t("chat.micDenied"))} disabled={selected.mode !== "human" || busy} title={t("chat.recordAudio")} titleStop={t("chat.stopRecording")} />
-              <input ref={composerRef} name="content" placeholder={selected.mode === "human" ? t("inbox.composerHuman") : t("inbox.composerLocked")} disabled={selected.mode !== "human"} required={!pendingFile} />
-              <button disabled={selected.mode !== "human" || busy}>{t("inbox.send")}</button>
+              <AttachButton onFile={setPendingFile} disabled={!policy.canAttach || busy} title={t("chat.attachFile")} />
+              <RecordButton onRecorded={sendAttachment} onError={() => toast.error(t("chat.micDenied"))} disabled={!policy.canRecord || busy} title={t("chat.recordAudio")} titleStop={t("chat.stopRecording")} />
+              <input ref={composerRef} name="content" placeholder={selected.mode === "human" ? t("inbox.composerHuman") : t("inbox.composerLocked")} disabled={!policy.canReply || busy} required={!pendingFile} />
+              <button disabled={!policy.canReply || busy}>{t("inbox.send")}</button>
             </form>
             <MediaPanel open={mediaOpen} onClose={() => setMediaOpen(false)} messages={selected.messages ?? []} urlFor={attachmentUrl} />
           </>}

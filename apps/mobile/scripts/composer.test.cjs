@@ -9,12 +9,13 @@ const { create, act } = require('react-test-renderer');
 global.IS_REACT_ACT_ENVIRONMENT = true;
 const root = path.resolve(__dirname, '..');
 
-function fixture({ replyWait, failSend = false, nativeRecording = true, capturedSeconds = 3.2, resetTimeOnPause = false } = {}) {
+function fixture({ replyWait, failSend = false, nativeRecording = true, capturedSeconds = 3.2, resetTimeOnPause = false, conversationOverrides = {}, fileToPick } = {}) {
   const calls = { texts: [], files: [], modes: [], alerts: [], permission: 0, recording: false, paused: false, played: 0, stops: 0 };
   let detail = {
     id: 'case-1', client_id: 'client-1', status: 'open', mode: 'human', channel: 'widget',
     title: 'Customer', contact_name: 'Customer', contact_id: null, created_at: new Date().toISOString(),
     external_chat_id: 'customer', messages: [], team_id: null,
+    ...conversationOverrides,
   };
   const session = { client_id: 'client-1', user_id: 'user-1', user_name: 'Agent', slug: 'example', token: 'test', branding: { brand_color: '#3456ab', client_name: 'Example' } };
   const player = { play: () => { calls.played += 1; }, pause() {}, seekTo: async () => {} };
@@ -55,12 +56,13 @@ function fixture({ replyWait, failSend = false, nativeRecording = true, captured
     ...Object.fromEntries(['ActivityIndicator', 'FlatList', 'KeyboardAvoidingView', 'Pressable', 'Text', 'TextInput', 'View', 'Modal'].map((name) => [name, name])),
     StyleSheet: { create: (styles) => styles, hairlineWidth: 1 }, Platform: { OS: 'ios' },
     Alert: { alert: (title, body) => { calls.alerts.push({ title, body }); } }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
-    ActionSheetIOS: {}, useColorScheme: () => 'light',
+    ActionSheetIOS: { showActionSheetWithOptions: (options, callback) => { calls.attachMenu = { ...options, callback }; } }, useColorScheme: () => 'light',
     Animated: { View: 'AnimatedView', Value: class {}, timing() {}, sequence() {}, loop: () => ({ start() {}, stop() {} }) },
   };
   const mocks = {
     react: React, 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
-    'expo-audio': audio, 'expo-image': { Image: 'Image' }, 'expo-image-picker': {}, 'expo-document-picker': {},
+    'expo-audio': audio, 'expo-image': { Image: 'Image' }, 'expo-image-picker': {},
+    'expo-document-picker': { getDocumentAsync: async (options) => { calls.documentTypes = options.type; return fileToPick ? { canceled: false, assets: [fileToPick] } : { canceled: true }; } },
     'expo-file-system': { File: FakeFile, Directory: FakeDirectory, Paths: { cache: '/cache' } }, 'expo-sharing': {},
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }), SafeAreaView: 'SafeAreaView' },
   };
@@ -267,4 +269,67 @@ test('preparing playback preserves an active recorder even when mode requests ov
   assert.deepEqual(f.calls.modes.map((mode) => mode.allowsRecording), [true, true]);
   await Promise.all([setRecordingMode(false), prepareAudioPlayback()]);
   assert.deepEqual(f.calls.modes.map((mode) => mode.allowsRecording), [true, true, false, false]);
+});
+
+const socialThread = {
+  channel: 'instagram', reply_window_open: false, reply_window_until: '2000-01-01T00:00:00Z',
+  human_reply_window_open: true, human_reply_window_until: '2999-01-01T00:00:00Z', reply_block_reason: null,
+  channel_capabilities: { text: true, image: true, audio: true, video: true, file: true, quotes: false, reactions: false, templates: false },
+};
+
+test('Instagram human support window shows its policy and sends a manual reply without templates', async () => {
+  const f = fixture({ conversationOverrides: socialThread });
+  await f.mount();
+  assert.ok(f.text('Human replies only'));
+  assert.equal(f.button('Send template'), undefined);
+  await f.type('A person is answering this request.');
+  await f.press('Send');
+  assert.deepEqual(f.calls.texts, ['A person is answering this request.']);
+  await f.unmount();
+});
+
+test('closed Messenger policy exposes neither a composer nor a template reopening action', async () => {
+  const f = fixture({ conversationOverrides: { ...socialThread, channel: 'messenger', human_reply_window_open: false } });
+  await f.mount();
+  assert.ok(f.text('Replies unavailable'));
+  assert.equal(f.button('Send template'), undefined);
+  assert.equal(f.button('Add an attachment'), undefined);
+  assert.equal(f.button('Record audio'), undefined);
+  assert.equal(f.button('Send'), undefined);
+  assert.equal(f.calls.texts.length, 0);
+  await f.unmount();
+});
+
+test('a revoked social account shows the authorization recovery hint despite a future human window', async () => {
+  const f = fixture({ conversationOverrides: { ...socialThread, reply_block_reason: 'authorization_expired' } });
+  await f.mount();
+  assert.ok(f.text('Authorize this account again from the channel settings on the web.'));
+  assert.equal(f.button('Record audio'), undefined);
+  await f.unmount();
+});
+
+test('capability-disabled microphone cannot request permission even through a stale native callback', async () => {
+  const f = fixture({ conversationOverrides: { ...socialThread, channel_capabilities: { text: true } } });
+  await f.mount();
+  assert.equal(f.button('Record audio').props.disabled, true);
+  assert.equal(f.button('Add an attachment').props.disabled, true);
+  await act(async () => { await f.button('Record audio').props.onPress(); });
+  assert.equal(f.calls.permission, 0);
+  await f.type('Text is still supported.');
+  await f.press('Send');
+  assert.deepEqual(f.calls.texts, ['Text is still supported.']);
+  await f.unmount();
+});
+
+test('Instagram rejects a non-PDF document returned by the native picker without uploading it', async () => {
+  const f = fixture({ conversationOverrides: socialThread, fileToPick: { uri: 'file:///report.doc', name: 'report.doc', mimeType: 'application/msword' } });
+  await f.mount();
+  await f.press('Add an attachment');
+  await act(async () => { f.calls.attachMenu.callback(f.calls.attachMenu.options.indexOf('Choose a file')); });
+  assert.ok(f.calls.documentTypes.includes('application/pdf'));
+  assert.equal(f.calls.documentTypes.includes('*/*'), false);
+  assert.ok(f.text('This channel does not support this attachment. Instagram documents must be PDF files.'));
+  assert.equal(f.button('Remove attachment'), undefined);
+  assert.equal(f.calls.files.length, 0);
+  await f.unmount();
 });

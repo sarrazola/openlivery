@@ -10,7 +10,7 @@ or upgrading the server does not require building this application.
 
 ## Inbox behavior
 
-- Search and filter conversations by their current inbox state.
+- Search and filter WhatsApp, Instagram, Facebook Messenger and web conversations by channel and inbox state. Social replies follow the server's response windows and attachment capabilities.
 - Open the complete conversation, with the contact and assistant context.
 - Take over a conversation, reply, and return it to an assistant.
 - Render incoming attachments and send photos, videos, documents and voice notes.

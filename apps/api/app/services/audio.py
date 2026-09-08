@@ -26,22 +26,17 @@ async def _run_ffmpeg(args: list[str], stdin_data: bytes | None = None, *, timeo
             stderr=asyncio.subprocess.DEVNULL,
         )
         out, _ = await asyncio.wait_for(process.communicate(stdin_data), timeout=timeout)
-    except (OSError, asyncio.TimeoutError):
+    except (OSError, asyncio.TimeoutError, asyncio.CancelledError) as exc:
         if process is not None and process.returncode is None:
             try:
                 process.kill()
             except ProcessLookupError:
                 pass
-            await process.wait()
+            # Drain the pipes and reap the child after timeout or cancellation.
+            await process.communicate()
+        if isinstance(exc, asyncio.CancelledError):
+            raise
         return None
-    except asyncio.CancelledError:
-        if process is not None and process.returncode is None:
-            try:
-                process.kill()
-            except ProcessLookupError:
-                pass
-            await process.wait()
-        raise
     if process.returncode != 0 or not out:
         return None
     return out

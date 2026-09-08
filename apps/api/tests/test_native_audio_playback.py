@@ -114,7 +114,10 @@ def test_ffmpeg_timeout_reaps_process(monkeypatch):
         returncode = None
         killed = False
         waited = False
-        async def communicate(self, data):
+        async def communicate(self, data=None):
+            if self.killed:
+                await self.wait()
+                return b"", b""
             await asyncio.sleep(1)
         def kill(self):
             self.killed = True
@@ -125,3 +128,26 @@ def test_ffmpeg_timeout_reaps_process(monkeypatch):
     monkeypatch.setattr(asyncio, "create_subprocess_exec", AsyncMock(return_value=process))
     assert asyncio.run(audio._run_ffmpeg([], timeout=.01)) is None
     assert process.killed and process.waited
+
+
+def test_ffmpeg_cancellation_drains_process_and_propagates(monkeypatch):
+    class Process:
+        returncode = None
+        killed = False
+        drained = False
+
+        async def communicate(self, data=None):
+            if self.killed:
+                self.drained = True
+                self.returncode = -9
+                return b"", b""
+            raise asyncio.CancelledError
+
+        def kill(self):
+            self.killed = True
+
+    process = Process()
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", AsyncMock(return_value=process))
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(audio._run_ffmpeg([]))
+    assert process.killed and process.drained and process.returncode == -9

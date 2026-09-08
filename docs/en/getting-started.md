@@ -58,3 +58,9 @@ Prefer not to build locally? `make pull` runs the prebuilt images published to G
 - [Configuration](configuration.md) — environment variables, secrets and ports.
 - [Architecture](architecture.md) — how the services fit together.
 - [Self-hosting](self-hosting.md) — deploy to a public server with TLS and backups.
+
+## Switching a client off, or deleting it
+
+**Active client** off stops everything without losing anything: its agents stop answering on every channel, the web chat is hidden and the portal closes. Switch it back on and the service resumes.
+
+**Delete client** removes the client and everything under it: agents with their knowledge and tools, channels, contacts, conversations with all their messages, and the people with portal access. The dialog shows those counts (`GET /api/clients/{id}/deletion-preview`) and asks for the client's name before the button works. A linked WhatsApp device is logged out first.

@@ -55,6 +55,7 @@ export type Attachment = {
 export type ConversationMode = "ai" | "human";
 export type ConversationStatus = "open" | "resolved";
 export type Availability = "online" | "away";
+export type ChannelCapabilities = Partial<Record<"text" | "image" | "audio" | "video" | "file" | "quotes" | "reactions" | "templates", boolean>>;
 
 export type Message = {
   id: string;
@@ -94,6 +95,11 @@ export type Conversation = {
   team_name: string | null;
   reply_window_until: string | null;
   reply_window_open: boolean;
+  human_reply_window_open?: boolean;
+  human_reply_window_until?: string | null;
+  reply_block_reason?: string | null;
+  social_channel_id?: string | null;
+  channel_capabilities?: ChannelCapabilities;
   last_inbound_at: string | null;
   resolved_at: string | null;
   first_reply_at: string | null;
@@ -120,6 +126,7 @@ export type ConversationFilters = PageOptions & {
   assignee?: "me" | "none";
   team?: string;
   unread?: boolean;
+  channel?: string;
 };
 export type PortalMember = { id: string; name: string; email: string; availability: Availability };
 export type Team = {
@@ -163,6 +170,11 @@ export type PortalChannel = {
   phone_number: string | null;
   display_name: string | null;
   supports_templates: boolean;
+  id?: string;
+  provider?: string;
+  external_account_id?: string | null;
+  username?: string | null;
+  capabilities?: ChannelCapabilities;
 };
 export type Template = {
   id: string | null;
@@ -267,7 +279,7 @@ function portalPath(session: Session, path: string): string {
 /** Only advertised filters are sent; the server owns unread and assignment semantics. */
 export function conversationQuery(options: ConversationFilters = {}): string {
   const params = new URLSearchParams();
-  for (const key of ["status", "mode", "assignee", "team"] as const) {
+  for (const key of ["status", "mode", "assignee", "team", "channel"] as const) {
     if (options[key]) params.set(key, options[key]);
   }
   if (options.search?.trim()) params.set("search", options.search.trim());

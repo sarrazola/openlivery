@@ -125,7 +125,7 @@ export type ToolCallMeta = { name: string; arguments: Record<string, unknown>; r
 
 export type Source = { id: string; filename: string; excerpt: string };
 export type Attachment = { id: string; kind: "image" | "audio" | "video" | "file"; mime: string; filename: string | null; size_bytes: number };
-export type Message = { id: string; role: "user" | "assistant" | "system"; kind?: "message" | "activity"; delivery_status?: "sent" | "delivered" | "read" | "failed" | null; delivery_error?: string | null; activity?: { event: string; hours?: number | string; assignee?: string; from?: string; team?: string; target?: string; reason?: string } | null; content: string; sources: Source[]; tool_calls?: ToolCallMeta[] | null; sender_type: "visitor" | "ai" | "human"; sender_name: string | null; reaction?: string | null; incoming_reaction?: string | null; quoted_message_id?: string | null; created_at: string; attachments?: Attachment[] };
+export type Message = { id: string; role: "user" | "assistant" | "system"; kind?: "message" | "activity"; delivery_status?: "pending" | "sent" | "delivered" | "read" | "failed" | "unknown" | null; delivery_error?: string | null; activity?: { event: string; hours?: number | string; assignee?: string; from?: string; team?: string; target?: string; reason?: string } | null; content: string; sources: Source[]; tool_calls?: ToolCallMeta[] | null; sender_type: "visitor" | "ai" | "human"; sender_name: string | null; reaction?: string | null; incoming_reaction?: string | null; quoted_message_id?: string | null; created_at: string; attachments?: Attachment[] };
 
 export type ConversationInbox = {
   id: string;
@@ -163,6 +163,7 @@ export type Conversation = {
   mode: "ai" | "human";
   status?: "open" | "resolved";
   resolved_at?: string | null;
+  archived_at?: string | null;
   first_reply_at?: string | null;
   taken_over_at?: string | null;
   waiting_since?: string | null;
@@ -172,6 +173,11 @@ export type Conversation = {
   team_name?: string | null;
   reply_window_until?: string | null;
   reply_window_open?: boolean;
+  human_reply_window_open?: boolean;
+  human_reply_window_until?: string | null;
+  reply_block_reason?: string | null;
+  social_channel_id?: string | null;
+  channel_capabilities?: ChannelCapabilities;
   channel: string;
   external_chat_id: string | null;
   contact_name: string | null;
@@ -270,7 +276,12 @@ export type CannedResponse = {
 };
 
 export type PortalChannel = {
-  channel: "whatsapp" | "whatsapp_cloud";
+  channel: "whatsapp" | "whatsapp_cloud" | SocialProvider;
+  id?: string;
+  provider?: SocialProvider;
+  external_account_id?: string | null;
+  username?: string | null;
+  capabilities?: ChannelCapabilities;
   status: string;
   phone_number: string | null;
   display_name: string | null;
@@ -288,6 +299,7 @@ export type Contact = {
   conversation_count: number;
   open_count: number;
   last_activity_at: string | null;
+  blocked_at?: string | null;
 };
 
 export type PortalPublic = {
@@ -298,4 +310,58 @@ export type PortalPublic = {
   agency_brand_color: string;
   agency_logo_url: string | null;
   client_logo_url: string | null;
+};
+
+export type SocialProvider = "instagram" | "messenger";
+export type ChannelCapabilities = {
+  text?: boolean;
+  image?: boolean;
+  video?: boolean;
+  file?: boolean;
+  audio?: boolean;
+  reactions?: boolean;
+  quotes?: boolean;
+  templates?: boolean;
+};
+export type SocialConfig = Record<SocialProvider, {
+  oauth_ready: boolean;
+  manual_available: boolean;
+  source: "operator" | "managed";
+  webhook_url: string;
+}>;
+export type SocialChannel = {
+  id: string;
+  client_id: string;
+  agent_id: string;
+  provider: SocialProvider;
+  external_account_id: string | null;
+  display_name: string | null;
+  username: string | null;
+  status: string;
+  is_enabled: boolean;
+  has_access_token: boolean;
+  has_app_secret: boolean;
+  webhook_url: string;
+  webhook_verify_token: string | null;
+  token_expires_at: string | null;
+  last_error: string | null;
+  human_agent_enabled: boolean;
+  connection_source: "manual" | "oauth" | "managed";
+  app_id?: string | null;
+  granted_scopes: string[];
+  created_at: string;
+  updated_at: string;
+};
+export type SocialPending = { setup_id: string; accounts: { id: string; name: string; username?: string | null }[] };
+
+export type SocialHistoryJob = {
+  id: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  conversations_count: number;
+  messages_count: number;
+  max_conversations: number;
+  last_error: string | null;
+  limited: boolean;
+  created_at: string;
+  updated_at: string;
 };

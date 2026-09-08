@@ -42,7 +42,7 @@ def configure_channel(
     so a snippet embedded on a website survives every edit."""
     client = _client(db, user, client_id)
     agent = db.scalar(
-        select(Agent).where(Agent.id == payload.agent_id, Agent.client_id == client.id, Agent.agency_id == user.agency_id)
+        select(Agent).where(Agent.id == payload.agent_id, Agent.client_id == client.id, Agent.agency_id == user.agency_id, Agent.deleted_at.is_(None))
     )
     if not agent:
         raise HTTPException(status_code=400, detail="Select an agent that belongs to this client")

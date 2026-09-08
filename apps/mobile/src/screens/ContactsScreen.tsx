@@ -10,8 +10,9 @@ import {
   listTemplates, startConversation, updateContact, type Contact, type ContactUpdate,
   type Conversation, type PortalChannel, type Session, type Template,
 } from "../api";
+import { useStrings } from "../i18n";
 import { contactsStrings } from "../contactsStrings";
-import { initialFor } from "../conversations";
+import { channelLabel, initialFor } from "../conversations";
 import { contrastOn, readableBrand, tint, useColors, useIsDark } from "../theme";
 
 const PAGE_SIZE = 40;
@@ -24,6 +25,7 @@ type Panel = "contact" | "new" | "edit" | "start" | null;
 /** A native contact directory sharing the portal's contact and case records. */
 export function ContactsScreen({ server, session, onOpenConversation, onBack, onSessionExpired }: Props) {
   const s = contactsStrings();
+  const common = useStrings();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const brand = readableBrand(session.branding.brand_color, useIsDark());
@@ -178,7 +180,7 @@ export function ContactsScreen({ server, session, onOpenConversation, onBack, on
           <Text style={[styles.sectionTitle, { color: colors.ink }]}>{s.history}</Text>
           {detailLoading ? <ActivityIndicator color={brand} /> : !history.length ? <Text style={{ color: colors.muted }}>{s.noHistory}</Text> : history.map((conversation) => <Pressable key={conversation.id} accessibilityRole="button" onPress={() => openConversation(conversation)} style={[styles.historyRow, { borderColor: colors.line, backgroundColor: colors.raised }]}>
             <View style={styles.historyTop}><Text style={[styles.badge, { color: conversation.status === "resolved" ? colors.muted : brand, backgroundColor: tint(brand, 0.08) }]}>{conversation.status === "resolved" ? s.resolved : conversation.mode === "ai" ? s.ai : s.human}</Text><Text style={[styles.meta, { color: colors.muted }]}>{new Date(conversation.created_at).toLocaleDateString()}</Text></View>
-            <Text numberOfLines={2} style={[styles.detailText, { color: colors.ink }]}>{conversation.preview || s.noMessages}</Text><View style={styles.historyBottom}><Text style={[styles.meta, { color: colors.muted }]}>{conversation.channel === "widget" ? "Web" : "WhatsApp"}</Text><Ionicons name="arrow-forward" color={brand} size={17} /></View>
+            <Text numberOfLines={2} style={[styles.detailText, { color: colors.ink }]}>{conversation.preview || s.noMessages}</Text><View style={styles.historyBottom}><Text style={[styles.meta, { color: colors.muted }]}>{channelLabel(conversation.channel, common)}</Text><Ionicons name="arrow-forward" color={brand} size={17} /></View>
           </Pressable>)}
         </ScrollView>}
         {panel === "start" && selected && <StartConversation contact={selected} channels={channels} history={history} server={server} session={session} brand={brand} busy={busy} setBusy={setBusy} onOpen={openConversation} onClearError={() => setDetailError("")} onError={(err) => setDetailError(errorMessage(err, s.sendFailed))} />}

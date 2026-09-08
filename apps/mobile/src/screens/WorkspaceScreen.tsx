@@ -15,7 +15,7 @@ import { contrastOn, readableBrand, tint, useColors, useIsDark } from "../theme"
 
 type Props = { server: string; session: Session; onBack: () => void; onSessionExpired?: () => void };
 type Shared = Pick<Props, "server" | "session"> & { brand: string; handleError: (error: unknown) => string };
-const CHANNELS = ["whatsapp", "whatsapp_cloud", "widget"] as const;
+const CHANNELS = ["whatsapp", "whatsapp_cloud", "instagram", "messenger", "widget"] as const;
 
 /** Teams and operational reports using the same portal permissions as the inbox. */
 export function WorkspaceScreen({ server, session, onBack, onSessionExpired }: Props) {
@@ -116,7 +116,7 @@ function TeamEditor({ team, members, brand, saving, onSave }: { team: Team | nul
     <Text style={[styles.label, { color: colors.ink }]}>{s.members}</Text>
     {members.length ? members.map((member) => <Pressable key={member.id} disabled={saving} accessibilityRole="checkbox" accessibilityState={{ checked: memberIds.includes(member.id) }} onPress={() => setMemberIds((rows) => toggle(rows, member.id))} style={[styles.choice, { borderColor: colors.line }]}><Ionicons name={memberIds.includes(member.id) ? "checkbox" : "square-outline"} size={22} color={brand} /><View style={styles.flex}><Text style={[styles.name, { color: colors.ink }]}>{member.name || member.email}</Text><Text style={[styles.meta, { color: colors.muted }]}>{member.availability === "online" ? s.online : s.away}</Text></View></Pressable>) : <Text style={{ color: colors.muted }}>{s.noMembers}</Text>}
     <Text style={[styles.label, { color: colors.ink }]}>{s.channels}</Text><Text style={[styles.meta, { color: colors.muted }]}>{s.channelHint}</Text>
-    {CHANNELS.map((channel) => <View key={channel} style={styles.switchRow}><Text style={[styles.body, { color: colors.ink }]}>{channel === "widget" ? s.web : channel === "whatsapp_cloud" ? "WhatsApp Business" : "WhatsApp"}</Text><Switch accessibilityLabel={channel === "widget" ? s.web : channel === "whatsapp_cloud" ? "WhatsApp Business" : "WhatsApp"} value={channels.includes(channel)} onValueChange={() => setChannels((rows) => toggle(rows, channel))} disabled={saving} trackColor={{ true: brand }} /></View>)}
+    {CHANNELS.map((channel) => <View key={channel} style={styles.switchRow}><Text style={[styles.body, { color: colors.ink }]}>{channel === "widget" ? s.web : channel === "whatsapp_cloud" ? "WhatsApp Business" : channel === "instagram" ? "Instagram" : channel === "messenger" ? "Facebook Messenger" : "WhatsApp"}</Text><Switch accessibilityLabel={channel === "widget" ? s.web : channel === "whatsapp_cloud" ? "WhatsApp Business" : channel === "instagram" ? "Instagram" : channel === "messenger" ? "Facebook Messenger" : "WhatsApp"} value={channels.includes(channel)} onValueChange={() => setChannels((rows) => toggle(rows, channel))} disabled={saving} trackColor={{ true: brand }} /></View>)}
     <View style={[styles.switchRow, { marginTop: 12 }]}><View style={styles.flex}><Text style={[styles.name, { color: colors.ink }]}>{s.defaultTeam}</Text><Text style={[styles.meta, { color: colors.muted }]}>{s.defaultHint}</Text></View><Switch accessibilityLabel={s.defaultTeam} value={isDefault} onValueChange={setDefault} disabled={saving} trackColor={{ true: brand }} /></View>
     <Pressable accessibilityRole="button" disabled={saving || !name.trim()} onPress={() => void onSave({ name: name.trim(), description: description.trim(), strategy, channels, is_default: isDefault, member_ids: memberIds })} style={[styles.primary, { backgroundColor: brand, opacity: saving || !name.trim() ? 0.45 : 1 }]}>{saving ? <ActivityIndicator color={contrastOn(brand)} /> : <Text style={[styles.primaryText, { color: contrastOn(brand) }]}>{s.save}</Text>}</Pressable>
   </ScrollView>;
@@ -146,7 +146,7 @@ function ReportsPanel({ server, session, brand, handleError }: Shared) {
   const refresh = () => { setRefreshing(true); setReload((value) => value + 1); };
   const utcMinutes = -tz_offset;
   const utc = `UTC${utcMinutes >= 0 ? "+" : "−"}${String(Math.floor(Math.abs(utcMinutes) / 60)).padStart(2, "0")}:${String(Math.abs(utcMinutes) % 60).padStart(2, "0")}`;
-  const labelChannel = (value: string) => value === "widget" ? s.web : value === "whatsapp_cloud" ? "WhatsApp Business" : value === "whatsapp" ? "WhatsApp" : value;
+  const labelChannel = (value: string) => value === "widget" ? s.web : value === "whatsapp_cloud" ? "WhatsApp Business" : value === "whatsapp" ? "WhatsApp" : value === "instagram" ? "Instagram" : value === "messenger" ? "Facebook Messenger" : value;
   const metrics: [string, string | number][] = report ? [
     [s.started, report.started], [s.resolved, report.resolved], [s.openNow, report.open_now], [s.agentsOnline, report.agents_online],
     [s.inbound, report.inbound_messages], [s.humanReplies, report.human_replies], [s.aiReplies, report.ai_replies], [s.activeContacts, report.active_contacts],

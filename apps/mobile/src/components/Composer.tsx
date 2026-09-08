@@ -29,6 +29,8 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { Image } from "expo-image";
 import { chatStrings } from "../chatStrings";
+import type { ChannelCapabilities } from "../api";
+import { acceptsAttachment, channelCapabilities } from "../inbox";
 import { createRecordingSession, RecordingUnavailableError } from "../recordingSession";
 import { setRecordingMode } from "../audioSession";
 import { LocalAudioPreview } from "./Attachments";
@@ -53,6 +55,8 @@ type Props = {
   draftKey: string;
   brand: string;
   busy: boolean;
+  channel?: string;
+  capabilities?: ChannelCapabilities;
   onSendText: (text: string) => Promise<boolean>;
   onSendFile: (file: OutgoingFile, caption: string) => Promise<boolean>;
   insertedReply?: { text: string; key: number } | null;
@@ -106,7 +110,7 @@ function Meter({ levels, color }: { levels: number[]; color: string }) {
   );
 }
 
-export function Composer({ draftKey, brand, busy, onSendText, onSendFile, insertedReply, onReplyInserted, onSavedReplies, onAttachmentSelected, onError }: Props) {
+export function Composer({ draftKey, brand, busy, channel = "widget", capabilities = channelCapabilities({ channel }), onSendText, onSendFile, insertedReply, onReplyInserted, onSavedReplies, onAttachmentSelected, onError }: Props) {
   const colors = useColors();
   const s = useStrings();
   const c = chatStrings();
@@ -140,7 +144,14 @@ export function Composer({ draftKey, brand, busy, onSendText, onSendFile, insert
   const blink = useRef(new Animated.Value(1)).current;
 
   const recording = recorderState.isRecording || paused;
-  const canSend = draft.trim().length > 0 || Boolean(pendingFile);
+  const textAllowed = capabilities.text === true;
+  const fileAllowed = !pendingFile || acceptsAttachment(channel, capabilities, pendingFile.type);
+  const canSend = fileAllowed && (!draft.trim() || textAllowed) && (draft.trim().length > 0 || Boolean(pendingFile));
+  const canAttach = [capabilities.image, capabilities.video, capabilities.audio, capabilities.file].some(Boolean);
+  const attachmentOptions = [
+    ...(capabilities.image || capabilities.video ? [{ label: s.composer.fromLibrary, source: "library" as const }, { label: s.composer.fromCamera, source: "camera" as const }] : []),
+    ...(canAttach ? [{ label: c.file, source: "file" as const }] : []),
+  ];
 
   useEffect(() => { if (pendingFile) onAttachmentSelected?.(); }, [pendingFile, onAttachmentSelected]);
 
@@ -223,13 +234,18 @@ export function Composer({ draftKey, brand, busy, onSendText, onSendFile, insert
   }
 
   async function pick(from: "library" | "camera" | "file") {
-    if (busy || sending.current) return;
+    if (busy || sending.current || !canAttach || (from !== "file" && !capabilities.image && !capabilities.video)) return;
     setSheetOpen(false);
     try {
       if (from === "file") {
-        const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
+        const types = capabilities.file && channel !== "instagram" ? ["*/*"] : [
+          ...(capabilities.image ? ["image/*"] : []), ...(capabilities.video ? ["video/*"] : []),
+          ...(capabilities.audio ? ["audio/*"] : []), ...(capabilities.file ? ["application/pdf"] : []),
+        ];
+        const result = await DocumentPicker.getDocumentAsync({ type: types, copyToCacheDirectory: true, multiple: false });
         if (!result.canceled && result.assets?.[0] && mounted.current) {
           const asset = result.assets[0];
+          if (!acceptsAttachment(channel, capabilities, asset.mimeType || "application/octet-stream")) { onError(c.unsupportedAttachment); return; }
           setPendingFile({ uri: asset.uri, name: asset.name, type: asset.mimeType || "application/octet-stream" });
         }
         return;
@@ -240,13 +256,14 @@ export function Composer({ draftKey, brand, busy, onSendText, onSendFile, insert
         return;
       }
       const options: ImagePicker.ImagePickerOptions = {
-        mediaTypes: ["images", "videos"], quality: 0.8, allowsMultipleSelection: false,
+        mediaTypes: [...(capabilities.image ? ["images" as const] : []), ...(capabilities.video ? ["videos" as const] : [])], quality: 0.8, allowsMultipleSelection: false,
       };
       const result = from === "camera" ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
       if (result.canceled || !result.assets?.length || !mounted.current) return;
       const asset = result.assets[0];
       const extension = extensionFor(asset.uri, asset.type === "video" ? "mp4" : "jpg");
       const type = asset.mimeType || (asset.type === "video" ? `video/${extension}` : IMAGE_MIME[extension] || "image/jpeg");
+      if (!acceptsAttachment(channel, capabilities, type)) { onError(c.unsupportedAttachment); return; }
       setPendingFile({ uri: asset.uri, name: asset.fileName || `${asset.type === "video" ? "video" : "photo"}.${extension}`, type });
     } catch (error) {
       if (mounted.current) onError(error instanceof Error ? error.message : c.pickFailed);
@@ -255,6 +272,7 @@ export function Composer({ draftKey, brand, busy, onSendText, onSendFile, insert
 
   /** iOS has a real action sheet; on Android the inline rows are the native shape. */
   function openAttachMenu() {
+    if (busy || stopping || !canAttach) return;
     if (Platform.OS !== "ios") {
       setSheetOpen((open) => !open);
       return;
@@ -262,19 +280,18 @@ export function Composer({ draftKey, brand, busy, onSendText, onSendFile, insert
     ActionSheetIOS.showActionSheetWithOptions(
       {
         title: s.composer.sheetTitle,
-        options: [s.composer.fromLibrary, s.composer.fromCamera, c.file, s.composer.cancel],
-        cancelButtonIndex: 3,
+        options: [...attachmentOptions.map((option) => option.label), s.composer.cancel],
+        cancelButtonIndex: attachmentOptions.length,
       },
       (index) => {
-        if (index === 0) pick("library");
-        if (index === 1) void pick("camera");
-        if (index === 2) void pick("file");
+        const option = attachmentOptions[index];
+        if (option) void pick(option.source);
       },
     );
   }
 
   async function startRecording() {
-    if (busy || preparingRef.current || stoppingRef.current) return;
+    if (busy || !capabilities.audio || preparingRef.current || stoppingRef.current) return;
     preparingRef.current = true;
     const epoch = ++recordingEpoch.current;
     setPreparing(true);
@@ -422,19 +439,16 @@ export function Composer({ draftKey, brand, busy, onSendText, onSendFile, insert
         <View style={{ flex: 1 }}><Text numberOfLines={1} style={{ color: colors.ink, fontWeight: "600" }}>{pendingFile.type.startsWith("audio/") ? c.audioReady : pendingFile.name}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{c.attached}</Text></View>
         <Pressable disabled={busy} onPress={() => setPendingFile(null)} style={styles.iconButton} accessibilityRole="button" accessibilityLabel={c.removeFile}><Ionicons name="close-circle" size={24} color={colors.muted} /></Pressable>
       </View>{pendingFile.type.startsWith("audio/") ? <View style={{ paddingHorizontal: 14, paddingBottom: 12 }}><LocalAudioPreview uri={pendingFile.uri} brand={brand} /></View> : null}</View> : null}
+      {pendingFile && !fileAllowed && <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 12, paddingHorizontal: 14 }}>{c.unsupportedAttachment}</Text>}
       <View style={styles.shortcuts}>
-        {onSavedReplies ? <Pressable onPress={onSavedReplies} disabled={busy || stopping} style={styles.shortcut} accessibilityRole="button"><Ionicons name="flash-outline" size={17} color={brand} /><Text style={{ color: brand, fontSize: 12, fontWeight: "600" }}>{c.canned}</Text></Pressable> : null}
+        {onSavedReplies && textAllowed ? <Pressable onPress={onSavedReplies} disabled={busy || stopping} style={styles.shortcut} accessibilityRole="button"><Ionicons name="flash-outline" size={17} color={brand} /><Text style={{ color: brand, fontSize: 12, fontWeight: "600" }}>{c.canned}</Text></Pressable> : null}
       </View>
       {sheetOpen && Platform.OS !== "ios" ? (
         <View style={[styles.sheet, { borderTopColor: colors.line, backgroundColor: colors.surface }]}>
-          {[
-            { label: s.composer.fromLibrary, action: () => pick("library") },
-            { label: s.composer.fromCamera, action: () => pick("camera") },
-            { label: c.file, action: () => pick("file") },
-          ].map((option) => (
+          {attachmentOptions.map((option) => (
             <Pressable
               key={option.label}
-              onPress={option.action}
+              onPress={() => void pick(option.source)}
               android_ripple={{ color: colors.pressed }}
               style={({ pressed }) => [styles.sheetRow, pressed && { backgroundColor: tint(brand, 0.08) }]}
               accessibilityRole="button"
@@ -448,7 +462,7 @@ export function Composer({ draftKey, brand, busy, onSendText, onSendFile, insert
       <View style={styles.bar}>
         <Pressable
           onPress={openAttachMenu}
-          disabled={busy || stopping}
+          disabled={busy || stopping || !canAttach}
           hitSlop={8}
           style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
           accessibilityRole="button"
@@ -459,18 +473,18 @@ export function Composer({ draftKey, brand, busy, onSendText, onSendFile, insert
 
         <Pressable
           onPress={startRecording}
-          disabled={busy || stopping || Boolean(pendingFile)}
+          disabled={busy || stopping || !capabilities.audio || Boolean(pendingFile)}
           style={({ pressed }) => [styles.recordButton, pressed && styles.pressed, pendingFile && { opacity: .5 }]}
           accessibilityRole="button"
           accessibilityLabel={c.recordAudio}
-          accessibilityState={{ disabled: busy || stopping || Boolean(pendingFile) }}
+          accessibilityState={{ disabled: busy || stopping || !capabilities.audio || Boolean(pendingFile) }}
         >
           <Ionicons name="mic-outline" size={22} color={colors.muted} />
         </Pressable>
 
         <TextInput
           ref={input}
-          editable={!busy && !stopping}
+          editable={!busy && !stopping && textAllowed}
           accessibilityLabel={pendingFile ? c.caption : s.composer.placeholder}
           style={[styles.input, { borderColor: colors.line, color: colors.ink, backgroundColor: colors.canvas }]}
           value={draft}

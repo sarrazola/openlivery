@@ -44,6 +44,7 @@ const en = {
     filters: "Filters",
     teams: "Teams",
     allTeams: "All teams",
+    allChannels: "All channels",
     done: "Done",
     retry: "Try again",
     loadingMore: "Loading more…",
@@ -129,6 +130,8 @@ const en = {
   },
   channels: {
     whatsapp: "WhatsApp",
+    instagram: "Instagram",
+    messenger: "Facebook Messenger",
     widget: "Web chat",
     playground: "Playground",
   },
@@ -175,6 +178,7 @@ const es: typeof en = {
     filters: "Filtros",
     teams: "Equipos",
     allTeams: "Todos los equipos",
+    allChannels: "Todos los canales",
     done: "Listo",
     retry: "Reintentar",
     loadingMore: "Cargando más…",
@@ -261,6 +265,8 @@ const es: typeof en = {
   },
   channels: {
     whatsapp: "WhatsApp",
+    instagram: "Instagram",
+    messenger: "Facebook Messenger",
     widget: "Chat web",
     playground: "Pruebas",
   },

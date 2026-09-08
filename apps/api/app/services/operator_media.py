@@ -73,6 +73,7 @@ async def store_operator_media_reply(
 ) -> None:
     """Caller must have verified the conversation is in human mode."""
     content_type = (file.content_type or "").lower() or "application/octet-stream"
+    filename = file.filename
     kind = attachment_kind(content_type)
     data = await file.read(MAX_ATTACHMENT_BYTES + 1)
     if len(data) > MAX_ATTACHMENT_BYTES:
@@ -80,12 +81,20 @@ async def store_operator_media_reply(
     if not data:
         raise HTTPException(status_code=400, detail="The file is empty")
     caption = caption.strip()
-
-    external_message_id = await send_channel_media(
-        db, conversation, kind=kind, data=data, mime=content_type, filename=file.filename, caption=caption
-    )
+    social = conversation.channel in ("instagram", "messenger")
+    if social:
+        from .social_policy import require_reply
+        from .social_media import converted_filename, prepare_media
+        require_reply(conversation, human=True)
+        data, content_type = await prepare_media(conversation.channel, data, content_type, kind)
+        filename = converted_filename(filename, content_type)
+        external_message_id = None
+    else:
+        external_message_id = await send_channel_media(
+            db, conversation, kind=kind, data=data, mime=content_type, filename=file.filename, caption=caption
+        )
     llm_content = await _operator_media_llm_text(
-        db, conversation.agent, kind=kind, data=data, mime=content_type, caption=caption, filename=file.filename
+        db, conversation.agent, kind=kind, data=data, mime=content_type, caption=caption, filename=filename
     )
     message = Message(
         conversation_id=conversation.id,
@@ -99,7 +108,11 @@ async def store_operator_media_reply(
     )
     db.add(message)
     db.flush()
-    store_attachment(db, message, data=data, mime=content_type, filename=file.filename, kind=kind)
-    note_reply(conversation)
+    attachment = store_attachment(db, message, data=data, mime=content_type, filename=filename, kind=kind)
+    if social:
+        from .social_delivery import queue_message
+        queue_message(db, conversation, message, attachment=attachment)
+    else:
+        note_reply(conversation)
     conversation.updated_at = now_utc()
     db.commit()

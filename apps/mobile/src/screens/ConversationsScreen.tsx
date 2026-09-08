@@ -30,7 +30,7 @@ import {
   type InboxSummary,
 } from "../api";
 import { conversationTimestamp, mergeConversationPages } from "../inbox";
-import { channelLabel, conversationName, initialFor } from "../conversations";
+import { channelIcon, channelLabel, conversationName, initialFor } from "../conversations";
 import { useStrings, type Strings } from "../i18n";
 import { readableBrand, tint, useColors, useIsDark } from "../theme";
 
@@ -71,6 +71,7 @@ export function ConversationsScreen({
   const [status, setStatus] = useState<"open" | "resolved">("open");
   const [folder, setFolder] = useState<Folder>("all");
   const [team, setTeam] = useState("");
+  const [channel, setChannel] = useState("");
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [sheet, setSheet] = useState<"filters" | "account" | null>(null);
@@ -150,6 +151,7 @@ export function ConversationsScreen({
           ...(folder === "unread" ? { unread: true } : {}),
           search: query || undefined,
           team: team || undefined,
+          channel: channel || undefined,
           limit,
           offset,
           signal: abort.signal,
@@ -165,6 +167,7 @@ export function ConversationsScreen({
               ...(folder === "unread" ? { unread: true } : {}),
               search: query || undefined,
               team: team || undefined,
+              channel: channel || undefined,
               limit: nextLimit,
               offset: rows.length,
               signal: abort.signal,
@@ -218,7 +221,7 @@ export function ConversationsScreen({
         }
       }
     },
-    [server, session, status, folder, query, team, s.list.loadFailed],
+    [server, session, status, folder, query, team, channel, s.list.loadFailed],
   );
 
   useEffect(() => {
@@ -273,6 +276,7 @@ export function ConversationsScreen({
     setQuery("");
     setFolder("all");
     setTeam("");
+    setChannel("");
   }
   const tabs: Folder[] = [
     "all",
@@ -280,7 +284,7 @@ export function ConversationsScreen({
     ...(session.user_id ? ["mine" as const] : []),
     "ai",
   ];
-  const filterActive = !!team;
+  const filterActive = !!team || !!channel;
 
   return (
     <View style={[styles.flex, { backgroundColor: colors.surface }]}>
@@ -444,6 +448,7 @@ export function ConversationsScreen({
             })}
           </ScrollView>
         )}
+        {channel && <Pressable onPress={() => setChannel("")} style={styles.teamPill} accessibilityRole="button" accessibilityLabel={s.inbox.clearFilters}><Ionicons name={channelIcon(channel)} size={14} color={brand} /><Text style={{ color: brand }}>{channelLabel(channel, s)}</Text><Ionicons name="close" size={15} color={brand} /></Pressable>}
         {team && (
           <Pressable onPress={() => setTeam("")} style={styles.teamPill}>
             <Ionicons name="people-outline" size={14} color={brand} />
@@ -517,16 +522,16 @@ export function ConversationsScreen({
                 />
               </View>
               <Text style={[styles.emptyTitle, { color: colors.ink }]}>
-                {query || team || folder !== "all"
+                {query || team || channel || folder !== "all"
                   ? s.inbox.noResults
                   : s.list.emptyTitle}
               </Text>
               <Text style={[styles.emptyBody, { color: colors.muted }]}>
-                {query || team || folder !== "all"
+                {query || team || channel || folder !== "all"
                   ? s.inbox.noResultsBody
                   : s.list.emptyBody}
               </Text>
-              {!!(query || team || folder !== "all") && (
+              {!!(query || team || channel || folder !== "all") && (
                 <Pressable onPress={clearFilters} style={styles.iconButton}>
                   <Text style={{ color: brand, fontWeight: "600" }}>
                     {s.inbox.clearFilters}
@@ -586,11 +591,7 @@ export function ConversationsScreen({
                   >
                     <Ionicons
                       name={
-                        item.channel === "widget"
-                          ? "globe-outline"
-                          : item.channel === "playground"
-                            ? "flask-outline"
-                            : "logo-whatsapp"
+                        channelIcon(item.channel)
                       }
                       size={14}
                       color={
@@ -694,7 +695,7 @@ export function ConversationsScreen({
           >
             <View style={styles.sheetHeader}>
               <Text style={[styles.sheetTitle, { color: colors.ink }]}>
-                {sheet === "filters" ? s.inbox.teams : s.inbox.account}
+                {sheet === "filters" ? s.inbox.filters : s.inbox.account}
               </Text>
               <Pressable
                 onPress={() => setSheet(null)}
@@ -707,7 +708,11 @@ export function ConversationsScreen({
             </View>
             <ScrollView>
               {sheet === "filters" ? (
-                [{ id: "", name: s.inbox.allTeams }, ...teams].map((row) => (
+                <>
+                <Text style={{ color: colors.muted, marginTop: 12 }}>{s.inbox.allChannels}</Text>
+                {["", "whatsapp", "whatsapp_cloud", "instagram", "messenger", "widget"].map((value) => <Pressable key={value} style={styles.sheetRow} accessibilityRole="radio" accessibilityState={{ checked: channel === value }} onPress={() => setChannel(value)}><Text style={[styles.flex, { color: colors.ink, fontSize: 16 }]}>{value === "whatsapp_cloud" ? "WhatsApp Business" : value ? channelLabel(value, s) : s.inbox.allChannels}</Text>{channel === value && <Ionicons name="checkmark" size={22} color={brand} />}</Pressable>)}
+                <Text style={{ color: colors.muted, marginTop: 12 }}>{s.inbox.teams}</Text>
+                {[{ id: "", name: s.inbox.allTeams }, ...teams].map((row) => (
                   <Pressable
                     key={row.id}
                     onPress={() => {
@@ -727,7 +732,8 @@ export function ConversationsScreen({
                       <Ionicons name="checkmark" size={22} color={brand} />
                     )}
                   </Pressable>
-                ))
+                ))}
+                </>
               ) : (
                 <>
                   <Text

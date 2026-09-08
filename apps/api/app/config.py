@@ -38,6 +38,23 @@ class Settings(BaseSettings):
     # Meta Graph API root used by the WhatsApp Cloud API channel; override to
     # point at a mock server in tests.
     meta_graph_base_url: str = "https://graph.facebook.com/v23.0"
+    # Official messaging APIs. App credentials remain on the server.
+    social_graph_version: str = "v25.0"
+    social_worker_enabled: bool = True
+    social_worker_interval_seconds: float = 2.0
+    instagram_app_id: str = ""
+    instagram_app_secret: str = ""
+    instagram_webhook_verify_token: str = ""
+    instagram_human_agent_enabled: bool = False
+    messenger_app_id: str = ""
+    messenger_app_secret: str = ""
+    messenger_webhook_verify_token: str = ""
+    messenger_human_agent_enabled: bool = False
+    messenger_login_config_id: str = ""
+    # Public HTTPS origin; defaults to frontend_url when left empty.
+    social_public_url: str = ""
+    social_oauth_state_minutes: int = 10
+
     # Conversations the AI is answering resolve themselves after this many
     # hours without a message from either side. Conversations a person took
     # over are never closed automatically: only that person decides. 0 disables.

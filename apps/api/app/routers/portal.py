@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Cookie, Depends, Header, File, Form, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import Interval, and_, case, func, literal, or_, select
+from sqlalchemy import Interval, and_, case, exists, func, literal, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
@@ -10,6 +10,10 @@ from ..database import get_db
 from ..models import Agency, Agent, CannedResponse, Client, Contact, Conversation, Message, PortalUser, Team, TeamMember, WhatsAppChannel, WhatsAppCloudChannel, now_utc
 from ..ratelimit import login_rate_limit, public_asset_rate_limit
 from ..schemas import (
+    ContactBlockUpdate,
+    BulkResult,
+    ConversationArchiveUpdate,
+    ConversationSelection,
     AgentSummary,
     CannedResponseCreate,
     CannedResponseOut,
@@ -58,7 +62,7 @@ from ..services.whatsapp_templates import (
 )
 from ..services.conversation_state import record_activity
 from ..security import decrypt_secret
-from ..services.conversation_state import ConversationClosed, assign, ensure_open, note_reply, set_mode, set_status, set_team
+from ..services.conversation_state import ConversationClosed, assign, ensure_open, note_reply, set_archived, set_mode, set_status, set_team
 from ..services.routing import route_conversation
 from ..services.notifications import notify_assigned
 from ..services.attachments import attachment_response, conversation_attachment, logo_response
@@ -74,7 +78,9 @@ router = APIRouter(prefix="/portal", tags=["Client portal"])
 
 
 def _public_client(db: Session, slug: str) -> Client:
-    client = db.scalar(select(Client).where(Client.portal_slug == slug, Client.portal_enabled.is_(True)))
+    client = db.scalar(
+        select(Client).where(Client.portal_slug == slug, Client.portal_enabled.is_(True), Client.is_active.is_(True))
+    )
     if not client:
         raise HTTPException(status_code=404, detail="Portal not found or disabled")
     return client
@@ -173,6 +179,9 @@ def _last_inbound_at(conversation: Conversation):
 
 
 def _window_fields(conversation: Conversation, last_inbound_at) -> dict:
+    if conversation.channel in ("instagram", "messenger"):
+        from ..services.social_policy import window_fields
+        return window_fields(conversation)
     if conversation.channel != "whatsapp_cloud":
         return {"reply_window_until": None, "reply_window_open": True}
     return {"reply_window_until": window_open_until(last_inbound_at), "reply_window_open": window_is_open(last_inbound_at)}
@@ -303,7 +312,7 @@ def portal_members(slug: str, client: Client = Depends(_portal_client), db: Sess
     return [{"id": row.id, "name": row.name.strip() or row.email, "email": row.email, "availability": row.availability} for row in rows]
 
 
-_TEAM_CHANNELS = {"whatsapp", "whatsapp_cloud", "widget"}
+_TEAM_CHANNELS = {"whatsapp", "whatsapp_cloud", "widget", "instagram", "messenger"}
 
 
 def _portal_team(db: Session, client: Client, team_id: uuid.UUID) -> Team:
@@ -446,7 +455,7 @@ def portal_update_availability(
 
 @router.get("/{slug}/agents", response_model=list[AgentSummary])
 def portal_agents(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
-    return db.scalars(select(Agent).where(Agent.client_id == client.id).order_by(Agent.name)).all()
+    return db.scalars(select(Agent).where(Agent.client_id == client.id, Agent.deleted_at.is_(None)).order_by(Agent.name)).all()
 
 
 @router.get("/{slug}/conversations", response_model=list[ConversationOut])
@@ -454,6 +463,8 @@ def portal_conversations(
     slug: str,
     status: str | None = None,
     mode: str | None = None,
+    archived: bool = False,
+    channel: str | None = None,
     assignee: str | None = None,
     team: uuid.UUID | None = None,
     search: str | None = None,
@@ -482,6 +493,7 @@ def portal_conversations(
         .join(Conversation, Conversation.id == Message.conversation_id)
         .where(
             Message.sender_type == "visitor",
+            Message.is_historical.is_(False),
             or_(Conversation.operator_read_at.is_(None), Message.created_at > Conversation.operator_read_at),
         )
         .group_by(Message.conversation_id)
@@ -509,8 +521,15 @@ def portal_conversations(
         .outerjoin(PortalUser, PortalUser.id == Conversation.assignee_id)
         .outerjoin(last_inbound, last_inbound.c.cid == Conversation.id)
         .outerjoin(Team, Team.id == Conversation.team_id)
-        .where(Conversation.client_id == client.id, Conversation.channel != PLAYGROUND)
+        .outerjoin(Contact, Contact.id == Conversation.contact_id)
+        .where(Conversation.client_id == client.id, Conversation.channel != PLAYGROUND, Contact.blocked_at.is_(None))
     )
+    # The archive is its own inbox: archived conversations show only there.
+    query = query.where(Conversation.archived_at.is_not(None) if archived else Conversation.archived_at.is_(None))
+    if channel is not None:
+        if channel not in _TEAM_CHANNELS:
+            raise HTTPException(status_code=422, detail="Unknown inbox channel")
+        query = query.where(Conversation.channel == channel)
     if team is not None:
         query = query.where(Conversation.team_id == team)
     if assignee == "me" and user:
@@ -618,6 +637,7 @@ def _contact_out(contact: Contact, stats) -> ContactOut:
         conversation_count=int((stats.total if stats is not None else None) or 0),
         open_count=int((stats.open if stats is not None else None) or 0),
         last_activity_at=stats.last_activity_at if stats is not None else None,
+        blocked_at=contact.blocked_at,
     )
 
 
@@ -743,6 +763,40 @@ def portal_merge_contact(
     return _contact_out(primary, row)
 
 
+@router.post("/{slug}/contacts/{contact_id}/block", response_model=ContactOut)
+def portal_block_contact(
+    slug: str,
+    contact_id: uuid.UUID,
+    payload: ContactBlockUpdate,
+    client: Client = Depends(_portal_client),
+    sender_name: str = Depends(_sender_name),
+    db: Session = Depends(get_db),
+):
+    """Block or unblock a contact.
+
+    Blocked, their messages are stored but never reach the agent or a phone,
+    and their conversations leave the inboxes. Unblocking does not answer the
+    backlog: the open conversation is resolved with a note, and the contact's
+    next message opens a fresh one that the agent handles as usual.
+    """
+    contact = _portal_contact(db, client, contact_id)
+    open_ones = select(Conversation).where(Conversation.contact_id == contact.id, Conversation.status == "open")
+    if payload.blocked and contact.blocked_at is None:
+        contact.blocked_at = now_utc()
+        for conversation in db.scalars(open_ones).all():
+            record_activity(db, conversation, "blocked", actor=sender_name)
+    elif not payload.blocked and contact.blocked_at is not None:
+        contact.blocked_at = None
+        for conversation in db.scalars(open_ones).all():
+            set_status(db, conversation, "resolved", actor=sender_name)
+            record_activity(db, conversation, "unblocked", actor=sender_name)
+    db.commit()
+    db.refresh(contact)
+    stats = _contact_stats()
+    row = db.execute(select(stats).where(stats.c.cid == contact.id)).first()
+    return _contact_out(contact, row)
+
+
 @router.delete("/{slug}/contacts/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
 def portal_delete_contact(
     slug: str, contact_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
@@ -796,6 +850,9 @@ def _require_open_conversation(conversation: Conversation) -> None:
 
 
 def _require_open_window(conversation: Conversation) -> None:
+    if conversation.channel in ("instagram", "messenger"):
+        from ..services.social_policy import require_reply
+        require_reply(conversation, human=True)
     if conversation.channel == "whatsapp_cloud" and not window_is_open(_last_inbound_at(conversation)):
         raise HTTPException(status_code=409, detail=WINDOW_CLOSED)
 
@@ -821,7 +878,12 @@ def _template_credentials(channel: WhatsAppCloudChannel | None) -> tuple[str, st
 def portal_channels(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
     """Which WhatsApp lines this business has, so the portal knows how it can
     reach a contact first."""
-    out = []
+    from ..models import SocialChannel
+    from ..services.social_policy import CAPABILITIES
+    out = [{"id": item.id, "channel": item.provider, "status": item.status,
+            "external_account_id": item.external_account_id, "display_name": item.display_name,
+            "username": item.username, "capabilities": CAPABILITIES.copy()} for item in db.scalars(
+        select(SocialChannel).where(SocialChannel.client_id == client.id, SocialChannel.is_enabled.is_(True)))]
     cloud = _cloud_channel(db, client)
     if cloud and cloud.is_enabled:
         out.append({
@@ -959,6 +1021,10 @@ def portal_report(
     start = datetime.combine(from_, time.min, tzinfo=timezone.utc) + shift
     end = datetime.combine(to, time.min, tzinfo=timezone.utc) + shift + timedelta(days=1)
     conv_filters = [Conversation.client_id == client.id, Conversation.channel != PLAYGROUND]
+    # Imported archives did not start or resolve a case in this inbox.
+    conv_filters.append(or_(Conversation.social_channel_id.is_(None), exists(
+        select(Message.id).where(Message.conversation_id == Conversation.id,
+            Message.kind == "message", Message.is_historical.is_(False)).correlate(Conversation))))
     if channel:
         conv_filters.append(Conversation.channel == channel)
     if assignee_id:
@@ -1008,6 +1074,7 @@ def portal_report(
         .where(
             *conv_filters,
             Message.kind == "message",
+            Message.is_historical.is_(False),
             Message.created_at >= start,
             Message.created_at < end,
         )
@@ -1052,6 +1119,7 @@ def portal_report(
                 Message.kind == "message",
                 human_reply,
                 Message.portal_user_id.is_not(None),
+                Message.is_historical.is_(False),
                 Message.created_at >= start,
                 Message.created_at < end,
             )
@@ -1264,29 +1332,111 @@ def portal_inbox_summary(
         .where(
             Message.conversation_id == Conversation.id,
             Message.sender_type == "visitor",
+            Message.is_historical.is_(False),
             or_(Conversation.operator_read_at.is_(None), Message.created_at > Conversation.operator_read_at),
         )
         .exists()
     )
-    is_open = Conversation.status == "open"
+    live = Conversation.archived_at.is_(None)
+    is_open = and_(Conversation.status == "open", live)
     is_human = Conversation.mode == "human"
     is_mine = Conversation.assignee_id == (user.id if user else None)
     concerns_me = or_(Conversation.assignee_id.is_(None), is_mine)
     row = db.execute(
         select(
             func.count().filter(is_open).label("open"),
-            func.count().filter(Conversation.status == "resolved").label("resolved"),
+            func.count().filter(Conversation.status == "resolved", live).label("resolved"),
+            func.count().filter(Conversation.archived_at.is_not(None)).label("archived"),
             func.count().filter(is_open, is_human).label("human"),
             func.count().filter(is_open, Conversation.mode == "ai").label("ai"),
             func.count().filter(is_open, is_human, concerns_me, unread_exists).label("unread"),
             func.count().filter(is_open, is_mine).label("mine"),
             func.count().filter(is_open, is_human, Conversation.assignee_id.is_(None)).label("unassigned"),
-        ).where(Conversation.client_id == client.id, Conversation.channel != PLAYGROUND)
+        )
+        .select_from(Conversation)
+        .outerjoin(Contact, Contact.id == Conversation.contact_id)
+        .where(Conversation.client_id == client.id, Conversation.channel != PLAYGROUND, Contact.blocked_at.is_(None))
     ).one()
     return {
-        "open": row.open, "resolved": row.resolved, "human": row.human, "ai": row.ai,
+        "open": row.open, "resolved": row.resolved, "archived": row.archived, "human": row.human, "ai": row.ai,
         "unread": row.unread, "mine": row.mine, "unassigned": row.unassigned,
     }
+
+
+@router.post("/{slug}/conversations/archive-resolved", response_model=BulkResult)
+def portal_archive_resolved(
+    slug: str,
+    client: Client = Depends(_portal_client),
+    sender_name: str = Depends(_sender_name),
+    db: Session = Depends(get_db),
+):
+    """Move every resolved conversation of the portal to the archive.
+
+    Open ones are being handled and stay where they are.
+    """
+    rows = db.scalars(
+        select(Conversation).where(
+            Conversation.client_id == client.id,
+            Conversation.channel != PLAYGROUND,
+            Conversation.status == "resolved",
+            Conversation.archived_at.is_(None),
+        )
+    ).all()
+    for conversation in rows:
+        set_archived(db, conversation, True, actor=sender_name)
+    db.commit()
+    return {"count": len(rows)}
+
+
+@router.post("/{slug}/conversations/delete-archived", response_model=BulkResult)
+def portal_delete_archived(
+    slug: str,
+    payload: ConversationSelection | None = None,
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    """Delete archived conversations, messages included. Final.
+
+    With ``ids`` only those are deleted (and only the archived ones among
+    them); without, the whole archive goes.
+    """
+    query = select(Conversation).where(Conversation.client_id == client.id, Conversation.archived_at.is_not(None))
+    if payload and payload.ids is not None:
+        query = query.where(Conversation.id.in_(payload.ids))
+    rows = db.scalars(query).all()
+    for conversation in rows:
+        db.delete(conversation)
+    db.commit()
+    return {"count": len(rows)}
+
+
+@router.patch("/{slug}/conversations/{conversation_id}/archive", response_model=ConversationDetail)
+def portal_archive(
+    slug: str,
+    conversation_id: uuid.UUID,
+    payload: ConversationArchiveUpdate,
+    client: Client = Depends(_portal_client),
+    sender_name: str = Depends(_sender_name),
+    db: Session = Depends(get_db),
+):
+    conversation = _detail(db, client, conversation_id)
+    if set_archived(db, conversation, payload.archived, actor=sender_name):
+        db.commit()
+    return _present(_detail(db, client, conversation_id))
+
+
+@router.delete("/{slug}/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def portal_delete_conversation(
+    slug: str, conversation_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+):
+    """Delete one conversation for good. Only from the archive, so nothing
+    disappears from an inbox in a single step."""
+    conversation = _detail(db, client, conversation_id)
+    if conversation.archived_at is None:
+        raise HTTPException(status_code=409, detail="Archive the conversation before deleting it")
+    db.delete(conversation)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{slug}/conversations/{conversation_id}", response_model=ConversationDetail)
@@ -1459,6 +1609,17 @@ async def portal_reply(
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
     _require_open_window(conversation)
+    if conversation.channel in ("instagram", "messenger"):
+        from ..services.social_delivery import queue_message
+        if payload.quoted_message_id:
+            raise HTTPException(status_code=422, detail="Quoted replies are not supported by this channel.")
+        message = Message(conversation_id=conversation.id, role="assistant", content=payload.content.strip(),
+            sender_type="human", sender_name=sender_name, portal_user_id=user.id if user else None)
+        db.add(message)
+        queue_message(db, conversation, message)
+        conversation.updated_at = now_utc()
+        db.commit()
+        return _present(_detail(db, client, conversation_id))
     quoted_id, quoted_external = resolve_quote(db, conversation, payload.quoted_message_id)
     external_message_id = await send_channel_message(
         db, conversation, payload.content.strip(), quoted_external_id=quoted_external

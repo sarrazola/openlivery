@@ -58,3 +58,9 @@ API_PORT=8001 WEB_PORT=3001 DB_PORT=5433 make up
 - [Configuración](configuration.md) — variables de entorno, secretos y puertos.
 - [Arquitectura](architecture.md) — cómo encajan los servicios.
 - [Autoalojamiento](self-hosting.md) — despliega en un servidor público con TLS y copias de seguridad.
+
+## Desactivar un cliente, o eliminarlo
+
+**Cliente activo** apagado detiene todo sin perder nada: sus agentes dejan de responder en todos los canales, el chat web se oculta y el portal se cierra. Al encenderlo de nuevo el servicio continúa.
+
+**Eliminar cliente** borra el cliente y todo lo que hay bajo él: agentes con su conocimiento y herramientas, canales, contactos, conversaciones con todos sus mensajes, y las personas con acceso al portal. El diálogo muestra esos conteos (`GET /api/clients/{id}/deletion-preview`) y pide el nombre del cliente antes de habilitar el botón. Si hay un WhatsApp vinculado, se desconecta primero.

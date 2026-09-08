@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { BadgeCheck, CheckCircle2, ChevronDown, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, Pencil, Plus, Search, Trash2, UserRound } from "lucide-react";
+import { BadgeCheck, Ban, CheckCircle2, ChevronDown, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, Pencil, Plus, Search, Trash2, UserRound } from "lucide-react";
 import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { PhoneInput } from "@/components/phone-input";
@@ -25,13 +25,14 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<"new" | "edit" | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [blocking, setBlocking] = useState(false);
   const [typed, setTyped] = useState("");
   const [merging, setMerging] = useState(false);
   const [mergeQuery, setMergeQuery] = useState("");
   const [mergePrimary, setMergePrimary] = useState<Contact | null>(null);
   const cloudLine = channels.find((c) => c.channel === "whatsapp_cloud");
   const qrLine = channels.find((c) => c.channel === "whatsapp");
-  const lines = [cloudLine, qrLine].filter((line): line is PortalChannel => Boolean(line));
+  const lines = [cloudLine, qrLine].filter((line): line is PortalChannel & { channel: "whatsapp" | "whatsapp_cloud" } => Boolean(line));
   const [starting, setStarting] = useState<"whatsapp_cloud" | "whatsapp" | null>(null);
   const [choosingLine, setChoosingLine] = useState(false);
   const lineDetail = (line: PortalChannel) => [line.display_name, formatPhone(line.phone_number)].filter(Boolean).join(" · ");
@@ -118,6 +119,15 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
 
   const confirmWord = t("portal.contacts.deleteWord");
   const confirmed = typed.trim().toUpperCase() === confirmWord.toUpperCase();
+  async function setBlocked(blocked: boolean) {
+    if (!selected) return;
+    setBusy(true); setError("");
+    try {
+      const updated = await api<Contact>(`/portal/${slug}/contacts/${selected.id}/block`, { method: "POST", body: JSON.stringify({ blocked }) });
+      setSelected(updated); setBlocking(false);
+      await load();
+    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+  }
   async function remove(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected || !confirmed) return;
@@ -144,7 +154,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
             <span>
               <span className="portal-inbox-row-top"><strong>{nameOf(contact)}</strong>{contact.last_activity_at && <time>{formatWhen(contact.last_activity_at, lang)}</time>}</span>
               <small className="portal-inbox-preview">{phoneLabel(contact.phone)}{contact.email ? ` · ${contact.email}` : ""}</small>
-              <small className="inbox-row-meta">{t("portal.contacts.conversationCount", { count: contact.conversation_count })}{contact.open_count > 0 && <span className="mini-badge human">{t("portal.contacts.openCount", { count: contact.open_count })}</span>}</small>
+              <small className="inbox-row-meta">{t("portal.contacts.conversationCount", { count: contact.conversation_count })}{contact.blocked_at && <span className="mini-badge blocked"><Ban size={10} /> {t("portal.contacts.blockedBadge")}</span>}{contact.open_count > 0 && <span className="mini-badge human">{t("portal.contacts.openCount", { count: contact.open_count })}</span>}</small>
             </span>
           </button>)}
         {!loading && !items.length && <div className="no-conversations">{query ? t("portal.contacts.noMatches") : t("portal.contacts.empty")}</div>}
@@ -153,7 +163,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
         {selected ? <>
           <header>
             <div>
-              <strong>{nameOf(selected)}</strong>
+              <strong>{nameOf(selected)}{selected.blocked_at && <span className="mini-badge blocked"><Ban size={11} /> {t("portal.contacts.blockedBadge")}</span>}</strong>
               <small className="portal-channel-line">{phoneLabel(selected.phone)}{selected.email ? ` · ${selected.email}` : ""}</small>
             </div>
             <div className="thread-actions">
@@ -170,6 +180,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
                   </div>
                 </>}
               </div>}
+              {selected.blocked_at ? <button className="button small" disabled={busy} onClick={() => setBlocked(false)}><Ban size={15} /> {t("portal.contacts.unblock")}</button> : <button className="button small" onClick={() => setBlocking(true)}><Ban size={15} /> {t("portal.contacts.block")}</button>}
               <button className="button small" onClick={() => setEditing("edit")}><Pencil size={15} /> {t("portal.contacts.edit")}</button>
               <button className="button small" onClick={() => { setMergePrimary(null); setMergeQuery(""); setMerging(true); }}><Merge size={15} /> {t("portal.contacts.merge")}</button>
               <button className="icon-button danger" onClick={() => { setTyped(""); setDeleting(true); }} disabled={busy} title={t("portal.contacts.delete")} aria-label={t("portal.contacts.delete")}><Trash2 size={16} /></button>
@@ -200,6 +211,14 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
         {error && <Alert>{error}</Alert>}
         <div className="modal-actions"><button type="button" className="button" onClick={() => setStarting(null)}>{t("portal.contacts.form.cancel")}</button><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={16} /> : t("portal.contacts.startSend")}</button></div>
       </form>
+    </Modal>
+    <Modal open={blocking && Boolean(selected)} title={t("portal.contacts.blockTitle", { name: selected ? nameOf(selected) : "" })} onClose={() => setBlocking(false)}>
+      <div className="modal-form">
+        <p className="modal-copy">{t("portal.contacts.blockCopy")}</p>
+        <p className="modal-copy">{t("portal.contacts.blockUnblockCopy")}</p>
+        {error && <Alert>{error}</Alert>}
+        <div className="modal-actions"><button type="button" className="button" onClick={() => setBlocking(false)}>{t("portal.contacts.form.cancel")}</button><button type="button" className="button danger" disabled={busy} onClick={() => setBlocked(true)}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Ban size={15} /> {t("portal.contacts.block")}</>}</button></div>
+      </div>
     </Modal>
     <Modal open={deleting && Boolean(selected)} title={t("portal.contacts.deleteTitle", { name: selected ? nameOf(selected) : "" })} onClose={() => setDeleting(false)}>
       <form className="modal-form" onSubmit={remove}>

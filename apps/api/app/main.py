@@ -27,6 +27,8 @@ from .routers import (
     whatsapp_cloud_webhook,
     widget,
     webchat,
+    social,
+    social_webhook,
 )
 
 
@@ -51,10 +53,13 @@ async def _auto_resolve_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    from .services.social_worker import start_worker, stop_worker
+    start_worker()
     sweeper = asyncio.create_task(_auto_resolve_loop()) if settings.auto_resolve_after_hours > 0 else None
     try:
         yield
     finally:
+        await stop_worker()
         if sweeper:
             sweeper.cancel()
 
@@ -101,3 +106,5 @@ app.include_router(whatsapp_cloud.router, prefix="/api")
 app.include_router(whatsapp_cloud_webhook.public_router, prefix="/api")
 app.include_router(widget.router, prefix="/api")
 app.include_router(domains.public_router, prefix="/api")
+app.include_router(social.router, prefix="/api")
+app.include_router(social_webhook.public_router, prefix="/api")
