@@ -13,6 +13,8 @@ from fastapi import HTTPException
 from ..config import get_settings
 from ..security import decrypt_secret
 
+logger = logging.getLogger(__name__)
+
 PROVIDERS = {"instagram", "messenger"}
 SCOPES = {
     "instagram": {"instagram_business_basic", "instagram_business_manage_messages"},
@@ -158,19 +160,56 @@ async def verify_account(provider: str, token: str, account_id: str, app_id: str
             "username": profile.get("username"), "scopes": sorted(granted), "expires_at": expires_at}
 
 
+def _subscription_for_app(provider: str, payload: dict, app_id: str) -> dict | None:
+    rows = payload.get("data")
+    if not isinstance(rows, list):
+        return None
+    identity_field = "app_id" if provider == "instagram" else "id"
+    other_field = "id" if provider == "instagram" else "app_id"
+    for row in rows:
+        if not isinstance(row, dict) or str(row.get(identity_field)) != app_id:
+            continue
+        if other_field in row and str(row[other_field]) != app_id:
+            continue
+        return row
+    return None
+
+
+def _log_subscription_mismatch(provider: str, app_id: str, payload: dict) -> None:
+    """Log bounded identifiers and recognized field names, never provider payloads."""
+    data = payload.get("data")
+    summaries = []
+    known_fields = set().union(*SUBSCRIPTIONS.values())
+    for row in (data[:10] if isinstance(data, list) else []):
+        if not isinstance(row, dict):
+            summaries.append({"row_type": type(row).__name__})
+            continue
+        summary = {"identity_keys": [key for key in ("id", "app_id") if key in row]}
+        for key in ("id", "app_id"):
+            value = str(row.get(key, ""))
+            summary[key] = value if re.fullmatch(r"[0-9]{1,64}", value) else None
+        fields = row.get("subscribed_fields")
+        summary["fields_type"] = type(fields).__name__
+        summary["subscribed_fields"] = sorted({field for field in fields if isinstance(field, str) and field in known_fields}) if isinstance(fields, list) else []
+        summaries.append(summary)
+    logger.warning("Social subscription readback mismatch provider=%s expected_app_id=%s data_type=%s subscriptions=%s",
+                   provider, app_id, type(data).__name__, summaries)
+
+
 async def subscribe(provider: str, token: str, account_id: str, app_id: str, app_secret: str) -> bool:
     """Subscribe and read back this app's fields. Return whether it was new."""
     account_id, app_id = object_id(account_id), object_id(app_id)
     proof = _proof(token, app_secret)
     path = f"{account_id}/subscribed_apps"
     before = await request(provider, "GET", path, token, params={"appsecret_proof": proof})
-    existing = next((row for row in before.get("data", []) if str(row.get("id")) == app_id), None)
+    existing = _subscription_for_app(provider, before, app_id)
     fields = SUBSCRIPTIONS[provider] | set((existing or {}).get("subscribed_fields") or [])
     await request(provider, "POST", path, token, data={"subscribed_fields": ",".join(sorted(fields)), "appsecret_proof": proof})
     try:
         after = await request(provider, "GET", path, token, params={"appsecret_proof": proof})
-        ours = next((row for row in after.get("data", []) if str(row.get("id")) == app_id), None)
+        ours = _subscription_for_app(provider, after, app_id)
         if not ours or not SUBSCRIPTIONS[provider].issubset(set(ours.get("subscribed_fields") or [])):
+            _log_subscription_mismatch(provider, app_id, after)
             raise HTTPException(502, "The required messaging webhook subscription could not be confirmed")
     except HTTPException:
         if existing is None:
