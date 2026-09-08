@@ -4,6 +4,7 @@ import {
   Alert,
   AppState,
   FlatList,
+  Linking,
   Modal,
   Pressable,
   RefreshControl,
@@ -33,6 +34,8 @@ import { conversationTimestamp, mergeConversationPages } from "../inbox";
 import { channelIcon, channelLabel, conversationName, initialFor } from "../conversations";
 import { useStrings, type Strings } from "../i18n";
 import { readableBrand, tint, useColors, useIsDark } from "../theme";
+import { privacyUrl, supportUrl } from "../privacy";
+import { privacyStrings } from "../privacyStrings";
 
 type Folder = "all" | "unread" | "mine" | "ai";
 const PAGE_SIZE = 40;
@@ -56,6 +59,7 @@ export function ConversationsScreen({
   onOpen,
   onSignOut,
   onSessionExpired,
+  onPrivacy,
   active = true,
 }: {
   server: string;
@@ -63,6 +67,7 @@ export function ConversationsScreen({
   onOpen: (conversation: Conversation) => void;
   onSignOut: () => void;
   onSessionExpired?: () => void;
+  onPrivacy?: () => void;
   active?: boolean;
 }) {
   const [items, setItems] = useState<Conversation[]>([]);
@@ -94,6 +99,8 @@ export function ConversationsScreen({
   const activeRef = useRef(active);
   activeRef.current = active;
   const s = useStrings();
+  const p = privacyStrings();
+  const policy = privacyUrl(), support = supportUrl();
   const colors = useColors();
   const isDark = useIsDark();
   const insets = useSafeAreaInsets();
@@ -798,6 +805,8 @@ export function ConversationsScreen({
                       </Text>
                     </>
                   )}
+                  {onPrivacy ? <Pressable accessibilityRole="button" style={[styles.sheetRow, { marginTop: 20 }]} onPress={() => { setSheet(null); onPrivacy(); }}><Ionicons name="shield-checkmark-outline" size={21} color={brand} /><Text style={{ color: colors.ink, fontSize: 16 }}>{p.title}</Text></Pressable> : null}
+                  {[[policy, p.policy], [support, p.support]].map(([url, label]) => url ? <Pressable key={label} accessibilityRole="link" style={styles.sheetRow} onPress={() => { Linking.openURL(url).catch(() => Alert.alert(p.linkFailed)); }}><Ionicons name="open-outline" size={21} color={brand} /><Text style={{ color: colors.ink, fontSize: 16 }}>{label}</Text></Pressable> : null)}
                   <Pressable
                     style={[styles.sheetRow, { marginTop: 20 }]}
                     onPress={() =>

@@ -155,6 +155,21 @@ test('native Xcode app versions follow the selected identity without changing an
   assert.equal(tests.CURRENT_PROJECT_VERSION, '2');
 });
 
+test('localized publisher policy and support links require HTTPS without credentials', () => {
+  const brand = JSON.parse(readFileSync(path.join(root, 'brands/example.json'), 'utf8'));
+  const config = (overrides) => load('app.config.ts', {
+    'node:fs': { readFileSync: () => JSON.stringify({ ...brand, ...overrides }) },
+  }, { BRAND: 'example' }).default();
+  const resolved = config({ privacyPolicyUrls: { en: 'https://example.com/privacy' }, supportUrls: { es: 'https://example.com/es/support' } });
+  assert.equal(resolved.extra.privacyPolicyUrls.en, 'https://example.com/privacy');
+  assert.equal(resolved.extra.supportUrls.es, 'https://example.com/es/support');
+  assert.equal(config({}).extra.privacyPolicyUrls, null);
+  for (const value of [null, [], 'https://example.com', { en: 'http://example.com' }, { es: 'https://user:pass@example.com' }, { en: 'javascript:alert(1)' }, { en: 123 }]) {
+    assert.throws(() => config({ privacyPolicyUrls: value }), /HTTPS/);
+    assert.throws(() => config({ supportUrls: value }), /HTTPS/);
+  }
+});
+
 test('publishers can opt into native plugins and invalid plugin lists fail configuration', () => {
   const brand = JSON.parse(readFileSync(path.join(root, 'brands/example.json'), 'utf8'));
   const config = (nativePlugins) => load('app.config.ts', {
