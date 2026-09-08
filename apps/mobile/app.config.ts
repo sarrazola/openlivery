@@ -39,6 +39,8 @@ type Brand = {
   easProjectId?: string;
   owner?: string;
   nativePlugins?: string[];
+  privacyPolicyUrls?: { en?: string; es?: string };
+  supportUrls?: { en?: string; es?: string };
   /**
    * A preset for a service whoever publishes this build runs, offered on the
    * sign-in screen alongside typing an address. No brand file here has one:
@@ -71,6 +73,25 @@ function loadBrand(): Brand {
   if (brand.nativePlugins !== undefined && (!Array.isArray(brand.nativePlugins) || brand.nativePlugins.some((plugin) => typeof plugin !== "string" || !plugin.trim()))) {
     throw new Error("nativePlugins must be a list of Expo config plugin paths.");
   }
+  for (const key of ["privacyPolicyUrls", "supportUrls"] as const) {
+    const urls = brand[key];
+    if (urls === undefined) continue;
+    if (!urls || typeof urls !== "object" || Array.isArray(urls)) {
+      throw new Error(`${key} must be a map of localized HTTPS URLs.`);
+    }
+    for (const value of Object.values(urls)) {
+      let url: URL;
+      try {
+        if (typeof value !== "string") throw new Error();
+        url = new URL(value);
+      } catch {
+        throw new Error(`${key} must contain valid HTTPS URLs.`);
+      }
+      if (url.protocol !== "https:" || url.username || url.password) {
+        throw new Error(`${key} must contain HTTPS URLs without embedded credentials.`);
+      }
+    }
+  }
   if (brand.hosted && (!brand.hosted.label || !/^https:\/\/[^/]*\{workspace\}[^/]+$/.test(brand.hosted.serverTemplate))) {
     throw new Error("hosted must have a label and an HTTPS serverTemplate containing {workspace}.");
   }
@@ -101,6 +122,7 @@ export default (): ExpoConfig => {
       supportsTablet: true,
       bundleIdentifier: brand.iosBundleIdentifier,
       buildNumber: brand.iosBuildNumber || "1",
+      entitlements: { "aps-environment": release ? "production" : "development" },
       ...(brand.iosAppleTeamId || process.env.APPLE_TEAM_ID ? { appleTeamId: brand.iosAppleTeamId || process.env.APPLE_TEAM_ID } : {}),
       config: { usesNonExemptEncryption: false },
     },
@@ -126,11 +148,12 @@ export default (): ExpoConfig => {
     // and the notification icon have to be baked into the build either way.
     plugins: [
       ["expo-dev-client", { toolsButton: false, showMenuAtLaunch: false }],
-      ["expo-notifications", { color: brand.primaryColor, defaultChannel: "messages" }],
+      ["expo-notifications", { color: brand.primaryColor, defaultChannel: "messages", mode: release ? "production" : "development" }],
       ["expo-secure-store", { configureAndroidBackup: true, faceIDPermission: false }],
       "expo-sharing",
       "expo-image",
-      ["./plugins/withNetworkPolicy", { allowLocalHttp: process.env.APP_VARIANT === "development" }],
+      ["./plugins/withNetworkPolicy", { allowLocalHttp: !release && process.env.APP_VARIANT === "development" }],
+      "./plugins/withIosBuildIdentity",
       ["expo-splash-screen", {
         image: "./assets/splash-icon.png",
         imageWidth: 180,
@@ -161,6 +184,8 @@ export default (): ExpoConfig => {
       // screen; once signed in the agency's own colour arrives with the session.
       defaultServer: brand.defaultServer || "",
       primaryColor: brand.primaryColor,
+      privacyPolicyUrls: brand.privacyPolicyUrls || null,
+      supportUrls: brand.supportUrls || null,
       // Absent unless a brand file adds one, in which case sign-in offers it as
       // a choice instead of only asking for an address.
       hosted: brand.hosted || null,

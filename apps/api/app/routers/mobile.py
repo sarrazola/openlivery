@@ -27,6 +27,7 @@ from ..database import get_db
 from ..models import Agency, Client, PortalUser, PushDevice, now_utc
 from ..ratelimit import login_rate_limit
 from ..services.notifications import configured_provider, push_enabled
+from ..services.mobile_privacy import MobilePrivacy, disclosure
 from ..security import create_portal_token, decode_portal_token, verify_password
 
 
@@ -72,6 +73,7 @@ class MobileSession(BaseModel):
     branding: MobileBranding
     push: PushConfig = Field(default_factory=PushConfig)
     api_version: int = API_VERSION
+    privacy: MobilePrivacy
 
 
 class DeviceRegistration(BaseModel):
@@ -98,7 +100,7 @@ def _branding(client: Client, agency: Agency) -> MobileBranding:
     )
 
 
-def _session_for(client: Client, agency: Agency, user: PortalUser | None) -> MobileSession:
+def _session_for(client: Client, agency: Agency, user: PortalUser | None, db: Session) -> MobileSession:
     return MobileSession(
         token=create_portal_token(str(client.id), client.portal_slug, str(user.id) if user else None),
         portal_slug=client.portal_slug,
@@ -110,6 +112,7 @@ def _session_for(client: Client, agency: Agency, user: PortalUser | None) -> Mob
         user_name=(user.name or "").strip() if user else "",
         branding=_branding(client, agency),
         push=PushConfig(enabled=push_enabled(), provider=configured_provider()),
+        privacy=disclosure(db, client),
     )
 
 
@@ -130,11 +133,11 @@ def mobile_sign_in(payload: MobileSignInRequest, db: Session = Depends(get_db)):
         if not verify_password(payload.password, user.password_hash):
             continue
         client = db.get(Client, user.client_id)
-        if not client or not client.portal_enabled:
+        if not client or not client.portal_enabled or not client.is_active:
             continue
         agency = db.get(Agency, client.agency_id)
         if agency:
-            return _session_for(client, agency, user)
+            return _session_for(client, agency, user, db)
 
     raise HTTPException(status_code=401, detail="Incorrect e-mail or password")
 
@@ -154,7 +157,7 @@ def _resolve(db: Session, authorization: str | None) -> tuple[Client, Agency, Po
         client_id = uuid.UUID(payload["sub"])
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(status_code=401, detail="Invalid session") from exc
-    client = db.scalar(select(Client).where(Client.id == client_id, Client.portal_enabled.is_(True)))
+    client = db.scalar(select(Client).where(Client.id == client_id, Client.portal_enabled.is_(True), Client.is_active.is_(True)))
     if not client or client.portal_slug != payload.get("portal_slug"):
         raise HTTPException(status_code=401, detail="This portal is no longer available")
     agency = db.get(Agency, client.agency_id)
@@ -177,7 +180,7 @@ def _resolve(db: Session, authorization: str | None) -> tuple[Client, Agency, Po
 def mobile_session(authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
     """Re-check a stored token on launch and return fresh branding."""
     client, agency, user, token = _resolve(db, authorization)
-    session = _session_for(client, agency, user)
+    session = _session_for(client, agency, user, db)
     # Keep the token the caller already holds rather than rotating it on launch.
     session.token = token
     return session

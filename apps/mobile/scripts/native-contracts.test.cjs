@@ -128,6 +128,46 @@ test('brand identity is explicit and release builds reject embedded development 
   assert.equal(resolved.ios.bundleIdentifier, 'com.example.inbox');
   assert.ok(resolved.plugins.some((plugin) => Array.isArray(plugin) && plugin[0] === 'expo-secure-store'));
   assert.ok(resolved.plugins.some((plugin) => Array.isArray(plugin) && plugin[0] === 'expo-splash-screen'));
+  assert.equal(resolved.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === 'expo-notifications')[1].mode, 'production');
+  assert.equal(resolved.ios.entitlements['aps-environment'], 'production');
+  assert.equal(config({ BRAND: 'example', APP_VARIANT: 'development' }).plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === 'expo-notifications')[1].mode, 'development');
+  assert.equal(config({ BRAND: 'example', APP_VARIANT: 'development' }).ios.entitlements['aps-environment'], 'development');
+  const mixedEnvironment = config({ BRAND: 'example', NODE_ENV: 'production', APP_VARIANT: 'development' });
+  assert.equal(mixedEnvironment.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === './plugins/withNetworkPolicy')[1].allowLocalHttp, false);
+});
+
+test('native Xcode app versions follow the selected identity without changing another target or signing', () => {
+  const application = { PRODUCT_BUNDLE_IDENTIFIER: '"com.example.inbox"', MARKETING_VERSION: '0.1', CURRENT_PROJECT_VERSION: '2', DEVELOPMENT_TEAM: 'TEAMKEEP' };
+  const tests = { PRODUCT_BUNDLE_IDENTIFIER: 'com.example.inbox.tests', MARKETING_VERSION: '0.1', CURRENT_PROJECT_VERSION: '2' };
+  const plugin = load('plugins/withIosBuildIdentity.js', {
+    'expo/config-plugins': {
+      withXcodeProject: (config, action) => action({
+        ...config,
+        modResults: { pbxXCBuildConfigurationSection: () => ({ app: { buildSettings: application }, app_comment: 'Release', tests: { buildSettings: tests } }) },
+      }),
+    },
+  });
+  plugin({ version: '1.2.3', ios: { bundleIdentifier: 'com.example.inbox', buildNumber: '7' } });
+  assert.equal(application.MARKETING_VERSION, '1.2.3');
+  assert.equal(application.CURRENT_PROJECT_VERSION, '7');
+  assert.equal(application.DEVELOPMENT_TEAM, 'TEAMKEEP');
+  assert.equal(tests.MARKETING_VERSION, '0.1');
+  assert.equal(tests.CURRENT_PROJECT_VERSION, '2');
+});
+
+test('localized publisher policy and support links require HTTPS without credentials', () => {
+  const brand = JSON.parse(readFileSync(path.join(root, 'brands/example.json'), 'utf8'));
+  const config = (overrides) => load('app.config.ts', {
+    'node:fs': { readFileSync: () => JSON.stringify({ ...brand, ...overrides }) },
+  }, { BRAND: 'example' }).default();
+  const resolved = config({ privacyPolicyUrls: { en: 'https://example.com/privacy' }, supportUrls: { es: 'https://example.com/es/support' } });
+  assert.equal(resolved.extra.privacyPolicyUrls.en, 'https://example.com/privacy');
+  assert.equal(resolved.extra.supportUrls.es, 'https://example.com/es/support');
+  assert.equal(config({}).extra.privacyPolicyUrls, null);
+  for (const value of [null, [], 'https://example.com', { en: 'http://example.com' }, { es: 'https://user:pass@example.com' }, { en: 'javascript:alert(1)' }, { en: 123 }]) {
+    assert.throws(() => config({ privacyPolicyUrls: value }), /HTTPS/);
+    assert.throws(() => config({ supportUrls: value }), /HTTPS/);
+  }
 });
 
 test('publishers can opt into native plugins and invalid plugin lists fail configuration', () => {

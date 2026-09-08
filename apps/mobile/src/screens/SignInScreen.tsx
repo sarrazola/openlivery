@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -15,6 +17,8 @@ import { ApiError, normalizeServerUrl, signIn, type Session } from "../api";
 import { BRAND_COLOR, BRAND_NAME, DEFAULT_SERVER, HOSTED, hostedServerFor } from "../brand";
 import { useStrings } from "../i18n";
 import { contrastOn, useColors } from "../theme";
+import { privacyUrl, supportUrl } from "../privacy";
+import { privacyStrings } from "../privacyStrings";
 
 /**
  * Signing in.
@@ -48,6 +52,8 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
   const [error, setError] = useState<string | null>(null);
   const colors = useColors();
   const s = useStrings();
+  const p = privacyStrings();
+  const policy = privacyUrl(), support = supportUrl();
 
   const target = useHosted ? workspace : server;
   const canSubmit = target.trim().length > 0 && email.trim().length > 0 && password.length > 0 && !busy;
@@ -216,6 +222,9 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (server: string, sess
             )}
           </TouchableOpacity>
         </View>
+        <View style={styles.privacyLinks}>
+          {[[policy, p.policy], [support, p.support]].map(([url, label]) => url ? <TouchableOpacity key={label} accessibilityRole="link" style={styles.privacyLink} onPress={() => { Linking.openURL(url).catch(() => Alert.alert(p.linkFailed)); }}><Text style={{ color: colors.ink, fontSize: 14 }}>{label}</Text></TouchableOpacity> : null)}
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -252,4 +261,6 @@ const styles = StyleSheet.create({
   button: { marginTop: 24, height: 50, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   buttonDisabled: { opacity: 0.45 },
   buttonText: { fontSize: 16, fontWeight: "600" },
+  privacyLinks: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", columnGap: 24, marginTop: 16 },
+  privacyLink: { minHeight: 44, justifyContent: "center" },
 });

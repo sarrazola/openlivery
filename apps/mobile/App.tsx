@@ -25,6 +25,7 @@ import {
   ApiError,
   getConversation,
   resumeSession,
+  setSessionAccess,
   type Conversation,
   type Session,
 } from "./src/api";
@@ -34,13 +35,15 @@ import { clearComposerDrafts } from "./src/components/Composer";
 import { ChatScreen } from "./src/screens/ChatScreen";
 import { ConversationsScreen } from "./src/screens/ConversationsScreen";
 import { SignInScreen } from "./src/screens/SignInScreen";
+import { PrivacyScreen } from "./src/screens/PrivacyScreen";
+import { acceptConsent, hasConsent, withdrawConsent } from "./src/privacyConsent";
 import { useStrings } from "./src/i18n";
 import { readableBrand, useColors, useIsDark } from "./src/theme";
 import { backDestination } from "./src/navigation";
 import { notificationTarget } from "./src/notificationTarget";
 
 type Screen =
-  | { name: "loading" | "signIn" | "list" | "contacts" | "workspace" | "reconnect" }
+  | { name: "loading" | "signIn" | "list" | "contacts" | "workspace" | "reconnect" | "privacy" }
   | { name: "chat"; conversation: Conversation };
 
 function hideDevelopmentSplash() {
@@ -60,6 +63,10 @@ function InboxApp() {
   const [screen, setScreen] = useState<Screen>({ name: "loading" });
   const [server, setServer] = useState("");
   const [session, setSession] = useState<Session | null>(null);
+  const [privacyApproved, setPrivacyApproved] = useState(false);
+  const [privacyChecking, setPrivacyChecking] = useState(false);
+  const foregroundAction = useRef<(state: string) => void>(() => {});
+  const wasBackgrounded = useRef(false);
   const [notification, setNotification] =
     useState<Notifications.NotificationResponse | null>(null);
   const stopPush = useRef<() => Promise<void>>(async () => {});
@@ -81,6 +88,7 @@ function InboxApp() {
 
   const restore = useCallback(async () => {
     const generation = ++authGeneration.current;
+    setPrivacyApproved(false);
     setScreen({ name: "loading" });
     const stored = await loadStored();
     if (generation !== authGeneration.current) return;
@@ -91,9 +99,15 @@ function InboxApp() {
     try {
       const next = await resumeSession(stored.server, stored.token);
       if (generation !== authGeneration.current) return;
+      setSessionAccess(next, false);
+      const approved = await hasConsent(stored.server, next);
+      if (generation !== authGeneration.current) return;
+      setSessionAccess(next, approved);
       setServer(stored.server);
       setSession(next);
-      setScreen({ name: "list" });
+      setPrivacyApproved(approved);
+      setPrivacyChecking(false);
+      setScreen({ name: approved ? "list" : "privacy" });
     } catch (err) {
       if (generation !== authGeneration.current) return;
       if (err instanceof ApiError && err.status === 401) {
@@ -115,6 +129,8 @@ function InboxApp() {
   const handleSignOut = useCallback(async () => {
     if (signingOut.current) return;
     signingOut.current = true;
+    ++authGeneration.current;
+    if (session) setSessionAccess(session, false);
     setSignOutBusy(true);
     try {
       // A new account must not register the same native token before old
@@ -124,6 +140,8 @@ function InboxApp() {
       clearComposerDrafts();
       ++authGeneration.current;
       setSession(null);
+      setPrivacyApproved(false);
+      setPrivacyChecking(false);
       setServer("");
       setScreen({ name: "signIn" });
       setNotification(null);
@@ -131,7 +149,12 @@ function InboxApp() {
     } catch (err) {
       // Restore notification registration if credential removal failed and
       // the user remains signed in.
-      if (session) setSession({ ...session });
+      if (session) {
+        const approved = await hasConsent(server, session);
+        setSessionAccess(session, approved);
+        setPrivacyApproved(approved);
+        setSession({ ...session });
+      }
       Alert.alert(
         s.errors.generic,
         err instanceof Error ? err.message : s.errors.generic,
@@ -140,27 +163,55 @@ function InboxApp() {
       signingOut.current = false;
       setSignOutBusy(false);
     }
-  }, [server, session, s]);
+  }, [server, session, s, privacyApproved]);
 
   const expireSession = useCallback(() => {
     void handleSignOut();
   }, [handleSignOut]);
   async function handleSignedIn(base: string, next: Session) {
+    setSessionAccess(next, false);
     await store({ server: base, token: next.token });
+    const approved = await hasConsent(base, next);
     ++authGeneration.current;
     setServer(base);
     setSession(next);
+    setSessionAccess(next, approved);
+    setPrivacyApproved(approved);
+    setPrivacyChecking(false);
+    setScreen({ name: approved ? "list" : "privacy" });
+  }
+
+  async function handleAcceptPrivacy() {
+    if (!session) return;
+    const generation = authGeneration.current;
+    await acceptConsent(server, session);
+    if (generation !== authGeneration.current) return;
+    setSessionAccess(session, true);
+    setPrivacyApproved(true);
     setScreen({ name: "list" });
   }
 
+  async function handleWithdrawPrivacy() {
+    await withdrawConsent();
+    if (session) setSessionAccess(session, false);
+    setPrivacyApproved(false);
+    await handleSignOut();
+  }
+
   useEffect(() => {
-    if (!session) return;
-    const stop = startPushSession(server, session);
-    stopPush.current = stop;
+    if (!session || !privacyApproved) return;
+    let active = true;
+    let stop = async () => {};
+    const previous = stopPush.current;
+    const ready = previous().then(() => {
+      if (active) stop = startPushSession(server, session);
+    });
+    const cleanup = async () => { active = false; await ready; await stop(); };
+    stopPush.current = cleanup;
     return () => {
-      void stop();
+      void cleanup();
     };
-  }, [server, session]);
+  }, [server, session?.token, session?.push.enabled, session?.push.provider, privacyApproved]);
 
   useEffect(() => {
     let active = true;
@@ -181,7 +232,7 @@ function InboxApp() {
     };
   }, []);
   useEffect(() => {
-    if (!notification || !session || signOutBusy) return;
+    if (!notification || !session || signOutBusy || !privacyApproved || privacyChecking) return;
     const identifier = notification.notification.request.identifier;
     if (handledNotification.current === identifier) return;
     handledNotification.current = identifier;
@@ -213,27 +264,51 @@ function InboxApp() {
     return () => {
       active = false;
     };
-  }, [notification, server, session, expireSession, s, signOutBusy]);
+  }, [notification, server, session, expireSession, s, signOutBusy, privacyApproved, privacyChecking]);
 
-  useEffect(() => {
+  foregroundAction.current = (state) => {
     if (!session) return;
-    let active = true;
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state !== "active") return;
-      void resumeSession(server, session.token).catch((err) => {
-        if (active && err instanceof ApiError && err.status === 401)
-          expireSession();
-      });
+    // System permission dialogs are inactive, not background transitions.
+    if (state === "inactive") return;
+    if (state === "active" && !wasBackgrounded.current) return;
+    wasBackgrounded.current = state !== "active";
+    setSessionAccess(session, false);
+    setPrivacyChecking(true);
+    if (state !== "active") { ++authGeneration.current; return; }
+    const generation = ++authGeneration.current;
+    void resumeSession(server, session.token).then(async (next) => {
+      if (generation !== authGeneration.current || signingOut.current) return;
+      setSessionAccess(next, false);
+      const approved = await hasConsent(server, next);
+      if (generation !== authGeneration.current || signingOut.current) return;
+      setSessionAccess(next, approved);
+      setSession(next);
+      setPrivacyApproved(approved);
+      setPrivacyChecking(false);
+      if (!approved) setScreen({ name: "privacy" });
+      else if (screen.name === "reconnect") setScreen({ name: "list" });
+    }).catch((err) => {
+      if (generation !== authGeneration.current) return;
+      if (err instanceof ApiError && err.status === 401) expireSession();
+      else {
+        setPrivacyChecking(false);
+        setScreen({ name: "reconnect" });
+      }
     });
-    return () => {
-      active = false;
-      subscription.remove();
-    };
-  }, [server, session, expireSession]);
+  };
+  useEffect(() => {
+    // Installed on the initial loading screen, before child refresh listeners.
+    const subscription = AppState.addEventListener("change", (state) => {
+      foregroundAction.current(state);
+    });
+    return () => subscription.remove();
+  }, []);
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
       "hardwareBackPress",
       () => {
+        if (session && (!privacyApproved || privacyChecking)) return true;
+        if (screen.name === "privacy") { setScreen({ name: "list" }); return true; }
         const destination = backDestination(screen.name, returnTo.current);
         if (!destination) return false;
         setScreen({ name: destination });
@@ -241,7 +316,7 @@ function InboxApp() {
       },
     );
     return () => subscription.remove();
-  }, [screen.name]);
+  }, [screen.name, session, privacyApproved, privacyChecking]);
 
   return (
     <View onLayout={hideDevelopmentSplash} style={[styles.root, { backgroundColor: colors.canvas }]}>
@@ -249,7 +324,7 @@ function InboxApp() {
         barStyle={isDark ? "light-content" : "dark-content"}
         backgroundColor={colors.surface}
       />
-      {screen.name === "loading" ? (
+      {screen.name === "loading" || privacyChecking ? (
         <SafeAreaView style={styles.center}>
           <ActivityIndicator color={colors.muted} />
         </SafeAreaView>
@@ -274,6 +349,10 @@ function InboxApp() {
         <SafeAreaView style={styles.root}>
           <SignInScreen onSignedIn={handleSignedIn} />
         </SafeAreaView>
+      ) : !privacyApproved || screen.name === "privacy" ? (
+        <PrivacyScreen session={session} server={server} accepted={privacyApproved}
+          onAccept={handleAcceptPrivacy} onDecline={handleWithdrawPrivacy}
+          onBack={privacyApproved ? () => setScreen({ name: "list" }) : undefined} />
       ) : (
         <View style={styles.root}>
           <View
@@ -286,6 +365,7 @@ function InboxApp() {
               onOpen={openConversation}
               onSignOut={() => void handleSignOut()}
               onSessionExpired={expireSession}
+              onPrivacy={() => setScreen({ name: "privacy" })}
             />
           </View>
           {screen.name === "contacts" && (

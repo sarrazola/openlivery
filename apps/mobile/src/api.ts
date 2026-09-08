@@ -9,6 +9,18 @@
  */
 
 import { strings } from "./i18n";
+import { privacyStrings } from "./privacyStrings";
+
+const sessionAccess = new Map<string, boolean>();
+
+/** The app closes this gate while permission or session refresh is pending. */
+export function setSessionAccess(session: Session, allowed: boolean): void {
+  sessionAccess.set(session.token, allowed);
+}
+
+function requireSessionAccess(token?: string): void {
+  if (token && sessionAccess.get(token) === false) throw new ApiError(privacyStrings().permissionRequired, 428);
+}
 
 export type Branding = {
   agency_name: string;
@@ -42,6 +54,12 @@ export type Session = {
   branding: Branding;
   push: PushConfig;
   api_version: number;
+  privacy?: PrivacyDisclosure;
+};
+
+export type PrivacyDisclosure = {
+  version: string;
+  destinations: { kind: "ai" | "integration" | "notification"; name: string; host: string; capabilities: string[] }[];
 };
 
 export type Attachment = {
@@ -246,6 +264,7 @@ async function responseBody<T>(response: Response, fallback = strings().errors.g
 }
 
 async function request<T>(server: string, path: string, init: RequestInit = {}, token?: string): Promise<T> {
+  if (path !== "/mobile/session" && !(path.startsWith("/mobile/devices/") && init.method === "DELETE")) requireSessionAccess(token);
   const controller = new AbortController();
   const cancel = () => controller.abort();
   if (init.signal?.aborted) controller.abort();
@@ -273,6 +292,7 @@ async function request<T>(server: string, path: string, init: RequestInit = {}, 
 }
 
 function portalPath(session: Session, path: string): string {
+  requireSessionAccess(session.token);
   return `/portal/${encodeURIComponent(session.portal_slug)}${path}`;
 }
 
@@ -434,6 +454,7 @@ export async function replyWithFile(
   file: { uri: string; name: string; type: string },
   caption = "",
 ): Promise<ConversationDetail> {
+  requireSessionAccess(session.token);
   // Imported here rather than at the top so this module stays loadable outside
   // a React Native runtime - scripts/verify-flow.ts exercises the rest of it
   // from plain Node.
@@ -466,6 +487,7 @@ export function attachmentUrl(server: string, session: Session, conversationId: 
  * Everything that renders one needs this header.
  */
 export function authHeaders(session: Session): Record<string, string> {
+  requireSessionAccess(session.token);
   return { Authorization: `Bearer ${session.token}` };
 }
 
