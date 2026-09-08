@@ -95,6 +95,11 @@ def configure_channel(
             status_code=400, detail="That phone number is already connected to another client"
         )
     channel = db.scalar(select(WhatsAppCloudChannel).where(WhatsAppCloudChannel.client_id == client.id))
+    if channel and channel.coexistence and (
+        payload.phone_number_id is not None or payload.waba_id is not None
+        or payload.access_token or payload.app_secret
+    ):
+        raise HTTPException(status_code=409, detail="Use the WhatsApp Business app connection flow to change this number or its authorization.")
     if not channel:
         channel = WhatsAppCloudChannel(
             agency_id=user.agency_id,
@@ -104,7 +109,8 @@ def configure_channel(
         )
         db.add(channel)
     channel.agent_id = agent.id
-    channel.is_enabled = True
+    if not channel.coexistence:
+        channel.is_enabled = True
     if payload.phone_number_id is not None:
         channel.phone_number_id = number
     if payload.waba_id is not None:
@@ -154,6 +160,8 @@ async def connect_channel(client_id: uuid.UUID, db: Session = Depends(get_db), u
 @router.post("/channels/{client_id}/disconnect", response_model=WhatsAppCloudChannelOut)
 def disconnect_channel(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     channel = _channel_for_user(db, user, client_id)
+    if channel.coexistence:
+        raise HTTPException(status_code=409, detail="Disconnect this number in WhatsApp Business: Settings > Account > Business Platform > Disconnect account.")
     channel.status = "disconnected"
     channel.is_enabled = False
     channel.last_error = None

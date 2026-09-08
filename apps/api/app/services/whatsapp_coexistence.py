@@ -294,7 +294,7 @@ async def process_pending(db, *, limit=2, batch_size=100):
                         for error in batch.get("errors", []):
                             sync_state(db, channel, "history", status="declined" if error.get("code") == 2593109 else "error")
                         progress = (batch.get("metadata") or {}).get("progress")
-                        if isinstance(progress, int):
+                        if isinstance(progress, int) and not batch.get("errors"):
                             prior = (channel.coexistence_sync or {}).get("history", {}).get("progress", 0)
                             progress = min(100, max(prior, progress))
                             other_pending = db.scalar(select(WhatsAppCoexistenceEvent.id).where(
@@ -335,9 +335,14 @@ async def process_pending(db, *, limit=2, batch_size=100):
             db.commit()
         except Exception as exc:
             db.rollback()
-            db.execute(update(WhatsAppCoexistenceEvent).where(WhatsAppCoexistenceEvent.id == item_id).values(
+            attempts = db.execute(update(WhatsAppCoexistenceEvent).where(WhatsAppCoexistenceEvent.id == item_id).values(
                 attempts=WhatsAppCoexistenceEvent.attempts + 1, available_at=now_utc() + timedelta(seconds=60),
-                last_error=type(exc).__name__))
+                last_error=type(exc).__name__).returning(WhatsAppCoexistenceEvent.attempts)).scalar_one()
+            if attempts >= 8:
+                failed = db.get(WhatsAppCoexistenceEvent, item_id)
+                channel = db.get(WhatsAppCloudChannel, failed.channel_id)
+                section = "contacts" if failed.field == "smb_app_state_sync" else failed.field
+                sync_state(db, channel, section, status="error", error="Some synchronization data could not be processed. Contact support.")
             db.commit()
             logger.warning("WhatsApp synchronization deferred for %s (%s)", item_id, type(exc).__name__)
 
@@ -356,7 +361,9 @@ async def run_scope(db):
         if any((channel.coexistence_sync or {}).get(part, {}).get("status") == "pending" for part in ("contacts", "history")):
             await request_sync(db, channel)
     await process_pending(db)
-    db.execute(delete(WhatsAppCoexistenceEvent).where(WhatsAppCoexistenceEvent.processed_at < now_utc() - timedelta(days=30)))
+    db.execute(delete(WhatsAppCoexistenceEvent).where(or_(
+        WhatsAppCoexistenceEvent.processed_at < now_utc() - timedelta(days=30),
+        (WhatsAppCoexistenceEvent.attempts >= 8) & (WhatsAppCoexistenceEvent.created_at < now_utc() - timedelta(days=30)))))
     db.commit()
 
 

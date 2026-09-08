@@ -96,6 +96,36 @@ def test_phone_reply_pauses_agent_and_duplicate_does_not_take_over_twice(channel
         assert len(db.scalars(select(Message)).all()) == 1
 
 
+def test_manual_routes_cannot_replace_or_locally_offboard_a_business_app_number(channel, authenticated_client):
+    with TestingSession() as db:
+        stored = db.get(WhatsAppCloudChannel, channel)
+        client_id, agent_id = str(stored.client_id), str(stored.agent_id)
+    url = f"/api/whatsapp-cloud/channels/{client_id}"
+    assert authenticated_client.put(url, json={"agent_id": agent_id, "phone_number_id": "222"}).status_code == 409
+    assert authenticated_client.post(f"{url}/disconnect").status_code == 409
+    assert authenticated_client.put(url, json={"agent_id": agent_id}).status_code == 200
+    with TestingSession() as db:
+        stored = db.get(WhatsAppCloudChannel, channel)
+        stored.is_enabled = False
+        stored.status = "disconnected"
+        db.commit()
+    assert authenticated_client.put(url, json={"agent_id": agent_id}).json()["is_enabled"] is False
+
+
+def test_failed_import_is_visible_and_does_not_erase_accepted_messages(channel, monkeypatch):
+    with TestingSession() as db:
+        receive(db, channel, "history", history(raw("bad-chunk")))
+        db.execute(update(WhatsAppCoexistenceEvent).values(attempts=7))
+        db.commit()
+        def fail(*args, **kwargs):
+            raise ValueError("Invalid import")
+        monkeypatch.setattr(coex, "_messages", fail)
+        asyncio.run(coex.process_pending(db))
+        assert db.get(WhatsAppCloudChannel, channel).coexistence_sync["history"]["status"] == "error"
+        receipt = db.scalar(select(WhatsAppCoexistenceEvent))
+        assert receipt.attempts == 8 and receipt.payload
+
+
 def test_phone_reply_received_during_generation_suppresses_ai(channel, authenticated_client, monkeypatch):
     async def complete(*args, **kwargs):
         echo = raw("person-took-over", outgoing=True, age=0)
