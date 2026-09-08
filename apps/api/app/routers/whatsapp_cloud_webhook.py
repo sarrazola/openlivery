@@ -14,7 +14,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -24,6 +24,7 @@ from ..security import decrypt_secret
 from ..services.whatsapp_cloud import fetch_media, send_text
 from ..services.whatsapp_format import markdown_to_whatsapp
 from ..services.whatsapp_inbound import InboundMessage, process_inbound
+from ..services.whatsapp_identity import contact_names, peer_id, resolve_peer_contact, user_id
 
 
 public_router = APIRouter(prefix="/public/whatsapp-cloud", tags=["WhatsApp Cloud public"])
@@ -59,12 +60,13 @@ def verify_webhook(
 def _parse_message(message: dict, contacts: dict[str, str]) -> InboundMessage | None:
     """Map one Cloud API message to the shared inbound shape; None to skip."""
     kind = message.get("type")
-    sender = message.get("from") or ""
+    sender = peer_id(message) or ""
     from ..services.social_inbound import event_time
     base = {
         "external_message_id": message.get("id") or "",
         "external_chat_id": sender,
         "sender_name": contacts.get(sender),
+        "sender_user_id": user_id(message),
         "occurred_at": event_time(message.get("timestamp")),
     }
     if not base["external_message_id"] or not sender:
@@ -90,15 +92,19 @@ def _apply_incoming_reaction(db: Session, channel: WhatsAppCloudChannel, message
     """The customer reacted to a message (or removed the reaction)."""
     reaction = message.get("reaction") or {}
     target_id = reaction.get("message_id")
-    sender = message.get("from") or ""
+    sender = peer_id(message) or ""
     if not target_id or not sender:
         return
+    contact = resolve_peer_contact(db, channel, sender, sender_user_id=user_id(message))
+    peer_filter = Conversation.external_chat_id == sender
+    if contact:
+        peer_filter = or_(peer_filter, Conversation.contact_id == contact.id)
     target = db.scalar(
         select(Message)
         .join(Conversation, Conversation.id == Message.conversation_id)
         .where(
             Conversation.whatsapp_cloud_channel_id == channel.id,
-            Conversation.external_chat_id == sender,
+            peer_filter,
             Message.external_message_id == target_id,
         )
     )
@@ -157,10 +163,7 @@ async def receive_webhook(channel_id: uuid.UUID, request: Request, db: Session =
                 continue
             for status in value.get("statuses") or []:
                 _record_status(db, channel, status)
-            contacts = {
-                contact.get("wa_id"): (contact.get("profile") or {}).get("name")
-                for contact in value.get("contacts") or []
-            }
+            contacts = contact_names(value.get("contacts") or [])
             for raw_message in value.get("messages") or []:
                 if raw_message.get("type") == "reaction":
                     _apply_incoming_reaction(db, channel, raw_message)
