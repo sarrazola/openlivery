@@ -177,23 +177,82 @@ def _messages(db, channel, rows, *, historical):
             _enqueue(db, channel, "media", {"message_id": str(raw["id"]), "raw": raw})
 
 
+def account_event_waba_id(value: dict, entry_id: str) -> str:
+    """Partner events can identify the affected WABA inside waba_info."""
+    info = value.get("waba_info") or {}
+    return str(info.get("waba_id") or entry_id or "") if isinstance(info, dict) else ""
+
+
+def mark_disconnected(channel, *, offboarded: bool, message: str):
+    channel.status = "disconnected"
+    channel.is_enabled = False
+    channel.encrypted_access_token = None
+    channel.last_error = message
+    channel.updated_at = now_utc()
+    # Lost access alone does not prove a new one-shot history import is allowed.
+    key = "offboarded_at" if offboarded else "authorization_lost_at"
+    channel.coexistence_sync = {**(channel.coexistence_sync or {}), key: now_utc().isoformat()}
+
+
+async def refresh_connection(db, channel):
+    """Reconcile with Meta without registering, disconnecting, or sending anything."""
+    if not channel.coexistence:
+        raise HTTPException(status_code=409, detail="Status refresh is available for WhatsApp Business app connections.")
+    if not channel.encrypted_access_token or not channel.phone_number_id:
+        if channel.is_enabled or channel.status == "connected":
+            mark_disconnected(channel, offboarded=False, message="WhatsApp authorization is missing. Connect the account again.")
+            db.commit()
+        return
+    channel_id = channel.id
+    expected = (channel.phone_number_id, channel.encrypted_access_token, channel.last_connected_at)
+    access_token = decrypt_secret(channel.encrypted_access_token)
+    db.rollback()
+    response = await _graph_request("GET", _graph_url(expected[0]), access_token,
+        params={"fields": "id,is_on_biz_app,platform_type"})
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Meta returned an invalid status response. Try again.") from exc
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=502, detail="Meta returned an invalid status response. Try again.")
+    error = data.get("error") or {}
+    if not isinstance(error, dict):
+        raise HTTPException(status_code=502, detail="Meta returned an invalid status response. Try again.")
+    inaccessible = 400 <= response.status_code < 500 and (
+        error.get("code") == 190 or (error.get("code") == 100 and error.get("error_subcode") == 33))
+    if response.status_code >= 400 and not inaccessible:
+        raise HTTPException(status_code=502, detail="Meta could not confirm the connection status. Try again.")
+    if not inaccessible and (str(data.get("id")) != expected[0]
+            or not isinstance(data.get("is_on_biz_app"), bool) or not data.get("platform_type")):
+        raise HTTPException(status_code=502, detail="Meta did not return a complete connection status. Try again.")
+    current = db.scalar(select(WhatsAppCloudChannel).where(WhatsAppCloudChannel.id == channel_id)
+                        .with_for_update().execution_options(populate_existing=True))
+    # A refresh that started before a reconnection must not invalidate its token.
+    if not current or (current.phone_number_id, current.encrypted_access_token, current.last_connected_at) != expected:
+        return
+    if inaccessible:
+        mark_disconnected(current, offboarded=False, message="WhatsApp authorization is no longer available. Connect the account again.")
+    elif not data["is_on_biz_app"] or data["platform_type"] != "CLOUD_API":
+        mark_disconnected(current, offboarded=True, message="WhatsApp Business disconnected this number. Connect it again to resume.")
+    current.coexistence_sync = {**(current.coexistence_sync or {}), "status_checked_at": now_utc().isoformat()}
+    db.commit()
+
+
 def accept_change(db, channel, field: str, value: dict, *, waba_id: str = "") -> bool:
     """Caller must verify the signature. Failure to commit must cause a retry."""
     if field not in FIELDS or not channel.coexistence:
         return False
     delivered = (value.get("metadata") or {}).get("phone_number_id")
     if field == "account_update":
+        waba_id = account_event_waba_id(value, waba_id)
         if not waba_id or waba_id != channel.waba_id:
             return False
         phone = normalize_phone(value.get("phone_number"))
         if phone and phone != normalize_phone(channel.phone_number):
             return False
         if value.get("event") in {"PARTNER_REMOVED", "ACCOUNT_OFFBOARDED"}:
-            channel.status = "disconnected"
-            channel.is_enabled = False
-            channel.encrypted_access_token = None
-            channel.last_error = "WhatsApp Business disconnected this number. Connect it again to resume."
-            channel.coexistence_sync = {**(channel.coexistence_sync or {}), "offboarded_at": now_utc().isoformat()}
+            mark_disconnected(channel, offboarded=True,
+                message="WhatsApp Business disconnected this number. Connect it again to resume.")
         db.commit()
         return True
     if delivered != channel.phone_number_id or not channel.is_enabled:

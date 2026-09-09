@@ -226,6 +226,121 @@ def test_offboarding_stops_messages_and_drops_credentials(channel):
         assert row.coexistence_sync["offboarded_at"]
 
 
+@pytest.mark.parametrize("event_name", ["PARTNER_REMOVED", "ACCOUNT_OFFBOARDED"])
+def test_nested_waba_identifies_offboarding_target(channel, event_name):
+    with TestingSession() as db:
+        row = db.get(WhatsAppCloudChannel, channel)
+        body = {"event": event_name, "waba_info": {"waba_id": "other-waba"}}
+        assert not coex.accept_change(db, row, "account_update", body, waba_id="waba-1")
+        assert row.status == "connected" and row.encrypted_access_token
+        body["waba_info"]["waba_id"] = "waba-1"
+        assert coex.accept_change(db, row, "account_update", body, waba_id="partner-event-id")
+        assert row.status == "disconnected" and not row.encrypted_access_token
+        assert row.coexistence_sync["offboarded_at"]
+
+
+def refresh_url(channel):
+    with TestingSession() as db:
+        return f"/api/whatsapp-cloud/channels/{db.get(WhatsAppCloudChannel, channel).client_id}/refresh"
+
+
+@pytest.mark.parametrize("meta_error", [{"code": 100, "error_subcode": 33}, {"code": 190}])
+def test_refresh_reconciles_revoked_access_and_preserves_history(channel, authenticated_client, monkeypatch, meta_error):
+    with TestingSession() as db:
+        row = db.get(WhatsAppCloudChannel, channel)
+        row.coexistence_sync = {"history": {"status": "declined"}, "contacts": {"status": "complete"}}
+        echo = {**raw("existing-reply", outgoing=True), "to": PERSON}
+        receive(db, channel, "smb_message_echoes", value(message_echoes=[echo]))
+        agent_id = str(row.agent_id)
+    graph = AsyncMock(return_value=httpx.Response(400, json={"error": meta_error}))
+    monkeypatch.setattr(coex, "_graph_request", graph)
+    response = authenticated_client.post(refresh_url(channel))
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["status"] == "disconnected" and not data["is_enabled"] and not data["has_access_token"]
+    assert data["agent_id"] == agent_id
+    assert data["coexistence_sync"]["history"]["status"] == "declined"
+    assert data["coexistence_sync"]["authorization_lost_at"]
+    assert data["coexistence_sync"]["status_checked_at"]
+    assert "offboarded_at" not in data["coexistence_sync"]
+    graph.assert_awaited_once()
+    assert graph.call_args.args[0] == "GET"
+    with TestingSession() as db:
+        assert db.scalar(select(Message)).content == "existing-reply"
+        assert db.scalar(select(Conversation)).mode == "human"
+    assert authenticated_client.post(refresh_url(channel)).status_code == 200
+    graph.assert_awaited_once()
+
+
+@pytest.mark.parametrize("on_app,platform,expected_status", [
+    (True, "CLOUD_API", "connected"), (False, "CLOUD_API", "disconnected"), (True, "NOT_APPLICABLE", "disconnected")])
+def test_refresh_checks_business_app_registration(channel, authenticated_client, monkeypatch, on_app, platform, expected_status):
+    graph = AsyncMock(return_value=httpx.Response(200, json={"id": "111", "is_on_biz_app": on_app, "platform_type": platform}))
+    monkeypatch.setattr(coex, "_graph_request", graph)
+    response = authenticated_client.post(refresh_url(channel))
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == expected_status
+    assert response.json()["coexistence_sync"]["status_checked_at"]
+    if expected_status == "disconnected":
+        assert response.json()["coexistence_sync"]["offboarded_at"]
+    else:
+        assert response.json()["has_access_token"]
+
+
+@pytest.mark.parametrize("response", [
+    httpx.Response(503, json={"error": {"code": 2}}),
+    httpx.Response(400, json={"error": {"code": 4}}),
+    httpx.Response(200, json={"id": "111"}),
+    httpx.Response(200, json={"id": "different-number", "is_on_biz_app": True, "platform_type": "CLOUD_API"}),
+    httpx.Response(200, json=[]), httpx.Response(500, json={"error": "unexpected"}),
+    httpx.Response(502, text="Bad Gateway"),
+])
+def test_uncertain_meta_status_never_revokes_credentials(channel, authenticated_client, monkeypatch, response):
+    monkeypatch.setattr(coex, "_graph_request", AsyncMock(return_value=response))
+    result = authenticated_client.post(refresh_url(channel))
+    assert result.status_code == 502, result.text
+    with TestingSession() as db:
+        row = db.get(WhatsAppCloudChannel, channel)
+        assert row.status == "connected" and row.is_enabled and row.encrypted_access_token
+        assert "status_checked_at" not in row.coexistence_sync
+
+
+def test_refresh_network_failure_keeps_connection(channel, authenticated_client, monkeypatch):
+    monkeypatch.setattr(coex, "_graph_request", AsyncMock(side_effect=HTTPException(502, "Could not reach the Meta API.")))
+    assert authenticated_client.post(refresh_url(channel)).status_code == 502
+    with TestingSession() as db:
+        row = db.get(WhatsAppCloudChannel, channel)
+        assert row.status == "connected" and row.encrypted_access_token
+
+
+def test_late_refresh_cannot_disconnect_a_new_authorization(channel, authenticated_client, monkeypatch):
+    from app.security import encrypt_secret, decrypt_secret
+    async def reconnect(*args, **kwargs):
+        with TestingSession() as db:
+            row = db.get(WhatsAppCloudChannel, channel)
+            row.encrypted_access_token = encrypt_secret("new-authorization")
+            row.last_connected_at = now_utc()
+            db.commit()
+        return httpx.Response(400, json={"error": {"code": 190}})
+    monkeypatch.setattr(coex, "_graph_request", reconnect)
+    response = authenticated_client.post(refresh_url(channel))
+    assert response.status_code == 200 and response.json()["status"] == "connected"
+    with TestingSession() as db:
+        assert decrypt_secret(db.get(WhatsAppCloudChannel, channel).encrypted_access_token) == "new-authorization"
+
+
+def test_refresh_requires_ownership_and_coexistence(channel, authenticated_client, monkeypatch):
+    graph = AsyncMock()
+    monkeypatch.setattr(coex, "_graph_request", graph)
+    assert authenticated_client.post(f"/api/whatsapp-cloud/channels/{uuid.uuid4()}/refresh").status_code == 404
+    with TestingSession() as db:
+        row = db.get(WhatsAppCloudChannel, channel)
+        row.coexistence = False
+        db.commit()
+    assert authenticated_client.post(refresh_url(channel)).status_code == 409
+    graph.assert_not_called()
+
+
 def test_import_query_count_does_not_grow_per_message(channel):
     with TestingSession() as db:
         receive(db, channel, "history", history(*[raw(f"history-{i}", age=1000-i) for i in range(100)]))
