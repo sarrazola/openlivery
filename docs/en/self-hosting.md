@@ -51,16 +51,26 @@ front of it (see [Go to production](#go-to-production-https)). One instance =
 
 ## Before you begin
 
-You need a host with Docker:
+You need the following tools on the host:
 
 - macOS / Windows — [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 - Linux / a server — Docker Engine with the Compose plugin.
+- Git, GNU Make, a POSIX-compatible shell and OpenSSL.
 
-Check it is running:
+The commands in this guide are written for a POSIX-compatible shell. On Windows,
+run them from WSL or Git Bash rather than PowerShell. Python, Node.js, Go and
+PostgreSQL run inside the containers and do not need to be installed on the host
+for this installation path.
+
+Check the prerequisites before continuing:
 
 ```bash
+git --version
 docker --version
 docker compose version
+make --version
+sh -c 'echo POSIX shell: $0'
+openssl version
 ```
 
 For a public deployment you also need a **domain** and a server with ports
@@ -69,7 +79,7 @@ For a public deployment you also need a **domain** and a server with ports
 ## Install
 
 ```bash
-git clone <REPOSITORY_URL>
+git clone https://github.com/sarrazola/openlivery.git
 cd openlivery
 ./scripts/generate-docker-env.sh   # writes .env.docker with random secrets (gitignored)
 make up                            # build, start, run migrations
