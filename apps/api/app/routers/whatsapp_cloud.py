@@ -60,6 +60,16 @@ def get_channel(client_id: uuid.UUID, db: Session = Depends(get_db), user: User 
     return _public_channel(_channel_for_user(db, user, client_id))
 
 
+@router.post("/channels/{client_id}/refresh", response_model=WhatsAppCloudChannelOut)
+async def refresh_channel(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    from ..services.whatsapp_coexistence import refresh_connection
+
+    channel = _channel_for_user(db, user, client_id)
+    await refresh_connection(db, channel)
+    db.refresh(channel)
+    return _public_channel(channel)
+
+
 @router.put("/channels/{client_id}", response_model=WhatsAppCloudChannelOut)
 def configure_channel(
     client_id: uuid.UUID,
