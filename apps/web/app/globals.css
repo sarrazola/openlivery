@@ -1111,7 +1111,7 @@ textarea { line-height: 1.55; }
   justify-content: space-between;
   gap: 18px;
 }
-.switch-row input[type="checkbox"]{
+.switch-row input[type="checkbox"] {
   width: 42px;
   height: 24px;
   padding: 0;
@@ -1128,7 +1128,7 @@ textarea { line-height: 1.55; }
   cursor: pointer;
   transition: background .18s ease, box-shadow .18s ease;
 }
-.switch-row input[type="checkbox"]::after ::after {
+.switch-row input[type="checkbox"]::after {
   content: "";
   width: 20px;
   height: 20px;
@@ -1140,9 +1140,9 @@ textarea { line-height: 1.55; }
   box-shadow: 0 1px 3px rgba(var(--shadow-rgb), calc(.28 * var(--shadow-k)));
   transition: transform .18s ease;
 }
-.switch-row input[type="checkbox"]:checked :checked { background: var(--accent); }
-.switch-row input[type="checkbox"]:checked::after :checked::after { transform: translateX(18px); }
-.switch-row input[type="checkbox"]:focus-visible :focus-visible { outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .2); }
+.switch-row input[type="checkbox"]:checked { background: var(--accent); }
+.switch-row input[type="checkbox"]:checked::after { transform: translateX(18px); }
+.switch-row input[type="checkbox"]:focus-visible { outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .2); }
 
 /* Accesos de agencia y cliente */
 .access-page { min-height: 100vh; color: var(--ink); background: var(--canvas); }
@@ -1362,7 +1362,7 @@ textarea { line-height: 1.55; }
 .button.secondary { color: var(--accent-text); border-color: var(--accent-line); background: var(--canvas); }
 .text-link, .table-link, .text-button, .url-preview button, .url-preview a { color: var(--accent-text); }
 input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--green-rgb), .12); }
-.switch-row input[type="checkbox"]:checked :checked { background: var(--green); }
+.switch-row input[type="checkbox"]:checked { background: var(--green); }
 
 .entity-avatar, .agent-avatar { color: var(--accent-text); border-color: var(--line-strong); background: var(--accent-soft); }
 .metric-icon.blue, .metric-icon.violet { color: var(--accent-text); background: var(--accent-soft); }
