@@ -1917,6 +1917,10 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .tag-filter { flex-wrap: nowrap; gap: 4px; padding: 8px 12px 10px; overflow-x: auto; scrollbar-width: none; }
 .tag-filter::-webkit-scrollbar { display: none; }
 .tag-filter button { flex: 0 0 auto; white-space: nowrap; }
+.tag-filter .tag-filter-manage { position: sticky; right: 0; margin-left: auto; width: 28px; padding: 0; justify-content: center; color: var(--subtle); background: var(--surface-2); box-shadow: -8px 0 8px var(--surface-2); }
+.tag-filter .tag-filter-manage:hover { color: var(--ink); background: var(--surface-3); }
+.tag-picker .tag-picker-manage { margin-top: 4px; padding-top: 9px; border-top: 1px solid var(--line-soft); border-radius: 0; }
+.tag-picker .tag-picker-manage strong { color: var(--muted); font-weight: 600; }
 .tag-filter button { gap: 6px; }
 .tag-filter button.active .tag-dot { outline: 2px solid rgba(255, 255, 255, .6); }
 .tag-manage { gap: 0; }

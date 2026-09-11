@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { BadgeCheck, Ban, Check, CheckCircle2, ChevronDown, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Search, Tag, Trash2, Upload, UserRound, X } from "lucide-react";
+import { BadgeCheck, Ban, Check, CheckCircle2, ChevronDown, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Search, Settings2, Tag, Trash2, Upload, UserRound, X } from "lucide-react";
 import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { useToast } from "@/components/toast";
@@ -137,6 +137,8 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const tagQueryTrimmed = tagQuery.trim();
   const pickerTags = tags.filter((tag) => !tagQueryTrimmed || tag.name.toLowerCase().includes(tagQueryTrimmed.toLowerCase()));
   const pickerExact = tags.some((tag) => tag.name.toLowerCase() === tagQueryTrimmed.toLowerCase());
+
+  function openTagManager() { setTagPicker(false); setListMenu(false); setDeletingTag(null); setNewTagName(""); setManagingTags(true); }
 
   function openImport() { setImportFile(null); setImportResult(null); setImportError(""); setImporting(true); }
   async function runImport(event: FormEvent<HTMLFormElement>) {
@@ -279,7 +281,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
                 <div className="menu-backdrop" onClick={() => setListMenu(false)} />
                 <div className="start-line-menu" role="menu">
                   <button type="button" role="menuitem" onClick={() => { setListMenu(false); openImport(); }}><Upload size={15} /><span><strong>{t("portal.contacts.import.title")}</strong><small>{t("portal.contacts.import.menuHint")}</small></span></button>
-                  <button type="button" role="menuitem" onClick={() => { setListMenu(false); setDeletingTag(null); setNewTagName(""); setManagingTags(true); }}><Tag size={15} /><span><strong>{t("portal.contacts.tags.manage")}</strong><small>{t("portal.contacts.tags.manageHint")}</small></span></button>
+                  <button type="button" role="menuitem" onClick={openTagManager}><Tag size={15} /><span><strong>{t("portal.contacts.tags.manage")}</strong><small>{t("portal.contacts.tags.manageHint")}</small></span></button>
                   <a role="menuitem" href={apiUrl(`/portal/${slug}/contacts/export`)} download onClick={() => setListMenu(false)}><Download size={15} /><span><strong>{t("portal.contacts.export")}</strong><small>{t("portal.contacts.exportHint")}</small></span></a>
                 </div>
               </>}
@@ -289,6 +291,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
         {tags.length > 0 && <div className="inbox-tabs tag-filter" role="tablist" aria-label={t("portal.contacts.tags.heading")}>
           <button type="button" className={tagFilter ? "" : "active"} onClick={() => setTagFilter(null)}>{t("portal.contacts.tags.all")}</button>
           {tags.map((tag) => <button type="button" key={tag.id} className={tagFilter === tag.id ? "active" : ""} onClick={() => setTagFilter(tagFilter === tag.id ? null : tag.id)}><i className="tag-dot" data-color={tag.color} /> {tag.name}<em className="soft">{tag.contact_count}</em></button>)}
+          <button type="button" className="tag-filter-manage" onClick={openTagManager} title={t("portal.contacts.tags.manage")} aria-label={t("portal.contacts.tags.manage")}><Settings2 size={14} /></button>
         </div>}
         {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>
           : items.map((contact) => <button key={contact.id} onClick={() => choose(contact)} className={selected?.id === contact.id ? "active" : ""}>
@@ -349,6 +352,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
                       {pickerTags.map((tag) => { const has = (selected.tags ?? []).some((item) => item.id === tag.id); return <button type="button" key={tag.id} role="menuitemcheckbox" aria-checked={has} onClick={() => toggleTag(tag)} disabled={busy}><i className="tag-dot" data-color={tag.color} /><span><strong>{tag.name}</strong></span>{has && <Check size={14} />}</button>; })}
                       {tagQueryTrimmed && !pickerExact && <button type="button" role="menuitem" className="tag-create" onClick={() => createTag(tagQueryTrimmed, selected)} disabled={busy}><Plus size={14} /><span><strong>{t("portal.contacts.tags.create", { name: tagQueryTrimmed })}</strong></span></button>}
                       {!tags.length && !tagQueryTrimmed && <small>{t("portal.contacts.tags.emptyHint")}</small>}
+                      <button type="button" role="menuitem" className="tag-picker-manage" onClick={openTagManager}><Settings2 size={14} /><span><strong>{t("portal.contacts.tags.manage")}</strong></span></button>
                     </div>
                   </>}
                 </div>
