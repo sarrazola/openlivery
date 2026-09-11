@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { BadgeCheck, Ban, Check, CheckCircle2, ChevronDown, Copy, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Search, Settings2, Tag, Trash2, Upload, UserRound, X } from "lucide-react";
+import { BadgeCheck, Ban, Bot, Check, CheckCircle2, ChevronDown, Clock, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MessageSquareText, MoreHorizontal, Pencil, Plus, Search, Settings2, Tag, Trash2, Upload, UserRound, Users, X } from "lucide-react";
 import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { MessageAttachments, type GalleryImage } from "@/components/attachments";
@@ -261,10 +261,6 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
     if (!preview) return "";
     return chatToText(preview.messages ?? [], { title: `${t("portal.contacts.preview.title")} · ${preview.contact_name || preview.title}`, channel: channelLabel(preview.channel, t), agentLabel: t("portal.inbox.conversation.agent"), visitorLabel: t("portal.inbox.conversation.visitor") });
   }
-  async function copyPreview() {
-    try { await navigator.clipboard.writeText(previewTranscript()); toast.success(t("portal.contacts.preview.copied")); }
-    catch { toast.error(t("portal.contacts.preview.copyFailed")); }
-  }
   const previewGallery: GalleryImage[] = useMemo(
     () => (preview?.messages ?? []).flatMap((message) => (message.attachments ?? []).filter((a) => a.kind === "image").map((a) => ({ id: a.id, url: previewUrl(a), name: a.filename }))),
     [preview, previewUrl],
@@ -492,12 +488,12 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
     <Modal open={preview !== null} title={preview ? t("portal.contacts.preview.titleWith", { name: preview.contact_name || preview.title }) : t("portal.contacts.preview.title")} description={preview ? `${channelLabel(preview.channel, t)} · ${formatWhen(preview.created_at, lang)}` : undefined} onClose={() => setPreview(null)}>
       {preview && <div className="modal-form preview">
         <dl className="preview-facts">
-          <div><dt>{t("portal.contacts.preview.status")}</dt><dd><span className="mini-badge resolved"><CheckCircle2 size={11} /> {preview.archived_at ? t("portal.inbox.conversation.archivedBadge") : t("portal.inbox.conversation.resolvedBadge")}</span>{(preview.archived_at || preview.resolved_at) && <small>{formatWhen(preview.archived_at || preview.resolved_at || preview.updated_at, lang)}</small>}</dd></div>
-          <div><dt>{t("portal.contacts.preview.channel")}</dt><dd><ChannelIcon channel={preview.channel} size={12} /> {channelLabel(preview.channel, t)}</dd></div>
-          <div><dt>{t("portal.contacts.preview.handledBy")}</dt><dd>{[...previewHandlers.ai.map((name) => t("portal.contacts.preview.byAi", { name })), ...previewHandlers.humans].join(" · ") || "—"}</dd></div>
-          {(preview.assignee_name || preview.team_name) && <div><dt>{t("portal.contacts.preview.assigned")}</dt><dd>{[preview.assignee_name, preview.team_name].filter(Boolean).join(" · ")}</dd></div>}
-          <div><dt>{t("portal.contacts.preview.messages")}</dt><dd>{previewMessages.length}</dd></div>
-          <div><dt>{t("portal.contacts.preview.lastActivity")}</dt><dd>{formatWhen(preview.updated_at, lang)}</dd></div>
+          <div><dt><CheckCircle2 size={13} /> {t("portal.contacts.preview.status")}</dt><dd><strong>{preview.archived_at ? t("portal.inbox.conversation.archivedBadge") : t("portal.inbox.conversation.resolvedBadge")}</strong>{(preview.archived_at || preview.resolved_at) && <small>{formatWhen(preview.archived_at || preview.resolved_at || preview.updated_at, lang)}</small>}</dd></div>
+          <div><dt><ChannelIcon channel={preview.channel} size={12} /> {t("portal.contacts.preview.channel")}</dt><dd><strong>{channelLabel(preview.channel, t)}</strong></dd></div>
+          <div><dt>{previewHandlers.humans.length ? <UserRound size={13} /> : <Bot size={13} />} {t("portal.contacts.preview.handledBy")}</dt><dd><strong>{[...previewHandlers.ai.map((name) => t("portal.contacts.preview.byAi", { name })), ...previewHandlers.humans].join(" · ") || "—"}</strong></dd></div>
+          <div><dt><Users size={13} /> {t("portal.contacts.preview.assigned")}</dt><dd><strong>{[preview.assignee_name, preview.team_name].filter(Boolean).join(" · ") || "—"}</strong></dd></div>
+          <div><dt><MessageSquareText size={13} /> {t("portal.contacts.preview.messages")}</dt><dd><strong>{previewMessages.length}</strong></dd></div>
+          <div><dt><Clock size={13} /> {t("portal.contacts.preview.lastActivity")}</dt><dd><strong>{formatWhen(preview.updated_at, lang)}</strong></dd></div>
         </dl>
         <div className="portal-messages preview-thread">
           {previewLoading && <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>}
@@ -509,7 +505,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
             const hasAudio = message.attachments?.some((a) => a.kind === "audio");
             const mine = message.role === "assistant";
             return <article key={message.id} className={`${message.role}${mine ? " mine" : ""}${mine && message.sender_type === "ai" ? " ai" : ""}${grouped ? " grouped" : ""}`}>
-              {!grouped && <small>{message.sender_name || (mine ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor"))}{mine && message.sender_type === "ai" && <span className="preview-ai-tag">{t("portal.inbox.list.aiAgent")}</span>}</small>}
+              {!grouped && <small>{message.sender_name || (mine ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor"))}{mine && message.sender_type === "ai" && <span className="preview-ai-tag">AI</span>}</small>}
               <MessageAttachments attachments={message.attachments} urlFor={previewUrl} gallery={previewGallery} stamp={stamp} />
               {message.content && <p><QuotedSnippet messages={preview.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}{mine && (preview.channel === "whatsapp_cloud" || isSocialChannel(preview.channel)) && <DeliveryTicks status={message.delivery_status} error={message.delivery_error} />}</time></p>}
               <ReactionBadge emoji={message.reaction} />
@@ -521,7 +517,6 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
         </div>
         <div className="modal-actions preview-actions">
           <span className="preview-tools">
-            <button type="button" className="button small" onClick={copyPreview} disabled={previewLoading}><Copy size={14} /> {t("portal.contacts.preview.copy")}</button>
             <button type="button" className="button small" onClick={() => downloadText(previewTranscript(), `${preview.contact_name || preview.title}-${preview.created_at.slice(0, 10)}`)} disabled={previewLoading}><Download size={14} /> {t("portal.contacts.preview.download")}</button>
           </span>
           <span className="preview-nav">
