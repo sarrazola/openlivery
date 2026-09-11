@@ -1837,7 +1837,12 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .pref-row { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .pref-row > span { min-width: 0; display: inline-flex; align-items: center; gap: 7px; overflow: hidden; color: var(--muted); font-size: 12px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
 .pref-row > span svg { flex: 0 0 auto; color: var(--subtle); }
-.pref-row > div { flex: 0 0 auto; display: inline-flex; gap: 2px; padding: 2px; border-radius: 7px; background: var(--surface-3); }
+.pref-row > div { flex: 0 0 auto; width: 132px; display: inline-flex; gap: 2px; padding: 2px; border-radius: 7px; background: var(--surface-3); }
+.pref-row > div button { flex: 1 1 0; }
+.pref-cycle { flex: 0 0 auto; width: 132px; height: 28px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: var(--ink); border: 0; border-radius: 7px; background: var(--surface-3); font-size: 11.5px; font-weight: 600; transition: .15s ease; }
+.pref-cycle:hover { background: var(--surface-4); }
+.pref-cycle svg { color: var(--accent-text); }
+.portal-nav .sidebar-prefs { padding-bottom: 10px; border-bottom: 1px solid var(--line-soft); }
 .pref-row > div button { min-width: 30px; height: 24px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); border: 0; border-radius: 5px; background: transparent; font-size: 11.5px; font-weight: 600; transition: .15s ease; }
 .pref-row > div button:hover { color: var(--ink); }
 .pref-row > div button.active { color: var(--accent-text); background: var(--surface); box-shadow: 0 1px 2px rgba(var(--shadow-rgb), calc(.1 * var(--shadow-k))); }
