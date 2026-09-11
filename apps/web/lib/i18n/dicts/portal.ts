@@ -128,10 +128,13 @@ const en = {
   },
   contacts: {
     searchPlaceholder: "Search by name, phone or email…",
-    export: "Export contacts (CSV)",
+    moreActions: "More actions",
+    export: "Export contacts",
+    exportHint: "Download every contact as CSV",
     import: {
       title: "Import contacts",
-      intro: "Upload a CSV with the columns name, phone, email and notes. The phone needs its country code. Each row is checked on its own: valid rows are saved and the rest are listed here with the reason, so one bad line never blocks the file.",
+      menuHint: "Load contacts from a CSV file",
+      intro: "Upload a CSV with the columns name, phone, email and notes. Phones go as digits only with the country code, like 573001234567, no plus sign or spaces. Each row is checked on its own: valid rows are saved and the rest are listed here with the reason, so one bad line never blocks the file.",
       template: "Download the sample file",
       choose: "Choose a CSV file",
       run: "Import",
@@ -146,7 +149,7 @@ const en = {
       colReason: "Reason",
       reasons: {
         phoneMissing: "No phone number",
-        phoneInvalid: "Phone is not valid; include the country code",
+        phoneInvalid: "Phone is not valid: digits only with the country code, 7 to 15 digits",
         emailInvalid: "Email is not valid",
         duplicateInFile: "Same phone appears earlier in the file",
         nameTooLong: "Name is too long",
@@ -511,10 +514,13 @@ const es: typeof en = {
   },
   contacts: {
     searchPlaceholder: "Buscar por nombre, teléfono o correo…",
-    export: "Exportar contactos (CSV)",
+    moreActions: "Más acciones",
+    export: "Exportar contactos",
+    exportHint: "Descarga todos los contactos en CSV",
     import: {
       title: "Importar contactos",
-      intro: "Sube un CSV con las columnas nombre, teléfono, correo y notas. El teléfono necesita su código de país. Cada fila se revisa por separado: las válidas se guardan y el resto aparece aquí con el motivo, así una línea mala nunca bloquea el archivo.",
+      menuHint: "Carga contactos desde un archivo CSV",
+      intro: "Sube un CSV con las columnas nombre, teléfono, correo y notas. El teléfono va solo con dígitos y código de país, como 573001234567, sin signo más ni espacios. Cada fila se revisa por separado: las válidas se guardan y el resto aparece aquí con el motivo, así una línea mala nunca bloquea el archivo.",
       template: "Descargar archivo de ejemplo",
       choose: "Elegir un archivo CSV",
       run: "Importar",
@@ -529,7 +535,7 @@ const es: typeof en = {
       colReason: "Motivo",
       reasons: {
         phoneMissing: "Sin número de teléfono",
-        phoneInvalid: "El teléfono no es válido; incluye el código de país",
+        phoneInvalid: "El teléfono no es válido: solo dígitos con código de país, de 7 a 15 dígitos",
         emailInvalid: "El correo no es válido",
         duplicateInFile: "El mismo teléfono aparece antes en el archivo",
         nameTooLong: "El nombre es demasiado largo",

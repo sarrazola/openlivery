@@ -158,7 +158,7 @@ def test_portal_imports_and_exports_contacts(authenticated_client: TestClient):
 
     template = client.get(f"{base}/import-template")
     assert template.status_code == 200 and template.headers["content-type"].startswith("text/csv")
-    assert template.text.lstrip("\ufeff").splitlines()[0] == "name,phone,email,notes"
+    assert template.text.lstrip("\ufeff").splitlines()[:2] == ["name,phone,email,notes", "Ana Gómez,573001234567,ana@example.com,Prefers mornings"]
 
     csv_text = "\n".join([
         "Nombre;Teléfono;Correo;Notas",
@@ -167,6 +167,8 @@ def test_portal_imports_and_exports_contacts(authenticated_client: TestClient):
         "Corto;12345;;",
         "Mal correo;+57 300 999 8888;not-an-email;",
         "Repetido;+57 300 123 4567;;",
+        "Con letras;573001112233 ext 4;;",
+        "Muy largo;5730011122334455667;;",
         "Existente;+57 300 555 0000;exist@example.com;",
         "",
     ])
@@ -176,6 +178,7 @@ def test_portal_imports_and_exports_contacts(authenticated_client: TestClient):
     assert result["created"] == 1 and result["updated"] == 1 and result["unchanged"] == 0
     assert [(e["row"], e["reason"]) for e in result["errors"]] == [
         (3, "phone_missing"), (4, "phone_invalid"), (5, "email_invalid"), (6, "duplicate_in_file"),
+        (7, "phone_invalid"), (8, "phone_invalid"),
     ]
 
     listed = client.get(base)

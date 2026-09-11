@@ -1862,6 +1862,11 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 /* Contacts import and export in the portal: toolbar actions and the import dialog. */
 .portal-contacts-toolbar .toolbar-actions { display: flex; align-items: center; gap: 6px; }
 .portal-contacts-toolbar .icon-button { width: 32px; height: 32px; }
+.start-line-menu a { display: flex; align-items: center; gap: 9px; padding: 7px 9px; text-align: left; border-radius: 7px; font-size: 13.5px; cursor: pointer; }
+.start-line-menu a:hover { background: var(--surface-3); }
+.start-line-menu a strong { display: block; color: var(--ink); font-size: 13.5px; font-weight: 600; }
+.start-line-menu a small, .start-line-menu button small { display: block; color: var(--muted); font-size: 12px; }
+.start-line-menu > button > svg:first-child, .start-line-menu > a > svg:first-child { flex: 0 0 auto; color: var(--muted); }
 .import-template { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
 .import-file { display: flex; align-items: center; gap: 10px; padding: 16px; color: var(--muted); border: 1px dashed var(--line-strong); border-radius: 10px; background: var(--surface-2); cursor: pointer; font-size: 13px; }
 .import-file:hover { color: var(--ink); border-color: var(--accent-line); background: var(--accent-soft); }

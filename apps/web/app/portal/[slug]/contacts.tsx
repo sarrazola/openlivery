@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { BadgeCheck, Ban, CheckCircle2, ChevronDown, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, Pencil, Plus, Search, Trash2, Upload, UserRound } from "lucide-react";
+import { BadgeCheck, Ban, CheckCircle2, ChevronDown, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload, UserRound } from "lucide-react";
 import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { PhoneInput } from "@/components/phone-input";
@@ -44,6 +44,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const [mergeQuery, setMergeQuery] = useState("");
   const [mergePrimary, setMergePrimary] = useState<Contact | null>(null);
   const [importing, setImporting] = useState(false);
+  const [listMenu, setListMenu] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<ContactImportResult | null>(null);
   const [importError, setImportError] = useState("");
@@ -200,9 +201,17 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
         <div className="portal-contacts-toolbar">
           <span>{t("portal.contacts.count", { count: total ?? items.length })}</span>
           <div className="toolbar-actions">
-            <a className="icon-button" href={apiUrl(`/portal/${slug}/contacts/export`)} download title={t("portal.contacts.export")} aria-label={t("portal.contacts.export")}><Download size={16} /></a>
-            <button type="button" className="icon-button" onClick={openImport} title={t("portal.contacts.import.title")} aria-label={t("portal.contacts.import.title")}><Upload size={16} /></button>
             <button className="button primary small" onClick={() => setEditing("new")}><Plus size={15} /> {t("portal.contacts.new")}</button>
+            <div className="start-line-wrap">
+              <button type="button" className="icon-button" onClick={() => setListMenu((v) => !v)} title={t("portal.contacts.moreActions")} aria-label={t("portal.contacts.moreActions")} aria-haspopup="menu" aria-expanded={listMenu}><MoreHorizontal size={16} /></button>
+              {listMenu && <>
+                <div className="menu-backdrop" onClick={() => setListMenu(false)} />
+                <div className="start-line-menu" role="menu">
+                  <button type="button" role="menuitem" onClick={() => { setListMenu(false); openImport(); }}><Upload size={15} /><span><strong>{t("portal.contacts.import.title")}</strong><small>{t("portal.contacts.import.menuHint")}</small></span></button>
+                  <a role="menuitem" href={apiUrl(`/portal/${slug}/contacts/export`)} download onClick={() => setListMenu(false)}><Download size={15} /><span><strong>{t("portal.contacts.export")}</strong><small>{t("portal.contacts.exportHint")}</small></span></a>
+                </div>
+              </>}
+            </div>
           </div>
         </div>
         {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>

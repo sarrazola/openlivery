@@ -729,10 +729,14 @@ _IMPORT_COLUMNS = {
 _IMPORT_MAX_ROWS = 5000
 _IMPORT_MAX_BYTES = 2 * 1024 * 1024
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Phones are stored as digits only with the country code (573001234567). The
+# sample shows that form; the import also tolerates a leading plus and the
+# separators spreadsheets add, since they do not change the number.
+_PHONE_CHARS_RE = re.compile(r"^\+?[0-9][0-9 ().-]*$")
 _TEMPLATE_ROWS = [
     ("name", "phone", "email", "notes"),
-    ("Ana Gómez", "+57 300 123 4567", "ana@example.com", "Prefers mornings"),
-    ("Luis Pérez", "+52 55 1234 5678", "", "Asked about pricing"),
+    ("Ana Gómez", "573001234567", "ana@example.com", "Prefers mornings"),
+    ("Luis Pérez", "525512345678", "", "Asked about pricing"),
 ]
 
 
@@ -860,8 +864,8 @@ async def portal_contacts_import(
         if not raw_phone:
             reject(line, row, "phone_missing")
             continue
-        phone = normalize_phone(raw_phone)
-        if not phone:
+        phone = normalize_phone(raw_phone) if _PHONE_CHARS_RE.match(raw_phone) else None
+        if not phone or len(phone) > 15:
             reject(line, row, "phone_invalid")
             continue
         name = cell(row, "name")
