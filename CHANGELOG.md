@@ -17,8 +17,11 @@ Docker stack; run `alembic upgrade head` on local setups).
   (name and color) and puts tags on contacts by hand from the contact card,
   creating new ones on the spot. Tags show as chips in the list, filter it,
   survive a merge, and travel in the CSV export. Nothing sets them
-  automatically: neither the import nor an inbound message. Migration
-  `0039_contact_tags`.
+  automatically: neither the import nor an inbound message. A tag can also
+  route its contacts: every new conversation from a tagged contact starts in
+  human hands on the chosen team, before any AI reply and ahead of the
+  agent's escalation rules, with an activity line saying why. Migrations
+  `0039_contact_tags` and `0040_contact_tag_routing`.
 - **Contacts import and export in the client portal.** Contacts can be loaded
   from a CSV (name, phone, email, notes; Spanish headers and `;` delimiters
   accepted) and downloaded as CSV. Each row is validated on its own: valid

@@ -24,6 +24,7 @@ from .attachments import llm_text, store_attachment
 from .knowledge import build_system_prompt, retrieve_knowledge
 from .media import audio_filename, describe_image, transcribe_audio
 from .notifications import notify_needs_human
+from .routing import route_new_conversation_by_tags
 from .providers import resolve_agent_credentials, resolve_provider_credentials
 from .tools import run_completion
 from .usage import record_usage
@@ -186,6 +187,8 @@ async def process_inbound(
         )
         db.add(conversation)
         db.flush()
+        # A contact tagged for a team skips the AI from the first message.
+        route_new_conversation_by_tags(db, conversation, contact)
     elif inbound.sender_name:
         conversation.contact_name = inbound.sender_name
         contact = conversation.contact

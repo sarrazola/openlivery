@@ -924,7 +924,11 @@ async def portal_contacts_import(
 # --- Tags: a catalog the client keeps by hand -------------------------------
 
 def _tag_out(tag: ContactTag, count: int = 0) -> ContactTagOut:
-    return ContactTagOut(id=tag.id, name=tag.name, color=tag.color, contact_count=count)
+    team = tag.route_team if tag.route_team_id else None
+    return ContactTagOut(
+        id=tag.id, name=tag.name, color=tag.color, contact_count=count,
+        route_team_id=tag.route_team_id, route_team_name=team.name if team else None,
+    )
 
 
 def _tag(db: Session, client: Client, tag_id: uuid.UUID) -> ContactTag:
@@ -993,6 +997,14 @@ def portal_update_tag(
         tag.name = name
     if payload.color is not None:
         tag.color = _tag_color(payload.color, tag.color)
+    if "route_team_id" in payload.model_fields_set:
+        if payload.route_team_id is None:
+            tag.route_team_id = None
+        else:
+            team = db.scalar(select(Team).where(Team.id == payload.route_team_id, Team.client_id == client.id))
+            if team is None:
+                raise HTTPException(status_code=404, detail="Team not found")
+            tag.route_team_id = team.id
     db.commit()
     db.refresh(tag)
     count = db.scalar(select(func.count(ContactTagLink.contact_id)).where(ContactTagLink.tag_id == tag.id)) or 0

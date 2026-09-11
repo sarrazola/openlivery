@@ -242,3 +242,52 @@ def test_portal_contact_tags(authenticated_client: TestClient):
 
     assert client.delete(f"{base}/tags/{priority['id']}").status_code == 204
     assert [t["name"] for t in client.get(f"{base}/contacts/{ana['id']}").json()["tags"]] == ["Very important"]
+
+
+def test_tagged_contact_routes_new_conversations_to_a_team(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    customer = _portal(client, "Routing Co")
+    slug = customer["portal_slug"]
+    base = f"/api/portal/{slug}"
+    client.post(f"/api/clients/{customer['id']}/portal-users", json={"name": "Beto", "email": f"beto@{slug}.com", "password": "secure-portal"})
+    members = client.get(f"{base}/members").json()
+    team = client.post(f"{base}/teams", json={"name": "Ventas", "member_ids": [m["id"] for m in members]}).json()
+
+    client.put("/api/providers/openai", json={"api_key": "secret"})
+    agent = client.post("/api/agents", json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto AI", "instructions": "", "personality": "", "is_active": True}).json()
+    channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
+    headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
+    completion = AsyncMock(return_value=ai_service.Completion(text="Hello!", input_tokens=1, output_tokens=1))
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", completion)
+
+    vip = client.post(f"{base}/tags", json={"name": "VIP"}).json()
+    routed = client.patch(f"{base}/tags/{vip['id']}", json={"route_team_id": team["id"]})
+    assert routed.status_code == 200 and routed.json()["route_team_name"] == "Ventas"
+    assert client.patch(f"{base}/tags/{vip['id']}", json={"route_team_id": str(uuid.uuid4())}).status_code == 404
+    contact = client.post(f"{base}/contacts", json={"name": "Vera", "phone": "573001112233"}).json()
+    client.put(f"{base}/contacts/{contact['id']}/tags", json={"tag_ids": [vip["id"]]})
+
+    def inbound(message_id: str, jid: str, name: str):
+        return client.post(
+            f"/api/internal/whatsapp/channels/{channel['id']}/inbound",
+            json={"external_message_id": message_id, "remote_jid": jid, "sender_name": name, "text": "Hola"},
+            headers=headers,
+        ).json()
+
+    tagged = inbound("m1", "573001112233@s.whatsapp.net", "Vera")
+    assert tagged["mode"] == "human"
+    conversation = client.get(f"/api/conversations/{tagged['conversation_id']}").json()
+    assert conversation["mode"] == "human" and conversation["team_id"] == team["id"]
+    assert conversation["assignee_id"] in {m["id"] for m in members}
+    assert completion.await_count == 0
+    thread = client.get(f"{base}/conversations/{tagged['conversation_id']}").json()
+    events = [m["activity"]["event"] for m in thread["messages"] if m.get("activity")]
+    assert "routed_by_tag" in events
+
+    # An untagged contact still goes to the AI.
+    plain = inbound("m2", "573009998877@s.whatsapp.net", "Pepe")
+    assert plain["mode"] == "ai"
+
+    # Clearing the routing leaves the tag in place.
+    cleared = client.patch(f"{base}/tags/{vip['id']}", json={"route_team_id": None}).json()
+    assert cleared["route_team_id"] is None and cleared["name"] == "VIP"

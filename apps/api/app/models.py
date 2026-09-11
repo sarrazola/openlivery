@@ -443,7 +443,12 @@ class ContactTag(Base):
     name: Mapped[str] = mapped_column(String(40))
     # A palette name, not a hex: the interface maps it to its theme colors.
     color: Mapped[str] = mapped_column(String(20), default="gray", server_default="gray")
+    # When set, a new conversation from a contact carrying this tag starts in
+    # human hands on that team, before any AI reply and ahead of the agent's
+    # escalation rules. Cleared when the team is deleted.
+    route_team_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("teams.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    route_team: Mapped["Team | None"] = relationship()
 
 
 class ContactTagLink(Base):

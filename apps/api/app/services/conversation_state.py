@@ -32,6 +32,7 @@ def ensure_open(conversation: Conversation) -> None:
 
 # English fallbacks for clients that do not translate events themselves.
 _ACTIVITY_TEXT = {
+    "routed_by_tag": "Routed to {target}: the contact is tagged {tag}",
     "resolved": "{actor} resolved the conversation",
     "reopened": "{actor} reopened the conversation",
     "reopened_by_contact": "Reopened: the contact wrote again",

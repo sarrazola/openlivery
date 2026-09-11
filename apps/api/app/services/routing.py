@@ -21,8 +21,8 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import Conversation, PortalUser, Team, TeamMember, now_utc
-from .conversation_state import assign
+from ..models import Contact, ContactTag, Conversation, PortalUser, Team, TeamMember, now_utc
+from .conversation_state import assign, record_activity, set_team
 
 _NEVER = datetime.min.replace(tzinfo=timezone.utc)
 
@@ -82,3 +82,27 @@ def route_conversation(db: Session, conversation: Conversation, *, actor: str) -
     member.last_assigned_at = now_utc()
     assign(db, conversation, member.portal_user, actor=actor)
     return member.portal_user
+
+
+def route_new_conversation_by_tags(db: Session, conversation: Conversation, contact: Contact | None) -> Team | None:
+    """Hand a brand-new conversation to a team when the contact carries a
+    routed tag. Runs before any AI reply and ahead of the agent's escalation
+    rules; nothing happens for contacts without a routed tag. When several of
+    the contact's tags route somewhere, the oldest tag wins so the outcome is
+    stable. Returns the team, or None when the conversation was left alone."""
+    if contact is None or conversation.mode == "human":
+        return None
+    routed = [tag for tag in contact.tags if tag.route_team_id]
+    if not routed:
+        return None
+    tag = min(routed, key=lambda item: (item.created_at, item.name))
+    team = db.get(Team, tag.route_team_id)
+    if team is None or team.client_id != conversation.client_id:
+        return None
+    conversation.mode = "human"
+    conversation.taken_over_at = now_utc()
+    actor = f"Tag {tag.name}"
+    record_activity(db, conversation, "routed_by_tag", actor=actor, details={"target": team.name, "tag": tag.name})
+    set_team(db, conversation, team, actor=actor)
+    route_conversation(db, conversation, actor=actor)
+    return team

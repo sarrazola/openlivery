@@ -146,6 +146,10 @@ const en = {
       deleteConfirm: "Delete \"{name}\"? It will be removed from {count} contacts.",
       deleteAction: "Delete",
       noTags: "No tags yet. Create one here or from a contact.",
+      routeLabel: "Route to",
+      routeNone: "No routing (the AI answers)",
+      routeHint: "A tag can send its contacts straight to a team: every new conversation from a tagged contact starts in that team's hands, without the AI, ahead of the agent's escalation rules. Remove the tag and the contact goes back to the normal flow. If a contact has several routed tags, the oldest tag wins.",
+      routedTo: "→ {team}",
     },
     list: {
       showing: "Showing {shown} of {total}",
@@ -401,6 +405,7 @@ const en = {
       team_assigned: "{actor} moved the conversation to {team}",
       team_removed: "{actor} took the conversation out of {team}",
       escalated: "{actor} escalated the conversation to {target}: {reason}",
+      routed_by_tag: "Routed to {target}: the contact is tagged {tag}",
       someone: "Someone",
     },
     empty: {
@@ -558,6 +563,10 @@ const es: typeof en = {
       deleteConfirm: "¿Eliminar \"{name}\"? Se quitará de {count} contactos.",
       deleteAction: "Eliminar",
       noTags: "Aún no hay etiquetas. Crea una aquí o desde un contacto.",
+      routeLabel: "Enviar a",
+      routeNone: "Sin ruteo (responde la IA)",
+      routeHint: "Una etiqueta puede mandar a sus contactos directo a un equipo: cada conversación nueva de un contacto etiquetado arranca en manos de ese equipo, sin IA, por delante de las reglas de escalamiento del agente. Si le quitas la etiqueta, el contacto vuelve al flujo normal. Si un contacto tiene varias etiquetas con ruteo, gana la más antigua.",
+      routedTo: "→ {team}",
     },
     list: {
       showing: "Mostrando {shown} de {total}",
@@ -813,6 +822,7 @@ const es: typeof en = {
       team_assigned: "{actor} movió la conversación a {team}",
       team_removed: "{actor} sacó la conversación de {team}",
       escalated: "{actor} escaló la conversación a {target}: {reason}",
+      routed_by_tag: "Enviada a {target}: el contacto tiene la etiqueta {tag}",
       someone: "Alguien",
     },
     empty: {
