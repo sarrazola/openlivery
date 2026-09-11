@@ -9,7 +9,8 @@ import { RichText } from "@/components/rich-text";
 import { QuotedSnippet, ReactionBadge } from "@/components/message-gestures";
 import { DeliveryTicks } from "@/components/delivery-ticks";
 import { activityText } from "@/lib/activity";
-import { isSocialChannel } from "@/lib/channels";
+import { ChannelIcon, channelLabel, isSocialChannel } from "@/lib/channels";
+import { chatToText, downloadText } from "@/lib/export";
 import { useToast } from "@/components/toast";
 import { PhoneInput } from "@/components/phone-input";
 import { formatPhone } from "@/lib/dial-codes";
@@ -247,6 +248,23 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
     finally { setPreviewLoading(false); }
   }
   const previewUrl = useCallback((attachment: Attachment) => apiUrl(`/portal/${slug}/conversations/${preview?.id}/attachments/${attachment.id}`), [slug, preview?.id]);
+  const previewMessages = useMemo(() => (preview?.messages ?? []).filter((m) => m.kind !== "activity"), [preview]);
+  const previewHandlers = useMemo(() => {
+    const ai = new Set<string>(); const humans = new Set<string>();
+    for (const m of previewMessages) {
+      if (m.role !== "assistant") continue;
+      if (m.sender_type === "ai") ai.add(m.sender_name || t("portal.inbox.conversation.agent")); else if (m.sender_name) humans.add(m.sender_name);
+    }
+    return { ai: [...ai], humans: [...humans] };
+  }, [previewMessages, t]);
+  function previewTranscript() {
+    if (!preview) return "";
+    return chatToText(preview.messages ?? [], { title: `${t("portal.contacts.preview.title")} · ${preview.contact_name || preview.title}`, channel: channelLabel(preview.channel, t), agentLabel: t("portal.inbox.conversation.agent"), visitorLabel: t("portal.inbox.conversation.visitor") });
+  }
+  async function copyPreview() {
+    try { await navigator.clipboard.writeText(previewTranscript()); toast.success(t("portal.contacts.preview.copied")); }
+    catch { toast.error(t("portal.contacts.preview.copyFailed")); }
+  }
   const previewGallery: GalleryImage[] = useMemo(
     () => (preview?.messages ?? []).flatMap((message) => (message.attachments ?? []).filter((a) => a.kind === "image").map((a) => ({ id: a.id, url: previewUrl(a), name: a.filename }))),
     [preview, previewUrl],
@@ -471,12 +489,16 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
         <div className="modal-actions"><button type="button" className="button" onClick={() => setMerging(false)}>{t("portal.contacts.form.cancel")}</button><button className="button primary" disabled={!mergePrimary || busy}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Merge size={15} /> {t("portal.contacts.mergeConfirm")}</>}</button></div>
       </form>
     </Modal>
-    <Modal open={preview !== null} title={`${t("portal.contacts.preview.title")} · ${preview ? formatWhen(preview.created_at, lang) : ""}`} onClose={() => setPreview(null)}>
-      {preview && <div className="modal-form">
-        <div className="preview-meta">
-          <span className={`mini-badge ${preview.archived_at ? "resolved" : preview.status === "resolved" ? "resolved" : preview.mode}`}><CheckCircle2 size={11} /> {preview.archived_at ? t("portal.inbox.conversation.archivedBadge") : t("portal.inbox.conversation.resolvedBadge")}</span>
-          <small className="muted">{preview.contact_name || preview.title}</small>
-        </div>
+    <Modal open={preview !== null} title={preview ? t("portal.contacts.preview.titleWith", { name: preview.contact_name || preview.title }) : t("portal.contacts.preview.title")} description={preview ? `${channelLabel(preview.channel, t)} · ${formatWhen(preview.created_at, lang)}` : undefined} onClose={() => setPreview(null)}>
+      {preview && <div className="modal-form preview">
+        <dl className="preview-facts">
+          <div><dt>{t("portal.contacts.preview.status")}</dt><dd><span className="mini-badge resolved"><CheckCircle2 size={11} /> {preview.archived_at ? t("portal.inbox.conversation.archivedBadge") : t("portal.inbox.conversation.resolvedBadge")}</span>{(preview.archived_at || preview.resolved_at) && <small>{formatWhen(preview.archived_at || preview.resolved_at || preview.updated_at, lang)}</small>}</dd></div>
+          <div><dt>{t("portal.contacts.preview.channel")}</dt><dd><ChannelIcon channel={preview.channel} size={12} /> {channelLabel(preview.channel, t)}</dd></div>
+          <div><dt>{t("portal.contacts.preview.handledBy")}</dt><dd>{[...previewHandlers.ai.map((name) => t("portal.contacts.preview.byAi", { name })), ...previewHandlers.humans].join(" · ") || "—"}</dd></div>
+          {(preview.assignee_name || preview.team_name) && <div><dt>{t("portal.contacts.preview.assigned")}</dt><dd>{[preview.assignee_name, preview.team_name].filter(Boolean).join(" · ")}</dd></div>}
+          <div><dt>{t("portal.contacts.preview.messages")}</dt><dd>{previewMessages.length}</dd></div>
+          <div><dt>{t("portal.contacts.preview.lastActivity")}</dt><dd>{formatWhen(preview.updated_at, lang)}</dd></div>
+        </dl>
         <div className="portal-messages preview-thread">
           {previewLoading && <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>}
           {(preview.messages ?? []).map((message, index, all) => {
@@ -487,7 +509,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
             const hasAudio = message.attachments?.some((a) => a.kind === "audio");
             const mine = message.role === "assistant";
             return <article key={message.id} className={`${message.role}${mine ? " mine" : ""}${mine && message.sender_type === "ai" ? " ai" : ""}${grouped ? " grouped" : ""}`}>
-              {!grouped && <small>{message.sender_name || (mine ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor"))}</small>}
+              {!grouped && <small>{message.sender_name || (mine ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor"))}{mine && message.sender_type === "ai" && <span className="preview-ai-tag">{t("portal.inbox.list.aiAgent")}</span>}</small>}
               <MessageAttachments attachments={message.attachments} urlFor={previewUrl} gallery={previewGallery} stamp={stamp} />
               {message.content && <p><QuotedSnippet messages={preview.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}{mine && (preview.channel === "whatsapp_cloud" || isSocialChannel(preview.channel)) && <DeliveryTicks status={message.delivery_status} error={message.delivery_error} />}</time></p>}
               <ReactionBadge emoji={message.reaction} />
@@ -497,9 +519,15 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
           })}
           {!previewLoading && !(preview.messages ?? []).length && <p className="muted">{t("portal.inbox.list.noMessages")}</p>}
         </div>
-        <div className="modal-actions">
-          <button type="button" className="button" onClick={() => setPreview(null)}>{t("portal.contacts.preview.close")}</button>
-          {!preview.archived_at && <button type="button" className="button primary" onClick={() => { const conv = preview; setPreview(null); openConversation(conv); }}><Inbox size={15} /> {t("portal.contacts.preview.openInInbox")}</button>}
+        <div className="modal-actions preview-actions">
+          <span className="preview-tools">
+            <button type="button" className="button small" onClick={copyPreview} disabled={previewLoading}><Copy size={14} /> {t("portal.contacts.preview.copy")}</button>
+            <button type="button" className="button small" onClick={() => downloadText(previewTranscript(), `${preview.contact_name || preview.title}-${preview.created_at.slice(0, 10)}`)} disabled={previewLoading}><Download size={14} /> {t("portal.contacts.preview.download")}</button>
+          </span>
+          <span className="preview-nav">
+            <button type="button" className="button" onClick={() => setPreview(null)}>{t("portal.contacts.preview.close")}</button>
+            {!preview.archived_at && <button type="button" className="button primary" onClick={() => { const conv = preview; setPreview(null); openConversation(conv); }}><Inbox size={15} /> {t("portal.contacts.preview.openInInbox")}</button>}
+          </span>
         </div>
       </div>}
     </Modal>
