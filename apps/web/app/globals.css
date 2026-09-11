@@ -1847,6 +1847,18 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .portal-nav .pref-row > div button { width: auto; }
 .portal-nav .pref-row > div button.active { color: var(--portal-color, var(--accent-text)); }
 
+/* Settings: the same rows, at page scale, one under the other. */
+.pref-list { display: flex; flex-direction: column; }
+.pref-list .pref-row { min-height: 0; padding: 14px 0; gap: 16px; border-top: 1px solid var(--line-soft); }
+.pref-list .pref-row:first-child { padding-top: 0; border-top: 0; }
+.pref-list .pref-row:last-child { padding-bottom: 0; }
+.pref-list .pref-row > span { align-items: flex-start; gap: 10px; white-space: normal; color: var(--ink); font-size: var(--text-base); font-weight: var(--weight-normal); }
+.pref-list .pref-row > span svg { margin-top: 2px; }
+.pref-list .pref-row > span > span { display: flex; flex-direction: column; gap: 2px; }
+.pref-list .pref-row > span small { color: var(--muted); font-size: var(--text-sm); }
+.pref-list .pref-row > div button { height: 30px; padding: 0 12px; gap: 6px; font-size: var(--text-sm); }
+@media (max-width: 720px) { .pref-list .pref-row { flex-direction: column; align-items: stretch; } .pref-list .pref-row > div { justify-content: stretch; } .pref-list .pref-row > div button { flex: 1; } }
+
 /* Theme change: cross-fade every color for one beat, then hand transitions
    back to the components. Set by lib/theme.tsx around the attribute swap. */
 html[data-theme-transition], html[data-theme-transition] *, html[data-theme-transition] *::before, html[data-theme-transition] *::after { transition: background-color .25s ease, border-color .25s ease, color .25s ease, fill .25s ease, box-shadow .25s ease !important; }
