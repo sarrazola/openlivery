@@ -178,6 +178,8 @@ class AgentBase(BaseModel):
     model: str = ""
     provider: str = Field(default="openai", pattern=r"^(openai|anthropic)$")
     timezone: str = Field(default="UTC", max_length=64)
+    # {"mode": off|always|custom, "days": [...], "note": ""} -- see services/schedule.py
+    business_hours: dict | None = None
     prompt_language: str = Field(default="es", pattern=r"^(en|es)$")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=2048, ge=1, le=32000)
@@ -214,6 +216,7 @@ class AgentUpdate(BaseModel):
     model: str | None = None
     provider: str | None = Field(default=None, pattern=r"^(openai|anthropic)$")
     timezone: str | None = Field(default=None, max_length=64)
+    business_hours: dict | None = None
     prompt_language: str | None = Field(default=None, pattern=r"^(en|es)$")
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1, le=32000)
@@ -242,6 +245,7 @@ class AgentOut(ORMModel):
     brief_donts: str
     model: str
     timezone: str
+    business_hours: dict | None = None
     prompt_language: str
     temperature: float
     max_tokens: int

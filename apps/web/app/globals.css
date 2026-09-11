@@ -1889,3 +1889,23 @@ html[data-theme-transition], html[data-theme-transition] *, html[data-theme-tran
 :root[data-theme="dark"] .rich-text code { background: rgba(255, 255, 255, .08); }
 :root[data-theme="dark"] .portal-composer.window-closed { border-top-color: var(--amber-line); }
 :root[data-theme="dark"] .portal-composer.window-closed strong { color: var(--amber-text); }
+
+/* Opening hours editor: the three modes, then a row per weekday. */
+.bh { display: flex; flex-direction: column; gap: 16px; }
+.bh-days { display: flex; flex-direction: column; gap: 6px; }
+.bh-day { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 9px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+.bh-closed { background: var(--canvas); }
+.bh-name { display: flex; align-items: center; gap: 9px; width: 130px; flex: 0 0 auto; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.bh-name input { margin: 0; }
+.bh-ranges { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bh-range { display: flex; align-items: center; gap: 7px; }
+.bh-range input[type=time] { min-height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; font-size: 13px; }
+.bh-range span { color: var(--subtle); font-size: 12px; }
+.bh-add { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border: 1px dashed var(--accent-line); border-radius: 7px; background: transparent; color: var(--accent-text); font-size: 12px; font-weight: 650; }
+.bh-off { color: var(--subtle); font-size: 13px; }
+
+.bh-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.bh-modes button { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; text-align: left; padding: 13px 15px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); transition: .15s ease; }
+.bh-modes button strong { font-size: 14px; font-weight: 700; }
+.bh-modes button small { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.bh-modes button.active { border-color: var(--accent); border-width: 2px; padding: 12px 14px; background: var(--accent-soft); }

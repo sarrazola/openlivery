@@ -63,6 +63,7 @@ export type Agent = {
   brief_donts: string;
   model: string;
   timezone: string;
+  business_hours: { mode: "off" | "always" | "custom"; days: [string, string][][]; note: string } | null;
   prompt_language: "en" | "es";
   temperature: number;
   max_tokens: number;

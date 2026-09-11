@@ -156,6 +156,10 @@ class Agent(Base):
     # IANA timezone (e.g. "America/Bogota"); injected into the system prompt so
     # the agent knows the local date/time. "UTC" when unset.
     timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC")
+    # Opening hours: {"mode": off|always|custom, "days": [[["09:00","14:00"], ...] x7],
+    # "note": ""}. Read by services/schedule.py, which tells the prompt whether
+    # the business is open right now instead of making the model work it out.
+    business_hours: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Language of the prompt's headings and fixed sentences ("es" or "en").
     # Set from the UI language when the agent is saved; the operator's own
     # text is inserted as written.

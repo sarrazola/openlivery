@@ -10,6 +10,7 @@ from .. import industries
 from ..models import Agent, KnowledgeChunk, KnowledgeDocument
 from .embeddings import cosine_similarity, embed_query, embed_texts
 from .providers import resolve_provider_credentials
+from . import schedule
 
 
 MAX_FULL_CONTEXT_CHARS = 45_000
@@ -186,6 +187,7 @@ _PROMPT_TEXT = {
         "products": "Productos y servicios",
         "audience": "Público objetivo",
         "policies": "Información y políticas clave",
+        "hours": "Horario de atención",
         "rules": "Reglas",
         "base_donts": (
             "- Nunca inventes ni supongas datos: responde solo con la información de este contexto y, si algo no está aquí, dilo con naturalidad y ofrece pasar con una persona.\n"
@@ -215,6 +217,7 @@ _PROMPT_TEXT = {
         "products": "Products and services",
         "audience": "Target audience",
         "policies": "Key info and policies",
+        "hours": "Opening hours",
         "rules": "Rules",
         "base_donts": (
             "- Never invent or assume facts: answer only with the information in this context and, if something is not here, say so naturally and offer to hand over to a person.\n"
@@ -277,6 +280,14 @@ def build_system_prompt(agent: Agent, knowledge_text: str) -> str:
     lines = [f"- **{label}:** {value.strip()}" for label, value in facts if value.strip()]
     if lines:
         parts.append(_section(text["business"], "\n".join(lines)))
+
+    # Opening hours travel with the status already worked out. "Not written
+    # here" is not "no hours": with a tool that can look them up, the section
+    # says so rather than leaving the agent to deny having any.
+    has_tool_source = any(tool.enabled for tool in agent.tools)
+    hours = schedule.prompt_block(agent, now, has_tool_source=has_tool_source, lang=lang)
+    if hours:
+        parts.append(_section(text["hours"], hours))
 
     # "Never" always travels: our base rules first, then whatever the operator added.
     rules = []
