@@ -694,7 +694,7 @@ textarea { line-height: 1.55; }
 .portal-contacts > section > header > div:first-child { display: flex; flex-direction: column; }
 .portal-contacts > section > header small { color: var(--subtle); }
 .portal-contact-body { padding: 22px 24px; display: flex; flex-direction: column; gap: 26px; }
-.portal-contact-body h3 { margin: 0 0 10px; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.portal-contact-body h3 { margin: 0 0 10px; font-size: 13px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--muted); }
 .portal-contact-body p { margin: 0; white-space: pre-wrap; }
 .portal-contact-body p.muted { color: var(--subtle); }
 .portal-contact-notes p { padding: 12px 14px; border-radius: 8px; background: var(--amber-soft); }
@@ -1914,7 +1914,9 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .tag-picker > button > svg:last-child:not(:first-child) { margin-left: auto; color: var(--green-text); }
 .tag-picker .tag-create strong { color: var(--accent-text); }
 .tag-picker > small { padding: 6px 9px; color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
-.tag-filter { flex-wrap: wrap; gap: 4px; padding: 8px 12px 10px; }
+.tag-filter { flex-wrap: nowrap; gap: 4px; padding: 8px 12px 10px; overflow-x: auto; scrollbar-width: none; }
+.tag-filter::-webkit-scrollbar { display: none; }
+.tag-filter button { flex: 0 0 auto; white-space: nowrap; }
 .tag-filter button { gap: 6px; }
 .tag-filter button.active .tag-dot { outline: 2px solid rgba(255, 255, 255, .6); }
 .tag-manage { gap: 0; }
