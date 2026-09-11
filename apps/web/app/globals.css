@@ -1880,9 +1880,8 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .import-errors td:first-child { color: var(--subtle); font-variant-numeric: tabular-nums; }
 .import-errors td:last-child { color: var(--red-text); }
 
-.list-foot { position: sticky; bottom: 0; min-height: 44px; padding: 8px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--subtle); border-top: 1px solid var(--line-soft); background: var(--surface-2); font-size: 12px; }
+.list-foot { position: sticky; bottom: 0; min-height: 40px; padding: 8px 14px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--subtle); border-top: 1px solid var(--line-soft); background: var(--surface-2); font-size: 12px; }
 .list-foot > span { display: inline-flex; align-items: center; gap: 6px; }
-.list-foot .text-button { padding: 4px 8px; font-size: 12px; }
 
 /* Theme change: cross-fade every color for one beat, then hand transitions
    back to the components. Set by lib/theme.tsx around the attribute swap. */

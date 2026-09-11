@@ -232,7 +232,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
         {!loading && !items.length && <div className="no-conversations">{query ? t("portal.contacts.noMatches") : t("portal.contacts.empty")}</div>}
         {!loading && items.length > 0 && (hasMore || (total !== null && total > LIMIT)) && <div className="list-foot">
           {loadingMore ? <span><LoaderCircle className="spin" size={14} /> {t("portal.contacts.list.loadingMore")}</span>
-            : hasMore ? <><span>{t("portal.contacts.list.showing", { shown: items.length, total: total ?? items.length })}</span><button type="button" className="text-button" onClick={loadMore}>{t("portal.contacts.list.loadMore")}</button></>
+            : hasMore ? <span>{t("portal.contacts.list.showing", { shown: items.length, total: total ?? items.length })}</span>
             : <span>{t("portal.contacts.list.allLoaded", { total: total ?? items.length })}</span>}
         </div>}
       </aside>

@@ -131,7 +131,6 @@ const en = {
     moreActions: "More actions",
     list: {
       showing: "Showing {shown} of {total}",
-      loadMore: "Load more",
       loadingMore: "Loading more…",
       allLoaded: "All {total} contacts loaded",
     },
@@ -526,7 +525,6 @@ const es: typeof en = {
     moreActions: "Más acciones",
     list: {
       showing: "Mostrando {shown} de {total}",
-      loadMore: "Cargar más",
       loadingMore: "Cargando más…",
       allLoaded: "Los {total} contactos están cargados",
     },
