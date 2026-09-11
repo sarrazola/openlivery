@@ -20,7 +20,7 @@ import { useToast } from "@/components/toast";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { ChannelIcon, channelLabel as labelForChannel, INBOX_CHANNELS, isSocialChannel } from "@/lib/channels";
 import { SocialReplyNotice, useReplyPolicy } from "@/components/reply-policy";
-import { api, ApiError, apiUrl, messageFrom } from "@/lib/api";
+import { api, ApiError, apiUrl, apiWithHeaders, messageFrom } from "@/lib/api";
 import { activityText as activityLine } from "@/lib/activity";
 import { formatTime, formatWhen, isNearBottom, isSameOpenThread } from "@/lib/datetime";
 import { useLanguage, useT } from "@/lib/i18n";
@@ -164,6 +164,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   const [channelFilter, setChannelFilter] = useState("");
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
+  const [listTotal, setListTotal] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
   const selectedIdRef = useRef<string | null>(null);
@@ -218,7 +219,9 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   const refresh = useCallback(async () => {
     api<InboxSummary>(`/portal/${slug}/conversations/summary`).then(setSummary).catch(() => {});
     announceAssignments().catch(() => {});
-    const rows = await api<Conversation[]>(`/portal/${slug}/conversations?${buildParams(0)}`);
+    const { data: rows, headers } = await apiWithHeaders<Conversation[]>(`/portal/${slug}/conversations?${buildParams(0)}`);
+    const count = Number(headers.get("X-Total-Count"));
+    setListTotal(Number.isFinite(count) ? count : null);
     setItems(rows); setOffset(rows.length); setHasMore(rows.length === LIMIT);
     const openId = selectedIdRef.current ?? rows[0]?.id;
     if (!openId) return;
@@ -243,7 +246,9 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
     if (!hasMore || loadingMore) return;
     setLoadingMore(true);
     try {
-      const rows = await api<Conversation[]>(`/portal/${slug}/conversations?${buildParams(offset)}`);
+      const { data: rows, headers } = await apiWithHeaders<Conversation[]>(`/portal/${slug}/conversations?${buildParams(offset)}`);
+      const count = Number(headers.get("X-Total-Count"));
+      if (Number.isFinite(count)) setListTotal(count);
       setItems((prev) => [...prev, ...rows]); setOffset((o) => o + rows.length); setHasMore(rows.length === LIMIT);
     } catch (err) { setError(messageFrom(err)); } finally { setLoadingMore(false); }
   }
@@ -409,7 +414,11 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
       {visibleItems.map((item) => <div key={item.id} className={status === "archived" ? "inbox-row pickable" : "inbox-row"}>{status === "archived" && <label className="row-pick"><input type="checkbox" checked={picked.includes(item.id)} onChange={(e) => setPicked(e.target.checked ? [...picked, item.id] : picked.filter((id) => id !== item.id))} aria-label={t("portal.inbox.archive.pick")} /></label>}<button onClick={() => choose(item)} className={`${selected?.id === item.id ? "active" : ""}${item.unread && selected?.id !== item.id ? " unread" : ""}`}><span className="entity-avatar tiny"><UserRound size={15} /></span><span><span className="portal-inbox-row-top"><strong>{item.contact_name || item.title}</strong>{item.unread && selected?.id !== item.id ? <span className="inbox-unread-count" aria-label={t("inbox.unreadCount", { count: item.unread_count ?? 0 })}>{(item.unread_count ?? 0) > 99 ? "99+" : item.unread_count}</span> : <time>{formatWhen(item.last_inbound_at ?? item.updated_at, lang)}</time>}</span><small className="portal-inbox-preview">{item.preview || t("portal.inbox.list.noMessages")}</small><small className="inbox-row-meta"><span className={`channel-dot ${item.channel}`}>{channelIcon(item.channel)}</span> {channelLabel(item.channel)} <span className={`mini-badge ${item.mode}`}>{item.mode === "human" ? (item.assignee_name || t("portal.inbox.list.humanSupport")) : t("portal.inbox.list.aiAgent")}</span>{item.team_name && <span className="mini-badge team">{item.team_name}</span>}</small></span></button></div>)}
       {!items.length && <div className="no-conversations">{t("inbox.empty")}</div>}
       {status === "resolved" && !loadingMore && !hasMore && visibleItems.length > 1 && <div className="inbox-archive-link footer"><button type="button" className="text-button" onClick={() => setArchivingAll(true)}><Archive size={13} /> {t("portal.inbox.archive.archiveAll")}</button></div>}
-      {loadingMore && <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>}
+      {items.length > 0 && (hasMore || loadingMore || (listTotal !== null && listTotal > LIMIT)) && <div className="list-foot">
+        {loadingMore ? <span><LoaderCircle className="spin" size={14} /> {t("portal.contacts.list.loadingMore")}</span>
+          : hasMore ? <span>{t("portal.inbox.list.showing", { shown: items.length, total: listTotal ?? items.length })}</span>
+          : <span>{t("portal.inbox.list.allLoaded", { total: listTotal ?? items.length })}</span>}
+      </div>}
     </aside><section className="drop-target" {...dropProps}>{overlay}{!selected && <EmptyState icon={<Inbox />} title={t("portal.inbox.empty.title")} description={t("portal.inbox.empty.description")} />}{selected && <><header><div><strong>{selected.contact_name || selected.title}</strong><small className="portal-channel-line">{channelIcon(selected.channel)} {channelLabel(selected.channel)} <span className={`mini-badge ${selected.mode}`}>{selected.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span>{isResolved && !selected.archived_at && <span className="mini-badge resolved"><CheckCircle2 size={11} /> {t("portal.inbox.conversation.resolvedBadge")}</span>}{selected.archived_at && <span className="mini-badge resolved"><Archive size={11} /> {t("portal.inbox.conversation.archivedBadge")}</span>}{selected.channel === "whatsapp_cloud" && !isResolved && !selected.reply_window_open && <span className="window-pill closed"><Clock size={11} /> {selected.reply_window_until ? t("portal.inbox.window.closed") : t("portal.inbox.window.neverWrote")}</span>}</small></div><div className="thread-actions">{!isResolved && teams.length > 0 && <label className="assignee-picker team-picker"><span>{t("portal.teams.picker")}</span><select aria-label={t("portal.teams.picker")} title={t("portal.teams.picker")} value={selected.team_id ?? ""} onChange={(e) => setConversationTeam(e.target.value)}><option value="">{t("portal.teams.pickerNone")}</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>}{!isResolved && selected.mode === "human" && <label className="assignee-picker"><span>{t("portal.inbox.assignment.label")}</span><select aria-label={t("portal.inbox.assignment.label")} title={t("portal.inbox.assignment.label")} value={selected.assignee_id ?? ""} onChange={(e) => e.target.value && assignTo(e.target.value)}>{!selected.assignee_id && <option value="">{t("portal.inbox.assignment.pick")}</option>}{members.map((member) => <option key={member.id} value={member.id}>{memberLabel(member)}</option>)}</select></label>}{!isResolved && <><button className={`mode-toggle ${selected.mode}`} onClick={() => setMode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("portal.inbox.conversation.takeControl") : t("portal.inbox.conversation.returnToAi")}</button><button className="status-toggle open" onClick={() => setConversationStatus("resolved")}><CheckCircle2 size={15} /> {t("portal.inbox.conversation.resolve")}</button></>}{isResolved && !selected.archived_at && <button className="status-toggle resolved" onClick={() => setArchived(true)}><Archive size={15} /> {t("portal.inbox.conversation.archive")}</button>}{selected.archived_at && <><button className="status-toggle resolved" onClick={() => setArchived(false)}><ArchiveRestore size={15} /> {t("portal.inbox.conversation.restore")}</button><button className="status-toggle danger" onClick={() => { setConfirmWord(""); setDeleting(selected); }}><Trash2 size={15} /> {t("portal.inbox.conversation.delete")}</button></>}{selected.contact_id && !selected.archived_at && <button className="icon-button" onClick={() => setBlockingContact(true)} title={t("portal.inbox.conversation.blockContact")} aria-label={t("portal.inbox.conversation.blockContact")}><Ban size={16} /></button>}<button className="icon-button" onClick={() => setMediaOpen(true)} title={t("chat.sharedContent")} aria-label={t("chat.sharedContent")}><Images size={16} /></button></div></header><div className="portal-messages" ref={messagesRef}>{selected.messages?.map((message, index) => {
               if (message.kind === "activity") {
                 return <div key={message.id} className="activity-line"><span>{activityText(message)}</span><time>{formatTime(message.created_at, lang)}</time></div>;

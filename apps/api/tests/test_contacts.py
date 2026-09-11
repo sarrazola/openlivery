@@ -289,6 +289,8 @@ def test_tagged_contact_routes_new_conversations_to_a_team(authenticated_client:
     events = [m["activity"]["event"] for m in thread["messages"] if m.get("activity")]
     assert "routed_by_tag" in events
 
+    assert client.get(f"{base}/conversations").headers["x-total-count"] == "1"
+
     # An untagged contact still goes to the AI.
     plain = inbound("m2", "573009998877@s.whatsapp.net", "Pepe")
     assert plain["mode"] == "ai"

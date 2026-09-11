@@ -481,6 +481,7 @@ def portal_conversations(
     unread: bool = False,
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    response: Response = None,  # type: ignore[assignment]
     client: Client = Depends(_portal_client),
     user: PortalUser | None = Depends(_portal_user),
     db: Session = Depends(get_db),
@@ -566,6 +567,11 @@ def portal_conversations(
     # A conversation moves up only when the contact writes. Reading it,
     # replying, assigning or resolving all touch updated_at, and none of them
     # should reshuffle the list under the person working it.
+    # The total for the same filters travels in a header so the list can say
+    # how far it has paged without changing the body shape.
+    if response is not None:
+        total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery())) or 0
+        response.headers["X-Total-Count"] = str(total)
     rows = db.execute(
         query.order_by(func.coalesce(last_inbound.c.at, Conversation.created_at).desc(), Conversation.created_at.desc())
         .limit(limit)

@@ -334,6 +334,8 @@ const en = {
       conversationsCount: "{count} conversations",
     },
     list: {
+      showing: "Showing {shown} of {total}",
+      allLoaded: "All {total} conversations loaded",
       humanSupport: "Human support",
       aiAgent: "AI agent",
       noMessages: "No messages yet",
@@ -776,6 +778,8 @@ const es: typeof en = {
       conversationsCount: "{count} conversaciones",
     },
     list: {
+      showing: "Mostrando {shown} de {total}",
+      allLoaded: "Las {total} conversaciones están cargadas",
       humanSupport: "Atención humana",
       aiAgent: "Agente IA",
       noMessages: "Aún sin mensajes",
