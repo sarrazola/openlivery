@@ -7,6 +7,8 @@ import { Bot, Building2, CreditCard, Inbox, LayoutDashboard, LogOut, Menu, Messa
 import { api } from "@/lib/api";
 import { useT, type I18nKey } from "@/lib/i18n";
 import { DiscordIcon } from "@/components/discord-icon";
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 import { DISCORD_INVITE_URL } from "@/lib/community";
 import type { User } from "@/types";
 
@@ -126,6 +128,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="user-avatar">{user.name.slice(0, 1).toUpperCase()}</div>
             <div className="user-meta"><strong>{user.name}</strong><span>{user.email}</span></div>
             <button className="icon-button inverse" onClick={logout} title={t("shell.logout")}><LogOut size={17} /></button>
+          </div>
+          <div className="sidebar-prefs">
+            <LanguageSwitcher />
+            <ThemeSwitcher />
           </div>
         </div>
       </aside>
