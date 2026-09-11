@@ -1925,7 +1925,7 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .tag-manage-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line-soft); }
 .tag-manage-row:first-child { padding-top: 0; border-top: 0; }
 .tag-manage-row input { flex: 1 1 120px; min-width: 0; min-height: 32px; }
-.tag-manage-row .tag-route { flex: 0 1 190px; min-width: 0; min-height: 32px; font-size: 12.5px; }
+.tag-route-note { flex: 0 0 auto; color: var(--accent-text); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .tag-manage-hint { margin: 0 0 12px; font-size: 12.5px; line-height: 1.45; }
 .tag-manage-row small { color: var(--subtle); font-size: 12px; white-space: nowrap; }
 .tag-swatches { display: inline-flex; gap: 4px; }

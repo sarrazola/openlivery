@@ -261,9 +261,14 @@ def test_tagged_contact_routes_new_conversations_to_a_team(authenticated_client:
     monkeypatch.setattr(whatsapp_inbound_service, "run_completion", completion)
 
     vip = client.post(f"{base}/tags", json={"name": "VIP"}).json()
-    routed = client.patch(f"{base}/tags/{vip['id']}", json={"route_team_id": team["id"]})
+    # The portal cannot route a tag: the field is ignored there.
+    ignored = client.patch(f"{base}/tags/{vip['id']}", json={"route_team_id": team["id"]})
+    assert ignored.status_code == 200 and ignored.json()["route_team_id"] is None
+    agency_tags = f"/api/clients/{customer['id']}/contact-tags"
+    routed = client.patch(f"{agency_tags}/{vip['id']}", json={"route_team_id": team["id"]})
     assert routed.status_code == 200 and routed.json()["route_team_name"] == "Ventas"
-    assert client.patch(f"{base}/tags/{vip['id']}", json={"route_team_id": str(uuid.uuid4())}).status_code == 404
+    assert client.patch(f"{agency_tags}/{vip['id']}", json={"route_team_id": str(uuid.uuid4())}).status_code == 404
+    assert client.get(f"{base}/tags").json()[0]["route_team_name"] == "Ventas"
     contact = client.post(f"{base}/contacts", json={"name": "Vera", "phone": "573001112233"}).json()
     client.put(f"{base}/contacts/{contact['id']}/tags", json={"tag_ids": [vip["id"]]})
 
@@ -288,16 +293,12 @@ def test_tagged_contact_routes_new_conversations_to_a_team(authenticated_client:
     plain = inbound("m2", "573009998877@s.whatsapp.net", "Pepe")
     assert plain["mode"] == "ai"
 
-    # Clearing the routing leaves the tag in place.
-    cleared = client.patch(f"{base}/tags/{vip['id']}", json={"route_team_id": None}).json()
+    # Clearing the routing (agency side) leaves the tag in place.
+    cleared = client.patch(f"{agency_tags}/{vip['id']}", json={"route_team_id": None}).json()
     assert cleared["route_team_id"] is None and cleared["name"] == "VIP"
-
-    # The agency can read the client's tags and set their routing from the agent editor.
-    listed = client.get(f"/api/clients/{customer['id']}/contact-tags").json()
+    listed = client.get(agency_tags).json()
     assert [(row["name"], row["route_team_id"]) for row in listed] == [("VIP", None)]
-    routed_again = client.patch(f"/api/clients/{customer['id']}/contact-tags/{vip['id']}", json={"route_team_id": team["id"]})
-    assert routed_again.status_code == 200 and routed_again.json()["route_team_name"] == "Ventas"
-    assert client.patch(f"/api/clients/{customer['id']}/contact-tags/{vip['id']}", json={"name": "x"}).status_code == 422
+    assert client.patch(f"{agency_tags}/{vip['id']}", json={"name": "x"}).status_code == 422
 
     # The contact's history pages with a total.
     history = client.get(f"{base}/contacts/{contact['id']}/conversations?limit=1")

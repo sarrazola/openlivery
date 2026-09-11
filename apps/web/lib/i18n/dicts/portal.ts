@@ -151,9 +151,7 @@ const en = {
       deleteConfirm: "Delete \"{name}\"? It will be removed from {count} contacts.",
       deleteAction: "Delete",
       noTags: "No tags yet. Create one here or from a contact.",
-      routeLabel: "Route to",
-      routeNone: "No routing (the AI answers)",
-      routeHint: "A tag can send its contacts straight to a team: every new conversation from a tagged contact starts in that team's hands, without the AI, ahead of the agent's escalation rules. Remove the tag and the contact goes back to the normal flow. If a contact has several routed tags, the oldest tag wins.",
+      manageIntro: "Tags are put on contacts by hand. A tag can also send its contacts straight to a team, without the AI; your agency sets that up from the agent.",
       routedTo: "→ {team}",
     },
     list: {
@@ -573,9 +571,7 @@ const es: typeof en = {
       deleteConfirm: "¿Eliminar \"{name}\"? Se quitará de {count} contactos.",
       deleteAction: "Eliminar",
       noTags: "Aún no hay etiquetas. Crea una aquí o desde un contacto.",
-      routeLabel: "Enviar a",
-      routeNone: "Sin ruteo (responde la IA)",
-      routeHint: "Una etiqueta puede mandar a sus contactos directo a un equipo: cada conversación nueva de un contacto etiquetado arranca en manos de ese equipo, sin IA, por delante de las reglas de escalamiento del agente. Si le quitas la etiqueta, el contacto vuelve al flujo normal. Si un contacto tiene varias etiquetas con ruteo, gana la más antigua.",
+      manageIntro: "Las etiquetas se ponen a mano en cada contacto. Una etiqueta también puede mandar a sus contactos directo a un equipo, sin IA; eso lo configura tu agencia desde el agente.",
       routedTo: "→ {team}",
     },
     list: {

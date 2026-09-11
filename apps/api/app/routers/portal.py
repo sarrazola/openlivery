@@ -997,14 +997,8 @@ def portal_update_tag(
         tag.name = name
     if payload.color is not None:
         tag.color = _tag_color(payload.color, tag.color)
-    if "route_team_id" in payload.model_fields_set:
-        if payload.route_team_id is None:
-            tag.route_team_id = None
-        else:
-            team = db.scalar(select(Team).where(Team.id == payload.route_team_id, Team.client_id == client.id))
-            if team is None:
-                raise HTTPException(status_code=404, detail="Team not found")
-            tag.route_team_id = team.id
+    # Routing is the agency's call (set from the agent editor); the portal
+    # can rename and recolor but a route_team_id here is ignored on purpose.
     db.commit()
     db.refresh(tag)
     count = db.scalar(select(func.count(ContactTagLink.contact_id)).where(ContactTagLink.tag_id == tag.id)) or 0

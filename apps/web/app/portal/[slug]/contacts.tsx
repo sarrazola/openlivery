@@ -16,7 +16,7 @@ import { formatPhone } from "@/lib/dial-codes";
 import { api, ApiError, apiUrl, apiWithHeaders, messageFrom } from "@/lib/api";
 import { formatTime, formatWhen } from "@/lib/datetime";
 import { useLanguage, useT, type I18nKey } from "@/lib/i18n";
-import type { Attachment, Contact, ContactImportResult, ContactTag, Conversation, PortalChannel, Team } from "@/types";
+import type { Attachment, Contact, ContactImportResult, ContactTag, Conversation, PortalChannel } from "@/types";
 
 const LIMIT = 50;
 const HISTORY_LIMIT = 20;
@@ -60,7 +60,6 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const [importing, setImporting] = useState(false);
   const [listMenu, setListMenu] = useState(false);
   const [tags, setTags] = useState<ContactTag[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [tagPicker, setTagPicker] = useState(false);
   const [tagQuery, setTagQuery] = useState("");
@@ -98,9 +97,6 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
     try { setTags(await api<ContactTag[]>(`/portal/${slug}/tags`)); } catch { /* the list still works without the catalog */ }
   }, [slug]);
   useEffect(() => { loadTags(); }, [loadTags]);
-  useEffect(() => {
-    api<Team[]>(`/portal/${slug}/teams`).then(setTeams).catch(() => setTeams([]));
-  }, [slug]);
 
   // Tags are set by hand from the contact card; the whole set is sent so the
   // server never has to reconcile partial changes.
@@ -130,7 +126,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
       if (assignTo) await applyContactTags(assignTo, [...(assignTo.tags ?? []).map((item) => item.id), created.id]);
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
-  async function updateTag(tag: ContactTag, patch: { name?: string; color?: string; route_team_id?: string | null }) {
+  async function updateTag(tag: ContactTag, patch: { name?: string; color?: string }) {
     if (patch.name !== undefined && (!patch.name.trim() || patch.name.trim() === tag.name)) return;
     setError("");
     try {
@@ -509,17 +505,14 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
     </Modal>
     <Modal open={managingTags} title={t("portal.contacts.tags.manageTitle")} onClose={() => setManagingTags(false)}>
       <div className="modal-form tag-manage">
-        <p className="muted tag-manage-hint">{t("portal.contacts.tags.routeHint")}</p>
+        <p className="muted tag-manage-hint">{t("portal.contacts.tags.manageIntro")}</p>
         {!tags.length && <p className="muted">{t("portal.contacts.tags.noTags")}</p>}
         {tags.map((tag) => deletingTag?.id === tag.id
           ? <div key={tag.id} className="tag-manage-confirm"><span>{t("portal.contacts.tags.deleteConfirm", { name: tag.name, count: tag.contact_count })}</span><span className="tag-manage-confirm-actions"><button type="button" className="button small" onClick={() => setDeletingTag(null)}>{t("portal.contacts.form.cancel")}</button><button type="button" className="button danger small" disabled={busy} onClick={() => removeTag(tag)}>{t("portal.contacts.tags.deleteAction")}</button></span></div>
           : <div key={tag.id} className="tag-manage-row">
             <div className="tag-swatches" role="radiogroup" aria-label={tag.name}>{TAG_COLORS.map((color) => <button type="button" key={color} data-color={color} className={color === tag.color ? "active" : ""} role="radio" aria-checked={color === tag.color} aria-label={color} onClick={() => updateTag(tag, { color })} />)}</div>
             <input defaultValue={tag.name} maxLength={40} onBlur={(e) => updateTag(tag, { name: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
-            <select className="tag-route" value={tag.route_team_id ?? ""} onChange={(e) => updateTag(tag, { route_team_id: e.target.value || null })} aria-label={t("portal.contacts.tags.routeLabel")} title={t("portal.contacts.tags.routeLabel")}>
-              <option value="">{t("portal.contacts.tags.routeNone")}</option>
-              {teams.map((team) => <option key={team.id} value={team.id}>{t("portal.contacts.tags.routedTo", { team: team.name })}</option>)}
-            </select>
+            {tag.route_team_name && <span className="tag-route-note">{t("portal.contacts.tags.routedTo", { team: tag.route_team_name })}</span>}
             <small>{t("portal.contacts.tags.count", { count: tag.contact_count })}</small>
             <button type="button" className="icon-button danger" onClick={() => setDeletingTag(tag)} title={t("portal.contacts.tags.deleteAction")} aria-label={t("portal.contacts.tags.deleteAction")}><Trash2 size={15} /></button>
           </div>)}
