@@ -201,7 +201,7 @@ h1, h2, h3, .brand { font-family: var(--font-display); letter-spacing: -.015em; 
 .page-head h1 { margin: 3px 0 6px; color: var(--ink); font-size: clamp(29px, 3vw, 36px); letter-spacing: -1.2px; line-height: 1.1; }
 .page-head p { margin: 0; color: var(--muted); font-size: 14px; }
 .eyebrow { color: var(--purple); font-size: 12px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
-.button { min-height: 39px; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 9px; font-weight: 700; font-size: 13px; transition: .18s ease; }
+.button { min-height: 39px; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; color: var(--ink-2); border: 1px solid var(--line); border-radius: 9px; background: var(--surface); font-weight: 700; font-size: 13px; transition: .18s ease; }
 .button:hover:not(:disabled) { transform: translateY(-1px); }
 .button.primary { color: white; background: var(--purple); box-shadow: 0 7px 17px rgba(var(--accent-rgb), .2); }
 .button.primary:hover:not(:disabled) { background: var(--purple-dark); }
@@ -938,7 +938,6 @@ textarea { line-height: 1.55; }
  * space, so the language switcher's must not, or the space splits and the
  * chip floats mid-sidebar. */
 .portal-nav .availability-toggle { margin: auto 0 0; }
-.portal-nav .availability-toggle + .lang-switcher { margin-top: 10px; }
 .member-picker { position: relative; display: flex; flex-direction: column; gap: 8px; }
 .member-picker-search { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; color: var(--subtle); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 .member-picker-search:focus-within { color: var(--brand, var(--blue-text)); border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -1403,12 +1402,6 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .portal-brand span, .portal-brand img { background: var(--portal-color, var(--accent)); }
 .portal-preview > footer strong { color: var(--portal-color, var(--accent-text)); }
 
-/* i18n: language switcher in the sidebar footer. */
-.lang-switcher { margin-top: 10px; padding: 4px; display: flex; align-items: center; gap: 4px; color: var(--subtle); }
-.lang-switcher svg { margin: 0 4px; color: var(--subtle); }
-.lang-switcher button { min-height: 26px; padding: 0 9px; color: var(--muted); border: 1px solid transparent; border-radius: 6px; background: transparent; font-size: 12px; font-weight: 600; }
-.lang-switcher button:hover { background: var(--canvas); }
-.lang-switcher button.active { color: var(--accent-text); background: var(--accent-soft); }
 
 /* Agent creation wizard (Fase 1). Built on the existing design tokens. */
 .wizard-head { margin-bottom: 20px; }
@@ -1747,12 +1740,6 @@ p .msg-time, .bubble .msg-time { float: right; margin: 9px -2px -2px 10px; font-
 .portal-messages p:has(> .msg-time), .inbox-message p:has(> .msg-time), .bubble:has(> .msg-time) { position: relative; padding-right: 66px; }
 p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; bottom: 8px; margin: 0; }
 
-/* Language switcher in the client portal sidebar */
-.portal-nav .lang-switcher { margin-top: 8px; }
-.portal-nav .lang-switcher button { width: auto; min-height: 26px; padding: 0 9px; display: inline-flex; }
-.portal-nav .lang-switcher button.active { color: var(--portal-color, var(--accent-text)); background: var(--surface-3); border-color: transparent; }
-.portal-nav .lang-switcher { margin-top: auto; }
-.portal-nav .lang-switcher + button { margin-top: 6px; }
 
 /* Timestamp inside widget chat bubbles */
 .widget-bubble:has(> .msg-time) { position: relative; padding-right: 48px; }
@@ -1842,19 +1829,23 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .social-history-status { display: grid; gap: 6px; margin: 16px 0; font-size: 13px; }
 .social-history-status small { color: var(--muted); }
 
-/* Sidebar preferences: language and appearance as two equal segmented rows,
-   one below the other, at the foot of both sidebars. */
-.sidebar-prefs { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
-.sidebar-prefs .lang-switcher, .theme-switcher { margin: 0; padding: 3px; display: flex; align-items: center; gap: 2px; color: var(--subtle); border: 1px solid var(--line-soft); border-radius: 8px; background: var(--surface-2); }
-.sidebar-prefs .lang-switcher > svg, .theme-switcher > svg { flex: 0 0 auto; margin: 0 7px 0 5px; color: var(--subtle); }
-.sidebar-prefs .lang-switcher button, .theme-switcher button { flex: 1 1 0; min-height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: var(--subtle); border: 0; border-radius: 6px; background: transparent; font-size: 12px; font-weight: 600; transition: .15s ease; }
-.sidebar-prefs .lang-switcher button:hover, .theme-switcher button:hover { color: var(--ink-2); background: var(--surface-3); }
-.sidebar-prefs .lang-switcher button.active, .theme-switcher button.active { color: var(--accent-text); background: var(--accent-soft); }
+/* Sidebar preferences: language and appearance as two settings rows at the
+   foot of both sidebars, label on the left and a small segmented control on
+   the right, so they read as a list of preferences rather than loose buttons. */
+.sidebar-prefs { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 2px; }
+.pref-row { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pref-row > span { min-width: 0; display: inline-flex; align-items: center; gap: 7px; overflow: hidden; color: var(--muted); font-size: 12px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
+.pref-row > span svg { flex: 0 0 auto; color: var(--subtle); }
+.pref-row > div { flex: 0 0 auto; display: inline-flex; gap: 2px; padding: 2px; border-radius: 7px; background: var(--surface-3); }
+.pref-row > div button { min-width: 30px; height: 24px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); border: 0; border-radius: 5px; background: transparent; font-size: 11.5px; font-weight: 600; transition: .15s ease; }
+.pref-row > div button:hover { color: var(--ink); }
+.pref-row > div button.active { color: var(--accent-text); background: var(--surface); box-shadow: 0 1px 2px rgba(var(--shadow-rgb), calc(.1 * var(--shadow-k))); }
+:root[data-theme="dark"] .pref-row > div button.active { background: var(--surface-4); }
 .portal-nav .sidebar-prefs { margin-top: auto; }
-.portal-nav .availability-toggle + .sidebar-prefs { margin-top: 10px; }
-.portal-nav .sidebar-prefs + button { margin-top: 6px; }
-.portal-nav .sidebar-prefs .lang-switcher button, .portal-nav .theme-switcher button { width: auto; padding: 0; }
-.portal-nav .sidebar-prefs .lang-switcher button.active, .portal-nav .theme-switcher button.active { color: var(--portal-color, var(--accent-text)); background: var(--surface-3); border-color: transparent; }
+.portal-nav .availability-toggle + .sidebar-prefs { margin-top: 12px; }
+.portal-nav .sidebar-prefs + button { margin-top: 8px; }
+.portal-nav .pref-row > div button { width: auto; }
+.portal-nav .pref-row > div button.active { color: var(--portal-color, var(--accent-text)); }
 
 /* Theme change: cross-fade every color for one beat, then hand transitions
    back to the components. Set by lib/theme.tsx around the attribute swap. */

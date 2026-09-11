@@ -10,27 +10,29 @@ const OPTIONS: { value: ThemePreference; labelKey: I18nKey; icon: typeof Sun }[]
   { value: "dark", labelKey: "shell.themeDark", icon: Moon },
 ];
 
-// Compact system / light / dark toggle used in the sidebar footers, next to
-// the language switcher.
+// Appearance preference row in the sidebar footers: label on the left,
+// system / light / dark segmented control on the right.
 export function ThemeSwitcher() {
   const t = useT();
   const { preference, setTheme } = useTheme();
   return (
-    <div className="theme-switcher" role="group" aria-label={t("shell.theme")}>
-      <SunMoon size={14} />
-      {OPTIONS.map(({ value, labelKey, icon: Icon }) => (
-        <button
-          key={value}
-          type="button"
-          className={preference === value ? "active" : ""}
-          onClick={() => setTheme(value)}
-          aria-pressed={preference === value}
-          aria-label={t(labelKey)}
-          title={t(labelKey)}
-        >
-          <Icon size={14} />
-        </button>
-      ))}
+    <div className="pref-row">
+      <span><SunMoon size={14} />{t("shell.theme")}</span>
+      <div role="group" aria-label={t("shell.theme")}>
+        {OPTIONS.map(({ value, labelKey, icon: Icon }) => (
+          <button
+            key={value}
+            type="button"
+            className={preference === value ? "active" : ""}
+            onClick={() => setTheme(value)}
+            aria-pressed={preference === value}
+            aria-label={t(labelKey)}
+            title={t(labelKey)}
+          >
+            <Icon size={14} />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
