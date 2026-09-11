@@ -21,6 +21,14 @@ const en = {
     privateCredentials: "Your keys are safe",
     privateCredentialsCopy: "We store them encrypted and never show them again. Only your agents use them.",
   },
+  preferences: {
+    heading: "Preferences",
+    copy: "Language and appearance of the interface. They are saved on this browser, for you only.",
+    language: "Language",
+    languageHint: "Applies to the whole interface.",
+    appearance: "Appearance",
+    appearanceHint: "Follow the system, or pin light or dark.",
+  },
   providers: {
     heading: "AI provider keys",
     copy: "Add your own API keys. They are shared by every agent in the agency.",
@@ -57,6 +65,14 @@ const es: typeof en = {
     saveIdentity: "Guardar identidad",
     privateCredentials: "Tus claves están seguras",
     privateCredentialsCopy: "Las guardamos cifradas y no volvemos a mostrarlas. Solo las usan tus agentes.",
+  },
+  preferences: {
+    heading: "Preferencias",
+    copy: "Idioma y apariencia de la interfaz. Se guardan en este navegador, solo para ti.",
+    language: "Idioma",
+    languageHint: "Aplica a toda la interfaz.",
+    appearance: "Apariencia",
+    appearanceHint: "Seguir al sistema, o fijar claro u oscuro.",
   },
   providers: {
     heading: "Claves de proveedores de IA",

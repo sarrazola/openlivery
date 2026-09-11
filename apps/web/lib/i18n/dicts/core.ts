@@ -82,6 +82,10 @@ const en = {
     logout: "Log out",
     language: "Language",
     joinCommunity: "Join the community",
+    theme: "Appearance",
+    themeSystem: "System",
+    themeLight: "Light",
+    themeDark: "Dark",
   },
   auth: {
     signInTitle: "Sign in to OpenLivery",
@@ -217,6 +221,10 @@ const es: typeof en = {
     logout: "Cerrar sesión",
     language: "Idioma",
     joinCommunity: "Unirse a la comunidad",
+    theme: "Apariencia",
+    themeSystem: "Sistema",
+    themeLight: "Claro",
+    themeDark: "Oscuro",
   },
   auth: {
     signInTitle: "Entra a OpenLivery",

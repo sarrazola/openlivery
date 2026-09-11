@@ -13,6 +13,16 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- **Dark theme.** The interface follows the operating system by default and
+  can be pinned to light or dark from the sidebar footer, in the agency app
+  and in the client portal. The choice is applied before first paint, so a
+  reload never flashes the other theme, and native controls (scrollbars,
+  pickers, selects) follow through `color-scheme`. Every color in the
+  stylesheet now resolves through a semantic token (`--surface-*`, `--line-*`,
+  `--ink`/`--muted`/`--subtle`, and a fill/text/soft/line set per hue), so a
+  new component styled with tokens gets both themes for free. The embedded
+  web chat widget is deliberately excluded: it lives inside a customer's page
+  and keeps its own look.
 - Instagram and Messenger contacts get the sender's **name**. Webhooks only
   carry the sender id, so the first message from an unnamed contact looks the
   profile up on the provider (name and surname on Messenger, name and handle
