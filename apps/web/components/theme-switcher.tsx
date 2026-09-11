@@ -1,6 +1,6 @@
 "use client";
 
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Monitor, Moon, Sun, SunMoon } from "lucide-react";
 import { useT, type I18nKey } from "@/lib/i18n";
 import { useTheme, type ThemePreference } from "@/lib/theme";
 
@@ -17,6 +17,7 @@ export function ThemeSwitcher() {
   const { preference, setTheme } = useTheme();
   return (
     <div className="theme-switcher" role="group" aria-label={t("shell.theme")}>
+      <SunMoon size={14} />
       {OPTIONS.map(({ value, labelKey, icon: Icon }) => (
         <button
           key={value}
