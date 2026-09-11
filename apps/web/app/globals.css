@@ -1883,6 +1883,53 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .list-foot { position: sticky; bottom: 0; min-height: 40px; padding: 8px 14px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--subtle); border-top: 1px solid var(--line-soft); background: var(--surface-2); font-size: 12px; }
 .list-foot > span { display: inline-flex; align-items: center; gap: 6px; }
 
+/* Contact tags: chips, the filter row, the picker on the card and the manager dialog. */
+.tag-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 180px; padding: 1px 8px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; background: var(--surface-3); font-size: 11.5px; font-weight: 600; line-height: 1.6; white-space: nowrap; }
+.tag-chip button { display: inline-grid; place-items: center; width: 14px; height: 14px; margin-right: -3px; padding: 0; color: inherit; border: 0; border-radius: 50%; background: transparent; opacity: .7; cursor: pointer; }
+.tag-chip button:hover { opacity: 1; background: rgba(var(--shadow-rgb), calc(.1 * var(--shadow-k))); }
+.tag-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.tag-chips.large { align-items: center; gap: 6px; margin-top: 0; }
+.tag-chips.large .tag-chip { padding: 3px 10px; font-size: 12.5px; }
+.tag-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--subtle); }
+.tag-swatches button[data-color="gray"] { background: var(--subtle); }
+.tag-chip[data-color="blue"] { color: var(--blue-text); border-color: var(--blue-line); background: var(--blue-soft); }
+.tag-dot[data-color="blue"], .tag-swatches button[data-color="blue"] { background: var(--blue); }
+.tag-chip[data-color="green"] { color: var(--green-text); border-color: var(--green-line); background: var(--green-soft); }
+.tag-dot[data-color="green"], .tag-swatches button[data-color="green"] { background: var(--green); }
+.tag-chip[data-color="amber"] { color: var(--amber-text); border-color: var(--amber-line); background: var(--amber-soft); }
+.tag-dot[data-color="amber"], .tag-swatches button[data-color="amber"] { background: var(--amber); }
+.tag-chip[data-color="red"] { color: var(--red-text); border-color: var(--red-line); background: var(--red-soft); }
+.tag-dot[data-color="red"], .tag-swatches button[data-color="red"] { background: var(--red); }
+.tag-chip[data-color="violet"] { color: var(--violet-text); border-color: var(--violet-line); background: var(--violet-soft); }
+.tag-dot[data-color="violet"], .tag-swatches button[data-color="violet"] { background: var(--violet); }
+.tag-chip[data-color="pink"] { color: var(--pink-text); border-color: var(--pink-line); background: var(--pink-soft); }
+.tag-dot[data-color="pink"], .tag-swatches button[data-color="pink"] { background: var(--pink); }
+.tag-chip[data-color="teal"] { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
+.tag-dot[data-color="teal"], .tag-swatches button[data-color="teal"] { background: var(--accent); }
+.portal-contact-tags { margin-bottom: 18px; }
+.tag-add { display: inline-flex; align-items: center; gap: 4px; min-height: 26px; padding: 0 10px; color: var(--muted); border: 1px dashed var(--line-strong); border-radius: 999px; background: transparent; font-size: 12px; font-weight: 600; cursor: pointer; }
+.tag-add:hover { color: var(--ink); border-color: var(--accent-line); background: var(--accent-soft); }
+.tag-picker { left: 0; right: auto; width: min(280px, 88vw); }
+.tag-picker input { margin: 2px 2px 6px; min-height: 32px; font-size: 13px; }
+.tag-picker > button > svg:last-child:not(:first-child) { margin-left: auto; color: var(--green-text); }
+.tag-picker .tag-create strong { color: var(--accent-text); }
+.tag-picker > small { padding: 6px 9px; color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.tag-filter { flex-wrap: wrap; gap: 4px; padding: 8px 12px 10px; }
+.tag-filter button { gap: 6px; }
+.tag-filter button.active .tag-dot { outline: 2px solid rgba(255, 255, 255, .6); }
+.tag-manage { gap: 0; }
+.tag-manage-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.tag-manage-row:first-child { padding-top: 0; border-top: 0; }
+.tag-manage-row input { flex: 1; min-height: 32px; }
+.tag-manage-row small { color: var(--subtle); font-size: 12px; white-space: nowrap; }
+.tag-swatches { display: inline-flex; gap: 4px; }
+.tag-swatches button { width: 16px; height: 16px; padding: 0; border: 2px solid transparent; border-radius: 50%; cursor: pointer; }
+.tag-swatches button.active { border-color: var(--ink); }
+.tag-manage-confirm { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; padding: 8px 10px; color: var(--red-text); border-radius: 8px; background: var(--red-soft); font-size: 12.5px; }
+.tag-manage-confirm-actions { display: inline-flex; gap: 6px; flex: 0 0 auto; }
+.tag-manage-new { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.tag-manage-new input { flex: 1; }
+
 /* Theme change: cross-fade every color for one beat, then hand transitions
    back to the components. Set by lib/theme.tsx around the attribute swap. */
 html[data-theme-transition], html[data-theme-transition] *, html[data-theme-transition] *::before, html[data-theme-transition] *::after { transition: background-color .25s ease, border-color .25s ease, color .25s ease, fill .25s ease, box-shadow .25s ease !important; }

@@ -643,12 +643,34 @@ class ContactUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=5000)
 
 
+class ContactTagOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    color: str = "gray"
+    contact_count: int = 0
+
+
+class ContactTagCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    color: str | None = Field(default=None, max_length=20)
+
+
+class ContactTagUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=40)
+    color: str | None = Field(default=None, max_length=20)
+
+
+class ContactTagsSet(BaseModel):
+    tag_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+
+
 class ContactOut(BaseModel):
     id: uuid.UUID
     name: str
     phone: str | None = None
     email: str | None = None
     notes: str = ""
+    tags: list[ContactTagOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     conversation_count: int = 0

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import Agency, Agent, CannedResponse, Client, Contact, Conversation, Message, PortalUser, Team, TeamMember, WhatsAppChannel, WhatsAppCloudChannel, now_utc
+from ..models import TAG_COLORS, Agency, Agent, CannedResponse, Client, Contact, ContactTag, ContactTagLink, Conversation, Message, PortalUser, Team, TeamMember, WhatsAppChannel, WhatsAppCloudChannel, now_utc
 from ..ratelimit import login_rate_limit, public_asset_rate_limit
 from ..schemas import (
     ContactBlockUpdate,
@@ -25,6 +25,10 @@ from ..schemas import (
     ContactCreate,
     ContactImportError,
     ContactImportResult,
+    ContactTagCreate,
+    ContactTagOut,
+    ContactTagUpdate,
+    ContactTagsSet,
     ContactMergeRequest,
     ContactOut,
     ContactUpdate,
@@ -644,6 +648,7 @@ def _contact_out(contact: Contact, stats) -> ContactOut:
         open_count=int((stats.open if stats is not None else None) or 0),
         last_activity_at=stats.last_activity_at if stats is not None else None,
         blocked_at=contact.blocked_at,
+        tags=[ContactTagOut(id=tag.id, name=tag.name, color=tag.color) for tag in contact.tags],
     )
 
 
@@ -667,6 +672,7 @@ def portal_contacts(
     slug: str,
     response: Response,
     search: str | None = None,
+    tag: uuid.UUID | None = None,
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     client: Client = Depends(_portal_client),
@@ -686,7 +692,9 @@ def portal_contacts(
                 func.lower(func.coalesce(Contact.email, "")).like(term),
             )
         )
-    query = select(Contact, stats).outerjoin(stats, stats.c.cid == Contact.id).where(*scope)
+    if tag is not None:
+        scope.append(Contact.id.in_(select(ContactTagLink.contact_id).where(ContactTagLink.tag_id == tag)))
+    query = select(Contact, stats).outerjoin(stats, stats.c.cid == Contact.id).where(*scope).options(selectinload(Contact.tags))
     rows = db.execute(
         query.order_by(func.coalesce(stats.c.last_activity_at, Contact.updated_at).desc()).limit(limit).offset(offset)
     ).all()
@@ -787,11 +795,12 @@ def portal_contacts_export(slug: str, client: Client = Depends(_portal_client), 
     rows = db.execute(
         select(Contact, stats).outerjoin(stats, stats.c.cid == Contact.id)
         .where(Contact.client_id == client.id)
+        .options(selectinload(Contact.tags))
         .order_by(Contact.name, Contact.created_at)
     ).all()
 
     def lines():
-        yield ("name", "phone", "email", "notes", "blocked", "conversations", "created_at")
+        yield ("name", "phone", "email", "notes", "tags", "blocked", "conversations", "created_at")
         for row in rows:
             contact = row[0]
             yield (
@@ -799,6 +808,7 @@ def portal_contacts_export(slug: str, client: Client = Depends(_portal_client), 
                 f"+{contact.phone}" if contact.phone else "",
                 contact.email or "",
                 contact.notes,
+                ", ".join(tag.name for tag in contact.tags),
                 "yes" if contact.blocked_at else "no",
                 int(row.total or 0),
                 contact.created_at.date().isoformat(),
@@ -909,6 +919,109 @@ async def portal_contacts_import(
 
     db.commit()
     return result
+
+
+# --- Tags: a catalog the client keeps by hand -------------------------------
+
+def _tag_out(tag: ContactTag, count: int = 0) -> ContactTagOut:
+    return ContactTagOut(id=tag.id, name=tag.name, color=tag.color, contact_count=count)
+
+
+def _tag(db: Session, client: Client, tag_id: uuid.UUID) -> ContactTag:
+    tag = db.scalar(select(ContactTag).where(ContactTag.id == tag_id, ContactTag.client_id == client.id))
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    return tag
+
+
+def _assert_tag_name_free(db: Session, client: Client, name: str, *, except_id: uuid.UUID | None = None) -> None:
+    query = select(ContactTag.id).where(ContactTag.client_id == client.id, func.lower(ContactTag.name) == name.lower())
+    if except_id:
+        query = query.where(ContactTag.id != except_id)
+    if db.scalar(query):
+        raise HTTPException(status_code=409, detail="A tag with this name already exists")
+
+
+def _tag_color(color: str | None, fallback: str) -> str:
+    if color is None:
+        return fallback
+    if color not in TAG_COLORS:
+        raise HTTPException(status_code=422, detail="Pick one of the tag colors")
+    return color
+
+
+@router.get("/{slug}/tags", response_model=list[ContactTagOut])
+def portal_tags(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+    counts = (
+        select(ContactTagLink.tag_id, func.count(ContactTagLink.contact_id).label("n"))
+        .group_by(ContactTagLink.tag_id)
+        .subquery()
+    )
+    rows = db.execute(
+        select(ContactTag, counts.c.n).outerjoin(counts, counts.c.tag_id == ContactTag.id)
+        .where(ContactTag.client_id == client.id)
+        .order_by(func.lower(ContactTag.name))
+    ).all()
+    return [_tag_out(tag, int(n or 0)) for tag, n in rows]
+
+
+@router.post("/{slug}/tags", response_model=ContactTagOut, status_code=status.HTTP_201_CREATED)
+def portal_create_tag(slug: str, payload: ContactTagCreate, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Give the tag a name")
+    _assert_tag_name_free(db, client, name)
+    # Without a chosen color, rotate through the palette so neighbours differ.
+    existing = db.scalar(select(func.count(ContactTag.id)).where(ContactTag.client_id == client.id)) or 0
+    tag = ContactTag(client_id=client.id, name=name, color=_tag_color(payload.color, TAG_COLORS[existing % len(TAG_COLORS)]))
+    db.add(tag)
+    db.commit()
+    db.refresh(tag)
+    return _tag_out(tag)
+
+
+@router.patch("/{slug}/tags/{tag_id}", response_model=ContactTagOut)
+def portal_update_tag(
+    slug: str, tag_id: uuid.UUID, payload: ContactTagUpdate, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+):
+    tag = _tag(db, client, tag_id)
+    if payload.name is not None:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="Give the tag a name")
+        _assert_tag_name_free(db, client, name, except_id=tag.id)
+        tag.name = name
+    if payload.color is not None:
+        tag.color = _tag_color(payload.color, tag.color)
+    db.commit()
+    db.refresh(tag)
+    count = db.scalar(select(func.count(ContactTagLink.contact_id)).where(ContactTagLink.tag_id == tag.id)) or 0
+    return _tag_out(tag, int(count))
+
+
+@router.delete("/{slug}/tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
+def portal_delete_tag(slug: str, tag_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+    tag = _tag(db, client, tag_id)
+    db.delete(tag)  # links go with it (ON DELETE CASCADE)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put("/{slug}/contacts/{contact_id}/tags", response_model=ContactOut)
+def portal_set_contact_tags(
+    slug: str, contact_id: uuid.UUID, payload: ContactTagsSet, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+):
+    """Replace the contact's tags with the given set. Unknown ids are ignored
+    rather than failing the whole change."""
+    contact = _portal_contact(db, client, contact_id)
+    wanted = set(payload.tag_ids)
+    tags = list(db.scalars(select(ContactTag).where(ContactTag.client_id == client.id, ContactTag.id.in_(wanted)))) if wanted else []
+    contact.tags = tags
+    db.commit()
+    db.refresh(contact)
+    stats = _contact_stats()
+    row = db.execute(select(stats).where(stats.c.cid == contact.id)).first()
+    return _contact_out(contact, row)
 
 
 @router.get("/{slug}/contacts/{contact_id}", response_model=ContactOut)

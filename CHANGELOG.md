@@ -13,6 +13,12 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- **Contact tags in the client portal.** Each client keeps its own catalog
+  (name and color) and puts tags on contacts by hand from the contact card,
+  creating new ones on the spot. Tags show as chips in the list, filter it,
+  survive a merge, and travel in the CSV export. Nothing sets them
+  automatically: neither the import nor an inbound message. Migration
+  `0039_contact_tags`.
 - **Contacts import and export in the client portal.** Contacts can be loaded
   from a CSV (name, phone, email, notes; Spanish headers and `;` delimiters
   accepted) and downloaded as CSV. Each row is validated on its own: valid

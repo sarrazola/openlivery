@@ -191,8 +191,54 @@ def test_portal_imports_and_exports_contacts(authenticated_client: TestClient):
     exported = client.get(f"{base}/export")
     assert exported.status_code == 200 and "attachment" in exported.headers["content-disposition"]
     lines = exported.text.lstrip("\ufeff").splitlines()
-    assert lines[0] == "name,phone,email,notes,blocked,conversations,created_at"
-    assert any(line.startswith("Ana Gómez,+573001234567,ana@example.com,Prefers mornings,no,0,") for line in lines)
+    assert lines[0] == "name,phone,email,notes,tags,blocked,conversations,created_at"
+    assert any(line.startswith("Ana Gómez,+573001234567,ana@example.com,Prefers mornings,,no,0,") for line in lines)
 
     missing_phone = client.post(f"{base}/import", files={"file": ("bad.csv", b"name,email\nAna,a@b.com\n", "text/csv")})
     assert missing_phone.status_code == 422
+
+
+def test_portal_contact_tags(authenticated_client: TestClient):
+    client = authenticated_client
+    customer = _portal(client, "Tags Co")
+    slug = customer["portal_slug"]
+    base = f"/api/portal/{slug}"
+
+    vip = client.post(f"{base}/tags", json={"name": "VIP"})
+    assert vip.status_code == 201, vip.text
+    vip = vip.json()
+    assert vip["color"] == "gray" and vip["contact_count"] == 0
+    priority = client.post(f"{base}/tags", json={"name": "Priority", "color": "red"}).json()
+    assert priority["color"] == "red"
+    assert client.post(f"{base}/tags", json={"name": "vip"}).status_code == 409
+    assert client.post(f"{base}/tags", json={"name": "Odd", "color": "neon"}).status_code == 422
+
+    ana = client.post(f"{base}/contacts", json={"name": "Ana", "phone": "573001112233"}).json()
+    luis = client.post(f"{base}/contacts", json={"name": "Luis", "phone": "573001112244"}).json()
+    assert ana["tags"] == []
+
+    tagged = client.put(f"{base}/contacts/{ana['id']}/tags", json={"tag_ids": [vip["id"], priority["id"], str(uuid.uuid4())]})
+    assert tagged.status_code == 200, tagged.text
+    assert sorted(t["name"] for t in tagged.json()["tags"]) == ["Priority", "VIP"]
+    client.put(f"{base}/contacts/{luis['id']}/tags", json={"tag_ids": [priority["id"]]})
+
+    counts = {t["name"]: t["contact_count"] for t in client.get(f"{base}/tags").json()}
+    assert counts == {"Priority": 2, "VIP": 1}
+    assert [c["id"] for c in client.get(f"{base}/contacts?tag={vip['id']}").json()] == [ana["id"]]
+    assert client.get(f"{base}/contacts?tag={vip['id']}").headers["x-total-count"] == "1"
+
+    renamed = client.patch(f"{base}/tags/{vip['id']}", json={"name": "Very important", "color": "violet"})
+    assert renamed.status_code == 200 and renamed.json()["color"] == "violet"
+    assert client.patch(f"{base}/tags/{vip['id']}", json={"name": "priority"}).status_code == 409
+
+    exported = client.get(f"{base}/contacts/export").text.lstrip("\ufeff").splitlines()
+    assert exported[0] == "name,phone,email,notes,tags,blocked,conversations,created_at"
+    assert any(line.startswith("Ana,+573001112233,,,\"Priority, Very important\",") for line in exported), exported
+
+    # Merging folds the tags of the merged contact into the survivor.
+    merged = client.post(f"{base}/contacts/{luis['id']}/merge", json={"primary_contact_id": ana["id"]})
+    assert merged.status_code == 200, merged.text
+    assert sorted(t["name"] for t in merged.json()["tags"]) == ["Priority", "Very important"]
+
+    assert client.delete(f"{base}/tags/{priority['id']}").status_code == 204
+    assert [t["name"] for t in client.get(f"{base}/contacts/{ana['id']}").json()["tags"]] == ["Very important"]

@@ -296,12 +296,20 @@ export type PortalChannel = {
   supports_templates: boolean;
 };
 
+export type ContactTag = {
+  id: string;
+  name: string;
+  color: string;
+  contact_count: number;
+};
+
 export type Contact = {
   id: string;
   name: string;
   phone: string | null;
   email: string | null;
   notes: string;
+  tags?: ContactTag[];
   created_at: string;
   updated_at: string;
   conversation_count: number;

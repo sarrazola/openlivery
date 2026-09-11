@@ -420,6 +420,38 @@ class Contact(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="contact", passive_deletes=True)
+    # Labels people put on the contact by hand from the portal. Nothing sets
+    # them automatically: not the import, not an inbound message.
+    tags: Mapped[list["ContactTag"]] = relationship(
+        secondary="contact_tag_links", order_by="ContactTag.name", passive_deletes=True
+    )
+
+
+TAG_COLORS = ("gray", "blue", "green", "amber", "red", "violet", "pink", "teal")
+
+
+class ContactTag(Base):
+    """A label a client defines for its contacts (VIP, priority, ...)."""
+
+    __tablename__ = "contact_tags"
+    __table_args__ = (
+        Index("uq_contact_tags_client_name", "client_id", text("lower(name)"), unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(40))
+    # A palette name, not a hex: the interface maps it to its theme colors.
+    color: Mapped[str] = mapped_column(String(20), default="gray", server_default="gray")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class ContactTagLink(Base):
+    __tablename__ = "contact_tag_links"
+
+    contact_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("contacts.id", ondelete="CASCADE"), primary_key=True)
+    tag_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("contact_tags.id", ondelete="CASCADE"), primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
 class Conversation(Base):

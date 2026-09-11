@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { BadgeCheck, Ban, CheckCircle2, ChevronDown, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload, UserRound } from "lucide-react";
+import { BadgeCheck, Ban, Check, CheckCircle2, ChevronDown, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Search, Tag, Trash2, Upload, UserRound, X } from "lucide-react";
 import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { useToast } from "@/components/toast";
@@ -10,9 +10,10 @@ import { formatPhone } from "@/lib/dial-codes";
 import { api, ApiError, apiUrl, apiWithHeaders, messageFrom } from "@/lib/api";
 import { formatWhen } from "@/lib/datetime";
 import { useLanguage, useT, type I18nKey } from "@/lib/i18n";
-import type { Contact, ContactImportResult, Conversation, PortalChannel } from "@/types";
+import type { Contact, ContactImportResult, ContactTag, Conversation, PortalChannel } from "@/types";
 
 const LIMIT = 50;
+const TAG_COLORS = ["gray", "blue", "green", "amber", "red", "violet", "pink", "teal"];
 
 // Machine reasons the API returns for rejected rows, mapped to copy.
 const IMPORT_REASONS: Record<string, I18nKey> = {
@@ -47,6 +48,13 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const [mergePrimary, setMergePrimary] = useState<Contact | null>(null);
   const [importing, setImporting] = useState(false);
   const [listMenu, setListMenu] = useState(false);
+  const [tags, setTags] = useState<ContactTag[]>([]);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [tagPicker, setTagPicker] = useState(false);
+  const [tagQuery, setTagQuery] = useState("");
+  const [managingTags, setManagingTags] = useState(false);
+  const [deletingTag, setDeletingTag] = useState<ContactTag | null>(null);
+  const [newTagName, setNewTagName] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<ContactImportResult | null>(null);
   const [importError, setImportError] = useState("");
@@ -73,6 +81,62 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
   const [busy, setBusy] = useState(false);
+
+  const loadTags = useCallback(async () => {
+    try { setTags(await api<ContactTag[]>(`/portal/${slug}/tags`)); } catch { /* the list still works without the catalog */ }
+  }, [slug]);
+  useEffect(() => { loadTags(); }, [loadTags]);
+
+  // Tags are set by hand from the contact card; the whole set is sent so the
+  // server never has to reconcile partial changes.
+  async function applyContactTags(contact: Contact, tagIds: string[]) {
+    setBusy(true); setError("");
+    try {
+      const updated = await api<Contact>(`/portal/${slug}/contacts/${contact.id}/tags`, { method: "PUT", body: JSON.stringify({ tag_ids: tagIds }) });
+      setSelected((current) => (current?.id === updated.id ? { ...current, tags: updated.tags } : current));
+      setItems((prev) => prev.map((row) => (row.id === updated.id ? { ...row, tags: updated.tags } : row)));
+      await loadTags();
+    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+  }
+  function toggleTag(tag: ContactTag) {
+    if (!selected) return;
+    const current = (selected.tags ?? []).map((item) => item.id);
+    const next = current.includes(tag.id) ? current.filter((id) => id !== tag.id) : [...current, tag.id];
+    applyContactTags(selected, next);
+  }
+  async function createTag(name: string, assignTo?: Contact | null) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setBusy(true); setError("");
+    try {
+      const created = await api<ContactTag>(`/portal/${slug}/tags`, { method: "POST", body: JSON.stringify({ name: trimmed }) });
+      setTagQuery(""); setNewTagName("");
+      await loadTags();
+      if (assignTo) await applyContactTags(assignTo, [...(assignTo.tags ?? []).map((item) => item.id), created.id]);
+    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+  }
+  async function updateTag(tag: ContactTag, patch: { name?: string; color?: string }) {
+    if (patch.name !== undefined && (!patch.name.trim() || patch.name.trim() === tag.name)) return;
+    setError("");
+    try {
+      await api<ContactTag>(`/portal/${slug}/tags/${tag.id}`, { method: "PATCH", body: JSON.stringify(patch) });
+      await Promise.all([loadTags(), load()]);
+      if (selected) setSelected(await api<Contact>(`/portal/${slug}/contacts/${selected.id}`));
+    } catch (err) { setError(messageFrom(err)); }
+  }
+  async function removeTag(tag: ContactTag) {
+    setBusy(true); setError("");
+    try {
+      await api(`/portal/${slug}/tags/${tag.id}`, { method: "DELETE" });
+      setDeletingTag(null);
+      if (tagFilter === tag.id) setTagFilter(null);
+      await Promise.all([loadTags(), load()]);
+      if (selected) setSelected(await api<Contact>(`/portal/${slug}/contacts/${selected.id}`));
+    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+  }
+  const tagQueryTrimmed = tagQuery.trim();
+  const pickerTags = tags.filter((tag) => !tagQueryTrimmed || tag.name.toLowerCase().includes(tagQueryTrimmed.toLowerCase()));
+  const pickerExact = tags.some((tag) => tag.name.toLowerCase() === tagQueryTrimmed.toLowerCase());
 
   function openImport() { setImportFile(null); setImportResult(null); setImportError(""); setImporting(true); }
   async function runImport(event: FormEvent<HTMLFormElement>) {
@@ -103,10 +167,11 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const fetchPage = useCallback(async (offset: number) => {
     const params = new URLSearchParams({ limit: String(LIMIT), offset: String(offset) });
     if (query) params.set("search", query);
+    if (tagFilter) params.set("tag", tagFilter);
     const { data, headers } = await apiWithHeaders<Contact[]>(`/portal/${slug}/contacts?${params}`);
     const count = Number(headers.get("X-Total-Count"));
     return { rows: data, total: Number.isFinite(count) ? count : null };
-  }, [slug, query]);
+  }, [slug, query, tagFilter]);
 
   const load = useCallback(async () => {
     const { rows, total: count } = await fetchPage(0);
@@ -214,18 +279,24 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
                 <div className="menu-backdrop" onClick={() => setListMenu(false)} />
                 <div className="start-line-menu" role="menu">
                   <button type="button" role="menuitem" onClick={() => { setListMenu(false); openImport(); }}><Upload size={15} /><span><strong>{t("portal.contacts.import.title")}</strong><small>{t("portal.contacts.import.menuHint")}</small></span></button>
+                  <button type="button" role="menuitem" onClick={() => { setListMenu(false); setDeletingTag(null); setNewTagName(""); setManagingTags(true); }}><Tag size={15} /><span><strong>{t("portal.contacts.tags.manage")}</strong><small>{t("portal.contacts.tags.manageHint")}</small></span></button>
                   <a role="menuitem" href={apiUrl(`/portal/${slug}/contacts/export`)} download onClick={() => setListMenu(false)}><Download size={15} /><span><strong>{t("portal.contacts.export")}</strong><small>{t("portal.contacts.exportHint")}</small></span></a>
                 </div>
               </>}
             </div>
           </div>
         </div>
+        {tags.length > 0 && <div className="inbox-tabs tag-filter" role="tablist" aria-label={t("portal.contacts.tags.heading")}>
+          <button type="button" className={tagFilter ? "" : "active"} onClick={() => setTagFilter(null)}>{t("portal.contacts.tags.all")}</button>
+          {tags.map((tag) => <button type="button" key={tag.id} className={tagFilter === tag.id ? "active" : ""} onClick={() => setTagFilter(tagFilter === tag.id ? null : tag.id)}><i className="tag-dot" data-color={tag.color} /> {tag.name}<em className="soft">{tag.contact_count}</em></button>)}
+        </div>}
         {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>
           : items.map((contact) => <button key={contact.id} onClick={() => choose(contact)} className={selected?.id === contact.id ? "active" : ""}>
             <span className="entity-avatar tiny"><UserRound size={15} /></span>
             <span>
               <span className="portal-inbox-row-top"><strong>{nameOf(contact)}</strong>{contact.last_activity_at && <time>{formatWhen(contact.last_activity_at, lang)}</time>}</span>
               <small className="portal-inbox-preview">{phoneLabel(contact.phone)}{contact.email ? ` · ${contact.email}` : ""}</small>
+              {contact.tags && contact.tags.length > 0 && <span className="tag-chips">{contact.tags.slice(0, 3).map((tag) => <span key={tag.id} className="tag-chip" data-color={tag.color}>{tag.name}</span>)}{contact.tags.length > 3 && <span className="tag-chip">+{contact.tags.length - 3}</span>}</span>}
               <small className="inbox-row-meta">{t("portal.contacts.conversationCount", { count: contact.conversation_count })}{contact.blocked_at && <span className="mini-badge blocked"><Ban size={10} /> {t("portal.contacts.blockedBadge")}</span>}{contact.open_count > 0 && <span className="mini-badge human">{t("portal.contacts.openCount", { count: contact.open_count })}</span>}</small>
             </span>
           </button>)}
@@ -265,6 +336,24 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
           </header>
           {error && <Alert>{error}</Alert>}
           <div className="portal-contact-body">
+            <section className="portal-contact-tags">
+              <h3>{t("portal.contacts.tags.heading")}</h3>
+              <div className="tag-chips large">
+                {(selected.tags ?? []).map((tag) => <span key={tag.id} className="tag-chip" data-color={tag.color}>{tag.name}<button type="button" onClick={() => toggleTag(tag)} disabled={busy} title={t("portal.contacts.tags.remove")} aria-label={t("portal.contacts.tags.remove")}><X size={11} /></button></span>)}
+                <div className="start-line-wrap">
+                  <button type="button" className="tag-add" onClick={() => { setTagQuery(""); setTagPicker((v) => !v); }} aria-haspopup="menu" aria-expanded={tagPicker}><Plus size={13} /> {t("portal.contacts.tags.add")}</button>
+                  {tagPicker && <>
+                    <div className="menu-backdrop" onClick={() => setTagPicker(false)} />
+                    <div className="start-line-menu tag-picker" role="menu">
+                      <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder={t("portal.contacts.tags.searchOrCreate")} autoFocus onKeyDown={(e) => { if (e.key === "Enter" && tagQueryTrimmed && !pickerExact) { e.preventDefault(); createTag(tagQueryTrimmed, selected); } if (e.key === "Escape") setTagPicker(false); }} />
+                      {pickerTags.map((tag) => { const has = (selected.tags ?? []).some((item) => item.id === tag.id); return <button type="button" key={tag.id} role="menuitemcheckbox" aria-checked={has} onClick={() => toggleTag(tag)} disabled={busy}><i className="tag-dot" data-color={tag.color} /><span><strong>{tag.name}</strong></span>{has && <Check size={14} />}</button>; })}
+                      {tagQueryTrimmed && !pickerExact && <button type="button" role="menuitem" className="tag-create" onClick={() => createTag(tagQueryTrimmed, selected)} disabled={busy}><Plus size={14} /><span><strong>{t("portal.contacts.tags.create", { name: tagQueryTrimmed })}</strong></span></button>}
+                      {!tags.length && !tagQueryTrimmed && <small>{t("portal.contacts.tags.emptyHint")}</small>}
+                    </div>
+                  </>}
+                </div>
+              </div>
+            </section>
             <section className="portal-contact-notes">
               <h3>{t("portal.contacts.notes")}</h3>
               {selected.notes ? <p>{selected.notes}</p> : <p className="muted">{t("portal.contacts.noNotes")}</p>}
@@ -325,6 +414,24 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
         {error && <Alert>{error}</Alert>}
         <div className="modal-actions"><button type="button" className="button" onClick={() => setMerging(false)}>{t("portal.contacts.form.cancel")}</button><button className="button primary" disabled={!mergePrimary || busy}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Merge size={15} /> {t("portal.contacts.mergeConfirm")}</>}</button></div>
       </form>
+    </Modal>
+    <Modal open={managingTags} title={t("portal.contacts.tags.manageTitle")} onClose={() => setManagingTags(false)}>
+      <div className="modal-form tag-manage">
+        {!tags.length && <p className="muted">{t("portal.contacts.tags.noTags")}</p>}
+        {tags.map((tag) => deletingTag?.id === tag.id
+          ? <div key={tag.id} className="tag-manage-confirm"><span>{t("portal.contacts.tags.deleteConfirm", { name: tag.name, count: tag.contact_count })}</span><span className="tag-manage-confirm-actions"><button type="button" className="button small" onClick={() => setDeletingTag(null)}>{t("portal.contacts.form.cancel")}</button><button type="button" className="button danger small" disabled={busy} onClick={() => removeTag(tag)}>{t("portal.contacts.tags.deleteAction")}</button></span></div>
+          : <div key={tag.id} className="tag-manage-row">
+            <div className="tag-swatches" role="radiogroup" aria-label={tag.name}>{TAG_COLORS.map((color) => <button type="button" key={color} data-color={color} className={color === tag.color ? "active" : ""} role="radio" aria-checked={color === tag.color} aria-label={color} onClick={() => updateTag(tag, { color })} />)}</div>
+            <input defaultValue={tag.name} maxLength={40} onBlur={(e) => updateTag(tag, { name: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+            <small>{t("portal.contacts.tags.count", { count: tag.contact_count })}</small>
+            <button type="button" className="icon-button danger" onClick={() => setDeletingTag(tag)} title={t("portal.contacts.tags.deleteAction")} aria-label={t("portal.contacts.tags.deleteAction")}><Trash2 size={15} /></button>
+          </div>)}
+        <form className="tag-manage-new" onSubmit={(e) => { e.preventDefault(); createTag(newTagName); }}>
+          <input value={newTagName} onChange={(e) => setNewTagName(e.target.value)} maxLength={40} placeholder={t("portal.contacts.tags.newPlaceholder")} />
+          <button className="button primary small" disabled={busy || !newTagName.trim()}>{t("portal.contacts.tags.newAction")}</button>
+        </form>
+        {error && <Alert>{error}</Alert>}
+      </div>
     </Modal>
     <Modal open={importing} title={t("portal.contacts.import.title")} onClose={() => setImporting(false)}>
       <form className="modal-form" onSubmit={runImport}>
