@@ -146,3 +146,50 @@ def test_merge_contacts_moves_conversations_and_fills_blanks(authenticated_clien
     assert client.get(f"{base}/{manual['id']}").status_code == 404
     assert client.get(f"/api/conversations/{conversation_id}").json()["contact_id"] == primary["id"]
     assert len(client.get(base).json()) == 1
+
+
+def test_portal_imports_and_exports_contacts(authenticated_client: TestClient):
+    client = authenticated_client
+    customer = _portal(client, "Import Co")
+    base = f"/api/portal/{customer['portal_slug']}/contacts"
+
+    # A contact that already exists with no name: the import fills it in.
+    assert client.post(base, json={"name": "", "phone": "+57 300 555 0000"}).status_code == 201
+
+    template = client.get(f"{base}/import-template")
+    assert template.status_code == 200 and template.headers["content-type"].startswith("text/csv")
+    assert template.text.lstrip("\ufeff").splitlines()[0] == "name,phone,email,notes"
+
+    csv_text = "\n".join([
+        "Nombre;Teléfono;Correo;Notas",
+        "Ana Gómez;+57 300 123 4567;ana@example.com;Prefers mornings",
+        "Sin teléfono;;x@y.com;",
+        "Corto;12345;;",
+        "Mal correo;+57 300 999 8888;not-an-email;",
+        "Repetido;+57 300 123 4567;;",
+        "Existente;+57 300 555 0000;exist@example.com;",
+        "",
+    ])
+    imported = client.post(f"{base}/import", files={"file": ("contacts.csv", csv_text.encode("utf-8"), "text/csv")})
+    assert imported.status_code == 200, imported.text
+    result = imported.json()
+    assert result["created"] == 1 and result["updated"] == 1 and result["unchanged"] == 0
+    assert [(e["row"], e["reason"]) for e in result["errors"]] == [
+        (3, "phone_missing"), (4, "phone_invalid"), (5, "email_invalid"), (6, "duplicate_in_file"),
+    ]
+
+    listed = client.get(base)
+    assert listed.headers["x-total-count"] == "2"
+    assert client.get(f"{base}?search=ana").headers["x-total-count"] == "1"
+    rows = {row["phone"]: row for row in listed.json()}
+    assert rows["573001234567"]["name"] == "Ana Gómez" and rows["573001234567"]["email"] == "ana@example.com"
+    assert rows["573005550000"]["name"] == "Existente" and rows["573005550000"]["email"] == "exist@example.com"
+
+    exported = client.get(f"{base}/export")
+    assert exported.status_code == 200 and "attachment" in exported.headers["content-disposition"]
+    lines = exported.text.lstrip("\ufeff").splitlines()
+    assert lines[0] == "name,phone,email,notes,blocked,conversations,created_at"
+    assert any(line.startswith("Ana Gómez,+573001234567,ana@example.com,Prefers mornings,no,0,") for line in lines)
+
+    missing_phone = client.post(f"{base}/import", files={"file": ("bad.csv", b"name,email\nAna,a@b.com\n", "text/csv")})
+    assert missing_phone.status_code == 422

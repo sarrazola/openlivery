@@ -1153,7 +1153,7 @@ textarea { line-height: 1.55; }
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, .94);
+  background: rgba(var(--surface-rgb), .94);
 }
 .access-topbar > small { color: var(--subtle); font-size: 13px; }
 .access-brand { display: flex; align-items: center; gap: 10px; }
@@ -1858,6 +1858,22 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .pref-list .pref-row > span small { color: var(--muted); font-size: var(--text-sm); }
 .pref-list .pref-row > div button { height: 30px; padding: 0 12px; gap: 6px; font-size: var(--text-sm); }
 @media (max-width: 720px) { .pref-list .pref-row { flex-direction: column; align-items: stretch; } .pref-list .pref-row > div { justify-content: stretch; } .pref-list .pref-row > div button { flex: 1; } }
+
+/* Contacts import and export in the portal: toolbar actions and the import dialog. */
+.portal-contacts-toolbar .toolbar-actions { display: flex; align-items: center; gap: 6px; }
+.portal-contacts-toolbar .icon-button { width: 32px; height: 32px; }
+.import-template { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+.import-file { display: flex; align-items: center; gap: 10px; padding: 16px; color: var(--muted); border: 1px dashed var(--line-strong); border-radius: 10px; background: var(--surface-2); cursor: pointer; font-size: 13px; }
+.import-file:hover { color: var(--ink); border-color: var(--accent-line); background: var(--accent-soft); }
+.import-file span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-result { display: flex; flex-direction: column; gap: 10px; }
+.import-summary { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--green-text); font-weight: 600; }
+.import-result .table-shell { max-height: 260px; overflow: auto; }
+.import-errors { width: 100%; border-collapse: collapse; font-size: 12px; }
+.import-errors th, .import-errors td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+.import-errors th { color: var(--muted); font-weight: 600; }
+.import-errors td:first-child { color: var(--subtle); font-variant-numeric: tabular-nums; }
+.import-errors td:last-child { color: var(--red-text); }
 
 /* Theme change: cross-fade every color for one beat, then hand transitions
    back to the components. Set by lib/theme.tsx around the attribute swap. */

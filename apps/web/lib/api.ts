@@ -13,6 +13,12 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return (await apiWithHeaders<T>(path, options)).data;
+}
+
+// Same as api(), also handing back the response headers for callers that
+// read pagination metadata (e.g. X-Total-Count).
+export async function apiWithHeaders<T>(path: string, options: RequestInit = {}): Promise<{ data: T; headers: Headers }> {
   const isForm = options.body instanceof FormData;
   const response = await fetch(`${API_URL}/api${path}`, {
     ...options,
@@ -27,7 +33,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   const redirectTo = response.headers.get("X-Redirect-To");
   if (redirectTo && typeof window !== "undefined" && window.location.pathname !== redirectTo) {
     window.location.assign(redirectTo);
-    return new Promise<T>(() => {}); // never resolves; the page is navigating away
+    return new Promise<{ data: T; headers: Headers }>(() => {}); // never resolves; the page is navigating away
   }
   if (!response.ok) {
     let message = "An unexpected error occurred";
@@ -41,8 +47,8 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     } catch {}
     throw new ApiError(message, response.status);
   }
-  if (response.status === 204) return undefined as T;
-  return response.json();
+  if (response.status === 204) return { data: undefined as T, headers: response.headers };
+  return { data: (await response.json()) as T, headers: response.headers };
 }
 
 export function messageFrom(error: unknown): string {

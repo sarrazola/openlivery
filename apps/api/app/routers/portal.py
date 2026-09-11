@@ -1,6 +1,10 @@
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 
+import csv
+import io
+import re
+
 from fastapi import APIRouter, Cookie, Depends, Header, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import Interval, and_, case, exists, func, literal, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -19,6 +23,8 @@ from ..schemas import (
     CannedResponseOut,
     CannedResponseUpdate,
     ContactCreate,
+    ContactImportError,
+    ContactImportResult,
     ContactMergeRequest,
     ContactOut,
     ContactUpdate,
@@ -659,26 +665,33 @@ def _assert_phone_free(db: Session, client: Client, phone: str, *, except_id: uu
 @router.get("/{slug}/contacts", response_model=list[ContactOut])
 def portal_contacts(
     slug: str,
+    response: Response,
     search: str | None = None,
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     client: Client = Depends(_portal_client),
     db: Session = Depends(get_db),
 ):
+    """One page of contacts, newest activity first. The total for the same
+    search travels in X-Total-Count so the list can page without changing
+    the body shape that native clients already read."""
     stats = _contact_stats()
-    query = select(Contact, stats).outerjoin(stats, stats.c.cid == Contact.id).where(Contact.client_id == client.id)
+    scope = [Contact.client_id == client.id]
     if search and search.strip():
         term = f"%{search.strip().lower()}%"
-        query = query.where(
+        scope.append(
             or_(
                 func.lower(Contact.name).like(term),
                 func.coalesce(Contact.phone, "").like(term),
                 func.lower(func.coalesce(Contact.email, "")).like(term),
             )
         )
+    query = select(Contact, stats).outerjoin(stats, stats.c.cid == Contact.id).where(*scope)
     rows = db.execute(
         query.order_by(func.coalesce(stats.c.last_activity_at, Contact.updated_at).desc()).limit(limit).offset(offset)
     ).all()
+    total = db.scalar(select(func.count(Contact.id)).where(*scope)) or 0
+    response.headers["X-Total-Count"] = str(total)
     return [_contact_out(row[0], row) for row in rows]
 
 
@@ -701,6 +714,197 @@ def portal_create_contact(
     db.commit()
     db.refresh(contact)
     return _contact_out(contact, None)
+
+
+# --- CSV import and export -------------------------------------------------
+# These live above the /{contact_id} routes on purpose: "export", "import" and
+# "import-template" would otherwise be parsed as a contact id.
+
+_IMPORT_COLUMNS = {
+    "name": {"name", "nombre", "contact", "contacto", "full name", "nombre completo"},
+    "phone": {"phone", "telefono", "teléfono", "celular", "mobile", "whatsapp", "number", "numero", "número"},
+    "email": {"email", "e-mail", "correo", "mail", "correo electronico", "correo electrónico"},
+    "notes": {"notes", "notas", "note", "nota", "comments", "comentarios"},
+}
+_IMPORT_MAX_ROWS = 5000
+_IMPORT_MAX_BYTES = 2 * 1024 * 1024
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_TEMPLATE_ROWS = [
+    ("name", "phone", "email", "notes"),
+    ("Ana Gómez", "+57 300 123 4567", "ana@example.com", "Prefers mornings"),
+    ("Luis Pérez", "+52 55 1234 5678", "", "Asked about pricing"),
+]
+
+
+def _csv_response(rows, filename: str) -> Response:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\r\n")
+    for row in rows:
+        writer.writerow(row)
+    # The BOM lets Excel open UTF-8 accents correctly without an import wizard.
+    body = ("\ufeff" + buffer.getvalue()).encode("utf-8")
+    return Response(
+        content=body,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _map_columns(header: list[str]) -> dict[str, int]:
+    mapping: dict[str, int] = {}
+    for index, raw in enumerate(header):
+        key = (raw or "").strip().strip("\ufeff").lower()
+        for field, aliases in _IMPORT_COLUMNS.items():
+            if key in aliases and field not in mapping:
+                mapping[field] = index
+    return mapping
+
+
+def _decode_csv(data: bytes) -> str:
+    for encoding in ("utf-8-sig", "utf-16", "cp1252", "latin-1"):
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
+@router.get("/{slug}/contacts/import-template")
+def portal_contacts_import_template(slug: str, client: Client = Depends(_portal_client)):
+    """A small CSV showing the expected columns, with two example rows."""
+    return _csv_response(_TEMPLATE_ROWS, "contacts-template.csv")
+
+
+@router.get("/{slug}/contacts/export")
+def portal_contacts_export(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+    """Every contact of the client as CSV, in the same columns the import reads
+    plus the read-only ones (blocked, conversations, created)."""
+    stats = _contact_stats()
+    rows = db.execute(
+        select(Contact, stats).outerjoin(stats, stats.c.cid == Contact.id)
+        .where(Contact.client_id == client.id)
+        .order_by(Contact.name, Contact.created_at)
+    ).all()
+
+    def lines():
+        yield ("name", "phone", "email", "notes", "blocked", "conversations", "created_at")
+        for row in rows:
+            contact = row[0]
+            yield (
+                contact.name,
+                f"+{contact.phone}" if contact.phone else "",
+                contact.email or "",
+                contact.notes,
+                "yes" if contact.blocked_at else "no",
+                int(row.total or 0),
+                contact.created_at.date().isoformat(),
+            )
+
+    stamp = now_utc().date().isoformat()
+    return _csv_response(lines(), f"contacts-{client.portal_slug or 'export'}-{stamp}.csv")
+
+
+@router.post("/{slug}/contacts/import", response_model=ContactImportResult)
+async def portal_contacts_import(
+    slug: str,
+    file: UploadFile = File(...),
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    """Load contacts from a CSV. Each row is validated on its own: valid rows
+    are saved, invalid ones are reported with their line number and reason,
+    so one bad line never blocks the rest. An existing phone is not
+    duplicated; the import only fills in fields the contact has empty."""
+    data = await file.read()
+    if len(data) > _IMPORT_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="The file is too large; split it into files under 2 MB")
+    text = _decode_csv(data)
+    sample = text[:4096]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    reader = csv.reader(io.StringIO(text), dialect)
+    try:
+        header = next(reader)
+    except StopIteration:
+        raise HTTPException(status_code=422, detail="The file is empty")
+    columns = _map_columns(header)
+    if "phone" not in columns:
+        raise HTTPException(status_code=422, detail="The file needs a phone column (name, phone, email, notes)")
+
+    result = ContactImportResult()
+    seen_in_file: dict[str, int] = {}
+    existing = {
+        contact.phone: contact
+        for contact in db.scalars(select(Contact).where(Contact.client_id == client.id, Contact.phone.is_not(None)))
+    }
+
+    def cell(row: list[str], field: str) -> str:
+        index = columns.get(field)
+        if index is None or index >= len(row):
+            return ""
+        return (row[index] or "").strip()
+
+    def reject(line: int, row: list[str], reason: str) -> None:
+        result.errors.append(ContactImportError(row=line, name=cell(row, "name")[:80], phone=cell(row, "phone")[:40], reason=reason))
+
+    for offset, row in enumerate(reader):
+        line = offset + 2  # 1-based, after the header
+        if not any((value or "").strip() for value in row):
+            continue
+        if offset >= _IMPORT_MAX_ROWS:
+            result.truncated += 1
+            continue
+        raw_phone = cell(row, "phone")
+        if not raw_phone:
+            reject(line, row, "phone_missing")
+            continue
+        phone = normalize_phone(raw_phone)
+        if not phone:
+            reject(line, row, "phone_invalid")
+            continue
+        name = cell(row, "name")
+        email = cell(row, "email") or None
+        notes = cell(row, "notes")
+        if len(name) > 180:
+            reject(line, row, "name_too_long")
+            continue
+        if email and (len(email) > 255 or not _EMAIL_RE.match(email)):
+            reject(line, row, "email_invalid")
+            continue
+        if len(notes) > 5000:
+            reject(line, row, "notes_too_long")
+            continue
+        if phone in seen_in_file:
+            reject(line, row, "duplicate_in_file")
+            continue
+        seen_in_file[phone] = line
+
+        contact = existing.get(phone)
+        if contact is None:
+            contact = Contact(client_id=client.id, name=name, phone=phone, email=email, notes=notes)
+            db.add(contact)
+            existing[phone] = contact
+            result.created += 1
+            continue
+        changed = False
+        if name and not contact.name.strip():
+            contact.name = name
+            changed = True
+        if email and not contact.email:
+            contact.email = email
+            changed = True
+        if notes and not contact.notes.strip():
+            contact.notes = notes
+            changed = True
+        if changed:
+            result.updated += 1
+        else:
+            result.unchanged += 1
+
+    db.commit()
+    return result
 
 
 @router.get("/{slug}/contacts/{contact_id}", response_model=ContactOut)

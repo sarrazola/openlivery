@@ -667,6 +667,27 @@ class ContactMergeRequest(BaseModel):
     primary_contact_id: uuid.UUID
 
 
+class ContactImportError(BaseModel):
+    # 1-based line number in the file, header included, so it matches what
+    # the person sees in their spreadsheet.
+    row: int
+    name: str = ""
+    phone: str = ""
+    # Machine code the portal translates: phone_missing, phone_invalid,
+    # email_invalid, duplicate_in_file, name_too_long, notes_too_long.
+    reason: str
+
+
+class ContactImportResult(BaseModel):
+    created: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    errors: list[ContactImportError] = Field(default_factory=list)
+    # Rows that were neither imported nor rejected because the file hit the
+    # row limit; zero unless the file is oversized.
+    truncated: int = 0
+
+
 class PortalInboxSummary(BaseModel):
     open: int = 0
     resolved: int = 0

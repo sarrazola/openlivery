@@ -1,17 +1,27 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { BadgeCheck, Ban, CheckCircle2, ChevronDown, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, Pencil, Plus, Search, Trash2, UserRound } from "lucide-react";
+import { BadgeCheck, Ban, CheckCircle2, ChevronDown, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, Pencil, Plus, Search, Trash2, Upload, UserRound } from "lucide-react";
 import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { PhoneInput } from "@/components/phone-input";
 import { formatPhone } from "@/lib/dial-codes";
-import { api, ApiError, messageFrom } from "@/lib/api";
+import { api, ApiError, apiUrl, apiWithHeaders, messageFrom } from "@/lib/api";
 import { formatWhen } from "@/lib/datetime";
-import { useLanguage, useT } from "@/lib/i18n";
-import type { Contact, Conversation, PortalChannel } from "@/types";
+import { useLanguage, useT, type I18nKey } from "@/lib/i18n";
+import type { Contact, ContactImportResult, Conversation, PortalChannel } from "@/types";
 
 const LIMIT = 50;
+
+// Machine reasons the API returns for rejected rows, mapped to copy.
+const IMPORT_REASONS: Record<string, I18nKey> = {
+  phone_missing: "portal.contacts.import.reasons.phoneMissing",
+  phone_invalid: "portal.contacts.import.reasons.phoneInvalid",
+  email_invalid: "portal.contacts.import.reasons.emailInvalid",
+  duplicate_in_file: "portal.contacts.import.reasons.duplicateInFile",
+  name_too_long: "portal.contacts.import.reasons.nameTooLong",
+  notes_too_long: "portal.contacts.import.reasons.notesTooLong",
+};
 
 export function ContactsView({ slug, channels, openConversation }: { slug: string; channels: PortalChannel[]; openConversation: (conversation: Conversation) => void }) {
   const t = useT();
@@ -22,6 +32,9 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<"new" | "edit" | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -30,6 +43,10 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const [merging, setMerging] = useState(false);
   const [mergeQuery, setMergeQuery] = useState("");
   const [mergePrimary, setMergePrimary] = useState<Contact | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importResult, setImportResult] = useState<ContactImportResult | null>(null);
+  const [importError, setImportError] = useState("");
   const cloudLine = channels.find((c) => c.channel === "whatsapp_cloud");
   const qrLine = channels.find((c) => c.channel === "whatsapp");
   const lines = [cloudLine, qrLine].filter((line): line is PortalChannel & { channel: "whatsapp" | "whatsapp_cloud" } => Boolean(line));
@@ -54,18 +71,54 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   }
   const [busy, setBusy] = useState(false);
 
+  function openImport() { setImportFile(null); setImportResult(null); setImportError(""); setImporting(true); }
+  async function runImport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!importFile) return;
+    const body = new FormData();
+    body.append("file", importFile);
+    setBusy(true); setImportError("");
+    try {
+      const result = await api<ContactImportResult>(`/portal/${slug}/contacts/import`, { method: "POST", body });
+      setImportResult(result);
+      await load();
+    } catch (err) { setImportError(messageFrom(err)); } finally { setBusy(false); }
+  }
+
   useEffect(() => {
     const id = setTimeout(() => setQuery(search.trim()), 300);
     return () => clearTimeout(id);
   }, [search]);
 
-  const load = useCallback(async () => {
-    const params = new URLSearchParams({ limit: String(LIMIT) });
+  // The list pages from the server: the first page replaces the list, the
+  // next ones append as the person scrolls. Search always runs server-side
+  // over every contact, so a long list never changes what a search can find.
+  const fetchPage = useCallback(async (offset: number) => {
+    const params = new URLSearchParams({ limit: String(LIMIT), offset: String(offset) });
     if (query) params.set("search", query);
-    const rows = await api<Contact[]>(`/portal/${slug}/contacts?${params}`);
-    setItems(rows);
-    return rows;
+    const { data, headers } = await apiWithHeaders<Contact[]>(`/portal/${slug}/contacts?${params}`);
+    const count = Number(headers.get("X-Total-Count"));
+    return { rows: data, total: Number.isFinite(count) ? count : null };
   }, [slug, query]);
+
+  const load = useCallback(async () => {
+    const { rows, total: count } = await fetchPage(0);
+    setItems(rows); setTotal(count); setHasMore(rows.length === LIMIT);
+    return rows;
+  }, [fetchPage]);
+
+  async function loadMore() {
+    if (!hasMore || loadingMore || loading) return;
+    setLoadingMore(true);
+    try {
+      const { rows, total: count } = await fetchPage(items.length);
+      setItems((prev) => [...prev, ...rows]); setTotal(count); setHasMore(rows.length === LIMIT);
+    } catch (err) { setError(messageFrom(err)); } finally { setLoadingMore(false); }
+  }
+  function onListScroll(event: React.UIEvent<HTMLElement>) {
+    const el = event.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) loadMore();
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -142,11 +195,15 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
 
   return <>
     <div className="portal-contacts">
-      <aside>
+      <aside onScroll={onListScroll}>
         <div className="inbox-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("portal.contacts.searchPlaceholder")} /></div>
         <div className="portal-contacts-toolbar">
-          <span>{t("portal.contacts.count", { count: items.length })}</span>
-          <button className="button primary small" onClick={() => setEditing("new")}><Plus size={15} /> {t("portal.contacts.new")}</button>
+          <span>{t("portal.contacts.count", { count: total ?? items.length })}</span>
+          <div className="toolbar-actions">
+            <a className="icon-button" href={apiUrl(`/portal/${slug}/contacts/export`)} download title={t("portal.contacts.export")} aria-label={t("portal.contacts.export")}><Download size={16} /></a>
+            <button type="button" className="icon-button" onClick={openImport} title={t("portal.contacts.import.title")} aria-label={t("portal.contacts.import.title")}><Upload size={16} /></button>
+            <button className="button primary small" onClick={() => setEditing("new")}><Plus size={15} /> {t("portal.contacts.new")}</button>
+          </div>
         </div>
         {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>
           : items.map((contact) => <button key={contact.id} onClick={() => choose(contact)} className={selected?.id === contact.id ? "active" : ""}>
@@ -157,6 +214,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
               <small className="inbox-row-meta">{t("portal.contacts.conversationCount", { count: contact.conversation_count })}{contact.blocked_at && <span className="mini-badge blocked"><Ban size={10} /> {t("portal.contacts.blockedBadge")}</span>}{contact.open_count > 0 && <span className="mini-badge human">{t("portal.contacts.openCount", { count: contact.open_count })}</span>}</small>
             </span>
           </button>)}
+        {loadingMore && <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>}
         {!loading && !items.length && <div className="no-conversations">{query ? t("portal.contacts.noMatches") : t("portal.contacts.empty")}</div>}
       </aside>
       <section>
@@ -247,6 +305,36 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
         {mergePrimary && <Alert type="error">{t("portal.contacts.mergeWarning", { merged: selected ? nameOf(selected) : "", primary: nameOf(mergePrimary) })}</Alert>}
         {error && <Alert>{error}</Alert>}
         <div className="modal-actions"><button type="button" className="button" onClick={() => setMerging(false)}>{t("portal.contacts.form.cancel")}</button><button className="button primary" disabled={!mergePrimary || busy}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Merge size={15} /> {t("portal.contacts.mergeConfirm")}</>}</button></div>
+      </form>
+    </Modal>
+    <Modal open={importing} title={t("portal.contacts.import.title")} onClose={() => setImporting(false)}>
+      <form className="modal-form" onSubmit={runImport}>
+        {!importResult && <>
+          <p className="muted">{t("portal.contacts.import.intro")}</p>
+          <a className="text-link import-template" href={apiUrl(`/portal/${slug}/contacts/import-template`)} download><FileSpreadsheet size={15} /> {t("portal.contacts.import.template")}</a>
+          <label className="import-file">
+            <Upload size={16} />
+            <span>{importFile ? importFile.name : t("portal.contacts.import.choose")}</span>
+            <input type="file" accept=".csv,text/csv" hidden onChange={(e) => setImportFile(e.target.files?.[0] ?? null)} />
+          </label>
+        </>}
+        {importResult && <div className="import-result">
+          <p className="import-summary"><CheckCircle2 size={16} /> {t("portal.contacts.import.summary", { created: importResult.created, updated: importResult.updated, unchanged: importResult.unchanged })}</p>
+          {importResult.errors.length ? <>
+            <strong>{t("portal.contacts.import.errorsHeading", { count: importResult.errors.length })}</strong>
+            <div className="table-shell"><table className="import-errors">
+              <thead><tr><th>{t("portal.contacts.import.colRow")}</th><th>{t("portal.contacts.import.colName")}</th><th>{t("portal.contacts.import.colPhone")}</th><th>{t("portal.contacts.import.colReason")}</th></tr></thead>
+              <tbody>{importResult.errors.map((row) => <tr key={row.row}><td>{row.row}</td><td>{row.name || "—"}</td><td>{row.phone || "—"}</td><td>{IMPORT_REASONS[row.reason] ? t(IMPORT_REASONS[row.reason]) : row.reason}</td></tr>)}</tbody>
+            </table></div>
+          </> : <p className="muted">{t("portal.contacts.import.noErrors")}</p>}
+          {importResult.truncated > 0 && <Alert>{t("portal.contacts.import.truncated", { count: importResult.truncated })}</Alert>}
+        </div>}
+        {importError && <Alert>{importError}</Alert>}
+        <div className="modal-actions">
+          {importResult
+            ? <button type="button" className="button primary" onClick={() => setImporting(false)}>{t("portal.contacts.import.done")}</button>
+            : <><button type="button" className="button" onClick={() => setImporting(false)}>{t("portal.contacts.form.cancel")}</button><button className="button primary" disabled={busy || !importFile}>{busy ? <LoaderCircle className="spin" size={16} /> : t("portal.contacts.import.run")}</button></>}
+        </div>
       </form>
     </Modal>
     <Modal open={editing !== null} title={editing === "new" ? t("portal.contacts.newTitle") : t("portal.contacts.editTitle")} onClose={() => setEditing(null)}>

@@ -310,6 +310,21 @@ export type Contact = {
   blocked_at?: string | null;
 };
 
+export type ContactImportError = {
+  row: number;
+  name: string;
+  phone: string;
+  reason: string;
+};
+
+export type ContactImportResult = {
+  created: number;
+  updated: number;
+  unchanged: number;
+  errors: ContactImportError[];
+  truncated: number;
+};
+
 export type PortalPublic = {
   client_name: string;
   portal_title: string;

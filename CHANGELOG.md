@@ -13,6 +13,15 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
+- **Contacts import and export in the client portal.** Contacts can be loaded
+  from a CSV (name, phone, email, notes; Spanish headers and `;` delimiters
+  accepted) and downloaded as CSV. Each row is validated on its own: valid
+  rows are saved, invalid ones are listed with their line number and reason,
+  so one bad line never blocks the rest. An existing phone is never
+  duplicated; the import only fills in fields the contact has empty. A sample
+  file is available from the same dialog. The list now pages as you scroll
+  instead of stopping at the first fifty, shows the real total, and search
+  keeps running server-side over every contact.
 - **Dark theme.** The interface follows the operating system by default and
   can be pinned to light or dark from the sidebar footer, in the agency app
   and in the client portal. The choice is applied before first paint, so a
@@ -115,6 +124,7 @@ Docker stack; run `alembic upgrade head` on local setups).
   the members of its tray instead of every portal device.
 
 ### Fixed
+- The login top bar kept a white background under the dark theme.
 - Disconnecting an Instagram or Messenger channel now **removes it** and
   releases the account: the page starts over with "Connect account" and the
   account can be connected again, there or under another client. Its
