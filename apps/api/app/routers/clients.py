@@ -325,13 +325,16 @@ def client_contact_tags(client_id: uuid.UUID, db: Session = Depends(get_db), use
         .where(ContactTag.client_id == client.id)
         .order_by(func.lower(ContactTag.name))
     ).all()
-    return [
-        ContactTagOut(
-            id=tag.id, name=tag.name, color=tag.color, contact_count=int(n or 0),
-            route_team_id=tag.route_team_id, route_team_name=tag.route_team.name if tag.route_team_id and tag.route_team else None,
-        )
-        for tag, n in rows
-    ]
+    return [_tag_out(tag, int(n or 0)) for tag, n in rows]
+
+
+def _tag_out(tag: ContactTag, count: int) -> ContactTagOut:
+    assignee = tag.route_assignee if tag.route_assignee_id else None
+    return ContactTagOut(
+        id=tag.id, name=tag.name, color=tag.color, contact_count=count,
+        route_team_id=tag.route_team_id, route_team_name=tag.route_team.name if tag.route_team_id and tag.route_team else None,
+        route_assignee_id=tag.route_assignee_id, route_assignee_name=(assignee.name.strip() or assignee.email) if assignee else None,
+    )
 
 
 @router.patch("/{client_id}/contact-tags/{tag_id}", response_model=ContactTagOut)
@@ -345,22 +348,25 @@ def client_route_contact_tag(
     tag = db.scalar(select(ContactTag).where(ContactTag.id == tag_id, ContactTag.client_id == client.id))
     if tag is None:
         raise HTTPException(status_code=404, detail="Tag not found")
-    if "route_team_id" not in payload.model_fields_set:
-        raise HTTPException(status_code=422, detail="Send route_team_id")
-    if payload.route_team_id is None:
-        tag.route_team_id = None
-    else:
+    sent = payload.model_fields_set
+    if "route_team_id" not in sent and "route_assignee_id" not in sent:
+        raise HTTPException(status_code=422, detail="Send route_team_id or route_assignee_id")
+    if payload.route_team_id is not None:
         team = db.scalar(select(Team).where(Team.id == payload.route_team_id, Team.client_id == client.id))
         if team is None:
             raise HTTPException(status_code=404, detail="Team not found")
-        tag.route_team_id = team.id
+        tag.route_team_id, tag.route_assignee_id = team.id, None
+    elif payload.route_assignee_id is not None:
+        person = db.scalar(select(PortalUser).where(PortalUser.id == payload.route_assignee_id, PortalUser.client_id == client.id))
+        if person is None:
+            raise HTTPException(status_code=404, detail="Person not found")
+        tag.route_team_id, tag.route_assignee_id = None, person.id
+    else:
+        tag.route_team_id, tag.route_assignee_id = None, None
     db.commit()
     db.refresh(tag)
     count = db.scalar(select(func.count(ContactTagLink.contact_id)).where(ContactTagLink.tag_id == tag.id)) or 0
-    return ContactTagOut(
-        id=tag.id, name=tag.name, color=tag.color, contact_count=int(count),
-        route_team_id=tag.route_team_id, route_team_name=tag.route_team.name if tag.route_team_id and tag.route_team else None,
-    )
+    return _tag_out(tag, int(count))
 
 
 @router.post("/{client_id}/portal-users", response_model=PortalUserOut, status_code=status.HTTP_201_CREATED)

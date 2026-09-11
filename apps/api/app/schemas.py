@@ -650,6 +650,8 @@ class ContactTagOut(BaseModel):
     contact_count: int = 0
     route_team_id: uuid.UUID | None = None
     route_team_name: str | None = None
+    route_assignee_id: uuid.UUID | None = None
+    route_assignee_name: str | None = None
 
 
 class ContactTagCreate(BaseModel):
@@ -660,8 +662,10 @@ class ContactTagCreate(BaseModel):
 class ContactTagUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=40)
     color: str | None = Field(default=None, max_length=20)
-    # Explicit null clears the routing; leaving the field out keeps it.
+    # Destination is a team or a person; sending either sets it and clears the
+    # other. Explicit nulls clear the routing; leaving both out keeps it.
     route_team_id: uuid.UUID | None = None
+    route_assignee_id: uuid.UUID | None = None
 
 
 class ContactTagsSet(BaseModel):

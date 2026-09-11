@@ -925,9 +925,11 @@ async def portal_contacts_import(
 
 def _tag_out(tag: ContactTag, count: int = 0) -> ContactTagOut:
     team = tag.route_team if tag.route_team_id else None
+    person = tag.route_assignee if tag.route_assignee_id else None
     return ContactTagOut(
         id=tag.id, name=tag.name, color=tag.color, contact_count=count,
         route_team_id=tag.route_team_id, route_team_name=team.name if team else None,
+        route_assignee_id=tag.route_assignee_id, route_assignee_name=(person.name.strip() or person.email) if person else None,
     )
 
 

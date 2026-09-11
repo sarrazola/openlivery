@@ -92,17 +92,26 @@ def route_new_conversation_by_tags(db: Session, conversation: Conversation, cont
     stable. Returns the team, or None when the conversation was left alone."""
     if contact is None or conversation.mode == "human":
         return None
-    routed = [tag for tag in contact.tags if tag.route_team_id]
+    routed = [tag for tag in contact.tags if tag.route_team_id or tag.route_assignee_id]
     if not routed:
         return None
     tag = min(routed, key=lambda item: (item.created_at, item.name))
-    team = db.get(Team, tag.route_team_id)
-    if team is None or team.client_id != conversation.client_id:
+    team = db.get(Team, tag.route_team_id) if tag.route_team_id else None
+    person = db.get(PortalUser, tag.route_assignee_id) if tag.route_assignee_id else None
+    if team is not None and team.client_id != conversation.client_id:
+        team = None
+    if person is not None and person.client_id != conversation.client_id:
+        person = None
+    if team is None and person is None:
         return None
     conversation.mode = "human"
     conversation.taken_over_at = now_utc()
     actor = f"Tag {tag.name}"
-    record_activity(db, conversation, "routed_by_tag", actor=actor, details={"target": team.name, "tag": tag.name})
+    target = person.name if person else team.name  # type: ignore[union-attr]
+    record_activity(db, conversation, "routed_by_tag", actor=actor, details={"target": target, "tag": tag.name})
+    if person is not None:
+        assign(db, conversation, person, actor=actor)
+        return None
     set_team(db, conversation, team, actor=actor)
     route_conversation(db, conversation, actor=actor)
     return team

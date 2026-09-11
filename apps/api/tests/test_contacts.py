@@ -293,13 +293,23 @@ def test_tagged_contact_routes_new_conversations_to_a_team(authenticated_client:
     plain = inbound("m2", "573009998877@s.whatsapp.net", "Pepe")
     assert plain["mode"] == "ai"
 
+    # A tag can also route straight to one person.
+    person_id = members[0]["id"]
+    to_person = client.patch(f"{agency_tags}/{vip['id']}", json={"route_assignee_id": person_id})
+    assert to_person.status_code == 200 and to_person.json()["route_team_id"] is None and to_person.json()["route_assignee_id"] == person_id
+    client.patch(f"/api/conversations/{tagged['conversation_id']}/status", json={"status": "resolved"})
+    again = inbound("m3", "573001112233@s.whatsapp.net", "Vera")
+    direct = client.get(f"/api/conversations/{again['conversation_id']}").json()
+    assert direct["mode"] == "human" and direct["assignee_id"] == person_id and direct["team_id"] is None
+    assert client.patch(f"{agency_tags}/{vip['id']}", json={"route_assignee_id": str(uuid.uuid4())}).status_code == 404
+
     # Clearing the routing (agency side) leaves the tag in place.
-    cleared = client.patch(f"{agency_tags}/{vip['id']}", json={"route_team_id": None}).json()
-    assert cleared["route_team_id"] is None and cleared["name"] == "VIP"
+    cleared = client.patch(f"{agency_tags}/{vip['id']}", json={"route_team_id": None, "route_assignee_id": None}).json()
+    assert cleared["route_team_id"] is None and cleared["route_assignee_id"] is None and cleared["name"] == "VIP"
     listed = client.get(agency_tags).json()
     assert [(row["name"], row["route_team_id"]) for row in listed] == [("VIP", None)]
     assert client.patch(f"{agency_tags}/{vip['id']}", json={"name": "x"}).status_code == 422
 
     # The contact's history pages with a total.
     history = client.get(f"{base}/contacts/{contact['id']}/conversations?limit=1")
-    assert history.headers["x-total-count"] == "1" and len(history.json()) == 1
+    assert history.headers["x-total-count"] == "2" and len(history.json()) == 1

@@ -303,6 +303,8 @@ export type ContactTag = {
   contact_count: number;
   route_team_id?: string | null;
   route_team_name?: string | null;
+  route_assignee_id?: string | null;
+  route_assignee_name?: string | null;
 };
 
 export type Contact = {

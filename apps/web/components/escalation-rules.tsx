@@ -20,7 +20,7 @@ type Config = {
   rules: Rule[];
 };
 type Option = { id: string; name: string };
-type TagRow = { id: string; name: string; color: string; contact_count: number; route_team_id: string | null; route_team_name: string | null };
+type TagRow = { id: string; name: string; color: string; contact_count: number; route_team_id: string | null; route_team_name: string | null; route_assignee_id: string | null; route_assignee_name: string | null };
 
 /** The bot's escalation rules: WHEN in the business's words (the model reads
  * it contextually), WHERE picked from real teams and people - never guessed.
@@ -34,7 +34,7 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
   const [people, setPeople] = useState<Option[]>([]);
   const [tags, setTags] = useState<TagRow[]>([]);
   const [newTagId, setNewTagId] = useState("");
-  const [newTeamId, setNewTeamId] = useState("");
+  const [newDest, setNewDest] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -99,16 +99,21 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
 
   // Routing by tag is a client-level setting saved on the spot: it applies to
   // every agent of the client, before any AI reply.
-  async function routeTag(tag: TagRow, teamId: string) {
+  async function routeTag(tag: TagRow, destination: string) {
+    const [kind, id] = destination.split(":");
     setError("");
     try {
-      const updated = await api<TagRow>(`/clients/${clientId}/contact-tags/${tag.id}`, { method: "PATCH", body: JSON.stringify({ route_team_id: teamId || null }) });
+      const updated = await api<TagRow>(`/clients/${clientId}/contact-tags/${tag.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ route_team_id: kind === "team" ? id : null, route_assignee_id: kind === "user" ? id : null }),
+      });
       setTags((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
     } catch (err) { setError(messageFrom(err)); }
   }
 
-  const routedTags = tags.filter((tag) => tag.route_team_id);
-  const unroutedTags = tags.filter((tag) => !tag.route_team_id);
+  const routedTags = tags.filter((tag) => tag.route_team_id || tag.route_assignee_id);
+  const unroutedTags = tags.filter((tag) => !tag.route_team_id && !tag.route_assignee_id);
+  const hasDestinations = teams.length > 0 || people.length > 0;
   const destinationOptions = <>
     {teams.length > 0 && <optgroup label={t("agents.escalation.groupTeams")}>
       {teams.map((team) => <option key={team.id} value={`team:${team.id}`}>{team.name}</option>)}
@@ -137,28 +142,28 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
                 <span className="tag-chip" data-color={tag.color}>{tag.name}</span>
                 <small>{t("agents.escalation.byTagCount", { count: tag.contact_count })}</small>
                 <span className="esc-arrow" aria-hidden="true">→</span>
-                <strong className="esc-target">{tag.route_team_name}</strong>
+                <strong className="esc-target">{tag.route_assignee_name ?? tag.route_team_name}</strong>
                 <button type="button" className="icon-button" onClick={() => routeTag(tag, "")} title={t("agents.escalation.byTagRemove")} aria-label={t("agents.escalation.byTagRemove")}><X size={14} /></button>
               </div>)}
-              {tags.length > 0 && teams.length === 0 && <p className="esc-empty">{t("agents.escalation.byTagNoTeams")}</p>}
-              {unroutedTags.length > 0 && teams.length > 0 && <div className="esc-adder">
+              {tags.length > 0 && !hasDestinations && <p className="esc-empty">{t("agents.escalation.byTagNoTeams")}</p>}
+              {unroutedTags.length > 0 && hasDestinations && <div className="esc-adder">
                 <select value={newTagId} onChange={(e) => setNewTagId(e.target.value)} aria-label={t("agents.escalation.byTagPick")}>
                   <option value="">{t("agents.escalation.byTagPick")}</option>
                   {unroutedTags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
                 </select>
                 <span className="esc-arrow" aria-hidden="true">→</span>
-                <select value={newTeamId} onChange={(e) => setNewTeamId(e.target.value)} aria-label={t("agents.escalation.byTagPickTeam")}>
+                <select value={newDest} onChange={(e) => setNewDest(e.target.value)} aria-label={t("agents.escalation.byTagPickTeam")}>
                   <option value="">{t("agents.escalation.byTagPickTeam")}</option>
-                  {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+                  {destinationOptions}
                 </select>
-                <button type="button" className="button secondary small" disabled={!newTagId || !newTeamId} onClick={() => { const tag = tags.find((row) => row.id === newTagId); if (tag) { routeTag(tag, newTeamId); setNewTagId(""); setNewTeamId(""); } }}><Plus size={14} /> {t("agents.escalation.byTagAdd")}</button>
+                <button type="button" className="button secondary small" disabled={!newTagId || !newDest} onClick={() => { const tag = tags.find((row) => row.id === newTagId); if (tag) { routeTag(tag, newDest); setNewTagId(""); setNewDest(""); } }}><Plus size={14} /> {t("agents.escalation.byTagAdd")}</button>
               </div>}
             </div>
           </div>
 
           <div className="esc-step">
             <div className="esc-step-head"><span className="esc-step-n">2</span><div><strong>{t("agents.escalation.builtinHeading")}</strong><small>{t("agents.escalation.generalCondition")}</small></div>
-              <label className="esc-toggle"><input type="checkbox" checked={builtinOn} onChange={(e) => setBuiltinOn(e.target.checked)} aria-label={t("agents.escalation.builtinToggle")} /></label>
+              <label className="switch-row esc-toggle"><input type="checkbox" checked={builtinOn} onChange={(e) => setBuiltinOn(e.target.checked)} aria-label={t("agents.escalation.builtinToggle")} /></label>
             </div>
             {builtinOn && <div className="esc-step-body">
               <label className="esc-inline"><span>{t("agents.escalation.generalLabel")}</span>

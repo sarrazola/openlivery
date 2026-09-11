@@ -447,8 +447,11 @@ class ContactTag(Base):
     # human hands on that team, before any AI reply and ahead of the agent's
     # escalation rules. Cleared when the team is deleted.
     route_team_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("teams.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Or straight to one person; a tag carries at most one of the two.
+    route_assignee_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("portal_users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     route_team: Mapped["Team | None"] = relationship()
+    route_assignee: Mapped["PortalUser | None"] = relationship()
 
 
 class ContactTagLink(Base):
