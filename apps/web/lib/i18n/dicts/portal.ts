@@ -129,11 +129,20 @@ const en = {
   contacts: {
     searchPlaceholder: "Search by name, phone or email…",
     moreActions: "More actions",
+    list: {
+      showing: "Showing {shown} of {total}",
+      loadMore: "Load more",
+      loadingMore: "Loading more…",
+      allLoaded: "All {total} contacts loaded",
+    },
     export: "Export contacts",
     exportHint: "Download every contact as CSV",
     import: {
       title: "Import contacts",
       menuHint: "Load contacts from a CSV file",
+      toast: "{count} contacts imported",
+      toastNone: "No contact was imported; check the rejected rows",
+      toastUpToDate: "Every contact was already up to date",
       intro: "Upload a CSV with the columns name, phone, email and notes. Phones go as digits only with the country code, like 573001234567, no plus sign or spaces. Each row is checked on its own: valid rows are saved and the rest are listed here with the reason, so one bad line never blocks the file.",
       template: "Download the sample file",
       choose: "Choose a CSV file",
@@ -515,11 +524,20 @@ const es: typeof en = {
   contacts: {
     searchPlaceholder: "Buscar por nombre, teléfono o correo…",
     moreActions: "Más acciones",
+    list: {
+      showing: "Mostrando {shown} de {total}",
+      loadMore: "Cargar más",
+      loadingMore: "Cargando más…",
+      allLoaded: "Los {total} contactos están cargados",
+    },
     export: "Exportar contactos",
     exportHint: "Descarga todos los contactos en CSV",
     import: {
       title: "Importar contactos",
       menuHint: "Carga contactos desde un archivo CSV",
+      toast: "{count} contactos importados",
+      toastNone: "No se importó ningún contacto; revisa las filas rechazadas",
+      toastUpToDate: "Todos los contactos ya estaban al día",
       intro: "Sube un CSV con las columnas nombre, teléfono, correo y notas. El teléfono va solo con dígitos y código de país, como 573001234567, sin signo más ni espacios. Cada fila se revisa por separado: las válidas se guardan y el resto aparece aquí con el motivo, así una línea mala nunca bloquea el archivo.",
       template: "Descargar archivo de ejemplo",
       choose: "Elegir un archivo CSV",

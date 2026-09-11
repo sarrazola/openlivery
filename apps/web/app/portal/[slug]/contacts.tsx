@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { BadgeCheck, Ban, CheckCircle2, ChevronDown, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload, UserRound } from "lucide-react";
 import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
+import { useToast } from "@/components/toast";
 import { PhoneInput } from "@/components/phone-input";
 import { formatPhone } from "@/lib/dial-codes";
 import { api, ApiError, apiUrl, apiWithHeaders, messageFrom } from "@/lib/api";
@@ -25,6 +26,7 @@ const IMPORT_REASONS: Record<string, I18nKey> = {
 
 export function ContactsView({ slug, channels, openConversation }: { slug: string; channels: PortalChannel[]; openConversation: (conversation: Conversation) => void }) {
   const t = useT();
+  const toast = useToast();
   const { lang } = useLanguage();
   const [items, setItems] = useState<Contact[]>([]);
   const [selected, setSelected] = useState<Contact | null>(null);
@@ -82,6 +84,10 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
     try {
       const result = await api<ContactImportResult>(`/portal/${slug}/contacts/import`, { method: "POST", body });
       setImportResult(result);
+      const saved = result.created + result.updated;
+      if (saved > 0) toast.success(t("portal.contacts.import.toast", { count: saved }));
+      else if (result.errors.length) toast.error(t("portal.contacts.import.toastNone"));
+      else toast.info(t("portal.contacts.import.toastUpToDate"));
       await load();
     } catch (err) { setImportError(messageFrom(err)); } finally { setBusy(false); }
   }
@@ -223,8 +229,12 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
               <small className="inbox-row-meta">{t("portal.contacts.conversationCount", { count: contact.conversation_count })}{contact.blocked_at && <span className="mini-badge blocked"><Ban size={10} /> {t("portal.contacts.blockedBadge")}</span>}{contact.open_count > 0 && <span className="mini-badge human">{t("portal.contacts.openCount", { count: contact.open_count })}</span>}</small>
             </span>
           </button>)}
-        {loadingMore && <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>}
         {!loading && !items.length && <div className="no-conversations">{query ? t("portal.contacts.noMatches") : t("portal.contacts.empty")}</div>}
+        {!loading && items.length > 0 && (hasMore || (total !== null && total > LIMIT)) && <div className="list-foot">
+          {loadingMore ? <span><LoaderCircle className="spin" size={14} /> {t("portal.contacts.list.loadingMore")}</span>
+            : hasMore ? <><span>{t("portal.contacts.list.showing", { shown: items.length, total: total ?? items.length })}</span><button type="button" className="text-button" onClick={loadMore}>{t("portal.contacts.list.loadMore")}</button></>
+            : <span>{t("portal.contacts.list.allLoaded", { total: total ?? items.length })}</span>}
+        </div>}
       </aside>
       <section>
         {selected ? <>
