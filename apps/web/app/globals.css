@@ -2003,9 +2003,15 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 /* Contact history: date range beside the heading. */
 .history-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
 .history-head h3 { margin: 0; }
-.history-range { display: inline-flex; align-items: center; gap: 6px; color: var(--faint); font-size: 12px; }
-.history-range input[type="date"] { min-height: 30px; padding: 0 8px; font-size: 12.5px; color: var(--ink-2); }
-.history-range .text-button { padding: 4px 8px; font-size: 12px; }
+.history-range { display: inline-flex; align-items: center; gap: 4px; }
+.history-range > .button.small { min-height: 32px; padding: 0 10px; gap: 6px; font-size: 12.5px; font-weight: 600; }
+.history-range > .button.small.active { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
+.history-range > .icon-button { width: 28px; height: 28px; color: var(--subtle); }
+.history-picker { width: min(300px, 88vw); }
+.history-picker > small { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.history-custom { display: flex; align-items: center; gap: 6px; padding: 4px 6px 2px; color: var(--faint); font-size: 12px; }
+.history-custom input[type="date"] { flex: 1; min-width: 0; min-height: 32px; padding: 0 8px; font-size: 12.5px; }
+.history-custom-actions { display: flex; justify-content: flex-end; padding: 6px 6px 2px; }
 
 /* Availability: a real control in the portal sidebar, not a line of text. The
    generic sidebar button rule strips borders, so this one is more specific. */

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { BadgeCheck, Ban, Bot, Check, CheckCircle2, ChevronDown, Clock, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MessageSquareText, MoreHorizontal, Pencil, Plus, Search, Settings2, Tag, Trash2, Upload, UserRound, Users, X } from "lucide-react";
+import { BadgeCheck, Ban, Bot, CalendarRange, Check, CheckCircle2, ChevronDown, Clock, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MessageSquareText, MoreHorizontal, Pencil, Plus, Search, Settings2, Tag, Trash2, Upload, UserRound, Users, X } from "lucide-react";
 import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { MessageAttachments, type GalleryImage } from "@/components/attachments";
@@ -44,6 +44,9 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historySince, setHistorySince] = useState("");
   const [historyUntil, setHistoryUntil] = useState("");
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const [draftSince, setDraftSince] = useState("");
+  const [draftUntil, setDraftUntil] = useState("");
   const [preview, setPreview] = useState<Conversation | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -229,6 +232,24 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
     const { rows, total } = await fetchHistory(contact.id, 0);
     setHistory(rows); setHistoryTotal(total);
   }, [fetchHistory]);
+  const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  function applyRange(since: string, until: string) {
+    setHistorySince(since); setHistoryUntil(until); setRangeOpen(false);
+  }
+  function presetRange(kind: "7d" | "30d" | "month" | "lastMonth") {
+    const today = new Date();
+    if (kind === "7d" || kind === "30d") {
+      const from = new Date(today); from.setDate(today.getDate() - (kind === "7d" ? 6 : 29));
+      return applyRange(isoDay(from), isoDay(today));
+    }
+    const first = new Date(today.getFullYear(), today.getMonth() - (kind === "lastMonth" ? 1 : 0), 1);
+    const last = kind === "lastMonth" ? new Date(today.getFullYear(), today.getMonth(), 0) : today;
+    applyRange(isoDay(first), isoDay(last));
+  }
+  const shortDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(lang, { day: "numeric", month: "short" });
+  const rangeLabel = historySince || historyUntil
+    ? `${historySince ? shortDay(historySince) : "…"} – ${historyUntil ? shortDay(historyUntil) : "…"}`
+    : null;
   // A new date range reloads the history of the open contact from page one.
   useEffect(() => {
     if (!selected) return;
@@ -441,11 +462,27 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
             <section>
               <div className="history-head">
                 <h3>{t("portal.contacts.history")}</h3>
-                {(history.length > 0 || historySince || historyUntil) && <div className="history-range">
-                  <input type="date" value={historySince} max={historyUntil || undefined} onChange={(e) => setHistorySince(e.target.value)} aria-label={t("portal.contacts.historyFrom")} title={t("portal.contacts.historyFrom")} />
-                  <span aria-hidden="true">→</span>
-                  <input type="date" value={historyUntil} min={historySince || undefined} onChange={(e) => setHistoryUntil(e.target.value)} aria-label={t("portal.contacts.historyTo")} title={t("portal.contacts.historyTo")} />
-                  {(historySince || historyUntil) && <button type="button" className="text-button" onClick={() => { setHistorySince(""); setHistoryUntil(""); }}>{t("portal.contacts.historyClear")}</button>}
+                {(history.length > 0 || rangeLabel) && <div className="history-range start-line-wrap">
+                  <button type="button" className={`button small${rangeLabel ? " active" : ""}`} onClick={() => { setDraftSince(historySince); setDraftUntil(historyUntil); setRangeOpen((v) => !v); }} aria-haspopup="menu" aria-expanded={rangeOpen}><CalendarRange size={14} /> {rangeLabel ?? t("portal.contacts.historyDates")}</button>
+                  {rangeLabel && <button type="button" className="icon-button" onClick={() => applyRange("", "")} title={t("portal.contacts.historyClear")} aria-label={t("portal.contacts.historyClear")}><X size={14} /></button>}
+                  {rangeOpen && <>
+                    <div className="menu-backdrop" onClick={() => setRangeOpen(false)} />
+                    <div className="start-line-menu history-picker" role="menu">
+                      <button type="button" role="menuitem" onClick={() => presetRange("7d")}><span><strong>{t("portal.contacts.historyLast7")}</strong></span></button>
+                      <button type="button" role="menuitem" onClick={() => presetRange("30d")}><span><strong>{t("portal.contacts.historyLast30")}</strong></span></button>
+                      <button type="button" role="menuitem" onClick={() => presetRange("month")}><span><strong>{t("portal.contacts.historyThisMonth")}</strong></span></button>
+                      <button type="button" role="menuitem" onClick={() => presetRange("lastMonth")}><span><strong>{t("portal.contacts.historyLastMonth")}</strong></span></button>
+                      <small>{t("portal.contacts.historyCustom")}</small>
+                      <div className="history-custom">
+                        <input type="date" value={draftSince} max={draftUntil || undefined} onChange={(e) => setDraftSince(e.target.value)} aria-label={t("portal.contacts.historyFrom")} />
+                        <span aria-hidden="true">→</span>
+                        <input type="date" value={draftUntil} min={draftSince || undefined} onChange={(e) => setDraftUntil(e.target.value)} aria-label={t("portal.contacts.historyTo")} />
+                      </div>
+                      <div className="history-custom-actions">
+                        <button type="button" className="button primary small" disabled={!draftSince && !draftUntil} onClick={() => applyRange(draftSince, draftUntil)}>{t("portal.contacts.historyApply")}</button>
+                      </div>
+                    </div>
+                  </>}
                 </div>}
               </div>
               {history.length ? <div className="portal-contact-history">{history.map((conv) => <button key={conv.id} onClick={() => openHistoryItem(conv)}>
