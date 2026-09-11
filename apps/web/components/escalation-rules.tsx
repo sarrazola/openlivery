@@ -20,6 +20,7 @@ type Config = {
   rules: Rule[];
 };
 type Option = { id: string; name: string };
+type TagRow = { id: string; name: string; color: string; contact_count: number; route_team_id: string | null; route_team_name: string | null };
 
 /** The bot's escalation rules: WHEN in the business's words (the model reads
  * it contextually), WHERE picked from real teams and people - never guessed.
@@ -31,17 +32,20 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
   const [defaultDest, setDefaultDest] = useState("");
   const [teams, setTeams] = useState<Option[]>([]);
   const [people, setPeople] = useState<Option[]>([]);
+  const [tags, setTags] = useState<TagRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
 
   const load = useCallback(async () => {
-    const [config, teamRows, peopleRows] = await Promise.all([
+    const [config, teamRows, peopleRows, tagRows] = await Promise.all([
       api<Config>(`/agents/${agentId}/escalation-rules`),
       api<Option[]>(`/clients/${clientId}/teams`),
       api<{ id: string; name: string; email: string }[]>(`/clients/${clientId}/portal-users`),
+      api<TagRow[]>(`/clients/${clientId}/contact-tags`).catch(() => [] as TagRow[]),
     ]);
+    setTags(tagRows);
     setRules(config.rules);
     setBuiltinOn(config.builtin_enabled ?? true);
     setDefaultDest(config.default_team_id ? `team:${config.default_team_id}` : config.default_assignee_id ? `user:${config.default_assignee_id}` : "");
@@ -91,6 +95,16 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
 
+  // Routing by tag is a client-level setting saved on the spot: it applies to
+  // every agent of the client, before any AI reply.
+  async function routeTag(tag: TagRow, teamId: string) {
+    setError("");
+    try {
+      const updated = await api<TagRow>(`/clients/${clientId}/contact-tags/${tag.id}`, { method: "PATCH", body: JSON.stringify({ route_team_id: teamId || null }) });
+      setTags((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+    } catch (err) { setError(messageFrom(err)); }
+  }
+
   return (
     <section className="settings-section">
       <div className="settings-copy">
@@ -114,6 +128,19 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
               </optgroup>}
             </select>
           </label>}
+
+          <div className="escalation-tags">
+            <div className="escalation-rules-head"><strong>{t("agents.escalation.byTagHeading")}</strong><small>{t("agents.escalation.byTagHint")}</small></div>
+            {tags.length === 0 && <p className="muted escalation-tags-empty">{t("agents.escalation.byTagNone")}</p>}
+            {tags.map((tag) => <div key={tag.id} className="escalation-tag-row">
+              <span className="tag-chip" data-color={tag.color}>{tag.name}</span>
+              <small>{t("agents.escalation.byTagCount", { count: tag.contact_count })}</small>
+              <select value={tag.route_team_id ?? ""} onChange={(e) => routeTag(tag, e.target.value)} aria-label={tag.name}>
+                <option value="">{t("agents.escalation.byTagRouteNone")}</option>
+                {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+              </select>
+            </div>)}
+          </div>
 
           <div className="escalation-rules">
             <div className="escalation-rules-head"><strong>{t("agents.escalation.rulesHeading")}</strong><small>{t("agents.escalation.rulesHint")}</small></div>

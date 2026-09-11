@@ -21,6 +21,7 @@ import { Alert, EmptyState, Modal } from "@/components/ui";
 import { ChannelIcon, channelLabel as labelForChannel, INBOX_CHANNELS, isSocialChannel } from "@/lib/channels";
 import { SocialReplyNotice, useReplyPolicy } from "@/components/reply-policy";
 import { api, ApiError, apiUrl, messageFrom } from "@/lib/api";
+import { activityText as activityLine } from "@/lib/activity";
 import { formatTime, formatWhen, isNearBottom, isSameOpenThread } from "@/lib/datetime";
 import { useLanguage, useT } from "@/lib/i18n";
 import type { Attachment, Conversation, Message, PortalChannel, PortalPublic, Team } from "@/types";
@@ -336,30 +337,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   const policy = useReplyPolicy(selected);
   const windowClosed = Boolean(selected) && selected?.channel === "whatsapp_cloud" && policy.blocked;
   const canReply = policy.canReply;
-  const activityText = (message: Message) => {
-    const actor = message.sender_name || t("portal.inbox.activity.someone");
-    switch (message.activity?.event) {
-      case "resolved": return t("portal.inbox.activity.resolved", { actor });
-      case "archived": return t("portal.inbox.activity.archived", { actor });
-      case "blocked": return t("portal.inbox.activity.blocked", { actor });
-      case "unblocked": return t("portal.inbox.activity.unblocked", { actor });
-      case "unarchived": return t("portal.inbox.activity.unarchived", { actor });
-      case "reopened": return t("portal.inbox.activity.reopened", { actor });
-      case "reopened_by_contact": return t("portal.inbox.activity.reopened_by_contact");
-      case "taken_over": return t("portal.inbox.activity.taken_over", { actor });
-      case "returned_to_ai": return t("portal.inbox.activity.returned_to_ai", { actor });
-      case "auto_resolved": return t("portal.inbox.activity.auto_resolved", { hours: String(message.activity?.hours ?? "") });
-      case "self_assigned": return t("portal.inbox.activity.self_assigned", { actor });
-      case "assigned": return t("portal.inbox.activity.assigned", { actor, assignee: String(message.activity?.assignee ?? "") });
-      case "transferred": return t("portal.inbox.activity.transferred", { actor, assignee: String(message.activity?.assignee ?? "") });
-      case "unassigned": return t("portal.inbox.activity.unassigned", { actor });
-      case "team_assigned": return t("portal.inbox.activity.team_assigned", { actor, team: String(message.activity?.team ?? "") });
-      case "team_removed": return t("portal.inbox.activity.team_removed", { actor, team: String(message.activity?.team ?? "") });
-      case "escalated": return t("portal.inbox.activity.escalated", { actor, target: String(message.activity?.target ?? ""), reason: String(message.activity?.reason ?? "") });
-      case "routed_by_tag": return t("portal.inbox.activity.routed_by_tag", { target: String(message.activity?.target ?? ""), tag: String(message.activity?.tag ?? "") });
-      default: return message.content;
-    }
-  };
+  const activityText = (message: Message) => activityLine(t, message);
   async function reply(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected || !canReply || busy) return; if (pendingFile) { const file = pendingFile; setPendingFile(null); await sendAttachment(file); return; } const form = event.currentTarget; const data = new FormData(form); setBusy(true); setError(""); try { setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply`, { method: "POST", body: JSON.stringify({ content: data.get("content"), quoted_message_id: quoting?.id ?? null }) })); form.reset(); canned.reset(); setQuoting(null); await refresh(); } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); } }
   const replyInputRef = useRef<HTMLInputElement>(null);
   const canned = useCannedReplies({

@@ -291,3 +291,14 @@ def test_tagged_contact_routes_new_conversations_to_a_team(authenticated_client:
     # Clearing the routing leaves the tag in place.
     cleared = client.patch(f"{base}/tags/{vip['id']}", json={"route_team_id": None}).json()
     assert cleared["route_team_id"] is None and cleared["name"] == "VIP"
+
+    # The agency can read the client's tags and set their routing from the agent editor.
+    listed = client.get(f"/api/clients/{customer['id']}/contact-tags").json()
+    assert [(row["name"], row["route_team_id"]) for row in listed] == [("VIP", None)]
+    routed_again = client.patch(f"/api/clients/{customer['id']}/contact-tags/{vip['id']}", json={"route_team_id": team["id"]})
+    assert routed_again.status_code == 200 and routed_again.json()["route_team_name"] == "Ventas"
+    assert client.patch(f"/api/clients/{customer['id']}/contact-tags/{vip['id']}", json={"name": "x"}).status_code == 422
+
+    # The contact's history pages with a total.
+    history = client.get(f"{base}/contacts/{contact['id']}/conversations?limit=1")
+    assert history.headers["x-total-count"] == "1" and len(history.json()) == 1

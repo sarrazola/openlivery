@@ -129,6 +129,11 @@ const en = {
   contacts: {
     searchPlaceholder: "Search by name, phone or email…",
     moreActions: "More actions",
+    preview: {
+      title: "Conversation",
+      openInInbox: "Open in inbox",
+      close: "Close",
+    },
     tags: {
       heading: "Tags",
       add: "Add tag",
@@ -546,6 +551,11 @@ const es: typeof en = {
   contacts: {
     searchPlaceholder: "Buscar por nombre, teléfono o correo…",
     moreActions: "Más acciones",
+    preview: {
+      title: "Conversación",
+      openInInbox: "Abrir en el inbox",
+      close: "Cerrar",
+    },
     tags: {
       heading: "Etiquetas",
       add: "Agregar etiqueta",

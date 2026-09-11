@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..database import get_db
 from ..deps import get_current_user
 from .. import industries
-from ..models import Agent, Client, Contact, Conversation, PortalUser, PushDevice, User, new_domain_token, Team
+from ..models import Agent, Client, Contact, ContactTag, ContactTagLink, Conversation, PortalUser, PushDevice, User, new_domain_token, Team
 from ..schemas import (
     ClientDeletionPreview,
     ClientCreate,
@@ -19,6 +19,8 @@ from ..schemas import (
     PortalUserCreate,
     PortalUserOut,
     PortalUserUpdate,
+    ContactTagOut,
+    ContactTagUpdate,
 )
 from ..security import hash_password
 from ..services.attachments import logo_response
@@ -306,6 +308,59 @@ def client_teams(client_id: uuid.UUID, db: Session = Depends(get_db), user: User
     client = _client(db, user, client_id)
     teams = db.scalars(select(Team).where(Team.client_id == client.id).order_by(Team.name)).all()
     return [{"id": str(team.id), "name": team.name, "is_default": team.is_default} for team in teams]
+
+
+@router.get("/{client_id}/contact-tags", response_model=list[ContactTagOut])
+def client_contact_tags(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """The client's contact tags, with where each one routes, for the agent's
+    escalation editor. Tags themselves are created in the client portal."""
+    client = _client(db, user, client_id)
+    counts = (
+        select(ContactTagLink.tag_id, func.count(ContactTagLink.contact_id).label("n"))
+        .group_by(ContactTagLink.tag_id)
+        .subquery()
+    )
+    rows = db.execute(
+        select(ContactTag, counts.c.n).outerjoin(counts, counts.c.tag_id == ContactTag.id)
+        .where(ContactTag.client_id == client.id)
+        .order_by(func.lower(ContactTag.name))
+    ).all()
+    return [
+        ContactTagOut(
+            id=tag.id, name=tag.name, color=tag.color, contact_count=int(n or 0),
+            route_team_id=tag.route_team_id, route_team_name=tag.route_team.name if tag.route_team_id and tag.route_team else None,
+        )
+        for tag, n in rows
+    ]
+
+
+@router.patch("/{client_id}/contact-tags/{tag_id}", response_model=ContactTagOut)
+def client_route_contact_tag(
+    client_id: uuid.UUID, tag_id: uuid.UUID, payload: ContactTagUpdate,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    """Only the routing is editable from the agency side; name and color
+    belong to the client's people in the portal."""
+    client = _client(db, user, client_id)
+    tag = db.scalar(select(ContactTag).where(ContactTag.id == tag_id, ContactTag.client_id == client.id))
+    if tag is None:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    if "route_team_id" not in payload.model_fields_set:
+        raise HTTPException(status_code=422, detail="Send route_team_id")
+    if payload.route_team_id is None:
+        tag.route_team_id = None
+    else:
+        team = db.scalar(select(Team).where(Team.id == payload.route_team_id, Team.client_id == client.id))
+        if team is None:
+            raise HTTPException(status_code=404, detail="Team not found")
+        tag.route_team_id = team.id
+    db.commit()
+    db.refresh(tag)
+    count = db.scalar(select(func.count(ContactTagLink.contact_id)).where(ContactTagLink.tag_id == tag.id)) or 0
+    return ContactTagOut(
+        id=tag.id, name=tag.name, color=tag.color, contact_count=int(count),
+        route_team_id=tag.route_team_id, route_team_name=tag.route_team.name if tag.route_team_id and tag.route_team else None,
+    )
 
 
 @router.post("/{client_id}/portal-users", response_model=PortalUserOut, status_code=status.HTTP_201_CREATED)

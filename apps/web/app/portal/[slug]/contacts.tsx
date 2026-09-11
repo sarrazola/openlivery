@@ -1,18 +1,25 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { BadgeCheck, Ban, Check, CheckCircle2, ChevronDown, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Search, Settings2, Tag, Trash2, Upload, UserRound, X } from "lucide-react";
 import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
+import { MessageAttachments, type GalleryImage } from "@/components/attachments";
+import { RichText } from "@/components/rich-text";
+import { QuotedSnippet, ReactionBadge } from "@/components/message-gestures";
+import { DeliveryTicks } from "@/components/delivery-ticks";
+import { activityText } from "@/lib/activity";
+import { isSocialChannel } from "@/lib/channels";
 import { useToast } from "@/components/toast";
 import { PhoneInput } from "@/components/phone-input";
 import { formatPhone } from "@/lib/dial-codes";
 import { api, ApiError, apiUrl, apiWithHeaders, messageFrom } from "@/lib/api";
-import { formatWhen } from "@/lib/datetime";
+import { formatTime, formatWhen } from "@/lib/datetime";
 import { useLanguage, useT, type I18nKey } from "@/lib/i18n";
-import type { Contact, ContactImportResult, ContactTag, Conversation, PortalChannel, Team } from "@/types";
+import type { Attachment, Contact, ContactImportResult, ContactTag, Conversation, PortalChannel, Team } from "@/types";
 
 const LIMIT = 50;
+const HISTORY_LIMIT = 20;
 const TAG_COLORS = ["gray", "blue", "green", "amber", "red", "violet", "pink", "teal"];
 
 // Machine reasons the API returns for rejected rows, mapped to copy.
@@ -32,6 +39,10 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const [items, setItems] = useState<Contact[]>([]);
   const [selected, setSelected] = useState<Contact | null>(null);
   const [history, setHistory] = useState<Conversation[]>([]);
+  const [historyTotal, setHistoryTotal] = useState<number | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [preview, setPreview] = useState<Conversation | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -203,10 +214,47 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
     load().catch((err) => setError(messageFrom(err))).finally(() => setLoading(false));
   }, [load]);
 
+  // The card pages the contact's past cases as the panel scrolls, the same
+  // way the list does, so a long history never loads whole.
+  const fetchHistory = useCallback(async (contactId: string, offset: number) => {
+    const params = new URLSearchParams({ limit: String(HISTORY_LIMIT), offset: String(offset) });
+    const { data, headers } = await apiWithHeaders<Conversation[]>(`/portal/${slug}/contacts/${contactId}/conversations?${params}`);
+    const count = Number(headers.get("X-Total-Count"));
+    return { rows: data, total: Number.isFinite(count) ? count : null };
+  }, [slug]);
   const choose = useCallback(async (contact: Contact) => {
     setSelected(contact);
-    setHistory(await api<Conversation[]>(`/portal/${slug}/contacts/${contact.id}/conversations`));
-  }, [slug]);
+    setHistory([]); setHistoryTotal(null);
+    const { rows, total } = await fetchHistory(contact.id, 0);
+    setHistory(rows); setHistoryTotal(total);
+  }, [fetchHistory]);
+  const hasMoreHistory = selected !== null && historyTotal !== null && history.length < historyTotal;
+  async function loadMoreHistory() {
+    if (!selected || !hasMoreHistory || historyLoading) return;
+    setHistoryLoading(true);
+    try {
+      const { rows, total } = await fetchHistory(selected.id, history.length);
+      setHistory((prev) => [...prev, ...rows]); setHistoryTotal(total);
+    } catch (err) { setError(messageFrom(err)); } finally { setHistoryLoading(false); }
+  }
+  function onPanelScroll(event: React.UIEvent<HTMLElement>) {
+    const el = event.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) loadMoreHistory();
+  }
+  // A closed case opens as a read-only view right here; an open one goes to
+  // the inbox, where it can be answered.
+  async function openHistoryItem(conv: Conversation) {
+    if (conv.status !== "resolved" && !conv.archived_at) { openConversation(conv); return; }
+    setPreview(conv); setPreviewLoading(true);
+    try { setPreview(await api<Conversation>(`/portal/${slug}/conversations/${conv.id}`)); }
+    catch (err) { setError(messageFrom(err)); setPreview(null); }
+    finally { setPreviewLoading(false); }
+  }
+  const previewUrl = useCallback((attachment: Attachment) => apiUrl(`/portal/${slug}/conversations/${preview?.id}/attachments/${attachment.id}`), [slug, preview?.id]);
+  const previewGallery: GalleryImage[] = useMemo(
+    () => (preview?.messages ?? []).flatMap((message) => (message.attachments ?? []).filter((a) => a.kind === "image").map((a) => ({ id: a.id, url: previewUrl(a), name: a.filename }))),
+    [preview, previewUrl],
+  );
 
   const phoneLabel = (phone: string | null) => formatPhone(phone);
   const nameOf = (contact: Contact) => contact.name.trim() || phoneLabel(contact.phone) || t("portal.contacts.unnamed");
@@ -295,7 +343,6 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
         {tags.length > 0 && <div className="inbox-tabs tag-filter" role="tablist" aria-label={t("portal.contacts.tags.heading")}>
           <button type="button" className={tagFilter ? "" : "active"} onClick={() => setTagFilter(null)}>{t("portal.contacts.tags.all")}</button>
           {tags.map((tag) => <button type="button" key={tag.id} className={tagFilter === tag.id ? "active" : ""} onClick={() => setTagFilter(tagFilter === tag.id ? null : tag.id)}><i className="tag-dot" data-color={tag.color} /> {tag.name}<em className="soft">{tag.contact_count}</em></button>)}
-          <button type="button" className="tag-filter-manage" onClick={openTagManager} title={t("portal.contacts.tags.manage")} aria-label={t("portal.contacts.tags.manage")}><Settings2 size={14} /></button>
         </div>}
         {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>
           : items.map((contact) => <button key={contact.id} onClick={() => choose(contact)} className={selected?.id === contact.id ? "active" : ""}>
@@ -314,7 +361,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
             : <span>{t("portal.contacts.list.allLoaded", { total: total ?? items.length })}</span>}
         </div>}
       </aside>
-      <section>
+      <section onScroll={onPanelScroll}>
         {selected ? <>
           <header>
             <div>
@@ -368,11 +415,16 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
             </section>
             <section>
               <h3>{t("portal.contacts.history")}</h3>
-              {history.length ? <div className="portal-contact-history">{history.map((conv) => <button key={conv.id} onClick={() => openConversation(conv)}>
+              {history.length ? <div className="portal-contact-history">{history.map((conv) => <button key={conv.id} onClick={() => openHistoryItem(conv)}>
                 <span className={`mini-badge ${conv.status === "resolved" ? "resolved" : conv.mode}`}>{conv.status === "resolved" ? <><CheckCircle2 size={11} /> {t("portal.inbox.conversation.resolvedBadge")}</> : conv.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span>
                 <span className="portal-contact-history-text"><strong>{formatWhen(conv.created_at, lang)}</strong><small>{conv.preview || t("portal.inbox.list.noMessages")}</small></span>
                 <Inbox size={15} />
               </button>)}</div> : <p className="muted">{t("portal.contacts.noHistory")}</p>}
+              {history.length > 0 && historyTotal !== null && historyTotal > HISTORY_LIMIT && <div className="list-foot inline">
+                {historyLoading ? <span><LoaderCircle className="spin" size={14} /> {t("portal.contacts.list.loadingMore")}</span>
+                  : hasMoreHistory ? <span>{t("portal.contacts.list.showing", { shown: history.length, total: historyTotal })}</span>
+                  : <span>{t("portal.contacts.list.allLoaded", { total: historyTotal })}</span>}
+              </div>}
             </section>
           </div>
         </> : <EmptyState icon={<UserRound />} title={t("portal.contacts.selectTitle")} description={t("portal.contacts.selectDescription")} />}
@@ -422,6 +474,38 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
         {error && <Alert>{error}</Alert>}
         <div className="modal-actions"><button type="button" className="button" onClick={() => setMerging(false)}>{t("portal.contacts.form.cancel")}</button><button className="button primary" disabled={!mergePrimary || busy}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Merge size={15} /> {t("portal.contacts.mergeConfirm")}</>}</button></div>
       </form>
+    </Modal>
+    <Modal open={preview !== null} title={`${t("portal.contacts.preview.title")} · ${preview ? formatWhen(preview.created_at, lang) : ""}`} onClose={() => setPreview(null)}>
+      {preview && <div className="modal-form">
+        <div className="preview-meta">
+          <span className={`mini-badge ${preview.archived_at ? "resolved" : preview.status === "resolved" ? "resolved" : preview.mode}`}><CheckCircle2 size={11} /> {preview.archived_at ? t("portal.inbox.conversation.archivedBadge") : t("portal.inbox.conversation.resolvedBadge")}</span>
+          <small className="muted">{preview.contact_name || preview.title}</small>
+        </div>
+        <div className="portal-messages preview-thread">
+          {previewLoading && <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>}
+          {(preview.messages ?? []).map((message, index, all) => {
+            if (message.kind === "activity") return <div key={message.id} className="activity-line"><span>{activityText(t, message)}</span><time>{formatTime(message.created_at, lang)}</time></div>;
+            const prev = index > 0 ? all[index - 1] : null;
+            const grouped = Boolean(prev && prev.kind !== "activity" && prev.role === message.role && prev.sender_name === message.sender_name);
+            const stamp = formatTime(message.created_at, lang);
+            const hasAudio = message.attachments?.some((a) => a.kind === "audio");
+            const mine = message.role === "assistant";
+            return <article key={message.id} className={`${message.role}${mine ? " mine" : ""}${mine && message.sender_type === "ai" ? " ai" : ""}${grouped ? " grouped" : ""}`}>
+              {!grouped && <small>{message.sender_name || (mine ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor"))}</small>}
+              <MessageAttachments attachments={message.attachments} urlFor={previewUrl} gallery={previewGallery} stamp={stamp} />
+              {message.content && <p><QuotedSnippet messages={preview.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}{mine && (preview.channel === "whatsapp_cloud" || isSocialChannel(preview.channel)) && <DeliveryTicks status={message.delivery_status} error={message.delivery_error} />}</time></p>}
+              <ReactionBadge emoji={message.reaction} />
+              <ReactionBadge emoji={message.incoming_reaction} incoming />
+              {!message.content && !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}
+            </article>;
+          })}
+          {!previewLoading && !(preview.messages ?? []).length && <p className="muted">{t("portal.inbox.list.noMessages")}</p>}
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="button" onClick={() => setPreview(null)}>{t("portal.contacts.preview.close")}</button>
+          {!preview.archived_at && <button type="button" className="button primary" onClick={() => { const conv = preview; setPreview(null); openConversation(conv); }}><Inbox size={15} /> {t("portal.contacts.preview.openInInbox")}</button>}
+        </div>
+      </div>}
     </Modal>
     <Modal open={managingTags} title={t("portal.contacts.tags.manageTitle")} onClose={() => setManagingTags(false)}>
       <div className="modal-form tag-manage">

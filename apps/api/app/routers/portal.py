@@ -1147,9 +1147,19 @@ def portal_delete_contact(
 
 @router.get("/{slug}/contacts/{contact_id}/conversations", response_model=list[ConversationOut])
 def portal_contact_conversations(
-    slug: str, contact_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+    slug: str,
+    contact_id: uuid.UUID,
+    response: Response,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
 ):
+    """One page of the contact's past cases, newest first; the total travels
+    in X-Total-Count so the card can page as the person scrolls."""
     contact = _portal_contact(db, client, contact_id)
+    scope = [Conversation.contact_id == contact.id, Conversation.channel != PLAYGROUND]
+    response.headers["X-Total-Count"] = str(db.scalar(select(func.count(Conversation.id)).where(*scope)) or 0)
     ranked = (
         select(
             Message.conversation_id.label("cid"),
@@ -1163,8 +1173,10 @@ def portal_contact_conversations(
     rows = db.execute(
         select(Conversation, last.c.content)
         .outerjoin(last, last.c.cid == Conversation.id)
-        .where(Conversation.contact_id == contact.id, Conversation.channel != PLAYGROUND)
+        .where(*scope)
         .order_by(Conversation.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     ).all()
     return [
         ConversationOut.model_validate(conv).model_copy(update={"preview": (content or "")[:140].strip()})
