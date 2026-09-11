@@ -146,3 +146,174 @@ def test_merge_contacts_moves_conversations_and_fills_blanks(authenticated_clien
     assert client.get(f"{base}/{manual['id']}").status_code == 404
     assert client.get(f"/api/conversations/{conversation_id}").json()["contact_id"] == primary["id"]
     assert len(client.get(base).json()) == 1
+
+
+def test_portal_imports_and_exports_contacts(authenticated_client: TestClient):
+    client = authenticated_client
+    customer = _portal(client, "Import Co")
+    base = f"/api/portal/{customer['portal_slug']}/contacts"
+
+    # A contact that already exists with no name: the import fills it in.
+    assert client.post(base, json={"name": "", "phone": "+57 300 555 0000"}).status_code == 201
+
+    template = client.get(f"{base}/import-template")
+    assert template.status_code == 200 and template.headers["content-type"].startswith("text/csv")
+    assert template.text.lstrip("\ufeff").splitlines()[:2] == ["name,phone,email,notes", "Ana Gómez,573001234567,ana@example.com,Prefers mornings"]
+
+    csv_text = "\n".join([
+        "Nombre;Teléfono;Correo;Notas",
+        "Ana Gómez;+57 300 123 4567;ana@example.com;Prefers mornings",
+        "Sin teléfono;;x@y.com;",
+        "Corto;12345;;",
+        "Mal correo;+57 300 999 8888;not-an-email;",
+        "Repetido;+57 300 123 4567;;",
+        "Con letras;573001112233 ext 4;;",
+        "Muy largo;5730011122334455667;;",
+        "Existente;+57 300 555 0000;exist@example.com;",
+        "",
+    ])
+    imported = client.post(f"{base}/import", files={"file": ("contacts.csv", csv_text.encode("utf-8"), "text/csv")})
+    assert imported.status_code == 200, imported.text
+    result = imported.json()
+    assert result["created"] == 1 and result["updated"] == 1 and result["unchanged"] == 0
+    assert [(e["row"], e["reason"]) for e in result["errors"]] == [
+        (3, "phone_missing"), (4, "phone_invalid"), (5, "email_invalid"), (6, "duplicate_in_file"),
+        (7, "phone_invalid"), (8, "phone_invalid"),
+    ]
+
+    listed = client.get(base)
+    assert listed.headers["x-total-count"] == "2"
+    assert client.get(f"{base}?search=ana").headers["x-total-count"] == "1"
+    rows = {row["phone"]: row for row in listed.json()}
+    assert rows["573001234567"]["name"] == "Ana Gómez" and rows["573001234567"]["email"] == "ana@example.com"
+    assert rows["573005550000"]["name"] == "Existente" and rows["573005550000"]["email"] == "exist@example.com"
+
+    exported = client.get(f"{base}/export")
+    assert exported.status_code == 200 and "attachment" in exported.headers["content-disposition"]
+    lines = exported.text.lstrip("\ufeff").splitlines()
+    assert lines[0] == "name,phone,email,notes,tags,blocked,conversations,created_at"
+    assert any(line.startswith("Ana Gómez,+573001234567,ana@example.com,Prefers mornings,,no,0,") for line in lines)
+
+    missing_phone = client.post(f"{base}/import", files={"file": ("bad.csv", b"name,email\nAna,a@b.com\n", "text/csv")})
+    assert missing_phone.status_code == 422
+
+
+def test_portal_contact_tags(authenticated_client: TestClient):
+    client = authenticated_client
+    customer = _portal(client, "Tags Co")
+    slug = customer["portal_slug"]
+    base = f"/api/portal/{slug}"
+
+    vip = client.post(f"{base}/tags", json={"name": "VIP"})
+    assert vip.status_code == 201, vip.text
+    vip = vip.json()
+    assert vip["color"] == "gray" and vip["contact_count"] == 0
+    priority = client.post(f"{base}/tags", json={"name": "Priority", "color": "red"}).json()
+    assert priority["color"] == "red"
+    assert client.post(f"{base}/tags", json={"name": "vip"}).status_code == 409
+    assert client.post(f"{base}/tags", json={"name": "Odd", "color": "neon"}).status_code == 422
+
+    ana = client.post(f"{base}/contacts", json={"name": "Ana", "phone": "573001112233"}).json()
+    luis = client.post(f"{base}/contacts", json={"name": "Luis", "phone": "573001112244"}).json()
+    assert ana["tags"] == []
+
+    tagged = client.put(f"{base}/contacts/{ana['id']}/tags", json={"tag_ids": [vip["id"], priority["id"], str(uuid.uuid4())]})
+    assert tagged.status_code == 200, tagged.text
+    assert sorted(t["name"] for t in tagged.json()["tags"]) == ["Priority", "VIP"]
+    client.put(f"{base}/contacts/{luis['id']}/tags", json={"tag_ids": [priority["id"]]})
+
+    counts = {t["name"]: t["contact_count"] for t in client.get(f"{base}/tags").json()}
+    assert counts == {"Priority": 2, "VIP": 1}
+    assert [c["id"] for c in client.get(f"{base}/contacts?tag={vip['id']}").json()] == [ana["id"]]
+    assert client.get(f"{base}/contacts?tag={vip['id']}").headers["x-total-count"] == "1"
+
+    renamed = client.patch(f"{base}/tags/{vip['id']}", json={"name": "Very important", "color": "violet"})
+    assert renamed.status_code == 200 and renamed.json()["color"] == "violet"
+    assert client.patch(f"{base}/tags/{vip['id']}", json={"name": "priority"}).status_code == 409
+
+    exported = client.get(f"{base}/contacts/export").text.lstrip("\ufeff").splitlines()
+    assert exported[0] == "name,phone,email,notes,tags,blocked,conversations,created_at"
+    assert any(line.startswith("Ana,+573001112233,,,\"Priority, Very important\",") for line in exported), exported
+
+    # Merging folds the tags of the merged contact into the survivor.
+    merged = client.post(f"{base}/contacts/{luis['id']}/merge", json={"primary_contact_id": ana["id"]})
+    assert merged.status_code == 200, merged.text
+    assert sorted(t["name"] for t in merged.json()["tags"]) == ["Priority", "Very important"]
+
+    assert client.delete(f"{base}/tags/{priority['id']}").status_code == 204
+    assert [t["name"] for t in client.get(f"{base}/contacts/{ana['id']}").json()["tags"]] == ["Very important"]
+
+
+def test_tagged_contact_routes_new_conversations_to_a_team(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    customer = _portal(client, "Routing Co")
+    slug = customer["portal_slug"]
+    base = f"/api/portal/{slug}"
+    client.post(f"/api/clients/{customer['id']}/portal-users", json={"name": "Beto", "email": f"beto@{slug}.com", "password": "secure-portal"})
+    members = client.get(f"{base}/members").json()
+    team = client.post(f"{base}/teams", json={"name": "Ventas", "member_ids": [m["id"] for m in members]}).json()
+
+    client.put("/api/providers/openai", json={"api_key": "secret"})
+    agent = client.post("/api/agents", json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto AI", "instructions": "", "personality": "", "is_active": True}).json()
+    channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
+    headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
+    completion = AsyncMock(return_value=ai_service.Completion(text="Hello!", input_tokens=1, output_tokens=1))
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", completion)
+
+    vip = client.post(f"{base}/tags", json={"name": "VIP"}).json()
+    # The portal cannot route a tag: the field is ignored there.
+    ignored = client.patch(f"{base}/tags/{vip['id']}", json={"route_team_id": team["id"]})
+    assert ignored.status_code == 200 and ignored.json()["route_team_id"] is None
+    agency_tags = f"/api/clients/{customer['id']}/contact-tags"
+    routed = client.patch(f"{agency_tags}/{vip['id']}", json={"route_team_id": team["id"]})
+    assert routed.status_code == 200 and routed.json()["route_team_name"] == "Ventas"
+    assert client.patch(f"{agency_tags}/{vip['id']}", json={"route_team_id": str(uuid.uuid4())}).status_code == 404
+    assert client.get(f"{base}/tags").json()[0]["route_team_name"] == "Ventas"
+    contact = client.post(f"{base}/contacts", json={"name": "Vera", "phone": "573001112233"}).json()
+    client.put(f"{base}/contacts/{contact['id']}/tags", json={"tag_ids": [vip["id"]]})
+
+    def inbound(message_id: str, jid: str, name: str):
+        return client.post(
+            f"/api/internal/whatsapp/channels/{channel['id']}/inbound",
+            json={"external_message_id": message_id, "remote_jid": jid, "sender_name": name, "text": "Hola"},
+            headers=headers,
+        ).json()
+
+    tagged = inbound("m1", "573001112233@s.whatsapp.net", "Vera")
+    assert tagged["mode"] == "human"
+    conversation = client.get(f"/api/conversations/{tagged['conversation_id']}").json()
+    assert conversation["mode"] == "human" and conversation["team_id"] == team["id"]
+    assert conversation["assignee_id"] in {m["id"] for m in members}
+    assert completion.await_count == 0
+    thread = client.get(f"{base}/conversations/{tagged['conversation_id']}").json()
+    events = [m["activity"]["event"] for m in thread["messages"] if m.get("activity")]
+    assert "routed_by_tag" in events
+
+    assert client.get(f"{base}/conversations").headers["x-total-count"] == "1"
+
+    # An untagged contact still goes to the AI.
+    plain = inbound("m2", "573009998877@s.whatsapp.net", "Pepe")
+    assert plain["mode"] == "ai"
+
+    # A tag can also route straight to one person.
+    person_id = members[0]["id"]
+    to_person = client.patch(f"{agency_tags}/{vip['id']}", json={"route_assignee_id": person_id})
+    assert to_person.status_code == 200 and to_person.json()["route_team_id"] is None and to_person.json()["route_assignee_id"] == person_id
+    client.patch(f"/api/conversations/{tagged['conversation_id']}/status", json={"status": "resolved"})
+    again = inbound("m3", "573001112233@s.whatsapp.net", "Vera")
+    direct = client.get(f"/api/conversations/{again['conversation_id']}").json()
+    assert direct["mode"] == "human" and direct["assignee_id"] == person_id and direct["team_id"] is None
+    assert client.patch(f"{agency_tags}/{vip['id']}", json={"route_assignee_id": str(uuid.uuid4())}).status_code == 404
+
+    # Clearing the routing (agency side) leaves the tag in place.
+    cleared = client.patch(f"{agency_tags}/{vip['id']}", json={"route_team_id": None, "route_assignee_id": None}).json()
+    assert cleared["route_team_id"] is None and cleared["route_assignee_id"] is None and cleared["name"] == "VIP"
+    listed = client.get(agency_tags).json()
+    assert [(row["name"], row["route_team_id"]) for row in listed] == [("VIP", None)]
+    assert client.patch(f"{agency_tags}/{vip['id']}", json={"name": "x"}).status_code == 422
+
+    # The contact's history pages with a total, and can be limited to a date range.
+    history = client.get(f"{base}/contacts/{contact['id']}/conversations?limit=1")
+    assert history.headers["x-total-count"] == "2" and len(history.json()) == 1
+    assert client.get(f"{base}/contacts/{contact['id']}/conversations?until=2000-01-01").headers["x-total-count"] == "0"
+    assert client.get(f"{base}/contacts/{contact['id']}/conversations?since=2000-01-01").headers["x-total-count"] == "2"

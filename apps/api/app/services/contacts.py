@@ -99,6 +99,9 @@ def merge_contacts(db: Session, primary: Contact, merged: Contact) -> None:
     for contact in (primary, merged):
         if contact.phone:
             resolve_contact(db, contact.client_id, phone=contact.phone, name=contact.name)
+    for tag in list(merged.tags):
+        if tag not in primary.tags:
+            primary.tags.append(tag)
     db.execute(update(ContactIdentity).where(ContactIdentity.contact_id == merged.id).values(contact_id=primary.id))
     db.execute(update(Conversation).where(Conversation.contact_id == merged.id).values(contact_id=primary.id))
     db.delete(merged)

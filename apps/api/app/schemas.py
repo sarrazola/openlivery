@@ -643,12 +643,42 @@ class ContactUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=5000)
 
 
+class ContactTagOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    color: str = "gray"
+    contact_count: int = 0
+    route_team_id: uuid.UUID | None = None
+    route_team_name: str | None = None
+    route_assignee_id: uuid.UUID | None = None
+    route_assignee_name: str | None = None
+
+
+class ContactTagCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    color: str | None = Field(default=None, max_length=20)
+
+
+class ContactTagUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=40)
+    color: str | None = Field(default=None, max_length=20)
+    # Destination is a team or a person; sending either sets it and clears the
+    # other. Explicit nulls clear the routing; leaving both out keeps it.
+    route_team_id: uuid.UUID | None = None
+    route_assignee_id: uuid.UUID | None = None
+
+
+class ContactTagsSet(BaseModel):
+    tag_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+
+
 class ContactOut(BaseModel):
     id: uuid.UUID
     name: str
     phone: str | None = None
     email: str | None = None
     notes: str = ""
+    tags: list[ContactTagOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     conversation_count: int = 0
@@ -665,6 +695,27 @@ class ContactMergeRequest(BaseModel):
     # The surviving contact; the one addressed by the URL is folded into it
     # and deleted.
     primary_contact_id: uuid.UUID
+
+
+class ContactImportError(BaseModel):
+    # 1-based line number in the file, header included, so it matches what
+    # the person sees in their spreadsheet.
+    row: int
+    name: str = ""
+    phone: str = ""
+    # Machine code the portal translates: phone_missing, phone_invalid,
+    # email_invalid, duplicate_in_file, name_too_long, notes_too_long.
+    reason: str
+
+
+class ContactImportResult(BaseModel):
+    created: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    errors: list[ContactImportError] = Field(default_factory=list)
+    # Rows that were neither imported nor rejected because the file hit the
+    # row limit; zero unless the file is oversized.
+    truncated: int = 0
 
 
 class PortalInboxSummary(BaseModel):

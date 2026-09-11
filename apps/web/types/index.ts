@@ -125,7 +125,7 @@ export type ToolCallMeta = { name: string; arguments: Record<string, unknown>; r
 
 export type Source = { id: string; filename: string; excerpt: string };
 export type Attachment = { id: string; kind: "image" | "audio" | "video" | "file"; mime: string; filename: string | null; size_bytes: number };
-export type Message = { id: string; role: "user" | "assistant" | "system"; kind?: "message" | "activity"; delivery_status?: "pending" | "sent" | "delivered" | "read" | "failed" | "unknown" | null; delivery_error?: string | null; activity?: { event: string; hours?: number | string; assignee?: string; from?: string; team?: string; target?: string; reason?: string } | null; content: string; sources: Source[]; tool_calls?: ToolCallMeta[] | null; sender_type: "visitor" | "ai" | "human"; sender_name: string | null; reaction?: string | null; incoming_reaction?: string | null; quoted_message_id?: string | null; created_at: string; attachments?: Attachment[] };
+export type Message = { id: string; role: "user" | "assistant" | "system"; kind?: "message" | "activity"; delivery_status?: "pending" | "sent" | "delivered" | "read" | "failed" | "unknown" | null; delivery_error?: string | null; activity?: { event: string; hours?: number | string; assignee?: string; from?: string; team?: string; target?: string; reason?: string; tag?: string } | null; content: string; sources: Source[]; tool_calls?: ToolCallMeta[] | null; sender_type: "visitor" | "ai" | "human"; sender_name: string | null; reaction?: string | null; incoming_reaction?: string | null; quoted_message_id?: string | null; created_at: string; attachments?: Attachment[] };
 
 export type ConversationInbox = {
   id: string;
@@ -296,18 +296,45 @@ export type PortalChannel = {
   supports_templates: boolean;
 };
 
+export type ContactTag = {
+  id: string;
+  name: string;
+  color: string;
+  contact_count: number;
+  route_team_id?: string | null;
+  route_team_name?: string | null;
+  route_assignee_id?: string | null;
+  route_assignee_name?: string | null;
+};
+
 export type Contact = {
   id: string;
   name: string;
   phone: string | null;
   email: string | null;
   notes: string;
+  tags?: ContactTag[];
   created_at: string;
   updated_at: string;
   conversation_count: number;
   open_count: number;
   last_activity_at: string | null;
   blocked_at?: string | null;
+};
+
+export type ContactImportError = {
+  row: number;
+  name: string;
+  phone: string;
+  reason: string;
+};
+
+export type ContactImportResult = {
+  created: number;
+  updated: number;
+  unchanged: number;
+  errors: ContactImportError[];
+  truncated: number;
 };
 
 export type PortalPublic = {

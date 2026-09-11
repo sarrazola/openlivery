@@ -8,7 +8,7 @@ export function StatusBadge({ active }: { active: boolean }) {
   return <span className={`status ${active ? "status-active" : "status-inactive"}`}><i />{active ? "Activo" : "Inactivo"}</span>;
 }
 
-export function Modal({ open, title, description, onClose, children }: { open: boolean; title: string; description?: string; onClose: () => void; children: ReactNode }) {
+export function Modal({ open, title, description, onClose, children, wide = false }: { open: boolean; title: string; description?: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   // Escape closes the dialog, like clicking outside it or the X.
   useEffect(() => {
     if (!open) return;
@@ -21,7 +21,7 @@ export function Modal({ open, title, description, onClose, children }: { open: b
   // a sticky bar) can clip the backdrop or stack above it.
   return createPortal(
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <section className="modal" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}>
+      <section className={wide ? "modal modal-wide" : "modal"} role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}>
         <div className="modal-head">
           <div><h2>{title}</h2>{description && <p>{description}</p>}</div>
           <button className="icon-button" onClick={onClose} aria-label="Cerrar"><X size={18} /></button>

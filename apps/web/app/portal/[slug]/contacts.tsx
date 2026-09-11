@@ -1,27 +1,60 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { BadgeCheck, Ban, CheckCircle2, ChevronDown, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, Pencil, Plus, Search, Trash2, UserRound } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { BadgeCheck, Ban, Bot, CalendarRange, Check, CheckCircle2, ChevronDown, Clock, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MessageSquareText, MoreHorizontal, Pencil, Plus, Search, Settings2, Tag, Trash2, Upload, UserRound, Users, X } from "lucide-react";
 import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
+import { MessageAttachments, type GalleryImage } from "@/components/attachments";
+import { RichText } from "@/components/rich-text";
+import { QuotedSnippet, ReactionBadge } from "@/components/message-gestures";
+import { DeliveryTicks } from "@/components/delivery-ticks";
+import { activityText } from "@/lib/activity";
+import { ChannelIcon, channelLabel, isSocialChannel } from "@/lib/channels";
+import { chatToText, downloadText } from "@/lib/export";
+import { useToast } from "@/components/toast";
 import { PhoneInput } from "@/components/phone-input";
 import { formatPhone } from "@/lib/dial-codes";
-import { api, ApiError, messageFrom } from "@/lib/api";
-import { formatWhen } from "@/lib/datetime";
-import { useLanguage, useT } from "@/lib/i18n";
-import type { Contact, Conversation, PortalChannel } from "@/types";
+import { api, ApiError, apiUrl, apiWithHeaders, messageFrom } from "@/lib/api";
+import { formatTime, formatWhen } from "@/lib/datetime";
+import { useLanguage, useT, type I18nKey } from "@/lib/i18n";
+import type { Attachment, Contact, ContactImportResult, ContactTag, Conversation, PortalChannel } from "@/types";
 
 const LIMIT = 50;
+const HISTORY_LIMIT = 20;
+const TAG_COLORS = ["gray", "blue", "green", "amber", "red", "violet", "pink", "teal"];
+
+// Machine reasons the API returns for rejected rows, mapped to copy.
+const IMPORT_REASONS: Record<string, I18nKey> = {
+  phone_missing: "portal.contacts.import.reasons.phoneMissing",
+  phone_invalid: "portal.contacts.import.reasons.phoneInvalid",
+  email_invalid: "portal.contacts.import.reasons.emailInvalid",
+  duplicate_in_file: "portal.contacts.import.reasons.duplicateInFile",
+  name_too_long: "portal.contacts.import.reasons.nameTooLong",
+  notes_too_long: "portal.contacts.import.reasons.notesTooLong",
+};
 
 export function ContactsView({ slug, channels, openConversation }: { slug: string; channels: PortalChannel[]; openConversation: (conversation: Conversation) => void }) {
   const t = useT();
+  const toast = useToast();
   const { lang } = useLanguage();
   const [items, setItems] = useState<Contact[]>([]);
   const [selected, setSelected] = useState<Contact | null>(null);
   const [history, setHistory] = useState<Conversation[]>([]);
+  const [historyTotal, setHistoryTotal] = useState<number | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historySince, setHistorySince] = useState("");
+  const [historyUntil, setHistoryUntil] = useState("");
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const [draftSince, setDraftSince] = useState("");
+  const [draftUntil, setDraftUntil] = useState("");
+  const [preview, setPreview] = useState<Conversation | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<"new" | "edit" | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -30,6 +63,18 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const [merging, setMerging] = useState(false);
   const [mergeQuery, setMergeQuery] = useState("");
   const [mergePrimary, setMergePrimary] = useState<Contact | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [listMenu, setListMenu] = useState(false);
+  const [tags, setTags] = useState<ContactTag[]>([]);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [tagPicker, setTagPicker] = useState(false);
+  const [tagQuery, setTagQuery] = useState("");
+  const [managingTags, setManagingTags] = useState(false);
+  const [deletingTag, setDeletingTag] = useState<ContactTag | null>(null);
+  const [newTagName, setNewTagName] = useState("");
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importResult, setImportResult] = useState<ContactImportResult | null>(null);
+  const [importError, setImportError] = useState("");
   const cloudLine = channels.find((c) => c.channel === "whatsapp_cloud");
   const qrLine = channels.find((c) => c.channel === "whatsapp");
   const lines = [cloudLine, qrLine].filter((line): line is PortalChannel & { channel: "whatsapp" | "whatsapp_cloud" } => Boolean(line));
@@ -54,28 +99,208 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   }
   const [busy, setBusy] = useState(false);
 
+  const loadTags = useCallback(async () => {
+    try { setTags(await api<ContactTag[]>(`/portal/${slug}/tags`)); } catch { /* the list still works without the catalog */ }
+  }, [slug]);
+  useEffect(() => { loadTags(); }, [loadTags]);
+
+  // Tags are set by hand from the contact card; the whole set is sent so the
+  // server never has to reconcile partial changes.
+  async function applyContactTags(contact: Contact, tagIds: string[]) {
+    setBusy(true); setError("");
+    try {
+      const updated = await api<Contact>(`/portal/${slug}/contacts/${contact.id}/tags`, { method: "PUT", body: JSON.stringify({ tag_ids: tagIds }) });
+      setSelected((current) => (current?.id === updated.id ? { ...current, tags: updated.tags } : current));
+      setItems((prev) => prev.map((row) => (row.id === updated.id ? { ...row, tags: updated.tags } : row)));
+      await loadTags();
+    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+  }
+  function toggleTag(tag: ContactTag) {
+    if (!selected) return;
+    const current = (selected.tags ?? []).map((item) => item.id);
+    const next = current.includes(tag.id) ? current.filter((id) => id !== tag.id) : [...current, tag.id];
+    applyContactTags(selected, next);
+  }
+  async function createTag(name: string, assignTo?: Contact | null) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setBusy(true); setError("");
+    try {
+      const created = await api<ContactTag>(`/portal/${slug}/tags`, { method: "POST", body: JSON.stringify({ name: trimmed }) });
+      setTagQuery(""); setNewTagName("");
+      await loadTags();
+      if (assignTo) await applyContactTags(assignTo, [...(assignTo.tags ?? []).map((item) => item.id), created.id]);
+    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+  }
+  async function updateTag(tag: ContactTag, patch: { name?: string; color?: string }) {
+    if (patch.name !== undefined && (!patch.name.trim() || patch.name.trim() === tag.name)) return;
+    setError("");
+    try {
+      await api<ContactTag>(`/portal/${slug}/tags/${tag.id}`, { method: "PATCH", body: JSON.stringify(patch) });
+      await Promise.all([loadTags(), load()]);
+      if (selected) setSelected(await api<Contact>(`/portal/${slug}/contacts/${selected.id}`));
+    } catch (err) { setError(messageFrom(err)); }
+  }
+  async function removeTag(tag: ContactTag) {
+    setBusy(true); setError("");
+    try {
+      await api(`/portal/${slug}/tags/${tag.id}`, { method: "DELETE" });
+      setDeletingTag(null);
+      if (tagFilter === tag.id) setTagFilter(null);
+      await Promise.all([loadTags(), load()]);
+      if (selected) setSelected(await api<Contact>(`/portal/${slug}/contacts/${selected.id}`));
+    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+  }
+  const tagQueryTrimmed = tagQuery.trim();
+  const pickerTags = tags.filter((tag) => !tagQueryTrimmed || tag.name.toLowerCase().includes(tagQueryTrimmed.toLowerCase()));
+  const pickerExact = tags.some((tag) => tag.name.toLowerCase() === tagQueryTrimmed.toLowerCase());
+
+  function openTagManager() { setTagPicker(false); setListMenu(false); setDeletingTag(null); setNewTagName(""); setManagingTags(true); }
+
+  function openImport() { setImportFile(null); setImportResult(null); setImportError(""); setImporting(true); }
+  async function runImport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!importFile) return;
+    const body = new FormData();
+    body.append("file", importFile);
+    setBusy(true); setImportError("");
+    try {
+      const result = await api<ContactImportResult>(`/portal/${slug}/contacts/import`, { method: "POST", body });
+      setImportResult(result);
+      const saved = result.created + result.updated;
+      if (saved > 0) toast.success(t("portal.contacts.import.toast", { count: saved }));
+      else if (result.errors.length) toast.error(t("portal.contacts.import.toastNone"));
+      else toast.info(t("portal.contacts.import.toastUpToDate"));
+      await load();
+    } catch (err) { setImportError(messageFrom(err)); } finally { setBusy(false); }
+  }
+
   useEffect(() => {
     const id = setTimeout(() => setQuery(search.trim()), 300);
     return () => clearTimeout(id);
   }, [search]);
 
-  const load = useCallback(async () => {
-    const params = new URLSearchParams({ limit: String(LIMIT) });
+  // The list pages from the server: the first page replaces the list, the
+  // next ones append as the person scrolls. Search always runs server-side
+  // over every contact, so a long list never changes what a search can find.
+  const fetchPage = useCallback(async (offset: number) => {
+    const params = new URLSearchParams({ limit: String(LIMIT), offset: String(offset) });
     if (query) params.set("search", query);
-    const rows = await api<Contact[]>(`/portal/${slug}/contacts?${params}`);
-    setItems(rows);
+    if (tagFilter) params.set("tag", tagFilter);
+    const { data, headers } = await apiWithHeaders<Contact[]>(`/portal/${slug}/contacts?${params}`);
+    const count = Number(headers.get("X-Total-Count"));
+    return { rows: data, total: Number.isFinite(count) ? count : null };
+  }, [slug, query, tagFilter]);
+
+  const load = useCallback(async () => {
+    const { rows, total: count } = await fetchPage(0);
+    setItems(rows); setTotal(count); setHasMore(rows.length === LIMIT);
     return rows;
-  }, [slug, query]);
+  }, [fetchPage]);
+
+  async function loadMore() {
+    if (!hasMore || loadingMore || loading) return;
+    setLoadingMore(true);
+    try {
+      const { rows, total: count } = await fetchPage(items.length);
+      setItems((prev) => [...prev, ...rows]); setTotal(count); setHasMore(rows.length === LIMIT);
+    } catch (err) { setError(messageFrom(err)); } finally { setLoadingMore(false); }
+  }
+  function onListScroll(event: React.UIEvent<HTMLElement>) {
+    const el = event.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) loadMore();
+  }
 
   useEffect(() => {
     setLoading(true);
     load().catch((err) => setError(messageFrom(err))).finally(() => setLoading(false));
   }, [load]);
 
+  // The card pages the contact's past cases as the panel scrolls, the same
+  // way the list does, so a long history never loads whole.
+  const fetchHistory = useCallback(async (contactId: string, offset: number) => {
+    const params = new URLSearchParams({ limit: String(HISTORY_LIMIT), offset: String(offset) });
+    if (historySince) params.set("since", historySince);
+    if (historyUntil) params.set("until", historyUntil);
+    const { data, headers } = await apiWithHeaders<Conversation[]>(`/portal/${slug}/contacts/${contactId}/conversations?${params}`);
+    const count = Number(headers.get("X-Total-Count"));
+    return { rows: data, total: Number.isFinite(count) ? count : null };
+  }, [slug, historySince, historyUntil]);
   const choose = useCallback(async (contact: Contact) => {
     setSelected(contact);
-    setHistory(await api<Conversation[]>(`/portal/${slug}/contacts/${contact.id}/conversations`));
-  }, [slug]);
+    setHistory([]); setHistoryTotal(null);
+    const { rows, total } = await fetchHistory(contact.id, 0);
+    setHistory(rows); setHistoryTotal(total);
+  }, [fetchHistory]);
+  const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  function applyRange(since: string, until: string) {
+    setHistorySince(since); setHistoryUntil(until); setRangeOpen(false);
+  }
+  function presetRange(kind: "7d" | "30d" | "month" | "lastMonth") {
+    const today = new Date();
+    if (kind === "7d" || kind === "30d") {
+      const from = new Date(today); from.setDate(today.getDate() - (kind === "7d" ? 6 : 29));
+      return applyRange(isoDay(from), isoDay(today));
+    }
+    const first = new Date(today.getFullYear(), today.getMonth() - (kind === "lastMonth" ? 1 : 0), 1);
+    const last = kind === "lastMonth" ? new Date(today.getFullYear(), today.getMonth(), 0) : today;
+    applyRange(isoDay(first), isoDay(last));
+  }
+  const shortDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(lang, { day: "numeric", month: "short" });
+  const rangeLabel = historySince || historyUntil
+    ? `${historySince ? shortDay(historySince) : "…"} – ${historyUntil ? shortDay(historyUntil) : "…"}`
+    : null;
+  // A new date range reloads the history of the open contact from page one.
+  useEffect(() => {
+    if (!selected) return;
+    let cancelled = false;
+    setHistoryLoading(true);
+    fetchHistory(selected.id, 0)
+      .then(({ rows, total }) => { if (!cancelled) { setHistory(rows); setHistoryTotal(total); } })
+      .catch((err) => { if (!cancelled) setError(messageFrom(err)); })
+      .finally(() => { if (!cancelled) setHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [historySince, historyUntil]);
+  const hasMoreHistory = selected !== null && historyTotal !== null && history.length < historyTotal;
+  async function loadMoreHistory() {
+    if (!selected || !hasMoreHistory || historyLoading) return;
+    setHistoryLoading(true);
+    try {
+      const { rows, total } = await fetchHistory(selected.id, history.length);
+      setHistory((prev) => [...prev, ...rows]); setHistoryTotal(total);
+    } catch (err) { setError(messageFrom(err)); } finally { setHistoryLoading(false); }
+  }
+  function onPanelScroll(event: React.UIEvent<HTMLElement>) {
+    const el = event.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) loadMoreHistory();
+  }
+  // A closed case opens as a read-only view right here; an open one goes to
+  // the inbox, where it can be answered.
+  async function openHistoryItem(conv: Conversation) {
+    if (conv.status !== "resolved" && !conv.archived_at) { openConversation(conv); return; }
+    setPreview(conv); setPreviewLoading(true);
+    try { setPreview(await api<Conversation>(`/portal/${slug}/conversations/${conv.id}`)); }
+    catch (err) { setError(messageFrom(err)); setPreview(null); }
+    finally { setPreviewLoading(false); }
+  }
+  const previewUrl = useCallback((attachment: Attachment) => apiUrl(`/portal/${slug}/conversations/${preview?.id}/attachments/${attachment.id}`), [slug, preview?.id]);
+  const previewMessages = useMemo(() => (preview?.messages ?? []).filter((m) => m.kind !== "activity"), [preview]);
+  const previewHandlers = useMemo(() => {
+    const ai = new Set<string>(); const humans = new Set<string>();
+    for (const m of previewMessages) {
+      if (m.role !== "assistant") continue;
+      if (m.sender_type === "ai") ai.add(m.sender_name || t("portal.inbox.conversation.agent")); else if (m.sender_name) humans.add(m.sender_name);
+    }
+    return { ai: [...ai], humans: [...humans] };
+  }, [previewMessages, t]);
+  function previewTranscript() {
+    if (!preview) return "";
+    return chatToText(preview.messages ?? [], { title: `${t("portal.contacts.preview.title")} · ${preview.contact_name || preview.title}`, channel: channelLabel(preview.channel, t), agentLabel: t("portal.inbox.conversation.agent"), visitorLabel: t("portal.inbox.conversation.visitor") });
+  }
+  const previewGallery: GalleryImage[] = useMemo(
+    () => (preview?.messages ?? []).flatMap((message) => (message.attachments ?? []).filter((a) => a.kind === "image").map((a) => ({ id: a.id, url: previewUrl(a), name: a.filename }))),
+    [preview, previewUrl],
+  );
 
   const phoneLabel = (phone: string | null) => formatPhone(phone);
   const nameOf = (contact: Contact) => contact.name.trim() || phoneLabel(contact.phone) || t("portal.contacts.unnamed");
@@ -142,24 +367,47 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
 
   return <>
     <div className="portal-contacts">
-      <aside>
+      <aside onScroll={onListScroll}>
         <div className="inbox-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("portal.contacts.searchPlaceholder")} /></div>
         <div className="portal-contacts-toolbar">
-          <span>{t("portal.contacts.count", { count: items.length })}</span>
-          <button className="button primary small" onClick={() => setEditing("new")}><Plus size={15} /> {t("portal.contacts.new")}</button>
+          <span>{t("portal.contacts.count", { count: total ?? items.length })}</span>
+          <div className="toolbar-actions">
+            <button className="button primary small" onClick={() => setEditing("new")}><Plus size={15} /> {t("portal.contacts.new")}</button>
+            <div className="start-line-wrap">
+              <button type="button" className="icon-button" onClick={() => setListMenu((v) => !v)} title={t("portal.contacts.moreActions")} aria-label={t("portal.contacts.moreActions")} aria-haspopup="menu" aria-expanded={listMenu}><MoreHorizontal size={16} /></button>
+              {listMenu && <>
+                <div className="menu-backdrop" onClick={() => setListMenu(false)} />
+                <div className="start-line-menu" role="menu">
+                  <button type="button" role="menuitem" onClick={() => { setListMenu(false); openImport(); }}><Upload size={15} /><span><strong>{t("portal.contacts.import.title")}</strong><small>{t("portal.contacts.import.menuHint")}</small></span></button>
+                  <a role="menuitem" href={apiUrl(`/portal/${slug}/contacts/export`)} download onClick={() => setListMenu(false)}><Download size={15} /><span><strong>{t("portal.contacts.export")}</strong><small>{t("portal.contacts.exportHint")}</small></span></a>
+                  <button type="button" role="menuitem" onClick={openTagManager}><Tag size={15} /><span><strong>{t("portal.contacts.tags.manage")}</strong><small>{t("portal.contacts.tags.manageHint")}</small></span></button>
+                </div>
+              </>}
+            </div>
+          </div>
         </div>
+        {tags.length > 0 && <div className="inbox-tabs tag-filter" role="tablist" aria-label={t("portal.contacts.tags.heading")}>
+          <button type="button" className={tagFilter ? "" : "active"} onClick={() => setTagFilter(null)}>{t("portal.contacts.tags.all")}</button>
+          {tags.map((tag) => <button type="button" key={tag.id} className={tagFilter === tag.id ? "active" : ""} onClick={() => setTagFilter(tagFilter === tag.id ? null : tag.id)}><i className="tag-dot" data-color={tag.color} /> {tag.name}<em className="soft">{tag.contact_count}</em></button>)}
+        </div>}
         {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>
           : items.map((contact) => <button key={contact.id} onClick={() => choose(contact)} className={selected?.id === contact.id ? "active" : ""}>
             <span className="entity-avatar tiny"><UserRound size={15} /></span>
             <span>
               <span className="portal-inbox-row-top"><strong>{nameOf(contact)}</strong>{contact.last_activity_at && <time>{formatWhen(contact.last_activity_at, lang)}</time>}</span>
               <small className="portal-inbox-preview">{phoneLabel(contact.phone)}{contact.email ? ` · ${contact.email}` : ""}</small>
+              {contact.tags && contact.tags.length > 0 && <span className="tag-chips">{contact.tags.slice(0, 3).map((tag) => <span key={tag.id} className="tag-chip" data-color={tag.color}>{tag.name}</span>)}{contact.tags.length > 3 && <span className="tag-chip">+{contact.tags.length - 3}</span>}</span>}
               <small className="inbox-row-meta">{t("portal.contacts.conversationCount", { count: contact.conversation_count })}{contact.blocked_at && <span className="mini-badge blocked"><Ban size={10} /> {t("portal.contacts.blockedBadge")}</span>}{contact.open_count > 0 && <span className="mini-badge human">{t("portal.contacts.openCount", { count: contact.open_count })}</span>}</small>
             </span>
           </button>)}
         {!loading && !items.length && <div className="no-conversations">{query ? t("portal.contacts.noMatches") : t("portal.contacts.empty")}</div>}
+        {!loading && items.length > 0 && (hasMore || (total !== null && total > LIMIT)) && <div className="list-foot">
+          {loadingMore ? <span><LoaderCircle className="spin" size={14} /> {t("portal.contacts.list.loadingMore")}</span>
+            : hasMore ? <span>{t("portal.contacts.list.showing", { shown: items.length, total: total ?? items.length })}</span>
+            : <span>{t("portal.contacts.list.allLoaded", { total: total ?? items.length })}</span>}
+        </div>}
       </aside>
-      <section>
+      <section onScroll={onPanelScroll}>
         {selected ? <>
           <header>
             <div>
@@ -188,17 +436,65 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
           </header>
           {error && <Alert>{error}</Alert>}
           <div className="portal-contact-body">
+            <section className="portal-contact-tags">
+              <h3>{t("portal.contacts.tags.heading")}</h3>
+              <div className="tag-chips large">
+                {(selected.tags ?? []).map((tag) => <span key={tag.id} className="tag-chip" data-color={tag.color}>{tag.name}<button type="button" onClick={() => toggleTag(tag)} disabled={busy} title={t("portal.contacts.tags.remove")} aria-label={t("portal.contacts.tags.remove")}><X size={11} /></button></span>)}
+                <div className="start-line-wrap">
+                  <button type="button" className="tag-add" onClick={() => { setTagQuery(""); setTagPicker((v) => !v); }} aria-haspopup="menu" aria-expanded={tagPicker}><Plus size={13} /> {t("portal.contacts.tags.add")}</button>
+                  {tagPicker && <>
+                    <div className="menu-backdrop" onClick={() => setTagPicker(false)} />
+                    <div className="start-line-menu tag-picker" role="menu">
+                      <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder={t("portal.contacts.tags.searchOrCreate")} autoFocus onKeyDown={(e) => { if (e.key === "Enter" && tagQueryTrimmed && !pickerExact) { e.preventDefault(); createTag(tagQueryTrimmed, selected); } if (e.key === "Escape") setTagPicker(false); }} />
+                      {pickerTags.map((tag) => { const has = (selected.tags ?? []).some((item) => item.id === tag.id); return <button type="button" key={tag.id} role="menuitemcheckbox" aria-checked={has} onClick={() => toggleTag(tag)} disabled={busy}><i className="tag-dot" data-color={tag.color} /><span><strong>{tag.name}</strong>{(tag.route_assignee_name || tag.route_team_name) && <small>{t("portal.contacts.tags.routedTo", { team: tag.route_assignee_name ?? tag.route_team_name ?? "" })}</small>}</span>{has && <Check size={14} />}</button>; })}
+                      {tagQueryTrimmed && !pickerExact && <button type="button" role="menuitem" className="tag-create" onClick={() => createTag(tagQueryTrimmed, selected)} disabled={busy}><Plus size={14} /><span><strong>{t("portal.contacts.tags.create", { name: tagQueryTrimmed })}</strong></span></button>}
+                      {!tags.length && !tagQueryTrimmed && <small>{t("portal.contacts.tags.emptyHint")}</small>}
+                      <button type="button" role="menuitem" className="tag-picker-manage" onClick={openTagManager}><Settings2 size={14} /><span><strong>{t("portal.contacts.tags.manage")}</strong></span></button>
+                    </div>
+                  </>}
+                </div>
+              </div>
+            </section>
             <section className="portal-contact-notes">
               <h3>{t("portal.contacts.notes")}</h3>
               {selected.notes ? <p>{selected.notes}</p> : <p className="muted">{t("portal.contacts.noNotes")}</p>}
             </section>
             <section>
-              <h3>{t("portal.contacts.history")}</h3>
-              {history.length ? <div className="portal-contact-history">{history.map((conv) => <button key={conv.id} onClick={() => openConversation(conv)}>
+              <div className="history-head">
+                <h3>{t("portal.contacts.history")}</h3>
+                {(history.length > 0 || rangeLabel) && <div className="history-range start-line-wrap">
+                  <button type="button" className={`button small${rangeLabel ? " active" : ""}`} onClick={() => { setDraftSince(historySince); setDraftUntil(historyUntil); setRangeOpen((v) => !v); }} aria-haspopup="menu" aria-expanded={rangeOpen}><CalendarRange size={14} /> {rangeLabel ?? t("portal.contacts.historyDates")}</button>
+                  {rangeLabel && <button type="button" className="icon-button" onClick={() => applyRange("", "")} title={t("portal.contacts.historyClear")} aria-label={t("portal.contacts.historyClear")}><X size={14} /></button>}
+                  {rangeOpen && <>
+                    <div className="menu-backdrop" onClick={() => setRangeOpen(false)} />
+                    <div className="start-line-menu history-picker" role="menu">
+                      <button type="button" role="menuitem" onClick={() => presetRange("7d")}><span><strong>{t("portal.contacts.historyLast7")}</strong></span></button>
+                      <button type="button" role="menuitem" onClick={() => presetRange("30d")}><span><strong>{t("portal.contacts.historyLast30")}</strong></span></button>
+                      <button type="button" role="menuitem" onClick={() => presetRange("month")}><span><strong>{t("portal.contacts.historyThisMonth")}</strong></span></button>
+                      <button type="button" role="menuitem" onClick={() => presetRange("lastMonth")}><span><strong>{t("portal.contacts.historyLastMonth")}</strong></span></button>
+                      <small>{t("portal.contacts.historyCustom")}</small>
+                      <div className="history-custom">
+                        <input type="date" value={draftSince} max={draftUntil || undefined} onChange={(e) => setDraftSince(e.target.value)} aria-label={t("portal.contacts.historyFrom")} />
+                        <span aria-hidden="true">→</span>
+                        <input type="date" value={draftUntil} min={draftSince || undefined} onChange={(e) => setDraftUntil(e.target.value)} aria-label={t("portal.contacts.historyTo")} />
+                      </div>
+                      <div className="history-custom-actions">
+                        <button type="button" className="button primary small" disabled={!draftSince && !draftUntil} onClick={() => applyRange(draftSince, draftUntil)}>{t("portal.contacts.historyApply")}</button>
+                      </div>
+                    </div>
+                  </>}
+                </div>}
+              </div>
+              {history.length ? <div className="portal-contact-history">{history.map((conv) => <button key={conv.id} onClick={() => openHistoryItem(conv)}>
                 <span className={`mini-badge ${conv.status === "resolved" ? "resolved" : conv.mode}`}>{conv.status === "resolved" ? <><CheckCircle2 size={11} /> {t("portal.inbox.conversation.resolvedBadge")}</> : conv.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span>
                 <span className="portal-contact-history-text"><strong>{formatWhen(conv.created_at, lang)}</strong><small>{conv.preview || t("portal.inbox.list.noMessages")}</small></span>
                 <Inbox size={15} />
-              </button>)}</div> : <p className="muted">{t("portal.contacts.noHistory")}</p>}
+              </button>)}</div> : <p className="muted">{historyLoading ? "" : (historySince || historyUntil) ? t("portal.contacts.noHistoryInRange") : t("portal.contacts.noHistory")}</p>}
+              {history.length > 0 && historyTotal !== null && historyTotal > HISTORY_LIMIT && <div className="list-foot inline">
+                {historyLoading ? <span><LoaderCircle className="spin" size={14} /> {t("portal.contacts.list.loadingMore")}</span>
+                  : hasMoreHistory ? <span>{t("portal.contacts.list.showing", { shown: history.length, total: historyTotal })}</span>
+                  : <span>{t("portal.contacts.list.allLoaded", { total: historyTotal })}</span>}
+              </div>}
             </section>
           </div>
         </> : <EmptyState icon={<UserRound />} title={t("portal.contacts.selectTitle")} description={t("portal.contacts.selectDescription")} />}
@@ -247,6 +543,97 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
         {mergePrimary && <Alert type="error">{t("portal.contacts.mergeWarning", { merged: selected ? nameOf(selected) : "", primary: nameOf(mergePrimary) })}</Alert>}
         {error && <Alert>{error}</Alert>}
         <div className="modal-actions"><button type="button" className="button" onClick={() => setMerging(false)}>{t("portal.contacts.form.cancel")}</button><button className="button primary" disabled={!mergePrimary || busy}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Merge size={15} /> {t("portal.contacts.mergeConfirm")}</>}</button></div>
+      </form>
+    </Modal>
+    <Modal open={preview !== null} title={preview ? t("portal.contacts.preview.titleWith", { name: preview.contact_name || preview.title }) : t("portal.contacts.preview.title")} description={preview ? `${channelLabel(preview.channel, t)} · ${formatWhen(preview.created_at, lang)}` : undefined} onClose={() => setPreview(null)} wide>
+      {preview && <div className="modal-form preview">
+        <dl className="preview-facts">
+          <div><dt><CheckCircle2 size={13} /> {t("portal.contacts.preview.status")}</dt><dd><strong>{preview.archived_at ? t("portal.inbox.conversation.archivedBadge") : t("portal.inbox.conversation.resolvedBadge")}</strong>{(preview.archived_at || preview.resolved_at) && <small>{formatWhen(preview.archived_at || preview.resolved_at || preview.updated_at, lang)}</small>}</dd></div>
+          <div><dt><ChannelIcon channel={preview.channel} size={12} /> {t("portal.contacts.preview.channel")}</dt><dd><strong>{channelLabel(preview.channel, t)}</strong></dd></div>
+          <div><dt>{previewHandlers.humans.length ? <UserRound size={13} /> : <Bot size={13} />} {t("portal.contacts.preview.handledBy")}</dt><dd><strong>{[...previewHandlers.ai.map((name) => t("portal.contacts.preview.byAi", { name })), ...previewHandlers.humans].join(" · ") || "—"}</strong></dd></div>
+          <div><dt><Users size={13} /> {t("portal.contacts.preview.assigned")}</dt><dd><strong>{[preview.assignee_name, preview.team_name].filter(Boolean).join(" · ") || "—"}</strong></dd></div>
+          <div><dt><MessageSquareText size={13} /> {t("portal.contacts.preview.messages")}</dt><dd><strong>{previewMessages.length}</strong></dd></div>
+          <div><dt><Clock size={13} /> {t("portal.contacts.preview.lastActivity")}</dt><dd><strong>{formatWhen(preview.updated_at, lang)}</strong></dd></div>
+        </dl>
+        <div className="portal-messages preview-thread">
+          {previewLoading && <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>}
+          {(preview.messages ?? []).map((message, index, all) => {
+            if (message.kind === "activity") return <div key={message.id} className="activity-line"><span>{activityText(t, message)}</span><time>{formatTime(message.created_at, lang)}</time></div>;
+            const prev = index > 0 ? all[index - 1] : null;
+            const grouped = Boolean(prev && prev.kind !== "activity" && prev.role === message.role && prev.sender_name === message.sender_name);
+            const stamp = formatTime(message.created_at, lang);
+            const hasAudio = message.attachments?.some((a) => a.kind === "audio");
+            const mine = message.role === "assistant";
+            return <article key={message.id} className={`${message.role}${mine ? " mine" : ""}${mine && message.sender_type === "ai" ? " ai" : ""}${grouped ? " grouped" : ""}`}>
+              {!grouped && <small>{message.sender_name || (mine ? t("portal.inbox.conversation.agent") : t("portal.inbox.conversation.visitor"))}{mine && message.sender_type === "ai" && <span className="preview-ai-tag">AI</span>}</small>}
+              <MessageAttachments attachments={message.attachments} urlFor={previewUrl} gallery={previewGallery} stamp={stamp} />
+              {message.content && <p><QuotedSnippet messages={preview.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}{mine && (preview.channel === "whatsapp_cloud" || isSocialChannel(preview.channel)) && <DeliveryTicks status={message.delivery_status} error={message.delivery_error} />}</time></p>}
+              <ReactionBadge emoji={message.reaction} />
+              <ReactionBadge emoji={message.incoming_reaction} incoming />
+              {!message.content && !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}
+            </article>;
+          })}
+          {!previewLoading && !(preview.messages ?? []).length && <p className="muted">{t("portal.inbox.list.noMessages")}</p>}
+        </div>
+        <div className="modal-actions preview-actions">
+          <span className="preview-tools">
+            <button type="button" className="button small" onClick={() => downloadText(previewTranscript(), `${preview.contact_name || preview.title}-${preview.created_at.slice(0, 10)}`)} disabled={previewLoading}><Download size={14} /> {t("portal.contacts.preview.download")}</button>
+          </span>
+          <span className="preview-nav">
+            <button type="button" className="button" onClick={() => setPreview(null)}>{t("portal.contacts.preview.close")}</button>
+            {!preview.archived_at && <button type="button" className="button primary" onClick={() => { const conv = preview; setPreview(null); openConversation(conv); }}><Inbox size={15} /> {t("portal.contacts.preview.openInInbox")}</button>}
+          </span>
+        </div>
+      </div>}
+    </Modal>
+    <Modal open={managingTags} title={t("portal.contacts.tags.manageTitle")} onClose={() => setManagingTags(false)}>
+      <div className="modal-form tag-manage">
+        <p className="muted tag-manage-hint">{t("portal.contacts.tags.manageIntro")}</p>
+        {!tags.length && <p className="muted">{t("portal.contacts.tags.noTags")}</p>}
+        {tags.map((tag) => deletingTag?.id === tag.id
+          ? <div key={tag.id} className="tag-manage-confirm"><span>{t("portal.contacts.tags.deleteConfirm", { name: tag.name, count: tag.contact_count })}</span><span className="tag-manage-confirm-actions"><button type="button" className="button small" onClick={() => setDeletingTag(null)}>{t("portal.contacts.form.cancel")}</button><button type="button" className="button danger small" disabled={busy} onClick={() => removeTag(tag)}>{t("portal.contacts.tags.deleteAction")}</button></span></div>
+          : <div key={tag.id} className="tag-manage-row">
+            <div className="tag-swatches" role="radiogroup" aria-label={tag.name}>{TAG_COLORS.map((color) => <button type="button" key={color} data-color={color} className={color === tag.color ? "active" : ""} role="radio" aria-checked={color === tag.color} aria-label={color} onClick={() => updateTag(tag, { color })} />)}</div>
+            <input defaultValue={tag.name} maxLength={40} onBlur={(e) => updateTag(tag, { name: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+            {(tag.route_assignee_name || tag.route_team_name) && <span className="tag-route-note">{t("portal.contacts.tags.routedTo", { team: tag.route_assignee_name ?? tag.route_team_name ?? "" })}</span>}
+            <small>{t("portal.contacts.tags.count", { count: tag.contact_count })}</small>
+            <button type="button" className="icon-button danger" onClick={() => setDeletingTag(tag)} title={t("portal.contacts.tags.deleteAction")} aria-label={t("portal.contacts.tags.deleteAction")}><Trash2 size={15} /></button>
+          </div>)}
+        <form className="tag-manage-new" onSubmit={(e) => { e.preventDefault(); createTag(newTagName); }}>
+          <input value={newTagName} onChange={(e) => setNewTagName(e.target.value)} maxLength={40} placeholder={t("portal.contacts.tags.newPlaceholder")} />
+          <button className="button primary small" disabled={busy || !newTagName.trim()}>{t("portal.contacts.tags.newAction")}</button>
+        </form>
+        {error && <Alert>{error}</Alert>}
+      </div>
+    </Modal>
+    <Modal open={importing} title={t("portal.contacts.import.title")} onClose={() => setImporting(false)}>
+      <form className="modal-form" onSubmit={runImport}>
+        {!importResult && <>
+          <p className="muted">{t("portal.contacts.import.intro")}</p>
+          <a className="text-link import-template" href={apiUrl(`/portal/${slug}/contacts/import-template`)} download><FileSpreadsheet size={15} /> {t("portal.contacts.import.template")}</a>
+          <label className="import-file">
+            <Upload size={16} />
+            <span>{importFile ? importFile.name : t("portal.contacts.import.choose")}</span>
+            <input type="file" accept=".csv,text/csv" hidden onChange={(e) => setImportFile(e.target.files?.[0] ?? null)} />
+          </label>
+        </>}
+        {importResult && <div className="import-result">
+          <p className="import-summary"><CheckCircle2 size={16} /> {t("portal.contacts.import.summary", { created: importResult.created, updated: importResult.updated, unchanged: importResult.unchanged })}</p>
+          {importResult.errors.length ? <>
+            <strong>{t("portal.contacts.import.errorsHeading", { count: importResult.errors.length })}</strong>
+            <div className="table-shell"><table className="import-errors">
+              <thead><tr><th>{t("portal.contacts.import.colRow")}</th><th>{t("portal.contacts.import.colName")}</th><th>{t("portal.contacts.import.colPhone")}</th><th>{t("portal.contacts.import.colReason")}</th></tr></thead>
+              <tbody>{importResult.errors.map((row) => <tr key={row.row}><td>{row.row}</td><td>{row.name || "—"}</td><td>{row.phone || "—"}</td><td>{IMPORT_REASONS[row.reason] ? t(IMPORT_REASONS[row.reason]) : row.reason}</td></tr>)}</tbody>
+            </table></div>
+          </> : <p className="muted">{t("portal.contacts.import.noErrors")}</p>}
+          {importResult.truncated > 0 && <Alert>{t("portal.contacts.import.truncated", { count: importResult.truncated })}</Alert>}
+        </div>}
+        {importError && <Alert>{importError}</Alert>}
+        <div className="modal-actions">
+          {importResult
+            ? <button type="button" className="button primary" onClick={() => setImporting(false)}>{t("portal.contacts.import.done")}</button>
+            : <><button type="button" className="button" onClick={() => setImporting(false)}>{t("portal.contacts.form.cancel")}</button><button className="button primary" disabled={busy || !importFile}>{busy ? <LoaderCircle className="spin" size={16} /> : t("portal.contacts.import.run")}</button></>}
+        </div>
       </form>
     </Modal>
     <Modal open={editing !== null} title={editing === "new" ? t("portal.contacts.newTitle") : t("portal.contacts.editTitle")} onClose={() => setEditing(null)}>
