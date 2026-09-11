@@ -1111,7 +1111,7 @@ textarea { line-height: 1.55; }
   justify-content: space-between;
   gap: 18px;
 }
-.switch-row input[type="checkbox"] {
+.switch-row input[type="checkbox"] , .esc-toggle input[type="checkbox"] {
   width: 42px;
   height: 24px;
   padding: 0;
@@ -1128,7 +1128,7 @@ textarea { line-height: 1.55; }
   cursor: pointer;
   transition: background .18s ease, box-shadow .18s ease;
 }
-.switch-row input[type="checkbox"]::after {
+.switch-row input[type="checkbox"]::after , .esc-toggle input[type="checkbox"]::after {
   content: "";
   width: 20px;
   height: 20px;
@@ -1140,9 +1140,9 @@ textarea { line-height: 1.55; }
   box-shadow: 0 1px 3px rgba(var(--shadow-rgb), calc(.28 * var(--shadow-k)));
   transition: transform .18s ease;
 }
-.switch-row input[type="checkbox"]:checked { background: var(--accent); }
-.switch-row input[type="checkbox"]:checked::after { transform: translateX(18px); }
-.switch-row input[type="checkbox"]:focus-visible { outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .2); }
+.switch-row input[type="checkbox"]:checked , .esc-toggle input[type="checkbox"]:checked { background: var(--accent); }
+.switch-row input[type="checkbox"]:checked::after , .esc-toggle input[type="checkbox"]:checked::after { transform: translateX(18px); }
+.switch-row input[type="checkbox"]:focus-visible , .esc-toggle input[type="checkbox"]:focus-visible { outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .2); }
 
 /* Accesos de agencia y cliente */
 .access-page { min-height: 100vh; color: var(--ink); background: var(--canvas); }
@@ -1362,7 +1362,7 @@ textarea { line-height: 1.55; }
 .button.secondary { color: var(--accent-text); border-color: var(--accent-line); background: var(--canvas); }
 .text-link, .table-link, .text-button, .url-preview button, .url-preview a { color: var(--accent-text); }
 input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--green-rgb), .12); }
-.switch-row input[type="checkbox"]:checked { background: var(--green); }
+.switch-row input[type="checkbox"]:checked , .esc-toggle input[type="checkbox"]:checked { background: var(--green); }
 
 .entity-avatar, .agent-avatar { color: var(--accent-text); border-color: var(--line-strong); background: var(--accent-soft); }
 .metric-icon.blue, .metric-icon.violet { color: var(--accent-text); background: var(--accent-soft); }
@@ -1940,12 +1940,39 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .preview-meta { display: flex; align-items: center; gap: 10px; }
 .preview-thread { max-height: min(60vh, 560px); overflow: auto; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--canvas); }
 :root[data-theme="dark"] .preview-thread { background: var(--canvas); }
-.escalation-tags { display: flex; flex-direction: column; gap: 8px; margin: 18px 0 6px; }
-.escalation-tags-empty { margin: 0; font-size: 13px; }
-.escalation-tag-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line-soft); }
-.escalation-tag-row:first-of-type { border-top: 0; }
-.escalation-tag-row > small { flex: 1; color: var(--subtle); font-size: 12px; white-space: nowrap; }
-.escalation-tag-row select { flex: 0 1 260px; min-width: 0; min-height: 34px; }
+
+/* Escalation editor: three numbered steps in the order they run. */
+.esc-steps { gap: 14px; }
+.esc-step { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.esc-step-head { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; }
+.esc-step-head > div { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.esc-step-head strong { font-size: 14px; color: var(--ink); }
+.esc-step-head small { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.esc-step-n { flex: 0 0 auto; width: 24px; height: 24px; display: inline-grid; place-items: center; color: var(--accent-text); border-radius: 50%; background: var(--accent-soft); font-size: 12px; font-weight: 700; }
+.esc-toggle { flex: 0 0 auto; display: inline-flex !important; align-items: center; margin-top: 2px; }
+.esc-toggle input { margin: 0; }
+.esc-step-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 14px; border-top: 1px solid var(--line-soft); background: var(--surface-2); }
+.esc-empty { margin: 0; color: var(--muted); font-size: 13px; }
+.esc-row { display: flex; align-items: center; gap: 10px; min-height: 36px; }
+.esc-row > small { color: var(--subtle); font-size: 12px; white-space: nowrap; }
+.esc-arrow { flex: 0 0 auto; color: var(--faint); font-size: 14px; }
+.esc-target { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 13px; font-weight: 600; }
+.esc-row .icon-button { width: 28px; height: 28px; color: var(--subtle); }
+.esc-adder { display: flex; align-items: center; gap: 8px; margin-top: 4px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.esc-adder select { flex: 1 1 0; min-width: 0; min-height: 34px; }
+.esc-inline { display: flex !important; flex-direction: row !important; align-items: center; gap: 12px; }
+.esc-inline > span { flex: 0 0 auto; color: var(--ink-2); font-size: 12px; font-weight: 700; }
+.esc-inline select { flex: 1; min-width: 0; }
+.esc-rule { display: flex; align-items: center; gap: 8px; }
+.esc-rule.inactive { opacity: .55; }
+.esc-rule-n { flex: 0 0 22px; color: var(--subtle); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.esc-rule input { flex: 3 1 0; min-width: 0; min-height: 36px; }
+.esc-rule select { flex: 2 1 0; min-width: 0; min-height: 36px; }
+.esc-rule select.broken { color: var(--red-text); border-color: var(--red-line); }
+.esc-rule .escalation-actions { flex: 0 0 auto; }
+.esc-rule .escalation-active { margin: 0 4px 0 0; }
+.esc-rules-foot { padding-top: 4px; }
+@media (max-width: 860px) { .esc-rule { flex-wrap: wrap; } .esc-rule input { flex-basis: 100%; } .esc-adder { flex-wrap: wrap; } }
 
 /* Theme change: cross-fade every color for one beat, then hand transitions
    back to the components. Set by lib/theme.tsx around the attribute swap. */
