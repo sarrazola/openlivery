@@ -270,6 +270,7 @@ h1, h2, h3, .brand { font-family: var(--font-display); letter-spacing: -.015em; 
 .empty-state { min-height: 380px; padding: 50px 20px; border: 1px dashed var(--line); border-radius: 15px; display: flex; align-items: center; justify-content: center; flex-direction: column; text-align: center; background: rgba(255,255,255,.6); }.empty-icon { width: 58px; height: 58px; margin-bottom: 17px; display: grid; place-items: center; color: var(--purple); background: var(--purple-soft); border-radius: 17px; }.empty-state h3 { margin: 0 0 7px; font-size: 16px; }.empty-state p { max-width: 390px; margin: 0 0 18px; color: var(--muted); font-size: 12px; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 900; padding: 20px; display: grid; place-items: center; background: rgba(var(--shadow-rgb), calc(.58 * var(--shadow-k))); backdrop-filter: blur(3px); }
+.modal-wide { width: min(1040px, 100%) !important; }
 .modal { width: min(690px, 100%); max-height: calc(100vh - 40px); overflow: auto; border-radius: 17px; background: var(--surface); box-shadow: 0 25px 80px rgba(var(--shadow-rgb), calc(.3 * var(--shadow-k))); }
 .modal-head { padding: 24px 26px 19px; display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; border-bottom: 1px solid var(--line-soft); }.modal-head h2 { margin: 0 0 5px; font-size: 20px; }.modal-head p { margin: 0; color: var(--muted); font-size: 12px; }
 .modal-form, .stack-form { padding: 23px 26px 26px; display: flex; flex-direction: column; gap: 17px; }
@@ -1947,14 +1948,20 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .preview-facts dd { margin: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .preview-facts dd strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 13.5px; font-weight: 600; }
 .preview-facts dd small { color: var(--muted); font-size: 12px; }
-.preview-thread { max-height: min(50vh, 500px); overflow: auto; padding: 18px 18px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); gap: 14px; }
+.preview-thread { max-height: min(62vh, 640px); overflow: auto; padding: 20px 22px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); gap: 14px; }
+.preview-thread article { max-width: 68%; }
 .preview-thread article > small { margin-bottom: 4px; }
+/* The dialog renders outside the portal shell, so the brand variable is not
+   in scope here: the accent tokens carry the business side instead. */
 .preview-thread article p { border: 0; background: var(--surface-4); }
-.preview-thread article.mine p { background: var(--portal-color); }
-.preview-thread article.mine.ai p { color: var(--ink); background: color-mix(in srgb, var(--portal-color) 14%, var(--surface)); }
+.preview-thread article.mine p { color: white; background: var(--accent); }
+.preview-thread article.mine.ai p { color: var(--ink); background: var(--accent-soft); }
+.preview-thread article.mine .quoted-snippet { background: rgba(255, 255, 255, .18); }
+.preview-thread article.mine.ai .quoted-snippet { background: rgba(var(--shadow-rgb), calc(.06 * var(--shadow-k))); }
 :root[data-theme="dark"] .preview-thread { background: var(--canvas); }
 :root[data-theme="dark"] .preview-thread article p { background: var(--surface-3); }
-:root[data-theme="dark"] .preview-thread article.mine.ai p { background: color-mix(in srgb, var(--portal-color) 28%, var(--surface-3)); }
+:root[data-theme="dark"] .preview-thread article.mine p { background: var(--accent); }
+:root[data-theme="dark"] .preview-thread article.mine.ai p { background: color-mix(in srgb, var(--accent) 22%, var(--surface-3)); }
 .preview-ai-tag { margin-left: 6px; padding: 0 5px; border-radius: 999px; color: var(--accent-text); background: var(--accent-soft); font-size: 10px; font-weight: 700; letter-spacing: .04em; }
 .preview-actions { justify-content: space-between !important; }
 .preview-tools, .preview-nav { display: inline-flex; gap: 8px; }
