@@ -12,7 +12,34 @@ and are released together.
 Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
+### Changed
+- **The timezone belongs to the client, not the agent.** `clients.timezone`
+  replaces `agents.timezone`: it is set when the client is created (the
+  browser's zone by default) or on its Details, and every agent of the client
+  tells the date and time in it. The migration fills each client with the
+  zone its agents used most, or UTC. `agents.timezone` stays in the database
+  unmapped for one release so the previous API keeps running while the
+  migration is applied, and `timezone` is no longer accepted or returned on
+  agent routes. Migration `0041_client_tz_portal_roles`.
+
 ### Added
+- **Portal roles.** Each portal user is an `admin` or an `agent`. Admins do
+  everything; agents work the inbox (read, reply, take over from the AI and
+  hand back, change status, assign, create contacts, tag them with existing
+  tags, set their availability) and cannot delete or archive conversations,
+  import, export, delete, merge or block contacts, manage tags, templates,
+  saved replies or teams, or open reports. The API guards every route by
+  permission key (`app/portal_permissions.py`), never by role name, so the
+  mobile app follows the same rule and the sessions (`/portal/{slug}/me`,
+  `/mobile/session`) list the permissions held. The agency sets the role from
+  the client's Portal tab; the first person added to a business is its admin
+  and later ones start as agents. Everyone who existed before the migration
+  is an admin. Migration `0041_client_tz_portal_roles`.
+- **Teams and WhatsApp templates from the agency.** The client page gets
+  Teams and WhatsApp templates tabs that manage the same rows the portal does
+  (`/api/clients/{id}/teams`, `/api/clients/{id}/members`,
+  `/api/clients/{id}/templates`). The team logic moved to
+  `app/services/teams.py`, shared by both routers.
 - **Contact tags in the client portal.** Each client keeps its own catalog
   (name and color) and puts tags on contacts by hand from the contact card,
   creating new ones on the spot. Tags show as chips in the list, filter it,

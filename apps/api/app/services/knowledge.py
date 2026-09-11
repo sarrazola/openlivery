@@ -249,7 +249,7 @@ def build_system_prompt(agent: Agent, knowledge_text: str) -> str:
     client = agent.client
     lang = agent.prompt_language if agent.prompt_language in _PROMPT_TEXT else "es"
     text = _PROMPT_TEXT[lang]
-    tz_name = (agent.timezone or "UTC").strip() or "UTC"
+    tz_name = (client.timezone or "UTC").strip() or "UTC"
     try:
         now = datetime.now(ZoneInfo(tz_name))
     except (ZoneInfoNotFoundError, ValueError):

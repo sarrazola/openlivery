@@ -69,6 +69,9 @@ class Client(Base):
     business_type: Mapped[str] = mapped_column(String(80), default="", server_default="")
     # Free words for the kind of business when the catalog only offers "other".
     business_custom: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    # IANA timezone of the business (e.g. "America/Bogota"). Every agent of
+    # the client tells the time in it; the prompt reads it from here.
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Optional per-client logo, shown in the widget and portal (falls back to
     # the agency logo). Bytes stored in Postgres like the agency logo.
@@ -153,9 +156,10 @@ class Agent(Base):
     # AI provider ("openai" or "anthropic"); the agency's key for that provider is used.
     provider: Mapped[str] = mapped_column(String(30), default="openai", server_default="openai")
     model: Mapped[str] = mapped_column(String(180), default="")
-    # IANA timezone (e.g. "America/Bogota"); injected into the system prompt so
-    # the agent knows the local date/time. "UTC" when unset.
-    timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC")
+    # The timezone lives on the client since 0041 (``Client.timezone``). The
+    # ``agents.timezone`` column is still in the database, unmapped, so the
+    # previous release keeps running while the migration is applied; a later
+    # migration drops it.
     # Language of the prompt's headings and fixed sentences ("es" or "en").
     # Set from the UI language when the agent is saved; the operator's own
     # text is inserted as written.
@@ -675,6 +679,11 @@ class PortalUser(Base):
     email: Mapped[str] = mapped_column(String(320), index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # admin | agent. What each role may do is the permission set in
+    # app.portal_permissions; the API checks permission keys, never the role
+    # name, so a role can grow or a new one can be added without touching the
+    # routes. New people start as agents; everyone from before 0041 is an admin.
+    role: Mapped[str] = mapped_column(String(20), default="agent", server_default="agent")
     # online | away: whether routing may hand this person new conversations.
     # Deliberately manual; last_seen_at records real activity beside it.
     availability: Mapped[str] = mapped_column(String(10), default="online", server_default="online")

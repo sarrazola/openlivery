@@ -15,7 +15,7 @@ Los agentes nuevos se crean mediante un asistente de cinco pasos (**Agents → N
 1. **Plantilla** — empieza desde cero (recomendado y preseleccionado) o elige una plantilla inicial por industria. Las plantillas rellenan qué hace el agente, su tono y el brief del negocio (qué hace, productos, público, información clave, siempre y nunca) en tu idioma, para que reemplaces los detalles con los del cliente.
 2. **Identidad** — elige el cliente propietario y nombra el agente.
 3. **Esenciales** — las tres cosas que el agente necesita para responder bien: qué hace el negocio, su información clave y políticas, y qué hace el agente. Productos, público, reglas de siempre/nunca y tono se completan después en Básicos del agente.
-4. **Modelo** — proveedor y modelo, con el recomendado preseleccionado y cada opción etiquetada (recomendado, equilibrado, más potente), más zona horaria y, en opciones avanzadas, los ajustes de generación y las capacidades de imagen y audio.
+4. **Modelo** — proveedor y modelo, con el recomendado preseleccionado y cada opción etiquetada (recomendado, equilibrado, más potente), más, en opciones avanzadas, los ajustes de generación y las capacidades de imagen y audio.
 5. **Revisión** — un resumen del agente y el tamaño de su prompt, y el botón de crear. Al crear se llega a Básicos del agente.
 
 Las plantillas iniciales incluidas son Pedidos de restaurante, Leads inmobiliarios, Citas de clínica, Soporte de tienda online y Atención al cliente. Después de crearlo refinas todo en la página de detalle del agente, donde **Básicos** reúne cliente, nombre, brief del negocio, trabajo del agente, escalamiento y modelo. La sección del modelo muestra cuántos tokens cuesta el prompt compuesto en cada mensaje. Crear un cliente termina en el asistente con ese cliente preseleccionado.
@@ -43,7 +43,7 @@ Ambas funciones usan modelos de OpenAI, por lo que requieren una clave de OpenAI
 | Brief del negocio | `brief_summary`, `brief_products`, `brief_audience`, `brief_policies`, `brief_dos`, `brief_donts` | Qué es y qué ofrece el negocio, más las reglas de siempre/nunca del agente. Se compone en el prompt del sistema. |
 | Identidad del negocio | `industry`, `business_type`, `business_custom` (en el cliente) | Códigos del catálogo (`GET /api/industries`) que nombran el tipo de negocio en la primera línea del prompt; cuando el catálogo solo ofrece "otro", `business_custom` guarda las palabras del propio cliente. |
 | Idioma del prompt | `prompt_language` | `es` o `en`: el idioma de los títulos y frases fijas del prompt. Se toma del idioma de la interfaz al guardar el agente. |
-| Zona horaria | `timezone` | Zona horaria IANA (p. ej. `America/Bogota`) inyectada para que el agente conozca la fecha y hora locales. Por defecto `UTC`. |
+| Zona horaria | `timezone` (en el cliente) | Zona horaria IANA del negocio (p. ej. `America/Bogota`), inyectada para que todos los agentes del cliente conozcan la fecha y hora locales. Se define en el cliente, por defecto `UTC`. |
 | Proveedor | `provider` | `openai` o `anthropic`. |
 | Modelo | `model` | El modelo de chat usado para las respuestas. |
 | Temperatura | `temperature` | Aleatoriedad del muestreo, `0.0`–`2.0` (por defecto `0.7`). |

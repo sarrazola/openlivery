@@ -15,7 +15,7 @@ New agents are created through a five-step wizard (**Agents → New agent**); th
 1. **Template** — start from scratch (recommended and preselected) or pick an industry starter template. Templates pre-fill what the agent does, its tone and the business brief (what the business does, products, audience, key info, always and never) in your language, for you to replace the specifics with the client's own.
 2. **Identity** — choose the owning client and name the agent.
 3. **Essentials** — the three things the agent needs to answer well: what the business does, its key info and policies, and what the agent does. Products, audience, always/never rules and tone are filled in afterwards on the agent's Basics.
-4. **Model** — provider and model, with the recommended model preselected and each option tagged (recommended, balanced, most capable), plus timezone and, under advanced options, generation settings and the image and audio capabilities.
+4. **Model** — provider and model, with the recommended model preselected and each option tagged (recommended, balanced, most capable), plus, under advanced options, generation settings and the image and audio capabilities.
 5. **Review** — a summary of the agent and the size of its prompt, and the create button. Creating lands on the agent's Basics.
 
 The built-in starter templates are Restaurant orders, Real estate leads, Clinic appointments, Online store support and Customer support. After creation you refine everything on the agent detail page, where **Basics** holds the client, name, business brief, the agent's job, escalation and model. The model section shows how many tokens the composed prompt costs on every message. Creating a client ends on the wizard with that client preselected.
@@ -43,7 +43,7 @@ Both features use OpenAI models, so they require an OpenAI key regardless of the
 | Business brief | `brief_summary`, `brief_products`, `brief_audience`, `brief_policies`, `brief_dos`, `brief_donts` | What the business is and offers, plus the agent's always/never rules. Composed into the system prompt. |
 | Business identity | `industry`, `business_type`, `business_custom` (on the client) | Catalog codes (`GET /api/industries`) that name the kind of business in the prompt's first line; when the catalog only offers "other", `business_custom` holds the client's own words. |
 | Prompt language | `prompt_language` | `es` or `en`: the language of the prompt's headings and fixed sentences. Set from the UI language when the agent is saved. |
-| Timezone | `timezone` | IANA timezone (e.g. `America/Bogota`) injected so the agent knows the local date and time. Defaults to `UTC`. |
+| Timezone | `timezone` (on the client) | IANA timezone of the business (e.g. `America/Bogota`), injected so every agent of the client knows the local date and time. Set on the client, defaults to `UTC`. |
 | Provider | `provider` | `openai` or `anthropic`. |
 | Model | `model` | The chat model used for replies. |
 | Temperature | `temperature` | Sampling randomness, `0.0`–`2.0` (default `0.7`). |

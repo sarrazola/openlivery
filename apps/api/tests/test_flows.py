@@ -155,10 +155,12 @@ def test_main_crud_knowledge_and_persistent_chat(authenticated_client: TestClien
             "name": "Aurora Clinic",
             "industry": "health_wellness",
             "business_type": "clinic",
+            "timezone": "America/Bogota",
             "is_active": True,
         },
     )
     assert customer.status_code == 201
+    assert customer.json()["timezone"] == "America/Bogota"
     client_id = customer.json()["id"]
 
     key = client.put("/api/providers/openai", json={"api_key": "sk-super-secret-key"})
@@ -170,7 +172,6 @@ def test_main_crud_knowledge_and_persistent_chat(authenticated_client: TestClien
             "client_id": client_id,
             "provider": "openai",
             "model": "gpt-4.1-mini",
-            "timezone": "America/Bogota",
             "name": "Aurora Advisor",
             "instructions": "Only answer questions about the clinic's services.",
             "personality": "Warm and clear",
@@ -178,7 +179,6 @@ def test_main_crud_knowledge_and_persistent_chat(authenticated_client: TestClien
         },
     )
     assert agent.status_code == 201
-    assert agent.json()["timezone"] == "America/Bogota"
     agent_id = agent.json()["id"]
 
     context = client.patch(f"/api/agents/{agent_id}", json={"brief_policies": "Does not offer emergency care."})

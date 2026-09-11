@@ -922,6 +922,9 @@ textarea { line-height: 1.55; }
 
 /* Teams: the tray cards, member presence dots, and the routing surfaces. */
 .portal-teams { padding: 18px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); height: calc(100vh - 125px); }
+/* The same views inside the agency's client page: sized by their content, not the viewport. */
+.embedded-portal-view .portal-teams { height: auto; }
+.embedded-portal-view .portal-templates { padding-top: 12px; }
 .team-members { display: flex; flex-wrap: wrap; gap: 6px; }
 .team-member { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; font-size: 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
 .team-member i { width: 7px; height: 7px; border-radius: 999px; background: var(--green); }

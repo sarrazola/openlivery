@@ -20,6 +20,7 @@ export type Client = {
   industry: string;
   business_type: string;
   business_custom: string;
+  timezone: string;
   is_active: boolean;
   portal_slug: string;
   portal_enabled: boolean;
@@ -32,10 +33,12 @@ export type Client = {
   updated_at: string;
 };
 
+export type PortalRole = "admin" | "agent";
 export type PortalUser = {
   id: string;
   name: string;
   email: string;
+  role: PortalRole;
   is_active: boolean;
   devices: number;
   created_at: string;
@@ -62,7 +65,6 @@ export type Agent = {
   brief_dos: string;
   brief_donts: string;
   model: string;
-  timezone: string;
   prompt_language: "en" | "es";
   temperature: number;
   max_tokens: number;

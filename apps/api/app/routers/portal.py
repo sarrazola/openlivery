@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import TAG_COLORS, Agency, Agent, CannedResponse, Client, Contact, ContactTag, ContactTagLink, Conversation, Message, PortalUser, Team, TeamMember, WhatsAppChannel, WhatsAppCloudChannel, now_utc
+from ..models import TAG_COLORS, Agency, Agent, CannedResponse, Client, Contact, ContactTag, ContactTagLink, Conversation, Message, PortalUser, Team, WhatsAppChannel, WhatsAppCloudChannel, now_utc
+from ..portal_permissions import CANNED_MANAGE, CONTACTS_MANAGE, INBOX_DELETE, REPORTS_VIEW, TAGS_MANAGE, TEAMS_MANAGE, TEMPLATES_MANAGE, has_permission, permissions_for
 from ..ratelimit import login_rate_limit, public_asset_rate_limit
 from ..schemas import (
     ContactBlockUpdate,
@@ -60,18 +61,19 @@ from ..schemas import (
 )
 from ..security import create_portal_token, decode_portal_token, verify_password
 from ..services.contacts import display_name, merge_contacts, normalize_phone, rename_conversations
+from ..services.teams import TEAM_CHANNELS, create_team, delete_team, get_team, list_teams, members_out, team_out, update_team
 from ..services.whatsapp_templates import (
     create_template,
     delete_template,
     list_templates,
     render,
     send_template,
+    template_credentials,
     validate_template_name,
     window_is_open,
     window_open_until,
 )
 from ..services.conversation_state import record_activity
-from ..security import decrypt_secret
 from ..services.conversation_state import ConversationClosed, assign, ensure_open, note_reply, set_archived, set_mode, set_status, set_team
 from ..services.routing import route_conversation
 from ..services.notifications import notify_assigned
@@ -163,6 +165,21 @@ def _portal_user(
         user.last_seen_at = now
         db.commit()
     return user
+
+
+def require_permission(key: str):
+    """Route dependency: the person behind the session must hold ``key``.
+
+    Sessions with no person behind them hold nothing, so a legacy token can
+    still read but never manage. The check is by permission, not by role;
+    see app.portal_permissions.
+    """
+
+    def dependency(user: PortalUser | None = Depends(_portal_user)) -> None:
+        if not user or not has_permission(user.role, key):
+            raise HTTPException(status_code=403, detail="Your role cannot do this")
+
+    return dependency
 
 
 def _sender_name(
@@ -287,6 +304,8 @@ def portal_login(slug: str, payload: PortalLoginRequest, response: Response, db:
         "agency_name": agency.name,
         "user_id": portal_user.id,
         "user_name": portal_user.name.strip() or portal_user.email,
+        "role": portal_user.role,
+        "permissions": sorted(permissions_for(portal_user.role)),
     }
 
 
@@ -310,114 +329,30 @@ def portal_me(
         "agency_name": agency.name,
         "user_id": user.id if user else None,
         "user_name": (user.name.strip() or user.email) if user else None,
+        "role": user.role if user else None,
+        "permissions": sorted(permissions_for(user.role)) if user else [],
     }
 
 
 @router.get("/{slug}/members", response_model=list[PortalMemberOut])
 def portal_members(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
     """The people a conversation can be handed to."""
-    rows = db.scalars(
-        select(PortalUser).where(PortalUser.client_id == client.id, PortalUser.is_active.is_(True)).order_by(PortalUser.name, PortalUser.email)
-    ).all()
-    return [{"id": row.id, "name": row.name.strip() or row.email, "email": row.email, "availability": row.availability} for row in rows]
-
-
-_TEAM_CHANNELS = {"whatsapp", "whatsapp_cloud", "widget", "instagram", "messenger"}
-
-
-def _portal_team(db: Session, client: Client, team_id: uuid.UUID) -> Team:
-    team = db.scalar(select(Team).where(Team.id == team_id, Team.client_id == client.id))
-    if not team:
-        raise HTTPException(status_code=404, detail="Team not found")
-    return team
-
-
-def _team_out(db: Session, team: Team) -> dict:
-    open_count, unassigned_count = db.execute(
-        select(
-            func.count(Conversation.id),
-            func.count(Conversation.id).filter(Conversation.assignee_id.is_(None)),
-        ).where(Conversation.team_id == team.id, Conversation.status == "open")
-    ).one()
-    return {
-        "id": team.id,
-        "name": team.name,
-        "description": team.description,
-        "strategy": team.strategy,
-        "channels": list(team.channels or []),
-        "is_default": team.is_default,
-        "members": [
-            {
-                "id": member.portal_user.id,
-                "name": member.portal_user.name.strip() or member.portal_user.email,
-                "email": member.portal_user.email,
-                "availability": member.portal_user.availability,
-            }
-            for member in team.members
-            if member.portal_user
-        ],
-        "open_count": int(open_count),
-        "unassigned_count": int(unassigned_count),
-    }
-
-
-def _apply_team_payload(db: Session, client: Client, team: Team, payload: TeamUpsert) -> None:
-    if set(payload.channels) - _TEAM_CHANNELS:
-        raise HTTPException(status_code=422, detail="Unknown channel for a team")
-    duplicate = db.scalar(
-        select(Team.id).where(Team.client_id == client.id, Team.name == payload.name.strip(), Team.id != team.id)
-    )
-    if duplicate:
-        raise HTTPException(status_code=409, detail="A team with this name already exists")
-    team.name = payload.name.strip()
-    team.description = payload.description.strip()
-    team.strategy = payload.strategy
-    team.channels = sorted(set(payload.channels))
-    if payload.is_default and not team.is_default:
-        for other in db.scalars(select(Team).where(Team.client_id == client.id, Team.is_default.is_(True))):
-            other.is_default = False
-    team.is_default = payload.is_default
-    team.updated_at = now_utc()
-
-    wanted = set(payload.member_ids)
-    if wanted:
-        users = db.scalars(
-            select(PortalUser).where(PortalUser.client_id == client.id, PortalUser.id.in_(wanted))
-        ).all()
-        if len(users) != len(wanted):
-            raise HTTPException(status_code=422, detail="Every member must be a portal user of this client")
-    existing = {member.portal_user_id: member for member in team.members}
-    for portal_user_id, member in existing.items():
-        if portal_user_id not in wanted:
-            db.delete(member)
-    for portal_user_id in wanted - set(existing):
-        db.add(TeamMember(team_id=team.id, portal_user_id=portal_user_id))
+    return members_out(db, client)
 
 
 @router.get("/{slug}/teams", response_model=list[TeamOut])
 def portal_teams(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
-    teams = db.scalars(select(Team).where(Team.client_id == client.id).order_by(Team.name)).all()
-    return [_team_out(db, team) for team in teams]
+    return [team_out(db, team) for team in list_teams(db, client)]
 
 
-@router.post("/{slug}/teams", response_model=TeamOut, status_code=status.HTTP_201_CREATED)
+@router.post("/{slug}/teams", response_model=TeamOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission(TEAMS_MANAGE))])
 def portal_create_team(
     slug: str, payload: TeamUpsert, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
 ):
-    # Checked before the row exists so a duplicate is a clean 409, not a
-    # constraint blowup at flush time.
-    if db.scalar(select(Team.id).where(Team.client_id == client.id, Team.name == payload.name.strip())):
-        raise HTTPException(status_code=409, detail="A team with this name already exists")
-    team = Team(client_id=client.id, name=payload.name.strip())
-    db.add(team)
-    db.flush()
-    _apply_team_payload(db, client, team, payload)
-    db.commit()
-    db.refresh(team)
-    return _team_out(db, team)
+    return team_out(db, create_team(db, client, payload))
 
 
-@router.patch("/{slug}/teams/{team_id}", response_model=TeamOut)
+@router.patch("/{slug}/teams/{team_id}", response_model=TeamOut, dependencies=[Depends(require_permission(TEAMS_MANAGE))])
 def portal_update_team(
     slug: str,
     team_id: uuid.UUID,
@@ -425,21 +360,14 @@ def portal_update_team(
     client: Client = Depends(_portal_client),
     db: Session = Depends(get_db),
 ):
-    team = _portal_team(db, client, team_id)
-    _apply_team_payload(db, client, team, payload)
-    db.commit()
-    db.refresh(team)
-    return _team_out(db, team)
+    return team_out(db, update_team(db, client, team_id, payload))
 
 
-@router.delete("/{slug}/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{slug}/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_permission(TEAMS_MANAGE))])
 def portal_delete_team(
     slug: str, team_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
 ):
-    # Conversations keep living; the FK sets their tray to NULL.
-    team = _portal_team(db, client, team_id)
-    db.delete(team)
-    db.commit()
+    delete_team(db, client, team_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -538,7 +466,7 @@ def portal_conversations(
     # The archive is its own inbox: archived conversations show only there.
     query = query.where(Conversation.archived_at.is_not(None) if archived else Conversation.archived_at.is_(None))
     if channel is not None:
-        if channel not in _TEAM_CHANNELS:
+        if channel not in TEAM_CHANNELS:
             raise HTTPException(status_code=422, detail="Unknown inbox channel")
         query = query.where(Conversation.channel == channel)
     if team is not None:
@@ -787,13 +715,13 @@ def _decode_csv(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-@router.get("/{slug}/contacts/import-template")
+@router.get("/{slug}/contacts/import-template", dependencies=[Depends(require_permission(CONTACTS_MANAGE))])
 def portal_contacts_import_template(slug: str, client: Client = Depends(_portal_client)):
     """A small CSV showing the expected columns, with two example rows."""
     return _csv_response(_TEMPLATE_ROWS, "contacts-template.csv")
 
 
-@router.get("/{slug}/contacts/export")
+@router.get("/{slug}/contacts/export", dependencies=[Depends(require_permission(CONTACTS_MANAGE))])
 def portal_contacts_export(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
     """Every contact of the client as CSV, in the same columns the import reads
     plus the read-only ones (blocked, conversations, created)."""
@@ -824,7 +752,7 @@ def portal_contacts_export(slug: str, client: Client = Depends(_portal_client), 
     return _csv_response(lines(), f"contacts-{client.portal_slug or 'export'}-{stamp}.csv")
 
 
-@router.post("/{slug}/contacts/import", response_model=ContactImportResult)
+@router.post("/{slug}/contacts/import", dependencies=[Depends(require_permission(CONTACTS_MANAGE))], response_model=ContactImportResult)
 async def portal_contacts_import(
     slug: str,
     file: UploadFile = File(...),
@@ -977,7 +905,7 @@ def portal_tags(slug: str, client: Client = Depends(_portal_client), db: Session
     return [_tag_out(tag, int(n or 0)) for tag, n in rows]
 
 
-@router.post("/{slug}/tags", response_model=ContactTagOut, status_code=status.HTTP_201_CREATED)
+@router.post("/{slug}/tags", dependencies=[Depends(require_permission(TAGS_MANAGE))], response_model=ContactTagOut, status_code=status.HTTP_201_CREATED)
 def portal_create_tag(slug: str, payload: ContactTagCreate, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
     name = payload.name.strip()
     if not name:
@@ -992,7 +920,7 @@ def portal_create_tag(slug: str, payload: ContactTagCreate, client: Client = Dep
     return _tag_out(tag)
 
 
-@router.patch("/{slug}/tags/{tag_id}", response_model=ContactTagOut)
+@router.patch("/{slug}/tags/{tag_id}", dependencies=[Depends(require_permission(TAGS_MANAGE))], response_model=ContactTagOut)
 def portal_update_tag(
     slug: str, tag_id: uuid.UUID, payload: ContactTagUpdate, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
 ):
@@ -1013,7 +941,7 @@ def portal_update_tag(
     return _tag_out(tag, int(count))
 
 
-@router.delete("/{slug}/tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{slug}/tags/{tag_id}", dependencies=[Depends(require_permission(TAGS_MANAGE))], status_code=status.HTTP_204_NO_CONTENT)
 def portal_delete_tag(slug: str, tag_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
     tag = _tag(db, client, tag_id)
     db.delete(tag)  # links go with it (ON DELETE CASCADE)
@@ -1076,7 +1004,7 @@ def portal_update_contact(
     return _contact_out(contact, row)
 
 
-@router.post("/{slug}/contacts/{contact_id}/merge", response_model=ContactOut)
+@router.post("/{slug}/contacts/{contact_id}/merge", dependencies=[Depends(require_permission(CONTACTS_MANAGE))], response_model=ContactOut)
 def portal_merge_contact(
     slug: str,
     contact_id: uuid.UUID,
@@ -1098,7 +1026,7 @@ def portal_merge_contact(
     return _contact_out(primary, row)
 
 
-@router.post("/{slug}/contacts/{contact_id}/block", response_model=ContactOut)
+@router.post("/{slug}/contacts/{contact_id}/block", dependencies=[Depends(require_permission(CONTACTS_MANAGE))], response_model=ContactOut)
 def portal_block_contact(
     slug: str,
     contact_id: uuid.UUID,
@@ -1132,7 +1060,7 @@ def portal_block_contact(
     return _contact_out(contact, row)
 
 
-@router.delete("/{slug}/contacts/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{slug}/contacts/{contact_id}", dependencies=[Depends(require_permission(CONTACTS_MANAGE))], status_code=status.HTTP_204_NO_CONTENT)
 def portal_delete_contact(
     slug: str, contact_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
 ):
@@ -1219,15 +1147,6 @@ def _qr_channel(db: Session, client: Client) -> WhatsAppChannel | None:
     return db.scalar(select(WhatsAppChannel).where(WhatsAppChannel.client_id == client.id))
 
 
-def _template_credentials(channel: WhatsAppCloudChannel | None) -> tuple[str, str]:
-    if not channel or not channel.encrypted_access_token or not channel.waba_id:
-        raise HTTPException(
-            status_code=409,
-            detail="Templates need the WhatsApp API channel with its access token and WhatsApp Business account id",
-        )
-    return decrypt_secret(channel.encrypted_access_token), channel.waba_id
-
-
 @router.get("/{slug}/channels", response_model=list[PortalChannelOut])
 def portal_channels(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
     """Which WhatsApp lines this business has, so the portal knows how it can
@@ -1252,15 +1171,15 @@ def portal_channels(slug: str, client: Client = Depends(_portal_client), db: Ses
 
 @router.get("/{slug}/templates", response_model=list[TemplateOut])
 async def portal_templates(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
-    token, waba_id = _template_credentials(_cloud_channel(db, client))
+    token, waba_id = template_credentials(db, client)
     return await list_templates(token, waba_id)
 
 
-@router.post("/{slug}/templates", response_model=TemplateOut, status_code=status.HTTP_201_CREATED)
+@router.post("/{slug}/templates", dependencies=[Depends(require_permission(TEMPLATES_MANAGE))], response_model=TemplateOut, status_code=status.HTTP_201_CREATED)
 async def portal_create_template(
     slug: str, payload: TemplateCreate, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
 ):
-    token, waba_id = _template_credentials(_cloud_channel(db, client))
+    token, waba_id = template_credentials(db, client)
     return await create_template(
         token,
         waba_id,
@@ -1273,7 +1192,7 @@ async def portal_create_template(
     )
 
 
-@router.delete("/{slug}/templates/{name}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{slug}/templates/{name}", dependencies=[Depends(require_permission(TEMPLATES_MANAGE))], status_code=status.HTTP_204_NO_CONTENT)
 async def portal_delete_template(
     slug: str,
     name: str,
@@ -1283,7 +1202,7 @@ async def portal_delete_template(
 ):
     """Remove a template from the business account. Meta offers no way to
     disable one, so deletion is how a template is retired."""
-    token, waba_id = _template_credentials(_cloud_channel(db, client))
+    token, waba_id = template_credentials(db, client)
     await delete_template(token, waba_id, name=validate_template_name(name), hsm_id=hsm_id)
 
 
@@ -1314,7 +1233,7 @@ def portal_canned_responses(slug: str, client: Client = Depends(_portal_client),
     ).all()
 
 
-@router.post("/{slug}/canned-responses", response_model=CannedResponseOut, status_code=status.HTTP_201_CREATED)
+@router.post("/{slug}/canned-responses", dependencies=[Depends(require_permission(CANNED_MANAGE))], response_model=CannedResponseOut, status_code=status.HTTP_201_CREATED)
 def portal_create_canned_response(
     slug: str, payload: CannedResponseCreate, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
 ):
@@ -1326,7 +1245,7 @@ def portal_create_canned_response(
     return canned
 
 
-@router.patch("/{slug}/canned-responses/{canned_id}", response_model=CannedResponseOut)
+@router.patch("/{slug}/canned-responses/{canned_id}", dependencies=[Depends(require_permission(CANNED_MANAGE))], response_model=CannedResponseOut)
 def portal_update_canned_response(
     slug: str,
     canned_id: uuid.UUID,
@@ -1345,7 +1264,7 @@ def portal_update_canned_response(
     return canned
 
 
-@router.delete("/{slug}/canned-responses/{canned_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{slug}/canned-responses/{canned_id}", dependencies=[Depends(require_permission(CANNED_MANAGE))], status_code=status.HTTP_204_NO_CONTENT)
 def portal_delete_canned_response(
     slug: str, canned_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
 ):
@@ -1353,7 +1272,7 @@ def portal_delete_canned_response(
     db.commit()
 
 
-@router.get("/{slug}/reports", response_model=PortalReport)
+@router.get("/{slug}/reports", dependencies=[Depends(require_permission(REPORTS_VIEW))], response_model=PortalReport)
 def portal_report(
     slug: str,
     from_: date = Query(alias="from"),
@@ -1538,7 +1457,7 @@ def portal_report(
 async def _send_template_to(db: Session, client: Client, to: str, payload: TemplateSend) -> tuple[str | None, str]:
     """Send the template and return (external id, text as the person reads it)."""
     channel = _cloud_channel(db, client)
-    token, waba_id = _template_credentials(channel)
+    token, waba_id = template_credentials(db, client)
     approved = next(
         (t for t in await list_templates(token, waba_id)
          if t["name"] == payload.name and t["language"] == payload.language and t["status"] == "APPROVED"),
@@ -1717,7 +1636,7 @@ def portal_inbox_summary(
     }
 
 
-@router.post("/{slug}/conversations/archive-resolved", response_model=BulkResult)
+@router.post("/{slug}/conversations/archive-resolved", dependencies=[Depends(require_permission(INBOX_DELETE))], response_model=BulkResult)
 def portal_archive_resolved(
     slug: str,
     client: Client = Depends(_portal_client),
@@ -1742,7 +1661,7 @@ def portal_archive_resolved(
     return {"count": len(rows)}
 
 
-@router.post("/{slug}/conversations/delete-archived", response_model=BulkResult)
+@router.post("/{slug}/conversations/delete-archived", dependencies=[Depends(require_permission(INBOX_DELETE))], response_model=BulkResult)
 def portal_delete_archived(
     slug: str,
     payload: ConversationSelection | None = None,
@@ -1764,7 +1683,7 @@ def portal_delete_archived(
     return {"count": len(rows)}
 
 
-@router.patch("/{slug}/conversations/{conversation_id}/archive", response_model=ConversationDetail)
+@router.patch("/{slug}/conversations/{conversation_id}/archive", dependencies=[Depends(require_permission(INBOX_DELETE))], response_model=ConversationDetail)
 def portal_archive(
     slug: str,
     conversation_id: uuid.UUID,
@@ -1779,7 +1698,7 @@ def portal_archive(
     return _present(_detail(db, client, conversation_id))
 
 
-@router.delete("/{slug}/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{slug}/conversations/{conversation_id}", dependencies=[Depends(require_permission(INBOX_DELETE))], status_code=status.HTTP_204_NO_CONTENT)
 def portal_delete_conversation(
     slug: str, conversation_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
 ):
@@ -1828,7 +1747,7 @@ async def portal_set_conversation_team(
     db: Session = Depends(get_db),
 ):
     conversation = _detail(db, client, conversation_id)
-    team = _portal_team(db, client, payload.team_id) if payload.team_id else None
+    team = get_team(db, client, payload.team_id) if payload.team_id else None
     try:
         changed = set_team(db, conversation, team, actor=sender_name)
     except ConversationClosed as exc:

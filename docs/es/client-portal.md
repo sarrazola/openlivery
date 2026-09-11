@@ -22,6 +22,19 @@ En un cliente configuras estos campos:
 
 Activar el portal sin correo y contraseña se rechaza.
 
+## Personas y roles
+
+Las personas que entran a un portal las gestiona la agencia desde la pestaña **Portal** del cliente (`/api/clients/{id}/portal-users`). Cada persona tiene un rol:
+
+- **Administrador** puede hacer todo en el portal.
+- **Agente** trabaja la bandeja: lee y responde, toma una conversación de la IA y se la devuelve, cambia su estado, la asigna a una persona o a un equipo, crea contactos y les pone etiquetas existentes, y cambia su propia disponibilidad. Un agente no puede borrar ni archivar conversaciones, importar, exportar, borrar, fusionar ni bloquear contactos, gestionar etiquetas, plantillas de WhatsApp, respuestas guardadas ni equipos, ni abrir los reportes.
+
+La primera persona que se agrega a un negocio es su administrador; las siguientes empiezan como agentes hasta que la agencia lo cambie. La API protege cada ruta por clave de permiso (`app/portal_permissions.py`), así que la app móvil queda cubierta por la misma regla, y la sesión del portal (`GET /api/portal/{slug}/me`) lista los permisos de la persona para que la interfaz oculte lo que no puede hacer.
+
+## Equipos y plantillas desde la agencia
+
+Los equipos y las plantillas de WhatsApp son del cliente y se pueden gestionar desde los dos lados: el portal del cliente, o la página del cliente en la agencia bajo sus pestañas **Equipos** y **Plantillas de WhatsApp** (`/api/clients/{id}/teams`, `/api/clients/{id}/templates`). Las dos puertas editan las mismas filas.
+
 ## URL del portal
 
 Cada portal activado se sirve en:

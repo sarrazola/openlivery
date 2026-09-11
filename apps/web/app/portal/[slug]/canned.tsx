@@ -20,7 +20,7 @@ const SHOWN = 8;
 
 /** Saved replies for the composer: typing "/" opens a picker filtered by what
  * follows, Enter inserts the rendered reply, and a modal manages the list. */
-export function useCannedReplies({ slug, vars, onInsert }: { slug: string; vars: CannedVars; onInsert: (text: string) => void }) {
+export function useCannedReplies({ slug, vars, onInsert, canManage = true }: { slug: string; vars: CannedVars; onInsert: (text: string) => void; canManage?: boolean }) {
   const t = useT();
   const [items, setItems] = useState<CannedResponse[]>([]);
   const [query, setQuery] = useState<string | null>(null);
@@ -107,11 +107,11 @@ export function useCannedReplies({ slug, vars, onInsert }: { slug: string; vars:
           <small>{renderCanned(item.content, vars)}</small>
         </button>
       )) : <p className="muted">{items.length ? t("portal.canned.noMatches") : t("portal.canned.empty")}</p>}
-      <footer>
+      {canManage && <footer>
         <button type="button" onMouseDown={(e) => { e.preventDefault(); setQuery(null); setEditing(null); setConfirmId(null); setError(""); setManaging(true); }}>
           <Zap size={13} /> {t("portal.canned.manage")}
         </button>
-      </footer>
+      </footer>}
     </div>
   ) : null;
 

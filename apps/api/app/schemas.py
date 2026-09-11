@@ -1,7 +1,9 @@
 import uuid
 from datetime import date, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+
 
 
 class ORMModel(BaseModel):
@@ -42,12 +44,31 @@ class UserOut(ORMModel):
     agency: AgencyOut
 
 
+def check_timezone(value: str) -> str:
+    """An IANA zone name the runtime knows, e.g. ``America/Bogota``."""
+    name = (value or "").strip()
+    if not name:
+        return "UTC"
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ValueError("Unknown timezone") from exc
+    return name
+
+
 class ClientBase(BaseModel):
     name: str = Field(min_length=1, max_length=180)
     industry: str = Field(default="", max_length=160)
     business_type: str = Field(default="", max_length=80)
     business_custom: str = Field(default="", max_length=120)
+    # The business's timezone; its agents tell the time in it.
+    timezone: str = Field(default="UTC", max_length=64)
     is_active: bool = True
+
+    @field_validator("timezone")
+    @classmethod
+    def _known_timezone(cls, value: str) -> str:
+        return check_timezone(value)
 
 
 class ClientCreate(ClientBase):
@@ -59,7 +80,13 @@ class ClientUpdate(BaseModel):
     industry: str | None = Field(default=None, max_length=160)
     business_type: str | None = Field(default=None, max_length=80)
     business_custom: str | None = Field(default=None, max_length=120)
+    timezone: str | None = Field(default=None, max_length=64)
     is_active: bool | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def _known_timezone(cls, value: str | None) -> str | None:
+        return None if value is None else check_timezone(value)
 
 
 class ClientPortalUpdate(BaseModel):
@@ -80,6 +107,7 @@ class ClientOut(ORMModel):
     industry: str
     business_type: str
     business_custom: str
+    timezone: str
     is_active: bool
     portal_slug: str
     portal_enabled: bool
@@ -105,12 +133,17 @@ class PortalUserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     name: str = Field(default="", max_length=160)
+    # admin or agent; see app.portal_permissions for what each one may do.
+    # Left out, the first person of a business is its admin and everyone
+    # after starts as an agent.
+    role: str | None = Field(default=None, pattern=r"^(admin|agent)$")
 
 
 class PortalUserUpdate(BaseModel):
     email: EmailStr | None = None
     password: str | None = Field(default=None, min_length=8, max_length=128)
     name: str | None = Field(default=None, max_length=160)
+    role: str | None = Field(default=None, pattern=r"^(admin|agent)$")
     is_active: bool | None = None
 
 
@@ -118,6 +151,7 @@ class PortalUserOut(BaseModel):
     id: uuid.UUID
     email: EmailStr
     name: str
+    role: str
     is_active: bool
     devices: int
     created_at: datetime
@@ -177,7 +211,6 @@ class AgentBase(BaseModel):
     brief_donts: str = ""
     model: str = ""
     provider: str = Field(default="openai", pattern=r"^(openai|anthropic)$")
-    timezone: str = Field(default="UTC", max_length=64)
     prompt_language: str = Field(default="es", pattern=r"^(en|es)$")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=2048, ge=1, le=32000)
@@ -213,7 +246,6 @@ class AgentUpdate(BaseModel):
     brief_donts: str | None = None
     model: str | None = None
     provider: str | None = Field(default=None, pattern=r"^(openai|anthropic)$")
-    timezone: str | None = Field(default=None, max_length=64)
     prompt_language: str | None = Field(default=None, pattern=r"^(en|es)$")
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1, le=32000)
@@ -241,7 +273,6 @@ class AgentOut(ORMModel):
     brief_dos: str
     brief_donts: str
     model: str
-    timezone: str
     prompt_language: str
     temperature: float
     max_tokens: int
@@ -752,6 +783,9 @@ class PortalSessionOut(BaseModel):
     # The person behind the session; absent on sessions that predate portal users.
     user_id: uuid.UUID | None = None
     user_name: str | None = None
+    # What this person may do. Empty for a session with no person behind it.
+    role: str | None = None
+    permissions: list[str] = []
 
 
 class DashboardOut(BaseModel):

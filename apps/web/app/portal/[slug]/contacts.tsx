@@ -33,7 +33,11 @@ const IMPORT_REASONS: Record<string, I18nKey> = {
   notes_too_long: "portal.contacts.import.reasons.notesTooLong",
 };
 
-export function ContactsView({ slug, channels, openConversation }: { slug: string; channels: PortalChannel[]; openConversation: (conversation: Conversation) => void }) {
+/** `can` answers whether the signed-in person holds a portal permission; what
+ * it hides here the API refuses anyway. */
+export function ContactsView({ slug, channels, openConversation, can }: { slug: string; channels: PortalChannel[]; openConversation: (conversation: Conversation) => void; can: (key: string) => boolean }) {
+  const canManageContacts = can("contacts.manage");
+  const canManageTags = can("tags.manage");
   const t = useT();
   const toast = useToast();
   const { lang } = useLanguage();
@@ -373,17 +377,17 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
           <span>{t("portal.contacts.count", { count: total ?? items.length })}</span>
           <div className="toolbar-actions">
             <button className="button primary small" onClick={() => setEditing("new")}><Plus size={15} /> {t("portal.contacts.new")}</button>
-            <div className="start-line-wrap">
+            {(canManageContacts || canManageTags) && <div className="start-line-wrap">
               <button type="button" className="icon-button" onClick={() => setListMenu((v) => !v)} title={t("portal.contacts.moreActions")} aria-label={t("portal.contacts.moreActions")} aria-haspopup="menu" aria-expanded={listMenu}><MoreHorizontal size={16} /></button>
               {listMenu && <>
                 <div className="menu-backdrop" onClick={() => setListMenu(false)} />
                 <div className="start-line-menu" role="menu">
-                  <button type="button" role="menuitem" onClick={() => { setListMenu(false); openImport(); }}><Upload size={15} /><span><strong>{t("portal.contacts.import.title")}</strong><small>{t("portal.contacts.import.menuHint")}</small></span></button>
-                  <a role="menuitem" href={apiUrl(`/portal/${slug}/contacts/export`)} download onClick={() => setListMenu(false)}><Download size={15} /><span><strong>{t("portal.contacts.export")}</strong><small>{t("portal.contacts.exportHint")}</small></span></a>
-                  <button type="button" role="menuitem" onClick={openTagManager}><Tag size={15} /><span><strong>{t("portal.contacts.tags.manage")}</strong><small>{t("portal.contacts.tags.manageHint")}</small></span></button>
+                  {canManageContacts && <button type="button" role="menuitem" onClick={() => { setListMenu(false); openImport(); }}><Upload size={15} /><span><strong>{t("portal.contacts.import.title")}</strong><small>{t("portal.contacts.import.menuHint")}</small></span></button>}
+                  {canManageContacts && <a role="menuitem" href={apiUrl(`/portal/${slug}/contacts/export`)} download onClick={() => setListMenu(false)}><Download size={15} /><span><strong>{t("portal.contacts.export")}</strong><small>{t("portal.contacts.exportHint")}</small></span></a>}
+                  {canManageTags && <button type="button" role="menuitem" onClick={openTagManager}><Tag size={15} /><span><strong>{t("portal.contacts.tags.manage")}</strong><small>{t("portal.contacts.tags.manageHint")}</small></span></button>}
                 </div>
               </>}
-            </div>
+            </div>}
           </div>
         </div>
         {tags.length > 0 && <div className="inbox-tabs tag-filter" role="tablist" aria-label={t("portal.contacts.tags.heading")}>
@@ -428,10 +432,10 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
                   </div>
                 </>}
               </div>}
-              {selected.blocked_at ? <button className="button small" disabled={busy} onClick={() => setBlocked(false)}><Ban size={15} /> {t("portal.contacts.unblock")}</button> : <button className="button small" onClick={() => setBlocking(true)}><Ban size={15} /> {t("portal.contacts.block")}</button>}
+              {canManageContacts && (selected.blocked_at ? <button className="button small" disabled={busy} onClick={() => setBlocked(false)}><Ban size={15} /> {t("portal.contacts.unblock")}</button> : <button className="button small" onClick={() => setBlocking(true)}><Ban size={15} /> {t("portal.contacts.block")}</button>)}
               <button className="button small" onClick={() => setEditing("edit")}><Pencil size={15} /> {t("portal.contacts.edit")}</button>
-              <button className="button small" onClick={() => { setMergePrimary(null); setMergeQuery(""); setMerging(true); }}><Merge size={15} /> {t("portal.contacts.merge")}</button>
-              <button className="icon-button danger" onClick={() => { setTyped(""); setDeleting(true); }} disabled={busy} title={t("portal.contacts.delete")} aria-label={t("portal.contacts.delete")}><Trash2 size={16} /></button>
+              {canManageContacts && <button className="button small" onClick={() => { setMergePrimary(null); setMergeQuery(""); setMerging(true); }}><Merge size={15} /> {t("portal.contacts.merge")}</button>}
+              {canManageContacts && <button className="icon-button danger" onClick={() => { setTyped(""); setDeleting(true); }} disabled={busy} title={t("portal.contacts.delete")} aria-label={t("portal.contacts.delete")}><Trash2 size={16} /></button>}
             </div>
           </header>
           {error && <Alert>{error}</Alert>}
@@ -445,11 +449,11 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
                   {tagPicker && <>
                     <div className="menu-backdrop" onClick={() => setTagPicker(false)} />
                     <div className="start-line-menu tag-picker" role="menu">
-                      <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder={t("portal.contacts.tags.searchOrCreate")} autoFocus onKeyDown={(e) => { if (e.key === "Enter" && tagQueryTrimmed && !pickerExact) { e.preventDefault(); createTag(tagQueryTrimmed, selected); } if (e.key === "Escape") setTagPicker(false); }} />
+                      <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder={canManageTags ? t("portal.contacts.tags.searchOrCreate") : t("portal.contacts.tags.search")} autoFocus onKeyDown={(e) => { if (e.key === "Enter" && canManageTags && tagQueryTrimmed && !pickerExact) { e.preventDefault(); createTag(tagQueryTrimmed, selected); } if (e.key === "Escape") setTagPicker(false); }} />
                       {pickerTags.map((tag) => { const has = (selected.tags ?? []).some((item) => item.id === tag.id); return <button type="button" key={tag.id} role="menuitemcheckbox" aria-checked={has} onClick={() => toggleTag(tag)} disabled={busy}><i className="tag-dot" data-color={tag.color} /><span><strong>{tag.name}</strong>{(tag.route_assignee_name || tag.route_team_name) && <small>{t("portal.contacts.tags.routedTo", { team: tag.route_assignee_name ?? tag.route_team_name ?? "" })}</small>}</span>{has && <Check size={14} />}</button>; })}
-                      {tagQueryTrimmed && !pickerExact && <button type="button" role="menuitem" className="tag-create" onClick={() => createTag(tagQueryTrimmed, selected)} disabled={busy}><Plus size={14} /><span><strong>{t("portal.contacts.tags.create", { name: tagQueryTrimmed })}</strong></span></button>}
+                      {canManageTags && tagQueryTrimmed && !pickerExact && <button type="button" role="menuitem" className="tag-create" onClick={() => createTag(tagQueryTrimmed, selected)} disabled={busy}><Plus size={14} /><span><strong>{t("portal.contacts.tags.create", { name: tagQueryTrimmed })}</strong></span></button>}
                       {!tags.length && !tagQueryTrimmed && <small>{t("portal.contacts.tags.emptyHint")}</small>}
-                      <button type="button" role="menuitem" className="tag-picker-manage" onClick={openTagManager}><Settings2 size={14} /><span><strong>{t("portal.contacts.tags.manage")}</strong></span></button>
+                      {canManageTags && <button type="button" role="menuitem" className="tag-picker-manage" onClick={openTagManager}><Settings2 size={14} /><span><strong>{t("portal.contacts.tags.manage")}</strong></span></button>}
                     </div>
                   </>}
                 </div>
@@ -500,7 +504,7 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
         </> : <EmptyState icon={<UserRound />} title={t("portal.contacts.selectTitle")} description={t("portal.contacts.selectDescription")} />}
       </section>
     </div>
-    <TemplatePicker slug={slug} open={starting === "whatsapp_cloud" && Boolean(selected)} title={t("portal.contacts.startTitle", { name: selected ? nameOf(selected) : "" })} onClose={() => setStarting(null)} onSend={startWithTemplate} />
+    <TemplatePicker base={`/portal/${slug}`} open={starting === "whatsapp_cloud" && Boolean(selected)} title={t("portal.contacts.startTitle", { name: selected ? nameOf(selected) : "" })} onClose={() => setStarting(null)} onSend={startWithTemplate} />
     <Modal open={starting === "whatsapp" && Boolean(selected)} title={t("portal.contacts.startQrTitle", { name: selected ? nameOf(selected) : "" })} description={t("portal.contacts.startQrDescription")} onClose={() => setStarting(null)}>
       <form className="modal-form" onSubmit={startWithText}>
         <label>{t("portal.contacts.startMessage")}<textarea name="text" rows={4} required autoFocus /></label>

@@ -11,14 +11,9 @@ import { useLanguage } from "@/lib/i18n";
 import { PROVIDERS, modelsFor, modelOptionsFor, defaultModelFor, estimateTokens } from "@/lib/providers";
 import { narrowModels, useAvailableModels } from "@/lib/use-available-models";
 import { Combobox } from "@/components/combobox";
-import { TIMEZONES } from "@/lib/timezones";
 import { agentTemplates, localize } from "@/lib/agent-templates";
 import type { Agent, Client } from "@/types";
 import { AiHint } from "@/components/ai-hint";
-
-const BROWSER_TZ = (() => {
-  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { return "UTC"; }
-})();
 
 const STEP_KEYS = ["agents.wizard.s1", "agents.wizard.s2", "agents.wizard.s3", "agents.wizard.s4", "agents.wizard.s5"] as const;
 
@@ -41,7 +36,6 @@ export default function NewAgentPage() {
   const [brief, setBrief] = useState({ summary: "", products: "", audience: "", policies: "", dos: "", donts: "" });
   const [provider, setProvider] = useState("openai");
   const [model, setModel] = useState(defaultModelFor("openai"));
-  const [timezone, setTimezone] = useState(BROWSER_TZ);
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
   const [memoryLimit, setMemoryLimit] = useState(30);
@@ -83,7 +77,7 @@ export default function NewAgentPage() {
       const agent = await api<Agent>("/agents", { method: "POST", body: JSON.stringify({
         client_id: clientId, name, instructions, personality,
         brief_summary: brief.summary, brief_products: brief.products, brief_audience: brief.audience, brief_policies: brief.policies, brief_dos: brief.dos, brief_donts: brief.donts,
-        provider, model: model || "", timezone, prompt_language: lang,
+        provider, model: model || "", prompt_language: lang,
         temperature, max_tokens: maxTokens, memory_limit: memoryLimit, reply_delay_min_seconds: replyDelayMin, reply_delay_max_seconds: replyDelayMax, is_active: true,
         image_enabled: imageEnabled, audio_enabled: audioEnabled,
       }) });
@@ -151,7 +145,6 @@ export default function NewAgentPage() {
         <div className="wizard-copy"><h2>{t("agents.wizard.modelTitle")}</h2><p>{t("agents.wizard.modelSubtitle")}</p></div>
         <label>{t("agents.new.providerLabel")}<select value={provider} onChange={(e) => { setProvider(e.target.value); setModel(defaultModelFor(e.target.value)); }}>{PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
         <label>{t("agents.new.modelLabel")}{(() => { const allowed = narrowModels(modelsFor(provider), available?.chat?.[provider]); const catalog = modelOptionsFor(provider); const known = catalog.filter((item) => allowed.includes(item.id)); const ordered = [...known.filter((item) => item.recommended), ...known.filter((item) => !item.recommended)].map((item) => item.id); const options = [...ordered, ...allowed.filter((id) => !ordered.includes(id))]; const labels = Object.fromEntries(known.map((item) => [item.id, item.label])); const tierOf = (g: string) => g === "fast" ? t("agents.wizard.modelGroupFast") : g === "balanced" ? t("agents.wizard.modelGroupBalanced") : t("agents.wizard.modelGroupCapable"); const tags = Object.fromEntries(known.map((item) => [item.id, item.recommended ? t("agents.wizard.modelBadgeRecommended") : tierOf(item.group)])); return <Combobox value={model} onChange={setModel} options={options} labels={labels} tags={tags} placeholder={t("agents.new.modelPlaceholder")} allowCustom />; })()}</label>
-        <label>{t("agents.detail.timezoneLabel")}<Combobox value={timezone} onChange={setTimezone} options={TIMEZONES} placeholder={t("agents.detail.timezoneLabel")} /></label>
         <details className="advanced-options wizard-advanced"><summary>{t("agents.detail.advancedHeading")}</summary><p className="field-help">{t("agents.detail.advancedCopy")}</p>
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.temperatureLabel")}</span><strong>{temperature.toFixed(1)}/2</strong></div><input type="range" min="0" max="2" step="0.1" value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} /><span className="field-help">{t("agents.detail.temperatureHint")}</span></div>
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.maxTokensLabel")}</span><strong>{maxTokens}/8192</strong></div><input type="range" min="256" max="8192" step="256" value={maxTokens} onChange={(e) => setMaxTokens(Number(e.target.value))} /><span className="field-help">{t("agents.detail.maxTokensHint")}</span></div>

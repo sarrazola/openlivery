@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clock, LoaderCircle, Plus, Search, Trash2, XCircle } from "lucide-react";
 import { Alert, EmptyState, Modal } from "@/components/ui";
-import { api, messageFrom } from "@/lib/api";
+import { api, ApiError, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import type { Template } from "@/types";
 
@@ -16,7 +16,11 @@ export function renderTemplate(body: string, values: string[]): string {
   return body.replace(/\{\{(\d+)\}\}/g, (whole, n) => values[Number(n) - 1] || whole);
 }
 
-export function TemplatesView({ slug, supported }: { slug: string; supported: boolean }) {
+/** The WhatsApp templates of the client's business account. `base` is the API
+ * prefix (`/portal/{slug}` or `/clients/{id}`). `supported` says whether the
+ * client has the API line; left out, the list finds out from the API itself.
+ * Without `canManage` the list is read-only. */
+export function TemplatesView({ base, supported, canManage = true }: { base: string; supported?: boolean; canManage?: boolean }) {
   const t = useT();
   const [items, setItems] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +32,8 @@ export function TemplatesView({ slug, supported }: { slug: string; supported: bo
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [removing, setRemoving] = useState<Template | null>(null);
+  const [unsupported, setUnsupported] = useState(supported === false);
+  useEffect(() => { setUnsupported(supported === false); }, [supported]);
   const count = variableCount(body);
   const categories = useMemo(() => Array.from(new Set(items.map((i) => i.category))).sort(), [items]);
   const shown = useMemo(() => {
@@ -43,11 +49,15 @@ export function TemplatesView({ slug, supported }: { slug: string; supported: bo
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
-    try { setItems(await api<Template[]>(`/portal/${slug}/templates`)); }
-    catch (err) { setError(messageFrom(err)); }
+    try { setItems(await api<Template[]>(`${base}/templates`)); }
+    catch (err) {
+      // No API line on this client: the same answer the portal gets told up front.
+      if (supported === undefined && err instanceof ApiError && err.status === 409) setUnsupported(true);
+      else setError(messageFrom(err));
+    }
     finally { setLoading(false); }
-  }, [slug]);
-  useEffect(() => { if (supported) load(); else setLoading(false); }, [load, supported]);
+  }, [base, supported]);
+  useEffect(() => { if (supported === false) setLoading(false); else load(); }, [load, supported]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,7 +65,7 @@ export function TemplatesView({ slug, supported }: { slug: string; supported: bo
     const examples = Array.from({ length: count }, (_, i) => String(data.get(`example${i + 1}`) || "").trim());
     setBusy(true); setError("");
     try {
-      await api<Template>(`/portal/${slug}/templates`, { method: "POST", body: JSON.stringify({
+      await api<Template>(`${base}/templates`, { method: "POST", body: JSON.stringify({
         name: String(data.get("name") || "").trim().toLowerCase(),
         language: String(data.get("language") || "es").trim(),
         category: String(data.get("category") || "UTILITY"),
@@ -74,7 +84,7 @@ export function TemplatesView({ slug, supported }: { slug: string; supported: bo
     setBusy(true); setError("");
     try {
       const query = removing.id ? `?hsm_id=${encodeURIComponent(removing.id)}` : "";
-      await api(`/portal/${slug}/templates/${encodeURIComponent(removing.name)}${query}`, { method: "DELETE" });
+      await api(`${base}/templates/${encodeURIComponent(removing.name)}${query}`, { method: "DELETE" });
       setRemoving(null);
       await load();
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
@@ -86,13 +96,13 @@ export function TemplatesView({ slug, supported }: { slug: string; supported: bo
     return <span className="mini-badge pending"><Clock size={11} /> {t("portal.templates.status.pending")}</span>;
   };
 
-  if (!supported) return <EmptyState icon={<Clock />} title={t("portal.templates.unsupportedTitle")} description={t("portal.templates.unsupportedDescription")} />;
+  if (unsupported) return <EmptyState icon={<Clock />} title={t("portal.templates.unsupportedTitle")} description={t("portal.templates.unsupportedDescription")} />;
 
   return <>
     <div className="portal-templates">
       <div className="portal-templates-toolbar">
         <p>{t("portal.templates.intro")}</p>
-        <button className="button primary small" onClick={() => setCreating(true)}><Plus size={15} /> {t("portal.templates.new")}</button>
+        {canManage && <button className="button primary small" onClick={() => setCreating(true)}><Plus size={15} /> {t("portal.templates.new")}</button>}
       </div>
       {error && !creating && !removing && <Alert>{error}</Alert>}
       {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>
@@ -128,7 +138,7 @@ export function TemplatesView({ slug, supported }: { slug: string; supported: bo
                 <td>{item.language}</td>
                 <td>{item.category.toLowerCase()}</td>
                 <td>{statusBadge(item.status)}</td>
-                <td className="portal-template-actions"><button className="icon-button danger" onClick={() => setRemoving(item)} title={t("portal.templates.delete")} aria-label={t("portal.templates.delete")}><Trash2 size={15} /></button></td>
+                <td className="portal-template-actions">{canManage && <button className="icon-button danger" onClick={() => setRemoving(item)} title={t("portal.templates.delete")} aria-label={t("portal.templates.delete")}><Trash2 size={15} /></button>}</td>
               </tr>)}</tbody>
             </table>
           </div> : <div className="no-conversations">{t("portal.templates.noMatches")}</div>}
@@ -160,7 +170,7 @@ export function TemplatesView({ slug, supported }: { slug: string; supported: bo
 }
 
 /** Pick an approved template and fill its values. Used to start a conversation and to reach out after the window closed. */
-export function TemplatePicker({ slug, open, title, onClose, onSend }: { slug: string; open: boolean; title: string; onClose: () => void; onSend: (payload: { name: string; language: string; variables: string[] }) => Promise<void> }) {
+export function TemplatePicker({ base, open, title, onClose, onSend }: { base: string; open: boolean; title: string; onClose: () => void; onSend: (payload: { name: string; language: string; variables: string[] }) => Promise<void> }) {
   const t = useT();
   const [items, setItems] = useState<Template[]>([]);
   const [loading, setLoading] = useState(false);
@@ -174,8 +184,8 @@ export function TemplatePicker({ slug, open, title, onClose, onSend }: { slug: s
   useEffect(() => {
     if (!open) return;
     setLoading(true); setError(""); setChosen(""); setValues([]);
-    api<Template[]>(`/portal/${slug}/templates`).then(setItems).catch((err) => setError(messageFrom(err))).finally(() => setLoading(false));
-  }, [open, slug]);
+    api<Template[]>(`${base}/templates`).then(setItems).catch((err) => setError(messageFrom(err))).finally(() => setLoading(false));
+  }, [open, base]);
   useEffect(() => { setValues(template ? Array.from({ length: template.variables }, () => "") : []); }, [template]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
