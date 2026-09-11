@@ -310,6 +310,8 @@ def test_tagged_contact_routes_new_conversations_to_a_team(authenticated_client:
     assert [(row["name"], row["route_team_id"]) for row in listed] == [("VIP", None)]
     assert client.patch(f"{agency_tags}/{vip['id']}", json={"name": "x"}).status_code == 422
 
-    # The contact's history pages with a total.
+    # The contact's history pages with a total, and can be limited to a date range.
     history = client.get(f"{base}/contacts/{contact['id']}/conversations?limit=1")
     assert history.headers["x-total-count"] == "2" and len(history.json()) == 1
+    assert client.get(f"{base}/contacts/{contact['id']}/conversations?until=2000-01-01").headers["x-total-count"] == "0"
+    assert client.get(f"{base}/contacts/{contact['id']}/conversations?since=2000-01-01").headers["x-total-count"] == "2"

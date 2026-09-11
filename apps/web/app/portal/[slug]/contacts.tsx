@@ -42,6 +42,8 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   const [history, setHistory] = useState<Conversation[]>([]);
   const [historyTotal, setHistoryTotal] = useState<number | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historySince, setHistorySince] = useState("");
+  const [historyUntil, setHistoryUntil] = useState("");
   const [preview, setPreview] = useState<Conversation | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -215,16 +217,29 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
   // way the list does, so a long history never loads whole.
   const fetchHistory = useCallback(async (contactId: string, offset: number) => {
     const params = new URLSearchParams({ limit: String(HISTORY_LIMIT), offset: String(offset) });
+    if (historySince) params.set("since", historySince);
+    if (historyUntil) params.set("until", historyUntil);
     const { data, headers } = await apiWithHeaders<Conversation[]>(`/portal/${slug}/contacts/${contactId}/conversations?${params}`);
     const count = Number(headers.get("X-Total-Count"));
     return { rows: data, total: Number.isFinite(count) ? count : null };
-  }, [slug]);
+  }, [slug, historySince, historyUntil]);
   const choose = useCallback(async (contact: Contact) => {
     setSelected(contact);
     setHistory([]); setHistoryTotal(null);
     const { rows, total } = await fetchHistory(contact.id, 0);
     setHistory(rows); setHistoryTotal(total);
   }, [fetchHistory]);
+  // A new date range reloads the history of the open contact from page one.
+  useEffect(() => {
+    if (!selected) return;
+    let cancelled = false;
+    setHistoryLoading(true);
+    fetchHistory(selected.id, 0)
+      .then(({ rows, total }) => { if (!cancelled) { setHistory(rows); setHistoryTotal(total); } })
+      .catch((err) => { if (!cancelled) setError(messageFrom(err)); })
+      .finally(() => { if (!cancelled) setHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [historySince, historyUntil]);
   const hasMoreHistory = selected !== null && historyTotal !== null && history.length < historyTotal;
   async function loadMoreHistory() {
     if (!selected || !hasMoreHistory || historyLoading) return;
@@ -424,12 +439,20 @@ export function ContactsView({ slug, channels, openConversation }: { slug: strin
               {selected.notes ? <p>{selected.notes}</p> : <p className="muted">{t("portal.contacts.noNotes")}</p>}
             </section>
             <section>
-              <h3>{t("portal.contacts.history")}</h3>
+              <div className="history-head">
+                <h3>{t("portal.contacts.history")}</h3>
+                {(history.length > 0 || historySince || historyUntil) && <div className="history-range">
+                  <input type="date" value={historySince} max={historyUntil || undefined} onChange={(e) => setHistorySince(e.target.value)} aria-label={t("portal.contacts.historyFrom")} title={t("portal.contacts.historyFrom")} />
+                  <span aria-hidden="true">→</span>
+                  <input type="date" value={historyUntil} min={historySince || undefined} onChange={(e) => setHistoryUntil(e.target.value)} aria-label={t("portal.contacts.historyTo")} title={t("portal.contacts.historyTo")} />
+                  {(historySince || historyUntil) && <button type="button" className="text-button" onClick={() => { setHistorySince(""); setHistoryUntil(""); }}>{t("portal.contacts.historyClear")}</button>}
+                </div>}
+              </div>
               {history.length ? <div className="portal-contact-history">{history.map((conv) => <button key={conv.id} onClick={() => openHistoryItem(conv)}>
                 <span className={`mini-badge ${conv.status === "resolved" ? "resolved" : conv.mode}`}>{conv.status === "resolved" ? <><CheckCircle2 size={11} /> {t("portal.inbox.conversation.resolvedBadge")}</> : conv.mode === "human" ? t("portal.inbox.list.humanSupport") : t("portal.inbox.list.aiAgent")}</span>
                 <span className="portal-contact-history-text"><strong>{formatWhen(conv.created_at, lang)}</strong><small>{conv.preview || t("portal.inbox.list.noMessages")}</small></span>
                 <Inbox size={15} />
-              </button>)}</div> : <p className="muted">{t("portal.contacts.noHistory")}</p>}
+              </button>)}</div> : <p className="muted">{historyLoading ? "" : (historySince || historyUntil) ? t("portal.contacts.noHistoryInRange") : t("portal.contacts.noHistory")}</p>}
               {history.length > 0 && historyTotal !== null && historyTotal > HISTORY_LIMIT && <div className="list-foot inline">
                 {historyLoading ? <span><LoaderCircle className="spin" size={14} /> {t("portal.contacts.list.loadingMore")}</span>
                   : hasMoreHistory ? <span>{t("portal.contacts.list.showing", { shown: history.length, total: historyTotal })}</span>

@@ -129,6 +129,10 @@ const en = {
   contacts: {
     searchPlaceholder: "Search by name, phone or email…",
     moreActions: "More actions",
+    historyFrom: "From",
+    historyTo: "To",
+    historyClear: "Clear",
+    noHistoryInRange: "No conversations in that range.",
     preview: {
       title: "Conversation",
       titleWith: "Conversation with {name}",
@@ -305,6 +309,8 @@ const en = {
     online: "Available",
     away: "Away",
     hint: "While away, new conversations are not routed to you.",
+    setAway: "Set yourself as away: new conversations will not be routed to you",
+    setOnline: "Set yourself as available: new conversations can be routed to you",
   },
   inbox: {
     nav: {
@@ -558,6 +564,10 @@ const es: typeof en = {
   contacts: {
     searchPlaceholder: "Buscar por nombre, teléfono o correo…",
     moreActions: "Más acciones",
+    historyFrom: "Desde",
+    historyTo: "Hasta",
+    historyClear: "Limpiar",
+    noHistoryInRange: "No hay conversaciones en ese rango.",
     preview: {
       title: "Conversación",
       titleWith: "Conversación con {name}",
@@ -733,6 +743,8 @@ const es: typeof en = {
   availability: {
     online: "Disponible",
     away: "Ausente",
+    setAway: "Ponerte como ausente: no te llegarán conversaciones nuevas",
+    setOnline: "Ponerte como disponible: podrán llegarte conversaciones nuevas",
     hint: "Mientras estés ausente no se te enrutan conversaciones nuevas.",
   },
   inbox: {

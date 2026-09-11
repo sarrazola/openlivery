@@ -1148,13 +1148,20 @@ def portal_contact_conversations(
     response: Response,
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    since: date | None = None,
+    until: date | None = None,
     client: Client = Depends(_portal_client),
     db: Session = Depends(get_db),
 ):
-    """One page of the contact's past cases, newest first; the total travels
-    in X-Total-Count so the card can page as the person scrolls."""
+    """One page of the contact's past cases, newest first, optionally limited
+    to the cases opened between two dates (inclusive); the total travels in
+    X-Total-Count so the card can page as the person scrolls."""
     contact = _portal_contact(db, client, contact_id)
     scope = [Conversation.contact_id == contact.id, Conversation.channel != PLAYGROUND]
+    if since:
+        scope.append(Conversation.created_at >= datetime.combine(since, time.min, tzinfo=timezone.utc))
+    if until:
+        scope.append(Conversation.created_at < datetime.combine(until + timedelta(days=1), time.min, tzinfo=timezone.utc))
     response.headers["X-Total-Count"] = str(db.scalar(select(func.count(Conversation.id)).where(*scope)) or 0)
     ranked = (
         select(

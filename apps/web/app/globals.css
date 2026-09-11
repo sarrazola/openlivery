@@ -2000,6 +2000,26 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .esc-rules-foot { padding-top: 4px; }
 @media (max-width: 860px) { .esc-rule { flex-wrap: wrap; } .esc-rule input { flex-basis: 100%; } .esc-adder { flex-wrap: wrap; } }
 
+/* Contact history: date range beside the heading. */
+.history-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.history-head h3 { margin: 0; }
+.history-range { display: inline-flex; align-items: center; gap: 6px; color: var(--faint); font-size: 12px; }
+.history-range input[type="date"] { min-height: 30px; padding: 0 8px; font-size: 12.5px; color: var(--ink-2); }
+.history-range .text-button { padding: 4px 8px; font-size: 12px; }
+
+/* Availability: a real control in the portal sidebar, not a line of text. The
+   generic sidebar button rule strips borders, so this one is more specific. */
+.portal-nav > button.availability-toggle { height: auto; min-height: 48px; margin: auto 0 0; padding: 8px 10px 8px 12px; display: flex; align-items: center; gap: 10px; color: var(--ink); border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); font-size: 13px; text-align: left; transition: .15s ease; }
+.portal-nav > button.availability-toggle:hover { border-color: var(--line-strong); background: var(--surface-3); }
+.portal-nav > button.availability-toggle.away { color: var(--muted); }
+.portal-nav > button.availability-toggle .availability-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.portal-nav > button.availability-toggle .availability-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.portal-nav > button.availability-toggle .availability-name small { color: var(--subtle); font-size: 11.5px; }
+.availability-switch { flex: 0 0 auto; position: relative; width: 34px; height: 20px; border-radius: 999px; background: var(--surface-5); transition: background .18s ease; }
+.availability-switch b { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: white; box-shadow: 0 1px 2px rgba(var(--shadow-rgb), calc(.25 * var(--shadow-k))); transition: transform .18s ease; }
+.availability-toggle.online .availability-switch { background: var(--green); }
+.availability-toggle.online .availability-switch b { transform: translateX(14px); }
+
 /* Theme change: cross-fade every color for one beat, then hand transitions
    back to the components. Set by lib/theme.tsx around the attribute swap. */
 html[data-theme-transition], html[data-theme-transition] *, html[data-theme-transition] *::before, html[data-theme-transition] *::after { transition: background-color .25s ease, border-color .25s ease, color .25s ease, fill .25s ease, box-shadow .25s ease !important; }
