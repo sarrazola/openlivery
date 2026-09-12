@@ -15,6 +15,8 @@ export function TagsView({ slug, canManage }: { slug: string; canManage: boolean
   const [tags, setTags] = useState<ContactTag[]>([]);
   const [deleting, setDeleting] = useState<ContactTag | null>(null);
   const [name, setName] = useState("");
+  // Which tag has its color menu open.
+  const [picking, setPicking] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -50,9 +52,17 @@ export function TagsView({ slug, canManage }: { slug: string; canManage: boolean
       {tags.map((tag) => deleting?.id === tag.id
         ? <div key={tag.id} className="tag-manage-confirm"><span>{t("portal.contacts.tags.deleteConfirm", { name: tag.name, count: tag.contact_count })}</span><span className="tag-manage-confirm-actions"><button type="button" className="button small" onClick={() => setDeleting(null)}>{t("portal.contacts.form.cancel")}</button><button type="button" className="button danger small" disabled={busy} onClick={() => remove(tag)}>{t("portal.contacts.tags.deleteAction")}</button></span></div>
         : <div key={tag.id} className="tag-manage-row">
-          <div className="tag-swatches" role="radiogroup" aria-label={tag.name}>
-            {TAG_PALETTE.map(({ value, name: label }) => <button type="button" key={value} style={tagStyle(value)} className={value === tagColor(tag.color) ? "active" : ""} role="radio" aria-checked={value === tagColor(tag.color)} aria-label={label} title={label} disabled={!canManage} onClick={() => update(tag, { color: value })} />)}
-            <label className={`tag-swatch-custom${TAG_PALETTE.some((item) => item.value === tagColor(tag.color)) ? "" : " active"}`} style={tagStyle(tag.color)} title={t("portal.contacts.tags.customColor")}><input type="color" value={tagColor(tag.color)} disabled={!canManage} aria-label={t("portal.contacts.tags.customColor")} onChange={(e) => update(tag, { color: e.target.value })} /></label>
+          <div className="tag-color-pick">
+            <button type="button" className="tag-color-current" style={tagStyle(tag.color)} disabled={!canManage} aria-haspopup="menu" aria-expanded={picking === tag.id} aria-label={t("portal.contacts.tags.pickColor")} title={t("portal.contacts.tags.pickColor")} onClick={() => setPicking(picking === tag.id ? null : tag.id)} />
+            {picking === tag.id && <>
+              <div className="menu-backdrop" onClick={() => setPicking(null)} />
+              <div className="tag-color-menu" role="menu">
+                <div className="tag-swatches" role="radiogroup" aria-label={tag.name}>
+                  {TAG_PALETTE.map(({ value, name: label }) => <button type="button" key={value} style={tagStyle(value)} className={value === tagColor(tag.color) ? "active" : ""} role="radio" aria-checked={value === tagColor(tag.color)} aria-label={label} title={label} onClick={() => { update(tag, { color: value }); setPicking(null); }} />)}
+                </div>
+                <label className="tag-swatch-custom" style={tagStyle(tag.color)} title={t("portal.contacts.tags.customColor")}><input type="color" value={tagColor(tag.color)} aria-label={t("portal.contacts.tags.customColor")} onChange={(e) => update(tag, { color: e.target.value })} /></label>
+              </div>
+            </>}
           </div>
           <input defaultValue={tag.name} maxLength={40} readOnly={!canManage} onBlur={(e) => canManage && update(tag, { name: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
           {(tag.route_assignee_name || tag.route_team_name) && <span className="tag-route-note">{t("portal.contacts.tags.routedTo", { team: tag.route_assignee_name ?? tag.route_team_name ?? "" })}</span>}

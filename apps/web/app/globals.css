@@ -789,6 +789,7 @@ textarea { line-height: 1.55; }
 .portal-template-name small { display: block; margin-top: 3px; color: var(--subtle); white-space: pre-wrap; }
 .portal-template-name small.danger { color: var(--red-text); }
 .portal-template-actions { text-align: right; white-space: nowrap; }
+.portal-template-actions .icon-button + .icon-button { margin-left: 6px; }
 .portal-teams-table { margin-top: 14px; }
 .portal-teams-table td { height: auto; padding-top: 14px; padding-bottom: 14px; vertical-align: middle; }
 .portal-team-name { min-width: 200px; }
@@ -947,7 +948,13 @@ textarea { line-height: 1.55; }
 .team-member { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; font-size: 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
 .team-member i { width: 7px; height: 7px; border-radius: 999px; background: var(--green); }
 .team-member.away i { background: var(--surface-5); }
-.team-channel-options { display: flex; gap: 14px; flex-wrap: wrap; }
+.team-channel-options { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip-toggle { height: 32px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 13px; font-weight: 600; cursor: pointer; transition: .15s ease; }
+.chip-toggle:hover { color: var(--ink); border-color: var(--line-strong); }
+.chip-toggle.active { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
+/* A hint near the top of a dialog opens downwards, where there is room. */
+.modal-form .ai-hint-tip { top: calc(100% + 8px); bottom: auto; }
+.modal-form .ai-hint-tip::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: var(--inverse); }
 .mini-badge.team { color: var(--ink-2); border-color: var(--line); background: var(--surface-3); }
 .inbox-filter-row { display: flex; gap: 8px; margin: 10px 12px 2px; }
 .inbox-mini-select { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 6px 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--muted); }
@@ -1924,6 +1931,12 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
    mixed here, so chips stay readable on both themes. */
 .tag-chip { --tag: var(--muted); color: color-mix(in srgb, var(--tag) 78%, var(--ink)); border-color: color-mix(in srgb, var(--tag) 45%, transparent); background: color-mix(in srgb, var(--tag) 14%, transparent); }
 .tag-dot, .tag-swatches button { background: var(--tag, var(--subtle)); }
+.tag-color-pick { position: relative; flex: 0 0 auto; }
+.tag-color-current { width: 22px; height: 22px; padding: 0; border: 2px solid var(--surface); border-radius: 50%; background: var(--tag); box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+.tag-color-current:disabled { cursor: default; }
+.tag-color-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; padding: 10px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 10px 30px rgba(var(--shadow-rgb), calc(.16 * var(--shadow-k))); }
+.tag-color-menu .tag-swatches { display: grid; grid-template-columns: repeat(8, 18px); gap: 6px; }
+.tag-color-menu .tag-swatches button { width: 18px; height: 18px; }
 .tag-swatch-custom { position: relative; width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; background: conic-gradient(#ef4444, #f59e0b, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444); cursor: pointer; }
 .tag-swatch-custom.active { background: var(--tag); border-color: var(--ink); }
 .tag-swatch-custom input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }

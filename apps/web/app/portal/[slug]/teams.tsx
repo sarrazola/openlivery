@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { LoaderCircle, Pencil, Plus, Search, Trash2, Users, X } from "lucide-react";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { AiHint } from "@/components/ai-hint";
+import { ChannelIcon } from "@/lib/channels";
 import { api, ApiError, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import type { PortalMember, Team } from "@/types";
@@ -188,10 +189,9 @@ export function TeamsView({ base, canManage = true }: { base: string; canManage?
         </div>
         <label>{t("portal.teams.form.channels")}</label>
         <div className="team-channel-options">
-          {CHANNEL_OPTIONS.map((channel) => <label key={channel} className="switch-row small">
-            <input type="checkbox" checked={selectedChannels.includes(channel)} onChange={() => setSelectedChannels((list) => toggle(list, channel))} />
-            <span>{channelLabel(channel)}</span>
-          </label>)}
+          {CHANNEL_OPTIONS.map((channel) => <button type="button" key={channel} className={`chip-toggle${selectedChannels.includes(channel) ? " active" : ""}`} aria-pressed={selectedChannels.includes(channel)} onClick={() => setSelectedChannels((list) => toggle(list, channel))}>
+            <ChannelIcon channel={channel} size={14} /> {channelLabel(channel)}
+          </button>)}
         </div>
         <label className="switch-row small">
           <input type="checkbox" name="is_default" defaultChecked={editing !== "new" && editing ? editing.is_default : false} />

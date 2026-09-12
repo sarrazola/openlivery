@@ -343,6 +343,7 @@ class ConversationOut(ORMModel):
     channel: str
     external_chat_id: str | None = None
     contact_name: str | None = None
+    contact_email: str | None = None
     contact_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime

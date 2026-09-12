@@ -355,8 +355,8 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
     vars: {
       contact_name: selected?.contact_name || selected?.title || "",
       contact_phone: isSocialChannel(selected?.channel) ? "" : (selected?.external_chat_id || "").split("@")[0],
+      contact_email: selected?.contact_email || "",
       my_name: session.user_name || "",
-      business_name: portal.client_name,
     },
     onInsert: (text) => {
       const el = replyInputRef.current;

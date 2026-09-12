@@ -7,15 +7,15 @@ import { api, ApiError, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import type { CannedResponse } from "@/types";
 
-export type CannedVars = { contact_name: string; contact_phone: string; my_name: string; business_name: string };
+export type CannedVars = { contact_name: string; contact_phone: string; contact_email: string; my_name: string };
 
 /** Fill the placeholders a saved reply may carry; unknown values stay visible
  * so the operator notices and edits before sending. */
 export function renderCanned(content: string, vars: CannedVars): string {
-  return content.replace(/\{(contact_name|contact_phone|my_name|business_name)\}/g, (whole, key) => vars[key as keyof CannedVars] || whole);
+  return content.replace(/\{(contact_name|contact_phone|contact_email|my_name)\}/g, (whole, key) => vars[key as keyof CannedVars] || whole);
 }
 
-const VARIABLES = ["{contact_name}", "{contact_phone}", "{my_name}", "{business_name}"] as const;
+const VARIABLES = ["{contact_name}", "{contact_phone}", "{contact_email}", "{my_name}"] as const;
 const SHOWN = 8;
 
 /** Saved replies for the composer: typing "/" opens a picker filtered by what

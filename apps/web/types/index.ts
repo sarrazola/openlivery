@@ -183,6 +183,7 @@ export type Conversation = {
   channel: string;
   external_chat_id: string | null;
   contact_name: string | null;
+  contact_email?: string | null;
   contact_id?: string | null;
   created_at: string;
   updated_at: string;

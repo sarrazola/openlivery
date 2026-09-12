@@ -178,6 +178,7 @@ const en = {
       manageIntro: "Tags are put on contacts by hand. A tag can also send its contacts straight to a team, without the AI; your agency sets that up from the agent.",
       routedTo: "→ {team}",
       customColor: "Custom color",
+      pickColor: "Change color",
     },
     list: {
       showing: "Showing {shown} of {total}",
@@ -629,6 +630,7 @@ const es: typeof en = {
       manageIntro: "Las etiquetas se ponen a mano en cada contacto. Una etiqueta también puede mandar a sus contactos directo a un equipo, sin IA; eso lo configura tu agencia desde el agente.",
       routedTo: "→ {team}",
       customColor: "Color personalizado",
+      pickColor: "Cambiar color",
     },
     list: {
       showing: "Mostrando {shown} de {total}",

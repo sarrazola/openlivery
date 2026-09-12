@@ -220,6 +220,7 @@ def _present(conversation: Conversation) -> ConversationDetail:
         update={
             "assignee_name": (assignee.name.strip() or assignee.email) if assignee else None,
             "team_name": conversation.team.name if conversation.team else None,
+            "contact_email": (conversation.contact.email or None) if conversation.contact else None,
             **_window_fields(conversation, _last_inbound_at(conversation)),
         }
     )
