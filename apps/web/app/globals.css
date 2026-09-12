@@ -444,6 +444,11 @@ textarea { line-height: 1.55; }
 .compact-channel-grid article > span { width: 38px; height: 38px; display: grid; place-items: center; color: var(--accent-text); border-radius: 8px; background: var(--accent-soft); }
 .compact-channel-grid article div { flex: 1; display: flex; flex-direction: column; }
 .compact-channel-grid article small { color: var(--subtle); }
+.compact-channel-grid article strong { display: flex; align-items: center; gap: 8px; }
+.channel-state-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--line); }
+.channel-state-dot.connected { background: var(--green-text); }
+.channel-state-dot.pending { background: var(--amber-text); }
+.channel-state-dot.disconnected { background: var(--red-text); }
 .compact-channel-grid article button { color: var(--subtle); border: 0; background: transparent; }
 .slug-input { display: flex; align-items: center; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-2); overflow: hidden; }
 .slug-input span { padding-left: 12px; color: var(--muted); font-size: 13px; font-weight: 400; white-space: nowrap; }

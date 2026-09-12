@@ -16,12 +16,29 @@ import { useToast } from "@/components/toast";
 import { PasswordInput } from "@/components/password-input";
 import { ChannelIcon, channelLabel } from "@/lib/channels";
 import { SocialReplyNotice, useReplyPolicy } from "@/components/reply-policy";
-import { api, messageFrom } from "@/lib/api";
+import { api, ApiError, messageFrom } from "@/lib/api";
 import { useLanguage, useT } from "@/lib/i18n";
 import { businessLabel, useIndustries } from "@/lib/industries";
-import type { Client, ClientDomain, Conversation, PortalRole, PortalUser } from "@/types";
+import type { Client, ClientDomain, Conversation, PortalRole, PortalUser, SocialChannel, WhatsAppChannel, WhatsAppCloudChannel, WidgetChannel } from "@/types";
 
 type Tab = "details" | "agents" | "channels" | "inbox" | "teams" | "templates" | "portal";
+type ChannelKey = "whatsapp_cloud" | "whatsapp" | "webchat" | "instagram" | "messenger";
+type ChannelState = "loading" | "off" | "pending" | "connected" | "disconnected";
+type ChannelStatus = { state: ChannelState; detail?: string };
+
+function socialState(channel: SocialChannel | null): ChannelStatus {
+  if (!channel) return { state: "off" };
+  return { state: channel.is_enabled && channel.status === "connected" ? "connected" : "disconnected", detail: channel.username ? `@${channel.username}` : channel.display_name || "" };
+}
+
+/** A small dot beside the channel's name: green connected, amber connecting,
+ * red disconnected, grey never set up. The words live in the tooltip. */
+function ChannelStateBadge({ state }: { state: ChannelState }) {
+  const t = useT();
+  if (state === "loading") return null;
+  const label = state === "connected" ? t("clients.detail.channelConnected") : state === "pending" ? t("clients.detail.channelPending") : state === "disconnected" ? t("clients.detail.channelDisconnected") : t("clients.detail.channelNotConnected");
+  return <i className={`channel-state-dot ${state}`} title={label} aria-label={label} role="img" />;
+}
 type DeletionPreview = { agents: number; channels: number; conversations: number; contacts: number; portal_users: number };
 
 export default function ClientDetailPage() {
@@ -40,6 +57,27 @@ export default function ClientDetailPage() {
   const logoRef = useRef<HTMLInputElement>(null);
   const load = () => api<Client>(`/clients/${id}`).then((c) => { setClient(c); setBusiness({ industry: c.industry, businessType: c.business_type, custom: c.business_custom }); setTimezone(c.timezone || "UTC"); });
   useEffect(() => { load(); api<ClientDomain>(`/clients/${id}/domain`).then(setDomain); }, [id]);
+  // One line per channel: is it connected, and to what. Each channel has its
+  // own endpoint and answers 404 when the client never set it up.
+  const [channelStates, setChannelStates] = useState<Record<ChannelKey, ChannelStatus> | null>(null);
+  useEffect(() => {
+    const missing = (err: unknown) => { if (err instanceof ApiError && err.status === 404) return null; throw err; };
+    Promise.all([
+      api<WhatsAppCloudChannel>(`/whatsapp-cloud/channels/${id}`).catch(missing),
+      api<WhatsAppChannel>(`/whatsapp/channels/${id}`).catch(missing),
+      api<WidgetChannel>(`/webchat/channels/${id}`).catch(missing),
+      api<SocialChannel>(`/social/instagram/channels/${id}`).catch(missing),
+      api<SocialChannel>(`/social/messenger/channels/${id}`).catch(missing),
+    ]).then(([cloud, qr, widget, instagram, messenger]) => setChannelStates({
+      whatsapp_cloud: cloud ? { state: cloud.status === "connected" ? "connected" : "disconnected", detail: cloud.phone_number || cloud.display_name || "" } : { state: "off" },
+      whatsapp: qr ? { state: qr.status === "connected" ? "connected" : qr.status === "qr" || qr.status === "connecting" || qr.status === "reconnecting" ? "pending" : "disconnected", detail: qr.phone_number || "" } : { state: "off" },
+      webchat: widget ? { state: widget.is_enabled ? "connected" : "disconnected" } : { state: "off" },
+      instagram: socialState(instagram),
+      messenger: socialState(messenger),
+    })).catch(() => {});
+  }, [id]);
+  const channelState = (key: ChannelKey): ChannelState => channelStates?.[key]?.state ?? "loading";
+  const channelDetail = (key: ChannelKey): string => channelStates?.[key]?.detail ?? "";
 
   async function uploadLogo(file?: File) {
     if (!file) return;
@@ -115,7 +153,7 @@ export default function ClientDetailPage() {
     </Modal>
     {tab === "agents" && (client.agents.length ? <div className="table-shell"><table className="data-table"><thead><tr><th>{t("clients.detail.colAgent")}</th><th>{t("clients.detail.colStatus")}</th><th /></tr></thead><tbody>{client.agents.map((agent) => <tr key={agent.id}><td><Link className="entity-cell" href={`/agents/${agent.id}`}><span className="agent-avatar"><Bot size={18} /></span><strong>{agent.name}</strong></Link></td><td><StatusBadge active={agent.is_active} /></td><td><Link className="row-arrow" href={`/agents/${agent.id}`}><ArrowRight size={17} /></Link></td></tr>)}</tbody></table></div> : <EmptyState icon={<Bot />} title={t("clients.detail.agentsEmptyTitle")} description={t("clients.detail.agentsEmptyDescription")} action={<Link href={`/agents/new?client=${client.id}`} className="button primary">{t("clients.detail.createAgent")}</Link>} />)}
 
-    {tab === "channels" && <section className="compact-channel-grid"><article className="channel-live"><span><MessageCircle size={20} /></span><div><strong>{t("channels.whatsappCloud.title")}</strong><small>{t("clients.detail.channelWhatsappAvailable", { name: client.name })}</small></div><Link className="button secondary" href={`/clients/${client.id}/channels/whatsapp-cloud`}>{t("clients.detail.configure")}</Link></article><article className="channel-live"><span><QrCode size={20} /></span><div><strong>{t("channels.whatsapp.title")}</strong><small>{t("clients.detail.channelWhatsappQrAvailable")}</small></div><Link className="button secondary" href={`/clients/${client.id}/channels/whatsapp`}>{t("clients.detail.configure")}</Link></article><article className="channel-live"><span><Globe2 size={20} /></span><div><strong>{t("channels.webchat.title")}</strong><small>{t("clients.detail.channelWebchatAvailable")}</small></div><Link className="button secondary" href={`/clients/${client.id}/channels/webchat`}>{t("clients.detail.configure")}</Link></article>{(["instagram", "messenger"] as const).map((provider) => <article key={provider} className="channel-live"><span><ChannelIcon channel={provider} size={20} /></span><div><strong>{t(`social.${provider}.title`)}</strong><small>{t(`social.${provider}.description`)}</small></div><Link className="button secondary" href={`/clients/${client.id}/channels/${provider}`}>{t("social.configure")}</Link></article>)}</section>}
+    {tab === "channels" && <section className="compact-channel-grid"><article className={channelState("whatsapp_cloud") === "connected" ? "channel-live" : ""}><span><MessageCircle size={20} /></span><div><strong>{t("channels.whatsappCloud.title")} <ChannelStateBadge state={channelState("whatsapp_cloud")} /></strong><small>{channelDetail("whatsapp_cloud") || t("clients.detail.channelWhatsappAvailable", { name: client.name })}</small></div><Link className="button secondary" href={`/clients/${client.id}/channels/whatsapp-cloud`}>{t("clients.detail.configure")}</Link></article><article className={channelState("whatsapp") === "connected" ? "channel-live" : ""}><span><QrCode size={20} /></span><div><strong>{t("channels.whatsapp.title")} <ChannelStateBadge state={channelState("whatsapp")} /></strong><small>{channelDetail("whatsapp") || t("clients.detail.channelWhatsappQrAvailable")}</small></div><Link className="button secondary" href={`/clients/${client.id}/channels/whatsapp`}>{t("clients.detail.configure")}</Link></article><article className={channelState("webchat") === "connected" ? "channel-live" : ""}><span><Globe2 size={20} /></span><div><strong>{t("channels.webchat.title")} <ChannelStateBadge state={channelState("webchat")} /></strong><small>{t("clients.detail.channelWebchatAvailable")}</small></div><Link className="button secondary" href={`/clients/${client.id}/channels/webchat`}>{t("clients.detail.configure")}</Link></article>{(["instagram", "messenger"] as const).map((provider) => <article key={provider} className={channelState(provider) === "connected" ? "channel-live" : ""}><span><ChannelIcon channel={provider} size={20} /></span><div><strong>{t(`social.${provider}.title`)} <ChannelStateBadge state={channelState(provider)} /></strong><small>{channelDetail(provider) || t(`social.${provider}.description`)}</small></div><Link className="button secondary" href={`/clients/${client.id}/channels/${provider}`}>{t("social.configure")}</Link></article>)}</section>}
 
     {tab === "inbox" && <ClientInbox clientId={client.id} />}
 
