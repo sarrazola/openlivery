@@ -1,0 +1,38 @@
+name: Assign pull requests
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  assign:
+    if: github.repository == 'sarrazola/openlivery'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Only update PR metadata; never check out or execute contributor code.
+      - name: Assign maintainers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            numbers="$(gh api --paginate "repos/$GH_REPO/pulls?state=open&per_page=100" --jq '.[].number')"
+          else
+            numbers="$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")"
+          fi
+
+          while IFS= read -r number; do
+            [[ "$number" =~ ^[0-9]+$ ]] || continue
+            gh api --method POST "repos/$GH_REPO/issues/$number/assignees" \
+              -f 'assignees[]=sarrazola' \
+              -f 'assignees[]=juanpabloortizo' \
+              --silent
+          done <<< "$numbers"
