@@ -5,9 +5,8 @@ import { Trash2 } from "lucide-react";
 import { Alert } from "@/components/ui";
 import { api, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
+import { TAG_PALETTE, tagColor, tagStyle } from "@/lib/tags";
 import type { ContactTag } from "@/types";
-
-export const TAG_COLORS = ["gray", "blue", "green", "amber", "red", "violet", "pink", "teal"];
 
 /** The client's tag catalog, from Settings: rename, recolor, delete, create.
  * Putting a tag on a contact happens on the contact card. */
@@ -51,7 +50,10 @@ export function TagsView({ slug, canManage }: { slug: string; canManage: boolean
       {tags.map((tag) => deleting?.id === tag.id
         ? <div key={tag.id} className="tag-manage-confirm"><span>{t("portal.contacts.tags.deleteConfirm", { name: tag.name, count: tag.contact_count })}</span><span className="tag-manage-confirm-actions"><button type="button" className="button small" onClick={() => setDeleting(null)}>{t("portal.contacts.form.cancel")}</button><button type="button" className="button danger small" disabled={busy} onClick={() => remove(tag)}>{t("portal.contacts.tags.deleteAction")}</button></span></div>
         : <div key={tag.id} className="tag-manage-row">
-          <div className="tag-swatches" role="radiogroup" aria-label={tag.name}>{TAG_COLORS.map((color) => <button type="button" key={color} data-color={color} className={color === tag.color ? "active" : ""} role="radio" aria-checked={color === tag.color} aria-label={color} disabled={!canManage} onClick={() => update(tag, { color })} />)}</div>
+          <div className="tag-swatches" role="radiogroup" aria-label={tag.name}>
+            {TAG_PALETTE.map(({ value, name: label }) => <button type="button" key={value} style={tagStyle(value)} className={value === tagColor(tag.color) ? "active" : ""} role="radio" aria-checked={value === tagColor(tag.color)} aria-label={label} title={label} disabled={!canManage} onClick={() => update(tag, { color: value })} />)}
+            <label className={`tag-swatch-custom${TAG_PALETTE.some((item) => item.value === tagColor(tag.color)) ? "" : " active"}`} style={tagStyle(tag.color)} title={t("portal.contacts.tags.customColor")}><input type="color" value={tagColor(tag.color)} disabled={!canManage} aria-label={t("portal.contacts.tags.customColor")} onChange={(e) => update(tag, { color: e.target.value })} /></label>
+          </div>
           <input defaultValue={tag.name} maxLength={40} readOnly={!canManage} onBlur={(e) => canManage && update(tag, { name: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
           {(tag.route_assignee_name || tag.route_team_name) && <span className="tag-route-note">{t("portal.contacts.tags.routedTo", { team: tag.route_assignee_name ?? tag.route_team_name ?? "" })}</span>}
           <small>{t("portal.contacts.tags.count", { count: tag.contact_count })}</small>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { tagStyle } from "@/lib/tags";
 import { ArrowDown, ArrowUp, LoaderCircle, Plus, Trash2, X } from "lucide-react";
 import { Alert } from "@/components/ui";
 import { api, messageFrom } from "@/lib/api";
@@ -139,7 +140,7 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
               {tags.length === 0 && <p className="esc-empty">{t("agents.escalation.byTagNone")}</p>}
               {tags.length > 0 && routedTags.length === 0 && <p className="esc-empty">{t("agents.escalation.byTagEmpty")}</p>}
               {routedTags.map((tag) => <div key={tag.id} className="esc-row">
-                <span className="tag-chip" data-color={tag.color}>{tag.name}</span>
+                <span className="tag-chip" style={tagStyle(tag.color)}>{tag.name}</span>
                 <small>{t("agents.escalation.byTagCount", { count: tag.contact_count })}</small>
                 <span className="esc-arrow" aria-hidden="true">→</span>
                 <strong className="esc-target">{tag.route_assignee_name ?? tag.route_team_name}</strong>

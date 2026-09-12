@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import TAG_COLORS, Agency, Agent, CannedResponse, Client, Contact, ContactTag, ContactTagLink, Conversation, Message, PortalUser, Team, WhatsAppChannel, WhatsAppCloudChannel, now_utc
+from ..models import TAG_COLOR_PATTERN, TAG_COLORS, Agency, Agent, CannedResponse, Client, Contact, ContactTag, ContactTagLink, Conversation, Message, PortalUser, Team, WhatsAppChannel, WhatsAppCloudChannel, now_utc
 from ..portal_permissions import CANNED_MANAGE, CONTACTS_MANAGE, INBOX_DELETE, REPORTS_VIEW, TAGS_MANAGE, TEAMS_MANAGE, TEMPLATES_MANAGE, has_permission, permissions_for
 from ..ratelimit import login_rate_limit, public_asset_rate_limit
 from ..schemas import (
@@ -885,9 +885,10 @@ def _assert_tag_name_free(db: Session, client: Client, name: str, *, except_id: 
 def _tag_color(color: str | None, fallback: str) -> str:
     if color is None:
         return fallback
-    if color not in TAG_COLORS:
-        raise HTTPException(status_code=422, detail="Pick one of the tag colors")
-    return color
+    value = color.strip().lower()
+    if not re.match(TAG_COLOR_PATTERN, value):
+        raise HTTPException(status_code=422, detail="Use a hex color like #3b82f6")
+    return value
 
 
 @router.get("/{slug}/tags", response_model=list[ContactTagOut])

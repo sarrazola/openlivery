@@ -207,9 +207,9 @@ def test_portal_contact_tags(authenticated_client: TestClient):
     vip = client.post(f"{base}/tags", json={"name": "VIP"})
     assert vip.status_code == 201, vip.text
     vip = vip.json()
-    assert vip["color"] == "gray" and vip["contact_count"] == 0
-    priority = client.post(f"{base}/tags", json={"name": "Priority", "color": "red"}).json()
-    assert priority["color"] == "red"
+    assert vip["color"] == "#6b7280" and vip["contact_count"] == 0
+    priority = client.post(f"{base}/tags", json={"name": "Priority", "color": "#EF4444"}).json()
+    assert priority["color"] == "#ef4444"
     assert client.post(f"{base}/tags", json={"name": "vip"}).status_code == 409
     assert client.post(f"{base}/tags", json={"name": "Odd", "color": "neon"}).status_code == 422
 
@@ -227,8 +227,8 @@ def test_portal_contact_tags(authenticated_client: TestClient):
     assert [c["id"] for c in client.get(f"{base}/contacts?tag={vip['id']}").json()] == [ana["id"]]
     assert client.get(f"{base}/contacts?tag={vip['id']}").headers["x-total-count"] == "1"
 
-    renamed = client.patch(f"{base}/tags/{vip['id']}", json={"name": "Very important", "color": "violet"})
-    assert renamed.status_code == 200 and renamed.json()["color"] == "violet"
+    renamed = client.patch(f"{base}/tags/{vip['id']}", json={"name": "Very important", "color": "#8b5cf6"})
+    assert renamed.status_code == 200 and renamed.json()["color"] == "#8b5cf6"
     assert client.patch(f"{base}/tags/{vip['id']}", json={"name": "priority"}).status_code == 409
 
     exported = client.get(f"{base}/contacts/export").text.lstrip("\ufeff").splitlines()

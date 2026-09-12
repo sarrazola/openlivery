@@ -17,6 +17,7 @@ import { formatPhone } from "@/lib/dial-codes";
 import { api, ApiError, apiUrl, apiWithHeaders, messageFrom } from "@/lib/api";
 import { formatTime, formatWhen } from "@/lib/datetime";
 import { useLanguage, useT, type I18nKey } from "@/lib/i18n";
+import { tagStyle } from "@/lib/tags";
 import type { Attachment, Contact, ContactImportResult, ContactTag, Conversation, PortalChannel } from "@/types";
 
 const LIMIT = 50;
@@ -366,7 +367,7 @@ export function ContactsView({ slug, channels, openConversation, can }: { slug: 
         </div>
         {tags.length > 0 && <div className="inbox-tabs tag-filter" role="tablist" aria-label={t("portal.contacts.tags.heading")}>
           <button type="button" className={tagFilter ? "" : "active"} onClick={() => setTagFilter(null)}>{t("portal.contacts.tags.all")}</button>
-          {tags.map((tag) => <button type="button" key={tag.id} className={tagFilter === tag.id ? "active" : ""} onClick={() => setTagFilter(tagFilter === tag.id ? null : tag.id)}><i className="tag-dot" data-color={tag.color} /> {tag.name}<em className="soft">{tag.contact_count}</em></button>)}
+          {tags.map((tag) => <button type="button" key={tag.id} className={tagFilter === tag.id ? "active" : ""} onClick={() => setTagFilter(tagFilter === tag.id ? null : tag.id)}><i className="tag-dot" style={tagStyle(tag.color)} /> {tag.name}<em className="soft">{tag.contact_count}</em></button>)}
         </div>}
         {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>
           : items.map((contact) => <button key={contact.id} onClick={() => choose(contact)} className={selected?.id === contact.id ? "active" : ""}>
@@ -374,7 +375,7 @@ export function ContactsView({ slug, channels, openConversation, can }: { slug: 
             <span>
               <span className="portal-inbox-row-top"><strong>{nameOf(contact)}</strong>{contact.last_activity_at && <time>{formatWhen(contact.last_activity_at, lang)}</time>}</span>
               <small className="portal-inbox-preview">{phoneLabel(contact.phone)}{contact.email ? ` · ${contact.email}` : ""}</small>
-              {contact.tags && contact.tags.length > 0 && <span className="tag-chips">{contact.tags.slice(0, 3).map((tag) => <span key={tag.id} className="tag-chip" data-color={tag.color}>{tag.name}</span>)}{contact.tags.length > 3 && <span className="tag-chip">+{contact.tags.length - 3}</span>}</span>}
+              {contact.tags && contact.tags.length > 0 && <span className="tag-chips">{contact.tags.slice(0, 3).map((tag) => <span key={tag.id} className="tag-chip" style={tagStyle(tag.color)}>{tag.name}</span>)}{contact.tags.length > 3 && <span className="tag-chip">+{contact.tags.length - 3}</span>}</span>}
               <small className="inbox-row-meta">{t("portal.contacts.conversationCount", { count: contact.conversation_count })}{contact.blocked_at && <span className="mini-badge blocked"><Ban size={10} /> {t("portal.contacts.blockedBadge")}</span>}{contact.open_count > 0 && <span className="mini-badge human">{t("portal.contacts.openCount", { count: contact.open_count })}</span>}</small>
             </span>
           </button>)}
@@ -417,14 +418,14 @@ export function ContactsView({ slug, channels, openConversation, can }: { slug: 
             <section className="portal-contact-tags">
               <h3>{t("portal.contacts.tags.heading")}</h3>
               <div className="tag-chips large">
-                {(selected.tags ?? []).map((tag) => <span key={tag.id} className="tag-chip" data-color={tag.color}>{tag.name}<button type="button" onClick={() => toggleTag(tag)} disabled={busy} title={t("portal.contacts.tags.remove")} aria-label={t("portal.contacts.tags.remove")}><X size={11} /></button></span>)}
+                {(selected.tags ?? []).map((tag) => <span key={tag.id} className="tag-chip" style={tagStyle(tag.color)}>{tag.name}<button type="button" onClick={() => toggleTag(tag)} disabled={busy} title={t("portal.contacts.tags.remove")} aria-label={t("portal.contacts.tags.remove")}><X size={11} /></button></span>)}
                 <div className="start-line-wrap">
                   <button type="button" className="tag-add" onClick={() => { setTagQuery(""); setTagPicker((v) => !v); }} aria-haspopup="menu" aria-expanded={tagPicker}><Plus size={13} /> {t("portal.contacts.tags.add")}</button>
                   {tagPicker && <>
                     <div className="menu-backdrop" onClick={() => setTagPicker(false)} />
                     <div className="start-line-menu tag-picker" role="menu">
                       <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder={canManageTags ? t("portal.contacts.tags.searchOrCreate") : t("portal.contacts.tags.search")} autoFocus onKeyDown={(e) => { if (e.key === "Enter" && canManageTags && tagQueryTrimmed && !pickerExact) { e.preventDefault(); createTag(tagQueryTrimmed, selected); } if (e.key === "Escape") setTagPicker(false); }} />
-                      {pickerTags.map((tag) => { const has = (selected.tags ?? []).some((item) => item.id === tag.id); return <button type="button" key={tag.id} role="menuitemcheckbox" aria-checked={has} onClick={() => toggleTag(tag)} disabled={busy}><i className="tag-dot" data-color={tag.color} /><span><strong>{tag.name}</strong>{(tag.route_assignee_name || tag.route_team_name) && <small>{t("portal.contacts.tags.routedTo", { team: tag.route_assignee_name ?? tag.route_team_name ?? "" })}</small>}</span>{has && <Check size={14} />}</button>; })}
+                      {pickerTags.map((tag) => { const has = (selected.tags ?? []).some((item) => item.id === tag.id); return <button type="button" key={tag.id} role="menuitemcheckbox" aria-checked={has} onClick={() => toggleTag(tag)} disabled={busy}><i className="tag-dot" style={tagStyle(tag.color)} /><span><strong>{tag.name}</strong>{(tag.route_assignee_name || tag.route_team_name) && <small>{t("portal.contacts.tags.routedTo", { team: tag.route_assignee_name ?? tag.route_team_name ?? "" })}</small>}</span>{has && <Check size={14} />}</button>; })}
                       {canManageTags && tagQueryTrimmed && !pickerExact && <button type="button" role="menuitem" className="tag-create" onClick={() => createTag(tagQueryTrimmed, selected)} disabled={busy}><Plus size={14} /><span><strong>{t("portal.contacts.tags.create", { name: tagQueryTrimmed })}</strong></span></button>}
                       {!tags.length && !tagQueryTrimmed && <small>{t("portal.contacts.tags.emptyHint")}</small>}
                     </div>

@@ -677,7 +677,7 @@ class ContactUpdate(BaseModel):
 class ContactTagOut(BaseModel):
     id: uuid.UUID
     name: str
-    color: str = "gray"
+    color: str = "#6b7280"
     contact_count: int = 0
     route_team_id: uuid.UUID | None = None
     route_team_name: str | None = None

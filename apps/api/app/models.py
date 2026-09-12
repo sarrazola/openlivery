@@ -431,7 +431,13 @@ class Contact(Base):
     )
 
 
-TAG_COLORS = ("gray", "blue", "green", "amber", "red", "violet", "pink", "teal")
+# Colors a tag can be given without picking one: rotated so neighbours differ.
+# Any #rrggbb is accepted; these are the presets the palette offers.
+TAG_COLORS = (
+    "#6b7280", "#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6",
+    "#f97316", "#84cc16", "#06b6d4", "#6366f1", "#a855f7", "#f43f5e", "#0ea5e9", "#10b981",
+)
+TAG_COLOR_PATTERN = r"^#[0-9a-f]{6}$"
 
 
 class ContactTag(Base):
@@ -445,8 +451,8 @@ class ContactTag(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(40))
-    # A palette name, not a hex: the interface maps it to its theme colors.
-    color: Mapped[str] = mapped_column(String(20), default="gray", server_default="gray")
+    # A #rrggbb color, lowercase. Before 0041 it was a palette name.
+    color: Mapped[str] = mapped_column(String(20), default="#6b7280", server_default="#6b7280")
     # When set, a new conversation from a contact carrying this tag starts in
     # human hands on that team, before any AI reply and ahead of the agent's
     # escalation rules. Cleared when the team is deleted.
