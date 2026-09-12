@@ -180,6 +180,13 @@ _PROMPT_TEXT = {
         "intro": "Eres {name}, un agente de IA de {client}",
         "intro_business": ", un negocio de {business}.",
         "now": "Fecha y hora actual ({tz}): {now}.",
+        "weekdays": ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"),
+        "availability": "Horarios y solicitudes",
+        "availability_rules": (
+            "El horario indica cuándo está disponible el servicio correspondiente. Puedes seguir respondiendo consultas y gestionando solicitudes para fechas futuras fuera de ese horario, si las políticas del negocio lo permiten. Comprueba la fecha y hora solicitadas por separado; no prometas atención, preparación o entrega inmediata fuera del horario aplicable.\n"
+            "Usa las políticas proporcionadas o una herramienta cuya función realmente permita consultar ese horario o disponibilidad. Si falta información, no supongas que está abierto o cerrado.\n"
+            "Confirma una nueva cita, reserva o pedido como completado solo cuando la herramienta que lo registra haya confirmado el éxito. Recopilar o confirmar los datos con el cliente no equivale a completar esa acción; si no puedes realizarla, aclara que sigue pendiente de confirmación."
+        ),
         "job": "Tu trabajo",
         "business": "El negocio",
         "summary": "Qué hace",
@@ -216,6 +223,13 @@ _PROMPT_TEXT = {
         "intro": "You are {name}, an AI agent for {client}",
         "intro_business": ", in the {business} business.",
         "now": "Current date and time ({tz}): {now}.",
+        "weekdays": ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),
+        "availability": "Hours and requests",
+        "availability_rules": (
+            "Business hours describe when the relevant service is available. You can still answer questions and handle requests for future dates outside those hours when business policies allow it. Check the requested date and time separately; do not promise immediate attention, preparation, or delivery outside the applicable hours.\n"
+            "Use the provided policies or a tool actually capable of checking those hours or availability. Missing information does not mean the business is open or closed.\n"
+            "Confirm a new appointment, reservation, or order as completed only after the tool that records it confirms success. Collecting or confirming details with the customer does not complete that action; if you cannot carry it out, explain that it remains unconfirmed."
+        ),
         "job": "Your job",
         "business": "The business",
         "summary": "What it does",
@@ -316,7 +330,7 @@ def build_system_prompt(agent: Agent, knowledge_text: str) -> str:
     head = "\n".join([
         f"# {text['title'].format(name=agent.name, client=client.name)}",
         intro,
-        text["now"].format(tz=tz_name, now=f"{now:%Y-%m-%d %H:%M}"),
+        text["now"].format(tz=tz_name, now=f"{text['weekdays'][now.weekday()]}, {now:%Y-%m-%d %H:%M}"),
     ])
     parts = [head]
     if agent.instructions.strip():
@@ -339,6 +353,10 @@ def build_system_prompt(agent: Agent, knowledge_text: str) -> str:
     donts = text["base_donts"] + ("\n" + agent.brief_donts.strip() if agent.brief_donts.strip() else "")
     rules.append(_section(text["donts"], donts, 3))
     parts.append(_section(text["rules"], "\n\n".join(rules)))
+
+    # Opening hours describe service availability, not the assistant's uptime.
+    # Keep future requests and actual action confirmation distinct in every channel.
+    parts.append(_section(text["availability"], text["availability_rules"]))
 
     if agent.personality.strip():
         parts.append(_section(text["tone"], agent.personality.strip()))
