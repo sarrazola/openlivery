@@ -347,3 +347,47 @@ def test_the_agency_manages_tags_from_the_client_page(authenticated_client: Test
 
     assert client.delete(f"{base}/{tag['id']}").status_code == 204
     assert client.get(f"/api/portal/{slug}/tags").json() == []
+
+
+def test_the_agent_is_told_who_it_is_talking_to(authenticated_client: TestClient, monkeypatch):
+    """The system prompt carries the contact's phone, e-mail and tags, so a
+    form or an e-mail the agent fills never says "not specified" for what the
+    conversation already knows. What is missing is simply absent."""
+    client = authenticated_client
+    customer = _portal(client, "Context Co")
+    slug = customer["portal_slug"]
+    client.put("/api/providers/openai", json={"api_key": "secret"})
+    agent = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto", "instructions": "Capture leads.", "is_active": True},
+    ).json()
+    channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
+    headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
+    completion = AsyncMock(return_value=ai_service.Completion(text="Hello!", input_tokens=1, output_tokens=1))
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", completion)
+
+    def inbound(message_id: str, text: str):
+        return client.post(
+            f"/api/internal/whatsapp/channels/{channel['id']}/inbound",
+            json={"external_message_id": message_id, "remote_jid": "573001112233@s.whatsapp.net", "sender_name": "Juan Luis", "text": text},
+            headers=headers,
+        ).json()
+
+    inbound("m1", "Hola")
+    prompt = completion.await_args.args[4][0]["content"]
+    assert "## Contacto" in prompt
+    assert "**Nombre:** Juan Luis" in prompt and "**Teléfono:** 573001112233" in prompt and "**Canal:** WhatsApp" in prompt
+    assert "Correo" not in prompt
+    assert "No se los pidas al cliente si ya están aquí" in prompt
+
+    # Once the business fills in the e-mail and a tag, the next reply knows them.
+    contact = client.get(f"/api/portal/{slug}/contacts").json()[0]
+    client.patch(f"/api/portal/{slug}/contacts/{contact['id']}", json={"email": "juan@example.com"})
+    tag = client.post(f"/api/portal/{slug}/tags", json={"name": "Inversionista"}).json()
+    client.put(f"/api/portal/{slug}/contacts/{contact['id']}/tags", json={"tag_ids": [tag["id"]]})
+    inbound("m2", "Sigo aquí")
+    prompt = completion.await_args.args[4][0]["content"]
+    assert "**Correo:** juan@example.com" in prompt and "**Etiquetas:** Inversionista" in prompt
+
+    # The playground has no contact and no block.
+    assert "## Contacto" not in client.get(f"/api/agents/{agent['id']}/prompt").json()["prompt"]

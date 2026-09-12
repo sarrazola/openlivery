@@ -42,6 +42,7 @@ Ambas funciones usan modelos de OpenAI, por lo que requieren una clave de OpenAI
 | Tono | `personality` | Guía de tono y estilo para las respuestas. |
 | Brief del negocio | `brief_summary`, `brief_products`, `brief_audience`, `brief_policies`, `brief_dos`, `brief_donts` | Qué es y qué ofrece el negocio, más las reglas de siempre/nunca del agente. Se compone en el prompt del sistema. |
 | Identidad del negocio | `industry`, `business_type`, `business_custom` (en el cliente) | Códigos del catálogo (`GET /api/industries`) que nombran el tipo de negocio en la primera línea del prompt; cuando el catálogo solo ofrece "otro", `business_custom` guarda las palabras del propio cliente. |
+| Contacto | de la conversación | Nombre, teléfono, correo, etiquetas y canal de quien escribe, añadidos al prompt al responder para que un registro, un correo o una herramienta los reciba en vez de "no especificado". Solo se lista lo que la ficha del contacto tiene. No aparece en el playground. |
 | Idioma del prompt | `prompt_language` | `es` o `en`: el idioma de los títulos y frases fijas del prompt. Se toma del idioma de la interfaz al guardar el agente. |
 | Zona horaria | `timezone` (en el cliente) | Zona horaria IANA del negocio (p. ej. `America/Bogota`), inyectada para que todos los agentes del cliente conozcan la fecha y hora locales. Se define en el cliente, por defecto `UTC`. |
 | Proveedor | `provider` | `openai` o `anthropic`. |

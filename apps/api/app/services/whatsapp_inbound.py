@@ -21,7 +21,7 @@ from .contacts import display_name, phone_from_chat_id, previous_conversation_re
 from .conversation_state import exchanged_only, note_inbound, note_reply
 from ..models import Agent, Conversation, Message, now_utc
 from .attachments import llm_text, store_attachment
-from .knowledge import build_system_prompt, retrieve_knowledge
+from .knowledge import contact_context, build_system_prompt, retrieve_knowledge
 from .media import audio_filename, describe_image, transcribe_audio
 from .notifications import notify_needs_human
 from .routing import route_new_conversation_by_tags
@@ -382,6 +382,11 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     history = list(reversed(history))
     burst = _trailing_visitor_burst(history)
     system_content = build_system_prompt(agent, knowledge.text)
+    # Who is on the other end, so forms, e-mails and tools get the phone and
+    # e-mail the conversation already knows instead of "not specified".
+    contact_block = contact_context(conversation, agent.prompt_language)
+    if contact_block:
+        system_content += "\n\n" + contact_block
     recap = previous_conversation_recap(db, conversation)
     if recap:
         system_content += "\n\n" + recap

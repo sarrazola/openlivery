@@ -23,6 +23,27 @@ Docker stack; run `alembic upgrade head` on local setups).
   agent routes. Migration `0041_client_tz_portal_roles`.
 
 ### Added
+- **The agent knows who it is talking to.** A `Contact` section joins the
+  system prompt at reply time with the name, phone, e-mail, tags and channel
+  of the person writing, only what the contact record has, plus a rule to
+  use them when a task needs them and never ask for what is already there.
+  A lead form or an e-mail the agent fills no longer says "not specified"
+  for the phone the conversation came from. Absent in the playground.
+- **Portal settings.** The portal sidebar loses the placeholder Agents entry
+  and its language and theme rows; a Settings view holds the person's
+  preferences and, in tabs, teams, tags, saved replies and WhatsApp
+  templates. Tag management leaves the contacts menu (creating a tag from a
+  contact card stays) and the saved replies manager leaves the composer.
+  Saved replies offer `{contact_email}` in place of `{business_name}`.
+- **Tag colors.** Any `#rrggbb`, picked from a 16-color palette or a custom
+  color input; chips tint themselves from the value on both themes. The
+  eight palette names are migrated to the hex they were painted with.
+- **Channel state on the client page.** Each channel card shows a dot:
+  connected, connecting, disconnected or never set up, with the number or
+  account when connected.
+- **Contact tags from the agency.** `/clients/{id}/contact-tags` grows
+  create, rename, recolor and delete beside routing, and the client page gets
+  a Tags tab; the logic is shared with the portal in `app/services/tags.py`.
 - **Portal roles.** Each portal user is an `admin` or an `agent`. Admins do
   everything; agents work the inbox (read, reply, take over from the AI and
   hand back, change status, assign, create contacts, tag them with existing
