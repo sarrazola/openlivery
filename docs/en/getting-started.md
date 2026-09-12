@@ -6,7 +6,26 @@ OpenLivery runs as three services plus PostgreSQL, orchestrated by Docker Compos
 
 ## Requirements
 
-You need [Docker](https://docs.docker.com/get-docker/) — Docker Desktop, or Docker Engine with the Compose plugin. Nothing else is installed on the host; every service (frontend, backend, WhatsApp bridge and database) runs in a container.
+You need the following tools on the host:
+
+- [Docker](https://docs.docker.com/get-docker/) — Docker Desktop, or Docker Engine with the Compose plugin.
+- Git, GNU Make, a POSIX-compatible shell and OpenSSL.
+
+The commands in this guide are written for a POSIX-compatible shell. On Windows,
+run them from WSL or Git Bash rather than PowerShell. Python, Node.js, Go and
+PostgreSQL run inside the containers and do not need to be installed on the host
+for this setup.
+
+Check the prerequisites before continuing:
+
+```bash
+git --version
+docker --version
+docker compose version
+make --version
+sh -c 'echo POSIX shell: $0'
+openssl version
+```
 
 ## Install and run
 
