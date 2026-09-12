@@ -2,7 +2,7 @@
 
 > Leer en español: [architecture.md](../es/architecture.md)
 
-OpenLivery is a multi-tenant platform: three application services plus PostgreSQL, served through a single-origin gateway. This page explains how the pieces fit together, how the data is shaped, and how tenants stay isolated from one another.
+One OpenLivery installation serves one agency with multiple client workspaces: three application services plus PostgreSQL, served through a single-origin gateway. First-run setup creates the agency and its owner, then public registration closes. This page explains the services, data model, and ownership checks.
 
 ## The services
 
@@ -50,9 +50,9 @@ Agency
 
 A `Conversation` records its `channel` (playground, widget or WhatsApp) and a `mode` (`ai` or `human`); switching to `human` pauses the AI so an operator can answer from the inbox. Messages store their role, content and any knowledge `sources` used. See [Agents](agents.md) for how an agent's instructions, brief and knowledge compose into the prompt.
 
-## Tenant isolation
+## Data ownership
 
-The agency is the tenant boundary. `Agency`, `User`, `Client`, `Agent`, `WhatsAppChannel`, `Conversation` and other tables all carry an indexed `agency_id`, and every authenticated router query filters by the caller's `agency_id`. Deleting an agency cascades to everything it owns. Any new endpoint must preserve this filter.
+The agency owns its users and clients; agents, channels, and conversations belong to individual clients. Agency-owned records reference the agency through `agency_id`, and authenticated router queries check that ownership. Portal access is additionally restricted to the current client. Preserve these checks in every new endpoint, including for data created by older releases. They are not a public registration mechanism.
 
 ## Encryption at rest
 

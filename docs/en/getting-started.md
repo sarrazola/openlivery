@@ -42,6 +42,10 @@ Prefer not to build locally? `make pull` runs the prebuilt images published to G
 4. Add knowledge (context, Q&A pairs, PDFs) and optionally enable image or audio understanding. See [Knowledge base](knowledge-base.md).
 5. Open the **Playground** to chat with the agent, then connect a [WhatsApp](whatsapp.md) number or embed the [web widget](web-widget.md).
 
+First-run setup is available only until the agency is created. Afterwards, sign
+in to the existing agency and add client workspaces there. See
+[Agency setup](configuration.md#agency-setup).
+
 ## Useful commands
 
 | Command | What it does |

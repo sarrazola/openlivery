@@ -6,7 +6,7 @@ repo already uses in `apps/web`.
 
 ## Project
 
-OpenLivery is a multi-tenant platform where agencies create and manage AI agents for their clients, with a chat playground, a client portal, and WhatsApp integration. Three services + PostgreSQL:
+One OpenLivery installation serves one agency, which creates and manages AI agents for multiple clients, with a chat playground, client portals, and messaging integrations. First-run setup creates the agency and its owner, then public registration closes permanently. Do not add a setting, endpoint, or UI flow for registering additional agencies. Three services + PostgreSQL:
 
 - `apps/api/` — FastAPI (Python 3.12) + SQLAlchemy + Alembic
 - `apps/web/` — Next.js 16 (App Router) + React 19 + TypeScript + Tailwind
@@ -65,7 +65,7 @@ pytest tests/test_flows.py::test_register_login_logout_and_me -v   # single test
 
 ### Data model (apps/api/app/models.py)
 
-Everything is agency-scoped: `Agency → Users, Clients, AIConnections`; `Client → Agents, WhatsAppChannel, Conversations`; `Agent → Conversations, KnowledgeDocuments`; `Conversation → Messages`. Every router query filters by the authenticated user's `agency_id` — preserve this in any new endpoint; it's the tenant-isolation boundary.
+Everything is agency-scoped: `Agency → Users, Clients, AIConnections`; `Client → Agents, WhatsAppChannel, Conversations`; `Agent → Conversations, KnowledgeDocuments`; `Conversation → Messages`. Every router query filters by the authenticated user's `agency_id`. Preserve this ownership boundary in every new endpoint, including for existing data created by older releases.
 
 ### Backend layout
 

@@ -83,3 +83,26 @@ def customer_conversation(client: TestClient, agent_id: str) -> dict:
         db.commit()
     created["channel"] = "widget"
     return created
+
+
+def login_legacy_owner(client: TestClient) -> dict:
+    """Preserve access isolation for data created by older releases.
+
+    Seed the existing owner directly; current setup must never create another
+    agency. Login still needs to work for every existing owner after an upgrade.
+    """
+    from app.models import Agency, User
+    from app.security import hash_password
+
+    credentials = {"email": "legacy-owner@example.com", "password": "legacy-owner-password"}
+    with TestingSession() as db:
+        db.add(User(
+            agency=Agency(name="Legacy agency", slug="legacy-agency"),
+            name="Legacy owner",
+            email=credentials["email"],
+            password_hash=hash_password(credentials["password"]),
+        ))
+        db.commit()
+    response = client.post("/api/auth/login", json=credentials)
+    assert response.status_code == 200, response.text
+    return response.json()

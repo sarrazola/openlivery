@@ -17,7 +17,7 @@ Everything you need to build, brand and operate AI agents for your clients.
 
 **Concepts**
 
-- [Architecture](en/architecture.md) — The three services, the data model and how tenant isolation works.
+- [Architecture](en/architecture.md) — The three services, the data model and ownership checks.
 
 **Agents**
 
@@ -55,7 +55,7 @@ Todo lo que necesitas para construir, marcar y operar agentes de IA para tus cli
 
 **Conceptos**
 
-- [Arquitectura](es/architecture.md) — Los tres servicios, el modelo de datos y cómo funciona el aislamiento por tenant.
+- [Arquitectura](es/architecture.md) — Los tres servicios, el modelo de datos y las comprobaciones de propiedad.
 
 **Agentes**
 

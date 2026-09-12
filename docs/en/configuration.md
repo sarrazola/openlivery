@@ -36,6 +36,18 @@ For a non-Docker local setup, the same variables go in a `.env` at the repo root
 
 `ENCRYPTION_KEY` must **never** change once secrets have been stored. It derives the key that decrypts every saved AI API key and WhatsApp session. If you rotate or lose it, those secrets become unrecoverable — you will have to re-enter API keys and re-link WhatsApp numbers. Treat it as permanent for the lifetime of your database.
 
+## Agency setup
+
+Each installation serves one agency with multiple client workspaces. On an empty
+installation, the login page offers first-run setup for the agency and its owner.
+Once setup succeeds, the page offers sign-in only and the API rejects further
+agency registrations. Concurrent setup requests cannot create additional agencies.
+
+To serve more businesses, add clients within your agency. There is no setting to
+reopen agency registration. Upgrading preserves existing users and data; the
+removed `ALLOW_MULTI_AGENCY` environment variable has no effect and can be deleted
+from older configuration files.
+
 ## Host ports
 
 Compose binds each service to a host port, all overridable. Pass them inline to `make up`:

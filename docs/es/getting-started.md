@@ -42,6 +42,10 @@ API_PORT=8001 WEB_PORT=3001 DB_PORT=5433 make up
 4. Añade conocimiento (contexto, pares de preguntas y respuestas, PDFs) y opcionalmente activa la comprensión de imágenes o audio. Consulta [Base de conocimiento](knowledge-base.md).
 5. Abre el **Playground** para chatear con el agente, y luego conecta un número de [WhatsApp](whatsapp.md) o integra el [widget web](web-widget.md).
 
+La configuración inicial solo está disponible hasta que se crea la agencia.
+Después, inicia sesión en esa agencia y agrega los espacios de tus clientes allí.
+Consulta [Configuración de la agencia](configuration.md#configuración-de-la-agencia).
+
 ## Comandos útiles
 
 | Comando | Qué hace |

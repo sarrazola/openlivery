@@ -13,6 +13,13 @@ Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 
 ### Changed
+- **One agency per installation.** First-run setup creates the agency and owner,
+  then public registration closes. The former `ALLOW_MULTI_AGENCY` setting is
+  removed and has no effect, even when left in an existing environment file.
+  Existing agencies, users, and client data remain accessible after upgrading.
+  Simultaneous setup requests are serialized so only one can create an agency.
+  The login page requires a successful setup-status check and offers a retry
+  when that check fails. An agency can still manage multiple client workspaces.
 - **The timezone belongs to the client, not the agent.** `clients.timezone`
   replaces `agents.timezone`: it is set when the client is created (the
   browser's zone by default) or on its Details, and every agent of the client

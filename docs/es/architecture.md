@@ -2,7 +2,7 @@
 
 > Read in English: [architecture.md](../en/architecture.md)
 
-OpenLivery es una plataforma multi-tenant: tres servicios de aplicación más PostgreSQL, servidos a través de una puerta de enlace de origen único. Esta página explica cómo encajan las piezas, cómo se estructuran los datos y cómo se mantiene aislado cada tenant.
+Cada instalación de OpenLivery sirve a una agencia con múltiples espacios de clientes: tres servicios de aplicación más PostgreSQL, servidos a través de una puerta de enlace de origen único. La configuración inicial crea la agencia y su propietario; después se cierra el registro público. Esta página explica los servicios, el modelo de datos y los controles de acceso.
 
 ## Los servicios
 
@@ -50,9 +50,9 @@ Agency
 
 Una `Conversation` registra su `channel` (playground, widget o WhatsApp) y un `mode` (`ai` o `human`); cambiar a `human` pausa la IA para que un operador pueda responder desde el inbox. Los mensajes guardan su rol, contenido y las `sources` de conocimiento utilizadas. Consulta [Agentes](agents.md) para ver cómo las instrucciones, el brief y el conocimiento de un agente componen el prompt.
 
-## Aislamiento de tenants
+## Propiedad de los datos
 
-La agencia es la frontera del tenant. Las tablas `Agency`, `User`, `Client`, `Agent`, `WhatsAppChannel`, `Conversation` y otras llevan un `agency_id` indexado, y toda consulta autenticada de los routers filtra por el `agency_id` de quien llama. Eliminar una agencia propaga en cascada a todo lo que le pertenece. Cualquier endpoint nuevo debe preservar este filtro.
+La agencia es propietaria de sus usuarios y clientes; los agentes, canales y conversaciones pertenecen a cada cliente. Los registros de la agencia la referencian mediante `agency_id`, y las consultas autenticadas comprueban esa propiedad. El portal limita además el acceso al cliente actual. Conserva estos controles en cada endpoint nuevo, también para datos creados por versiones anteriores. Estos controles no permiten registrar agencias adicionales.
 
 ## Cifrado en reposo
 

@@ -4,6 +4,13 @@
 
 Docker is the fastest way to run OpenLivery, but for day-to-day development you usually want each service running on the host with hot reload. This guide covers running the backend, frontend and WhatsApp bridge locally, the test suites, migrations and the project conventions.
 
+## Installation scope
+
+Each installation serves one agency with multiple client workspaces. First-run
+setup creates that agency and its owner, then public registration closes. Do not
+add configuration, API routes, or UI flows for registering additional agencies.
+Keep ownership checks and existing data intact when changing setup or login.
+
 ## Prerequisites
 
 Clone the repository and enable the pre-commit guard once per clone:

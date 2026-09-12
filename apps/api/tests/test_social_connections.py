@@ -15,7 +15,7 @@ from app.security import decrypt_secret
 from app.services import social_connections as service
 from app.services import social_graph as graph
 from app.services.social_graph import subscribe as subscribe_with_provider, verify_account as verify_provider_account
-from conftest import TestingSession
+from conftest import TestingSession, login_legacy_owner
 
 
 @pytest.fixture(autouse=True)
@@ -99,8 +99,7 @@ def test_another_agency_cannot_read_or_change_channel(authenticated_client, monk
     client = authenticated_client
     customer, agent = resources(client)
     assert manual(client, customer, agent).status_code == 200
-    monkeypatch.setattr(get_settings(), "allow_multi_agency", True)
-    assert client.post("/api/auth/register", json={"agency_name": "Other", "name": "Eve", "email": "eve@test.example", "password": "long-enough-password"}).status_code == 201
+    login_legacy_owner(client)
     assert client.get(f"/api/social/instagram/channels/{customer['id']}").status_code == 404
     assert manual(client, customer, agent).status_code == 404
 

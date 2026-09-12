@@ -88,6 +88,8 @@ const en = {
     themeDark: "Dark",
   },
   auth: {
+    statusError: "Could not check whether this installation is ready. Try again to continue.",
+    retryStatus: "Try again",
     signInTitle: "Sign in to OpenLivery",
     signInSubtitle: "Manage your agency's AI agents.",
     registerTitle: "Create your agency",
@@ -227,6 +229,8 @@ const es: typeof en = {
     themeDark: "Oscuro",
   },
   auth: {
+    statusError: "No se pudo comprobar si esta instalación está lista. Inténtalo de nuevo para continuar.",
+    retryStatus: "Intentar de nuevo",
     signInTitle: "Entra a OpenLivery",
     signInSubtitle: "Gestiona los agentes de IA de tu agencia.",
     registerTitle: "Crea tu agencia",

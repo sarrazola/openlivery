@@ -5,11 +5,10 @@ from unittest.mock import AsyncMock
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.config import get_settings
 from app.models import SocialChannel, SocialHistoryImport, SocialWebhookEvent, now_utc
 from app.services import social_graph as graph
 from app.services import social_history as history
-from conftest import TestingSession
+from conftest import TestingSession, login_legacy_owner
 
 
 def setup(client, monkeypatch):
@@ -32,8 +31,7 @@ def test_history_is_authenticated_and_repeated_requests_reuse_active_job(authent
     assert first.json()["max_conversations"] == 20
     assert first.json()["limited"] is True
     assert client.post(endpoint).json()["id"] == first.json()["id"]
-    monkeypatch.setattr(get_settings(), "allow_multi_agency", True)
-    assert client.post("/api/auth/register", json={"agency_name": "Other", "name": "Eve", "email": "eve@test.example", "password": "long-enough-password"}).status_code == 201
+    login_legacy_owner(client)
     assert client.get(endpoint).status_code == 404
     assert client.post(endpoint).status_code == 404
 

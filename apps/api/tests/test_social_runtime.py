@@ -12,14 +12,13 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import func, select
 
-from app.config import get_settings
 from app.models import Agent, Contact, ContactIdentity, Conversation, Message, MessageAttachment, ProviderCredential, SocialChannel, SocialOutbox, SocialWebhookEvent, Team, now_utc
 from app.security import encrypt_secret
 from app.services import escalation, notifications, social_connections, social_delivery, social_graph, social_inbound, social_policy, social_worker, whatsapp_inbound
 from app.services.ai import Completion
 from app.services.contacts import merge_contacts, resolve_contact
 from app.services.conversation_state import set_status
-from conftest import TestingSession
+from conftest import TestingSession, login_legacy_owner
 
 
 SECRET = "runtime-test-app-secret"
@@ -398,9 +397,7 @@ def test_other_agency_cannot_read_or_reply_to_social_conversation(authenticated_
         conversation.mode = "human"
         db.commit()
         conversation_id = conversation.id
-    monkeypatch.setattr(get_settings(), "allow_multi_agency", True)
-    result = authenticated_client.post("/api/auth/register", json={"agency_name": "Other", "name": "Other operator", "email": "other@runtime.example", "password": "another-long-password"})
-    assert result.status_code == 201, result.text
+    login_legacy_owner(authenticated_client)
     assert authenticated_client.get(f"/api/conversations/{conversation_id}").status_code == 404
     assert authenticated_client.post(f"/api/conversations/{conversation_id}/reply", json={"content": "Unauthorized"}).status_code == 404
     social_graph.send_text.assert_not_awaited()

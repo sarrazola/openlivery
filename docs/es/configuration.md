@@ -36,6 +36,18 @@ Para una instalación local sin Docker, las mismas variables van en un `.env` en
 
 `ENCRYPTION_KEY` **nunca** debe cambiar una vez que se han almacenado secretos. Deriva la clave que descifra cada clave de API de IA guardada y cada sesión de WhatsApp. Si la rotas o la pierdes, esos secretos quedan irrecuperables: tendrás que volver a introducir las claves de API y a vincular los números de WhatsApp. Trátala como permanente durante toda la vida de tu base de datos.
 
+## Configuración de la agencia
+
+Cada instalación sirve a una agencia con múltiples espacios de clientes. En una
+instalación vacía, la pantalla de acceso permite crear la agencia y su propietario.
+Después solo permite iniciar sesión y la API rechaza registros de agencias
+adicionales, incluso si dos solicitudes intentan completar la configuración a la vez.
+
+Para atender más negocios, agrega clientes dentro de tu agencia. No hay un ajuste
+para reabrir el registro. La actualización conserva los usuarios y datos existentes;
+la antigua variable `ALLOW_MULTI_AGENCY` ya no tiene efecto y puede eliminarse de
+los archivos de configuración anteriores.
+
 ## Puertos del host
 
 Compose enlaza cada servicio a un puerto del host, todos sobrescribibles. Pásalos en línea a `make up`:

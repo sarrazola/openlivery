@@ -25,10 +25,13 @@
 
 ---
 
-OpenLivery is a multi-tenant workspace where an agency creates AI agents for its
+One OpenLivery installation serves one agency. The agency creates AI agents for its
 clients, gives each client a branded portal, and talks to end users over
 WhatsApp or an embeddable web chat widget. Bring your own OpenAI / Anthropic
 keys and self-host the whole thing with one command.
+
+First-run setup creates your agency and owner account, then public registration
+closes. Add as many client workspaces as your agency needs inside that installation.
 
 ## Documentation
 

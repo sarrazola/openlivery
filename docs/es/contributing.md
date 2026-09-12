@@ -4,6 +4,14 @@
 
 Docker es la forma más rápida de ejecutar OpenLivery, pero para el desarrollo diario normalmente querrás cada servicio corriendo en tu máquina con recarga en caliente. Esta guía cubre cómo ejecutar el backend, el frontend y el puente de WhatsApp localmente, las suites de pruebas, las migraciones y las convenciones del proyecto.
 
+## Alcance de la instalación
+
+Cada instalación sirve a una agencia con múltiples espacios de clientes. La
+configuración inicial crea esa agencia y su propietario; después se cierra el
+registro público. No añadas configuración, rutas de API ni flujos de interfaz
+para registrar agencias adicionales. Conserva las comprobaciones de propiedad
+y los datos existentes al modificar la configuración inicial o el acceso.
+
 ## Requisitos previos
 
 Clona el repositorio y activa el guard de pre-commit una vez por clon:

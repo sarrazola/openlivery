@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from app.config import get_settings
+from conftest import login_legacy_owner
+
 from app.routers import whatsapp_cloud as whatsapp_cloud_router
 from app.routers import whatsapp_cloud_webhook as webhook_router
 from app.services import ai as ai_service
@@ -111,14 +112,8 @@ def test_configure_channel_hides_secrets(authenticated_client: TestClient, monke
     assert resaved["phone_number_id"] == "222"
     assert resaved["webhook_verify_token"] == channel["webhook_verify_token"]
 
-    # Another agency cannot see the channel. Registration closes after the
-    # first agency, so allow a second one just for this check.
-    monkeypatch.setattr(get_settings(), "allow_multi_agency", True)
-    other = client.post(
-        "/api/auth/register",
-        json={"agency_name": "Other", "name": "Eve", "email": "eve@other.com", "password": "another-password"},
-    )
-    assert other.status_code == 201
+    # Data belonging to an owner from an older installation stays isolated.
+    login_legacy_owner(client)
     assert client.get(f"/api/whatsapp-cloud/channels/{customer['id']}").status_code == 404
 
 

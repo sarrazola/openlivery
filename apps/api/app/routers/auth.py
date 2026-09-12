@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -29,8 +29,6 @@ def _set_session_cookie(response: Response, user: User) -> None:
 
 
 def _registration_open(db: Session) -> bool:
-    if get_settings().allow_multi_agency:
-        return True
     return db.scalar(select(Agency.id).limit(1)) is None
 
 
@@ -41,7 +39,7 @@ def auth_status(db: Session = Depends(get_db)):
     has_agency = db.scalar(select(Agency.id).limit(1)) is not None
     return {
         "needs_setup": not has_agency,
-        "registration_open": get_settings().allow_multi_agency or not has_agency,
+        "registration_open": not has_agency,
     }
 
 
@@ -52,6 +50,10 @@ def auth_status(db: Session = Depends(get_db)):
     dependencies=[Depends(login_rate_limit)],
 )
 def register(payload: RegisterRequest, response: Response, db: Session = Depends(get_db)):
+    # There is no owner row to lock on first run. Serialize setup attempts on
+    # the table, then check again after any earlier attempt commits or rolls
+    # back. Ordinary reads remain available and the lock ends with the transaction.
+    db.execute(text("LOCK TABLE agencies IN EXCLUSIVE MODE"))
     if not _registration_open(db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
