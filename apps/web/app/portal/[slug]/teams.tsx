@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { LoaderCircle, Pencil, Plus, Search, Trash2, Users, X } from "lucide-react";
 import { Alert, EmptyState, Modal } from "@/components/ui";
+import { AiHint } from "@/components/ai-hint";
 import { api, ApiError, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import type { PortalMember, Team } from "@/types";
@@ -145,7 +146,7 @@ export function TeamsView({ base, canManage = true }: { base: string; canManage?
       <form className="modal-form" onSubmit={save}>
         <div className="form-grid">
           <label>{t("portal.teams.form.name")}<input name="name" required maxLength={120} defaultValue={editing !== "new" && editing ? editing.name : ""} autoFocus /></label>
-          <label>{t("portal.teams.form.strategy")}
+          <label><span className="label-row">{t("portal.teams.form.strategy")} <AiHint text={t("portal.teams.form.strategyHint")} /></span>
             <select name="strategy" defaultValue={editing !== "new" && editing ? editing.strategy : "round_robin"}>
               {STRATEGIES.map((value) => <option key={value} value={value}>{strategyLabel(value)}</option>)}
             </select>

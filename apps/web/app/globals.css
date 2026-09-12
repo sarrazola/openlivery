@@ -933,8 +933,13 @@ textarea { line-height: 1.55; }
 .portal-settings .portal-teams { height: auto; }
 .portal-settings .portal-templates { padding: 0; }
 .portal-settings .canned-editor { max-width: 560px; }
-/* The person's card sits at the foot of the sidebar, right above Log out. */
-.portal-nav > button.availability-toggle + button { margin-top: 12px; }
+/* The foot of the sidebar: a rule, the person's card, then Log out. The card
+   is flat, a tinted block rather than a bordered one. */
+.portal-nav-foot { margin-top: auto; padding-top: 12px; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line-soft); }
+.portal-nav-foot > button { height: 40px; display: flex; align-items: center; gap: 9px; color: var(--muted); border: 0; background: transparent; }
+.portal-nav-foot > button.availability-toggle { height: auto; min-height: 48px; margin: 0; padding: 8px 10px 8px 12px; gap: 10px; color: var(--ink); border: 0; border-radius: 10px; background: var(--surface-2); font-size: 13px; text-align: left; transition: .15s ease; }
+.portal-nav-foot > button.availability-toggle:hover { background: var(--surface-3); }
+.portal-nav-foot > button.availability-toggle.away { color: var(--muted); }
 /* The same views inside the agency's client page: sized by their content, not the viewport. */
 .embedded-portal-view .portal-teams { height: auto; }
 .embedded-portal-view .portal-templates { padding-top: 12px; }
@@ -1053,7 +1058,7 @@ textarea { line-height: 1.55; }
   .portal-login { grid-template-columns: 1fr; }
   .portal-login > section { min-height: 360px; }
   .portal-app { grid-template-columns: 76px minmax(0,1fr); }
-  .portal-nav strong, .portal-nav nav a span, .portal-nav > button { font-size: 0; }
+  .portal-nav strong, .portal-nav nav a span, .portal-nav > button, .portal-nav-foot > button { font-size: 0; }
   .portal-nav .availability-toggle { justify-content: center; padding: 8px 0; }
   .portal-nav .availability-name { display: none; }
   .portal-inbox { grid-template-columns: 260px minmax(0,1fr); }

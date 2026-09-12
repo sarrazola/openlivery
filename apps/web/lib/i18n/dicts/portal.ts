@@ -304,6 +304,7 @@ const en = {
     form: {
       name: "Name",
       strategy: "Assignment rule",
+      strategyHint: "Who gets the next unassigned conversation. Round robin: the member who has waited longest since their last one, so everyone takes turns. Least busy: the member holding the fewest open conversations right now.",
       description: "Description",
       descriptionPlaceholder: "What this team handles",
       descriptionHelp: "For your people: what this tray is for. Where the AI escalates is decided only by the rules in the bot settings.",
@@ -754,6 +755,7 @@ const es: typeof en = {
     form: {
       name: "Nombre",
       strategy: "Regla de asignación",
+      strategyHint: "Quién recibe la siguiente conversación sin asignar. Por turnos: la persona que más lleva esperando desde su última, así todos rotan. Menos ocupado: la persona con menos conversaciones abiertas en este momento.",
       description: "Descripción",
       descriptionPlaceholder: "Qué atiende este equipo",
       descriptionHelp: "Para tu gente: para qué es esta bandeja. A dónde escala la IA lo deciden solo las reglas en la configuración del bot.",
