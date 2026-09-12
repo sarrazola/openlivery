@@ -56,6 +56,24 @@ Both features use OpenAI models, so they require an OpenAI key regardless of the
 
 Sampling parameters are applied best-effort; models that reject a value fall back to their own defaults.
 
+## Business hours and future requests
+
+Put the schedule in the agent's **Key information and policies** (`brief_policies`) and set the client's timezone. The prompt includes the current local weekday, date and time. Policies travel with every reply, even when no document is retrieved.
+
+Describe service hours separately from what the assistant may do outside those hours. A clinic's reception being closed at 01:00 does not mean the assistant must stop answering or cannot book an available appointment for tomorrow. A restaurant may answer menu questions all night while accepting immediate orders only during kitchen hours. Specify delivery and pickup hours, last-order cutoffs, holidays, overnight shifts and whether scheduled orders are permitted where relevant.
+
+For example, a clinic policy could say:
+
+> Reception and consultations: Monday to Friday, 09:00-17:00, America/Bogota. Online booking is available at any time for future slots returned by the booking tool. Check the requested slot and record the appointment before saying it is booked. If booking is unavailable, explain that the request is unconfirmed.
+
+A restaurant could instead say:
+
+> Kitchen: Monday to Saturday, 18:00-23:00; last order at 22:30. Delivery: 18:00-22:30. Answer menu questions at any time. Outside ordering hours, offer a scheduled order only if the ordering system accepts it. Reviewing the order with the customer does not mean it has been accepted.
+
+Use the business's actual rules, not these example hours. Confirming a new appointment, reservation or order requires a successful result from the tool that records it. Without that tool, the assistant can collect a request when allowed, but must explain that it remains unconfirmed.
+
+These are instructions for the model, not a server-side schedule validator. A tool that records bookings or orders must enforce the requested service time, availability and exceptions itself when those rules must be guaranteed. Merely enabling an unrelated tool does not give the assistant access to a calendar.
+
 ## Knowledge in the system prompt
 
 Beyond these settings, the agent's Q&A pairs, uploaded documents, per-client context and per-agent context are all assembled into the system prompt at answer time. See [Knowledge base](knowledge-base.md) for how documents are chunked, embedded and retrieved.
