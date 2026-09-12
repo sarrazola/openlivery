@@ -132,6 +132,20 @@ func isDirectIncoming(info types.MessageInfo) bool {
 	return false
 }
 
+// isDirectOutgoing keeps the messages the business itself typed on the linked
+// phone: the same direct chats as above, but ours. They never produce a reply;
+// they complete the thread so the agent reads what a person already said.
+func isDirectOutgoing(info types.MessageInfo) bool {
+	if !info.IsFromMe || info.IsGroup || info.ID == "" {
+		return false
+	}
+	switch info.Chat.Server {
+	case types.DefaultUserServer, types.HiddenUserServer:
+		return true
+	}
+	return false
+}
+
 func orDefault(value, fallback string) string {
 	if value == "" {
 		return fallback

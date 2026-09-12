@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..database import new_session
 from .contacts import display_name, phone_from_chat_id, previous_conversation_recap, rename_conversations, resolve_contact
-from .conversation_state import exchanged_only, note_inbound, note_reply
+from .conversation_state import exchanged_only, note_inbound, note_reply, pause_for_business, resume_after_pause
 from ..models import Agent, Conversation, Message, now_utc
 from .attachments import llm_text, store_attachment
 from .knowledge import contact_context, build_system_prompt, retrieve_knowledge
@@ -109,6 +109,86 @@ async def resolve_inbound_content(db: Session, agent: Agent, inbound: InboundMes
         return text, (f"{text}\n\n" if text else "") + (transcript or _media_placeholder("audio"))
     except (HTTPException, ValueError):
         return text, text or _media_placeholder(inbound.media_kind)
+
+
+# Wording is from the business's side on purpose: the agent reads these back as
+# its own earlier turn, not as something the contact sent.
+_OUTGOING_PLACEHOLDERS = {
+    "image": "[An image was sent from WhatsApp]",
+    "audio": "[A voice note was sent from WhatsApp]",
+    "video": "[A video was sent from WhatsApp]",
+    "sticker": "[A sticker was sent from WhatsApp]",
+    "document": "[A file was sent from WhatsApp]",
+}
+
+
+def record_outgoing(
+    db: Session,
+    channel,
+    *,
+    external_message_id: str,
+    external_chat_id: str,
+    text: str,
+    media_kind: str | None,
+) -> uuid.UUID | None:
+    """Store a reply the business typed on the linked phone itself.
+
+    Without this the agent only ever saw its own messages and the contact's,
+    so a hand-written "here are our bank details" was invisible to it and the
+    next "already transferred" arrived with no context. Nothing is generated in
+    response; this only keeps the thread whole, and steps the agent aside.
+    """
+    already = db.scalar(
+        select(Message)
+        .join(Conversation)
+        .where(
+            Conversation.whatsapp_channel_id == channel.id,
+            Message.external_message_id == external_message_id,
+        )
+    )
+    if already:
+        # Our own send coming back to us, or a repeat delivery.
+        return already.conversation_id
+
+    conversation = db.scalar(
+        select(Conversation)
+        .where(
+            Conversation.whatsapp_channel_id == channel.id,
+            Conversation.external_chat_id == external_chat_id,
+            Conversation.status != "resolved",
+        )
+        .order_by(Conversation.created_at.desc())
+    )
+    if not conversation:
+        # The business wrote first, before the contact ever did.
+        conversation = Conversation(
+            agency_id=channel.agency_id,
+            client_id=channel.client_id,
+            agent_id=channel.agent_id,
+            external_chat_id=external_chat_id,
+            title=external_chat_id.split("@")[0][:240],
+            channel="whatsapp",
+            whatsapp_channel_id=channel.id,
+        )
+        db.add(conversation)
+        db.flush()
+
+    content = text.strip() or _OUTGOING_PLACEHOLDERS.get(media_kind or "", "[A file was sent from WhatsApp]")
+    db.add(
+        Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content=content,
+            sender_type="human",
+            sender_name=channel.client.name if channel.client else None,
+            external_message_id=external_message_id,
+        )
+    )
+    pause_for_business(db, conversation, actor=channel.client.name if channel.client else None)
+    note_reply(conversation)
+    conversation.updated_at = now_utc()
+    db.commit()
+    return conversation.id
 
 
 async def process_inbound(
@@ -227,6 +307,10 @@ async def process_inbound(
     blocked = conversation.contact is not None and conversation.contact.blocked_at is not None
     if not blocked:
         note_inbound(db, conversation)
+        # The business answered by hand and the contact has now replied: the
+        # agent picks the thread back up, with what was written by hand
+        # already in its history.
+        resume_after_pause(db, conversation)
     if conversation_channel == "whatsapp_cloud" and channel.coexistence:
         occurred = inbound.occurred_at or now_utc()
         conversation.social_last_inbound_at = max(conversation.social_last_inbound_at or occurred, occurred)

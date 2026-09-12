@@ -526,6 +526,10 @@ class Conversation(Base):
     first_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # When a person last took the conversation over from the AI.
     taken_over_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # True when the AI stepped aside on its own because the business answered
+    # from the linked phone. A pause an operator chose from the inbox leaves
+    # this false, and only the automatic one lifts by itself.
+    auto_paused: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # The portal user handling this conversation, when a person is. Cleared
     # when it goes back to the AI or is released for someone else to take.
     assignee_id: Mapped[uuid.UUID | None] = mapped_column(

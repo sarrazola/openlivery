@@ -73,3 +73,62 @@ func (c *messageCache) drop(channelID string) {
 	delete(c.channels, channelID)
 	c.mu.Unlock()
 }
+
+// Per-channel cap on remembered ids of our own sends. WhatsApp echoes every
+// message back to the linked device, and without this the bridge would report
+// its own replies to the backend as "the business typed this on the phone".
+const echoSetSize = 400
+
+type channelEchoes struct {
+	order []string
+	items map[string]struct{}
+}
+
+type echoSet struct {
+	mu       sync.Mutex
+	channels map[string]*channelEchoes
+}
+
+func newEchoSet() *echoSet {
+	return &echoSet{channels: make(map[string]*channelEchoes)}
+}
+
+func (e *echoSet) remember(channelID, messageID string) {
+	if messageID == "" {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	channel, ok := e.channels[channelID]
+	if !ok {
+		channel = &channelEchoes{items: make(map[string]struct{})}
+		e.channels[channelID] = channel
+	}
+	if _, exists := channel.items[messageID]; exists {
+		return
+	}
+	channel.items[messageID] = struct{}{}
+	channel.order = append(channel.order, messageID)
+	if len(channel.order) > echoSetSize {
+		oldest := channel.order[0]
+		channel.order = channel.order[1:]
+		delete(channel.items, oldest)
+	}
+}
+
+func (e *echoSet) sentByUs(channelID, messageID string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	channel, ok := e.channels[channelID]
+	if !ok {
+		return false
+	}
+	_, found := channel.items[messageID]
+	return found
+}
+
+func (e *echoSet) drop(channelID string) {
+	e.mu.Lock()
+	delete(e.channels, channelID)
+	e.mu.Unlock()
+}

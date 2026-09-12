@@ -37,6 +37,8 @@ _ACTIVITY_TEXT = {
     "reopened": "{actor} reopened the conversation",
     "reopened_by_contact": "Reopened: the contact wrote again",
     "taken_over": "{actor} took over the conversation",
+    "answered_from_phone": "{actor} answered from the phone; the AI stepped aside",
+    "resumed_after_phone": "The contact wrote again; the AI picked the thread back up",
     "returned_to_ai": "{actor} returned the conversation to the AI",
     "auto_resolved": "Resolved automatically after {hours} h without activity",
     "self_assigned": "{actor} is now handling the conversation",
@@ -131,6 +133,9 @@ def set_mode(
         return False
     ensure_open(conversation)
     conversation.mode = mode
+    # Set by a person on purpose, so it is theirs to lift: only the pause the
+    # AI set for itself resumes on its own.
+    conversation.auto_paused = False
     now = now_utc()
     if mode == "human":
         conversation.taken_over_at = now
@@ -213,6 +218,36 @@ def set_team(
         conversation.assignee_id = None
         conversation.assigned_at = None
     record_activity(db, conversation, "team_assigned", actor=actor, details={"team": team.name})
+    return True
+
+
+def pause_for_business(db: Session, conversation: Conversation, *, actor: str | None = None) -> bool:
+    """The business answered from its own phone: the AI steps aside.
+
+    Different from an operator taking over in the inbox, which stays until
+    someone hands it back. This one lifts by itself on the contact's next
+    message, because the person who wrote is usually saying one thing (an
+    account number, a confirmation) and not taking the conversation over.
+    """
+    if conversation.status == "resolved" or (conversation.mode == "human" and conversation.auto_paused):
+        return False
+    already_human = conversation.mode == "human"
+    conversation.mode = "human"
+    conversation.auto_paused = True
+    conversation.taken_over_at = now_utc()
+    if not already_human:
+        record_activity(db, conversation, "answered_from_phone", actor=actor)
+    return True
+
+
+def resume_after_pause(db: Session, conversation: Conversation) -> bool:
+    """The contact wrote again after that: the AI picks the thread back up,
+    with everything said by hand already in its history."""
+    if conversation.mode != "human" or not conversation.auto_paused:
+        return False
+    conversation.mode = "ai"
+    conversation.auto_paused = False
+    record_activity(db, conversation, "resumed_after_phone")
     return True
 
 

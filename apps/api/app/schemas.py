@@ -952,6 +952,15 @@ class WhatsAppInboundReaction(BaseModel):
     emoji: str = Field(default="", max_length=16)
 
 
+class WhatsAppOutgoing(BaseModel):
+    """A message the business typed on the linked phone, not through the app."""
+
+    external_message_id: str = Field(max_length=255)
+    remote_jid: str = Field(min_length=1, max_length=255)
+    text: str = ""
+    media_kind: str | None = Field(default=None, pattern=r"^(image|audio|video|sticker|document|other)$")
+
+
 class WhatsAppInboundResult(BaseModel):
     accepted: bool
     reply: str | None = None

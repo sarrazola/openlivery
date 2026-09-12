@@ -96,3 +96,42 @@ func TestIsDirectIncomingFiltersNonPersonalChats(t *testing.T) {
 		t.Fatal("message without id must be filtered")
 	}
 }
+
+func TestIsDirectOutgoingKeepsWhatTheBusinessTyped(t *testing.T) {
+	user := types.NewJID("573001112233", types.DefaultUserServer)
+	if !isDirectOutgoing(directInfo(user, true, false)) {
+		t.Fatal("a message typed on the linked phone must be forwarded")
+	}
+	if isDirectOutgoing(directInfo(user, false, false)) {
+		t.Fatal("a contact's message is not our own")
+	}
+	if isDirectOutgoing(directInfo(types.NewJID("12036302", types.GroupServer), true, false)) {
+		t.Fatal("groups stay out")
+	}
+	noID := directInfo(user, true, false)
+	noID.ID = ""
+	if isDirectOutgoing(noID) {
+		t.Fatal("a message without id must be filtered")
+	}
+}
+
+func TestEchoSetRecognisesOurOwnSends(t *testing.T) {
+	echoes := newEchoSet()
+	echoes.remember("channel", "WAMID1")
+
+	if !echoes.sentByUs("channel", "WAMID1") {
+		t.Fatal("a message the bridge sent must be recognised as its own echo")
+	}
+	if echoes.sentByUs("channel", "TYPED-ON-THE-PHONE") {
+		t.Fatal("a message we never sent is someone typing on the phone")
+	}
+	if echoes.sentByUs("other-channel", "WAMID1") {
+		t.Fatal("channels must not share echoes")
+	}
+	for i := 0; i < echoSetSize; i++ {
+		echoes.remember("channel", string(rune('a'+i%26))+string(rune('0'+i/26)))
+	}
+	if echoes.sentByUs("channel", "WAMID1") {
+		t.Fatal("the oldest ids must be forgotten once the set is full")
+	}
+}

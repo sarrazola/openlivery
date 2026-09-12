@@ -84,11 +84,16 @@ func (r *channelRuntime) requestStop() {
 	r.mu.Unlock()
 }
 
+// A message of our own older than this is history being replayed after a
+// reconnect, not something a person just typed on the phone.
+const outgoingMaxAge = 15 * time.Minute
+
 type manager struct {
 	api       *backendClient
 	container *sqlstore.Container
 	log       waLog.Logger
 	cache     *messageCache
+	echoes    *echoSet
 
 	mu       sync.Mutex
 	runtimes map[string]*channelRuntime
@@ -100,6 +105,7 @@ func newManager(api *backendClient, container *sqlstore.Container, log waLog.Log
 		container: container,
 		log:       log,
 		cache:     newMessageCache(),
+		echoes:    newEchoSet(),
 		runtimes:  make(map[string]*channelRuntime),
 	}
 }
@@ -306,6 +312,9 @@ func (m *manager) processIncoming(ctx context.Context, runtime *channelRuntime, 
 			fromMe: evt.Info.IsFromMe,
 		})
 	}
+	if isDirectOutgoing(evt.Info) {
+		return m.forwardOwnMessage(ctx, runtime, evt)
+	}
 	if !isDirectIncoming(evt.Info) {
 		return nil
 	}
@@ -366,6 +375,34 @@ func (m *manager) processIncoming(ctx context.Context, runtime *channelRuntime, 
 	return nil
 }
 
+// forwardOwnMessage records what the business typed on the phone itself. The
+// agent reads it as its own previous turn, so the conversation keeps one voice
+// and it stops answering over a person. It never produces a reply.
+func (m *manager) forwardOwnMessage(ctx context.Context, runtime *channelRuntime, evt *events.Message) error {
+	if m.echoes.sentByUs(runtime.channelID, evt.Info.ID) {
+		return nil
+	}
+	// After a reconnect WhatsApp replays what we missed; only what was just
+	// typed is someone stepping into the conversation now.
+	if !evt.Info.Timestamp.IsZero() && time.Since(evt.Info.Timestamp) > outgoingMaxAge {
+		return nil
+	}
+	text := incomingText(evt.Message)
+	media := incomingMedia(evt.Message)
+	if text == "" && media == nil {
+		return nil
+	}
+	body := map[string]any{
+		"external_message_id": evt.Info.ID,
+		"remote_jid":          m.remoteJIDFor(ctx, runtime, evt.Info.Chat),
+		"text":                text,
+	}
+	if media != nil {
+		body["media_kind"] = media.kind
+	}
+	return m.api.call(ctx, http.MethodPost, "/channels/"+runtime.channelID+"/outgoing", body, nil, 0)
+}
+
 func (m *manager) sendMessage(ctx context.Context, channelID, remoteJID, text string, media *outboundMedia, quoteExternalID string) (string, error) {
 	runtime := m.runtime(channelID)
 	if runtime == nil || runtime.stopped() {
@@ -392,6 +429,7 @@ func (m *manager) sendMessage(ctx context.Context, channelID, remoteJID, text st
 	if err != nil {
 		return "", err
 	}
+	m.echoes.remember(channelID, sent.ID)
 	if ownJID := runtime.client.Store.ID; ownJID != nil {
 		m.cache.put(channelID, sent.ID, cachedMessage{raw: message, chat: jid, sender: *ownJID, fromMe: true})
 	}
@@ -597,6 +635,7 @@ func (m *manager) sendReaction(ctx context.Context, channelID, remoteJID, target
 func (m *manager) disconnectChannel(ctx context.Context, channelID string) error {
 	runtime := m.runtime(channelID)
 	m.cache.drop(channelID)
+	m.echoes.drop(channelID)
 	if runtime != nil {
 		runtime.requestStop()
 		m.dropRuntime(runtime)

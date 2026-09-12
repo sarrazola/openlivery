@@ -22,10 +22,11 @@ from ..schemas import (
     WhatsAppInternalAuth,
     WhatsAppInternalStatus,
     WhatsAppOutboundConfirm,
+    WhatsAppOutgoing,
 )
 from ..security import decrypt_secret, encrypt_secret
 from ..services.whatsapp import bridge_command
-from ..services.whatsapp_inbound import InboundMessage, process_inbound
+from ..services.whatsapp_inbound import InboundMessage, process_inbound, record_outgoing
 
 
 router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
@@ -260,6 +261,24 @@ def inbound_reaction(channel_id: uuid.UUID, payload: WhatsAppInboundReaction, db
         return
     message.incoming_reaction = payload.emoji or None
     db.commit()
+
+
+@internal_router.post("/channels/{channel_id}/outgoing", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(_require_bridge)])
+def record_outgoing_message(channel_id: uuid.UUID, payload: WhatsAppOutgoing, db: Session = Depends(get_db)):
+    """A message the business typed on the linked phone, reported by the bridge.
+
+    Stored as the business's own turn and nothing more: no reply is generated,
+    and the agent steps aside until the contact writes again.
+    """
+    channel = _internal_channel(db, channel_id)
+    record_outgoing(
+        db,
+        channel,
+        external_message_id=payload.external_message_id,
+        external_chat_id=payload.remote_jid,
+        text=payload.text,
+        media_kind=payload.media_kind,
+    )
 
 
 @internal_router.post("/channels/{channel_id}/outbound-confirm", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(_require_bridge)])
