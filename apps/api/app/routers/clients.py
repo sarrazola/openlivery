@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..database import get_db
 from ..deps import get_current_user
 from .. import industries
-from ..models import Agent, Client, Contact, ContactTag, ContactTagLink, Conversation, PortalUser, PushDevice, User, new_domain_token, Team
+from ..models import Agent, Client, Contact, Conversation, PortalUser, PushDevice, User, new_domain_token, Team
 from ..portal_permissions import DEFAULT_ROLE
 from ..schemas import (
     ClientDeletionPreview,
@@ -21,6 +21,7 @@ from ..schemas import (
     PortalUserCreate,
     PortalUserOut,
     PortalUserUpdate,
+    ContactTagCreate,
     ContactTagOut,
     ContactTagUpdate,
     TeamOut,
@@ -30,6 +31,7 @@ from ..schemas import (
 )
 from ..security import hash_password
 from ..services.attachments import logo_response
+from ..services.tags import create_tag, delete_tag, get_tag, list_tags, rename_tag, tag_count, tag_out
 from ..services.teams import create_team, delete_team, list_teams, members_out, team_out, update_team
 from ..services.whatsapp import bridge_command
 from ..services.whatsapp_templates import (
@@ -392,61 +394,51 @@ async def client_delete_template(
 
 @router.get("/{client_id}/contact-tags", response_model=list[ContactTagOut])
 def client_contact_tags(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """The client's contact tags, with where each one routes, for the agent's
-    escalation editor. Tags themselves are created in the client portal."""
-    client = _client(db, user, client_id)
-    counts = (
-        select(ContactTagLink.tag_id, func.count(ContactTagLink.contact_id).label("n"))
-        .group_by(ContactTagLink.tag_id)
-        .subquery()
-    )
-    rows = db.execute(
-        select(ContactTag, counts.c.n).outerjoin(counts, counts.c.tag_id == ContactTag.id)
-        .where(ContactTag.client_id == client.id)
-        .order_by(func.lower(ContactTag.name))
-    ).all()
-    return [_tag_out(tag, int(n or 0)) for tag, n in rows]
+    """The client's contact tags, with where each one routes. Managed here and
+    in the client portal alike; routing only here."""
+    return list_tags(db, _client(db, user, client_id))
 
 
-def _tag_out(tag: ContactTag, count: int) -> ContactTagOut:
-    assignee = tag.route_assignee if tag.route_assignee_id else None
-    return ContactTagOut(
-        id=tag.id, name=tag.name, color=tag.color, contact_count=count,
-        route_team_id=tag.route_team_id, route_team_name=tag.route_team.name if tag.route_team_id and tag.route_team else None,
-        route_assignee_id=tag.route_assignee_id, route_assignee_name=(assignee.name.strip() or assignee.email) if assignee else None,
-    )
+@router.post("/{client_id}/contact-tags", response_model=ContactTagOut, status_code=status.HTTP_201_CREATED)
+def client_create_contact_tag(client_id: uuid.UUID, payload: ContactTagCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return tag_out(create_tag(db, _client(db, user, client_id), payload.name, payload.color))
 
 
 @router.patch("/{client_id}/contact-tags/{tag_id}", response_model=ContactTagOut)
-def client_route_contact_tag(
+def client_update_contact_tag(
     client_id: uuid.UUID, tag_id: uuid.UUID, payload: ContactTagUpdate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    """Only the routing is editable from the agency side; name and color
-    belong to the client's people in the portal."""
+    """Name, color and routing. Routing points at a team or a person; sending
+    either sets it and clears the other, explicit nulls clear it."""
     client = _client(db, user, client_id)
-    tag = db.scalar(select(ContactTag).where(ContactTag.id == tag_id, ContactTag.client_id == client.id))
-    if tag is None:
-        raise HTTPException(status_code=404, detail="Tag not found")
+    tag = get_tag(db, client, tag_id)
+    rename_tag(db, client, tag, payload.name, payload.color)
     sent = payload.model_fields_set
-    if "route_team_id" not in sent and "route_assignee_id" not in sent:
-        raise HTTPException(status_code=422, detail="Send route_team_id or route_assignee_id")
-    if payload.route_team_id is not None:
-        team = db.scalar(select(Team).where(Team.id == payload.route_team_id, Team.client_id == client.id))
-        if team is None:
-            raise HTTPException(status_code=404, detail="Team not found")
-        tag.route_team_id, tag.route_assignee_id = team.id, None
-    elif payload.route_assignee_id is not None:
-        person = db.scalar(select(PortalUser).where(PortalUser.id == payload.route_assignee_id, PortalUser.client_id == client.id))
-        if person is None:
-            raise HTTPException(status_code=404, detail="Person not found")
-        tag.route_team_id, tag.route_assignee_id = None, person.id
-    else:
-        tag.route_team_id, tag.route_assignee_id = None, None
+    if "route_team_id" in sent or "route_assignee_id" in sent:
+        if payload.route_team_id is not None:
+            team = db.scalar(select(Team).where(Team.id == payload.route_team_id, Team.client_id == client.id))
+            if team is None:
+                raise HTTPException(status_code=404, detail="Team not found")
+            tag.route_team_id, tag.route_assignee_id = team.id, None
+        elif payload.route_assignee_id is not None:
+            person = db.scalar(select(PortalUser).where(PortalUser.id == payload.route_assignee_id, PortalUser.client_id == client.id))
+            if person is None:
+                raise HTTPException(status_code=404, detail="Person not found")
+            tag.route_team_id, tag.route_assignee_id = None, person.id
+        else:
+            tag.route_team_id, tag.route_assignee_id = None, None
+    elif not sent:
+        raise HTTPException(status_code=422, detail="Nothing to change")
     db.commit()
     db.refresh(tag)
-    count = db.scalar(select(func.count(ContactTagLink.contact_id)).where(ContactTagLink.tag_id == tag.id)) or 0
-    return _tag_out(tag, int(count))
+    return tag_out(tag, tag_count(db, tag))
+
+
+@router.delete("/{client_id}/contact-tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
+def client_delete_contact_tag(client_id: uuid.UUID, tag_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    delete_tag(db, _client(db, user, client_id), tag_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{client_id}/portal-users", response_model=PortalUserOut, status_code=status.HTTP_201_CREATED)

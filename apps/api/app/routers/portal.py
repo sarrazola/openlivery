@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import TAG_COLOR_PATTERN, TAG_COLORS, Agency, Agent, CannedResponse, Client, Contact, ContactTag, ContactTagLink, Conversation, Message, PortalUser, Team, WhatsAppChannel, WhatsAppCloudChannel, now_utc
+from ..models import Agency, Agent, CannedResponse, Client, Contact, ContactTag, ContactTagLink, Conversation, Message, PortalUser, Team, WhatsAppChannel, WhatsAppCloudChannel, now_utc
 from ..portal_permissions import CANNED_MANAGE, CONTACTS_MANAGE, INBOX_DELETE, REPORTS_VIEW, TAGS_MANAGE, TEAMS_MANAGE, TEMPLATES_MANAGE, has_permission, permissions_for
 from ..ratelimit import login_rate_limit, public_asset_rate_limit
 from ..schemas import (
@@ -61,6 +61,7 @@ from ..schemas import (
 )
 from ..security import create_portal_token, decode_portal_token, verify_password
 from ..services.contacts import display_name, merge_contacts, normalize_phone, rename_conversations
+from ..services.tags import create_tag, delete_tag, get_tag, list_tags, rename_tag, tag_count, tag_out
 from ..services.teams import TEAM_CHANNELS, create_team, delete_team, get_team, list_teams, members_out, team_out, update_team
 from ..services.whatsapp_templates import (
     create_template,
@@ -858,96 +859,32 @@ async def portal_contacts_import(
 
 # --- Tags: a catalog the client keeps by hand -------------------------------
 
-def _tag_out(tag: ContactTag, count: int = 0) -> ContactTagOut:
-    team = tag.route_team if tag.route_team_id else None
-    person = tag.route_assignee if tag.route_assignee_id else None
-    return ContactTagOut(
-        id=tag.id, name=tag.name, color=tag.color, contact_count=count,
-        route_team_id=tag.route_team_id, route_team_name=team.name if team else None,
-        route_assignee_id=tag.route_assignee_id, route_assignee_name=(person.name.strip() or person.email) if person else None,
-    )
-
-
-def _tag(db: Session, client: Client, tag_id: uuid.UUID) -> ContactTag:
-    tag = db.scalar(select(ContactTag).where(ContactTag.id == tag_id, ContactTag.client_id == client.id))
-    if not tag:
-        raise HTTPException(status_code=404, detail="Tag not found")
-    return tag
-
-
-def _assert_tag_name_free(db: Session, client: Client, name: str, *, except_id: uuid.UUID | None = None) -> None:
-    query = select(ContactTag.id).where(ContactTag.client_id == client.id, func.lower(ContactTag.name) == name.lower())
-    if except_id:
-        query = query.where(ContactTag.id != except_id)
-    if db.scalar(query):
-        raise HTTPException(status_code=409, detail="A tag with this name already exists")
-
-
-def _tag_color(color: str | None, fallback: str) -> str:
-    if color is None:
-        return fallback
-    value = color.strip().lower()
-    if not re.match(TAG_COLOR_PATTERN, value):
-        raise HTTPException(status_code=422, detail="Use a hex color like #3b82f6")
-    return value
-
-
 @router.get("/{slug}/tags", response_model=list[ContactTagOut])
 def portal_tags(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
-    counts = (
-        select(ContactTagLink.tag_id, func.count(ContactTagLink.contact_id).label("n"))
-        .group_by(ContactTagLink.tag_id)
-        .subquery()
-    )
-    rows = db.execute(
-        select(ContactTag, counts.c.n).outerjoin(counts, counts.c.tag_id == ContactTag.id)
-        .where(ContactTag.client_id == client.id)
-        .order_by(func.lower(ContactTag.name))
-    ).all()
-    return [_tag_out(tag, int(n or 0)) for tag, n in rows]
+    return list_tags(db, client)
 
 
 @router.post("/{slug}/tags", dependencies=[Depends(require_permission(TAGS_MANAGE))], response_model=ContactTagOut, status_code=status.HTTP_201_CREATED)
 def portal_create_tag(slug: str, payload: ContactTagCreate, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
-    name = payload.name.strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="Give the tag a name")
-    _assert_tag_name_free(db, client, name)
-    # Without a chosen color, rotate through the palette so neighbours differ.
-    existing = db.scalar(select(func.count(ContactTag.id)).where(ContactTag.client_id == client.id)) or 0
-    tag = ContactTag(client_id=client.id, name=name, color=_tag_color(payload.color, TAG_COLORS[existing % len(TAG_COLORS)]))
-    db.add(tag)
-    db.commit()
-    db.refresh(tag)
-    return _tag_out(tag)
+    return tag_out(create_tag(db, client, payload.name, payload.color))
 
 
 @router.patch("/{slug}/tags/{tag_id}", dependencies=[Depends(require_permission(TAGS_MANAGE))], response_model=ContactTagOut)
 def portal_update_tag(
     slug: str, tag_id: uuid.UUID, payload: ContactTagUpdate, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
 ):
-    tag = _tag(db, client, tag_id)
-    if payload.name is not None:
-        name = payload.name.strip()
-        if not name:
-            raise HTTPException(status_code=422, detail="Give the tag a name")
-        _assert_tag_name_free(db, client, name, except_id=tag.id)
-        tag.name = name
-    if payload.color is not None:
-        tag.color = _tag_color(payload.color, tag.color)
+    tag = get_tag(db, client, tag_id)
+    rename_tag(db, client, tag, payload.name, payload.color)
     # Routing is the agency's call (set from the agent editor); the portal
     # can rename and recolor but a route_team_id here is ignored on purpose.
     db.commit()
     db.refresh(tag)
-    count = db.scalar(select(func.count(ContactTagLink.contact_id)).where(ContactTagLink.tag_id == tag.id)) or 0
-    return _tag_out(tag, int(count))
+    return tag_out(tag, tag_count(db, tag))
 
 
 @router.delete("/{slug}/tags/{tag_id}", dependencies=[Depends(require_permission(TAGS_MANAGE))], status_code=status.HTTP_204_NO_CONTENT)
 def portal_delete_tag(slug: str, tag_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
-    tag = _tag(db, client, tag_id)
-    db.delete(tag)  # links go with it (ON DELETE CASCADE)
-    db.commit()
+    delete_tag(db, client, tag_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

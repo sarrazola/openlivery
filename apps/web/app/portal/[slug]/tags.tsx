@@ -8,9 +8,10 @@ import { useT } from "@/lib/i18n";
 import { TAG_PALETTE, tagColor, tagStyle } from "@/lib/tags";
 import type { ContactTag } from "@/types";
 
-/** The client's tag catalog, from Settings: rename, recolor, delete, create.
- * Putting a tag on a contact happens on the contact card. */
-export function TagsView({ slug, canManage }: { slug: string; canManage: boolean }) {
+/** The client's tag catalog: rename, recolor, delete, create. `base` is the
+ * collection URL, the portal's own or the agency's for this client. Putting a
+ * tag on a contact happens on the contact card. */
+export function TagsView({ base, canManage }: { base: string; canManage: boolean }) {
   const t = useT();
   const [tags, setTags] = useState<ContactTag[]>([]);
   const [deleting, setDeleting] = useState<ContactTag | null>(null);
@@ -21,8 +22,8 @@ export function TagsView({ slug, canManage }: { slug: string; canManage: boolean
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    try { setTags(await api<ContactTag[]>(`/portal/${slug}/tags`)); } catch (err) { setError(messageFrom(err)); }
-  }, [slug]);
+    try { setTags(await api<ContactTag[]>(`${base}`)); } catch (err) { setError(messageFrom(err)); }
+  }, [base]);
   useEffect(() => { load(); }, [load]);
 
   async function create(event: FormEvent<HTMLFormElement>) {
@@ -30,18 +31,18 @@ export function TagsView({ slug, canManage }: { slug: string; canManage: boolean
     const trimmed = name.trim();
     if (!trimmed) return;
     setBusy(true); setError("");
-    try { await api<ContactTag>(`/portal/${slug}/tags`, { method: "POST", body: JSON.stringify({ name: trimmed }) }); setName(""); await load(); }
+    try { await api<ContactTag>(`${base}`, { method: "POST", body: JSON.stringify({ name: trimmed }) }); setName(""); await load(); }
     catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
   async function update(tag: ContactTag, patch: { name?: string; color?: string }) {
     if (patch.name !== undefined && (!patch.name.trim() || patch.name.trim() === tag.name)) return;
     setError("");
-    try { await api<ContactTag>(`/portal/${slug}/tags/${tag.id}`, { method: "PATCH", body: JSON.stringify(patch) }); await load(); }
+    try { await api<ContactTag>(`${base}/${tag.id}`, { method: "PATCH", body: JSON.stringify(patch) }); await load(); }
     catch (err) { setError(messageFrom(err)); }
   }
   async function remove(tag: ContactTag) {
     setBusy(true); setError("");
-    try { await api(`/portal/${slug}/tags/${tag.id}`, { method: "DELETE" }); setDeleting(null); await load(); }
+    try { await api(`${base}/${tag.id}`, { method: "DELETE" }); setDeleting(null); await load(); }
     catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
 

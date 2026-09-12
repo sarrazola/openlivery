@@ -310,10 +310,40 @@ def test_tagged_contact_routes_new_conversations_to_a_team(authenticated_client:
     assert cleared["route_team_id"] is None and cleared["route_assignee_id"] is None and cleared["name"] == "VIP"
     listed = client.get(agency_tags).json()
     assert [(row["name"], row["route_team_id"]) for row in listed] == [("VIP", None)]
-    assert client.patch(f"{agency_tags}/{vip['id']}", json={"name": "x"}).status_code == 422
+    # The agency renames too, since it manages the catalog from the client page.
+    assert client.patch(f"{agency_tags}/{vip['id']}", json={"name": "x"}).json()["name"] == "x"
+    assert client.patch(f"{agency_tags}/{vip['id']}", json={"name": "VIP"}).status_code == 200
 
     # The contact's history pages with a total, and can be limited to a date range.
     history = client.get(f"{base}/contacts/{contact['id']}/conversations?limit=1")
     assert history.headers["x-total-count"] == "2" and len(history.json()) == 1
     assert client.get(f"{base}/contacts/{contact['id']}/conversations?until=2000-01-01").headers["x-total-count"] == "0"
     assert client.get(f"{base}/contacts/{contact['id']}/conversations?since=2000-01-01").headers["x-total-count"] == "2"
+
+
+def test_the_agency_manages_tags_from_the_client_page(authenticated_client: TestClient):
+    client = authenticated_client
+    customer = _portal(client, "Agency Tags Co")
+    slug = customer["portal_slug"]
+    base = f"/api/clients/{customer['id']}/contact-tags"
+
+    created = client.post(base, json={"name": "Mayorista", "color": "#0EA5E9"})
+    assert created.status_code == 201, created.text
+    tag = created.json()
+    assert tag["color"] == "#0ea5e9" and tag["contact_count"] == 0
+    assert client.post(base, json={"name": "mayorista"}).status_code == 409
+    assert client.post(base, json={"name": "Odd", "color": "sky"}).status_code == 422
+
+    # The portal sees it, and a rename from the agency shows there too.
+    assert [row["name"] for row in client.get(f"/api/portal/{slug}/tags").json()] == ["Mayorista"]
+    renamed = client.patch(f"{base}/{tag['id']}", json={"name": "Distribuidor", "color": "#22c55e"})
+    assert renamed.status_code == 200 and renamed.json()["name"] == "Distribuidor" and renamed.json()["color"] == "#22c55e"
+    assert client.get(f"/api/portal/{slug}/tags").json()[0]["name"] == "Distribuidor"
+    assert client.patch(f"{base}/{tag['id']}", json={}).status_code == 422
+
+    # Another agency's client is out of reach.
+    other = client.post("/api/clients", json={"name": "Elsewhere"}).json()
+    assert client.patch(f"/api/clients/{other['id']}/contact-tags/{tag['id']}", json={"name": "Hijack"}).status_code == 404
+
+    assert client.delete(f"{base}/{tag['id']}").status_code == 204
+    assert client.get(f"/api/portal/{slug}/tags").json() == []

@@ -28,7 +28,7 @@ export function SettingsView({ slug, templatesSupported, can }: { slug: string; 
     </nav>
     {tab === "preferences" && <PreferencesSection />}
     {tab === "teams" && <TeamsView base={base} canManage={can("teams.manage")} />}
-    {tab === "tags" && <TagsView slug={slug} canManage={can("tags.manage")} />}
+    {tab === "tags" && <TagsView base={`${base}/tags`} canManage={can("tags.manage")} />}
     {tab === "canned" && <CannedRepliesView slug={slug} canManage={can("canned.manage")} />}
     {tab === "templates" && <section className="form-section"><div className="section-copy"><h2>{t("portal.inbox.nav.templates")}</h2><p>{t("portal.settings.templatesCopy")}</p></div><div className="form-fields"><TemplatesView base={base} supported={templatesSupported} canManage={can("templates.manage")} /></div></section>}
   </div>;
