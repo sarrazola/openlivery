@@ -1,8 +1,8 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LoaderCircle, Pencil, Plus, Trash2, Zap } from "lucide-react";
-import { Alert, Modal } from "@/components/ui";
+import { LoaderCircle, Pencil, Plus, Trash2 } from "lucide-react";
+import { Alert } from "@/components/ui";
 import { api, ApiError, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import type { CannedResponse } from "@/types";
@@ -19,33 +19,16 @@ const VARIABLES = ["{contact_name}", "{contact_phone}", "{my_name}", "{business_
 const SHOWN = 8;
 
 /** Saved replies for the composer: typing "/" opens a picker filtered by what
- * follows, Enter inserts the rendered reply, and a modal manages the list. */
-export function useCannedReplies({ slug, vars, onInsert, canManage = true }: { slug: string; vars: CannedVars; onInsert: (text: string) => void; canManage?: boolean }) {
+ * follows and Enter inserts the rendered reply. The list is managed from
+ * Settings (CannedRepliesView). */
+export function useCannedReplies({ slug, vars, onInsert }: { slug: string; vars: CannedVars; onInsert: (text: string) => void }) {
   const t = useT();
   const [items, setItems] = useState<CannedResponse[]>([]);
   const [query, setQuery] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
-  const [managing, setManaging] = useState(false);
-  const [editing, setEditing] = useState<CannedResponse | "new" | null>(null);
-  const [confirmId, setConfirmId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  const contentRef = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(() => api<CannedResponse[]>(`/portal/${slug}/canned-responses`).then(setItems).catch(() => {}), [slug]);
   useEffect(() => { load(); }, [load]);
-
-  function insertVariable(token: string) {
-    const el = contentRef.current;
-    if (!el) return;
-    const start = el.selectionStart ?? el.value.length;
-    const end = el.selectionEnd ?? start;
-    el.value = el.value.slice(0, start) + token + el.value.slice(end);
-    const caret = start + token.length;
-    el.focus();
-    el.setSelectionRange(caret, caret);
-  }
 
   const matches = useMemo(() => {
     if (query === null) return [];
@@ -74,6 +57,45 @@ export function useCannedReplies({ slug, vars, onInsert, canManage = true }: { s
     else if (event.key === "Enter" || event.key === "Tab") { event.preventDefault(); pick(matches[Math.min(index, matches.length - 1)]); }
   }
 
+  const popup = query !== null ? (
+    <div className="canned-popup">
+      {matches.length ? matches.map((item, i) => (
+        <button type="button" key={item.id} className={i === index ? "active" : ""} onMouseDown={(e) => { e.preventDefault(); pick(item); }} onMouseEnter={() => setIndex(i)}>
+          <strong>/{item.shortcut}</strong>
+          <small>{renderCanned(item.content, vars)}</small>
+        </button>
+      )) : <p className="muted">{items.length ? t("portal.canned.noMatches") : t("portal.canned.empty")}</p>}
+    </div>
+  ) : null;
+
+  return { popup, onChange, onKeyDown, reset };
+}
+
+
+/** The saved replies of the business, from Settings: list, create, edit, delete. */
+export function CannedRepliesView({ slug, canManage }: { slug: string; canManage: boolean }) {
+  const t = useT();
+  const [items, setItems] = useState<CannedResponse[]>([]);
+  const [editing, setEditing] = useState<CannedResponse | "new" | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const contentRef = useRef<HTMLTextAreaElement>(null);
+
+  const load = useCallback(() => api<CannedResponse[]>(`/portal/${slug}/canned-responses`).then(setItems).catch((err) => setError(messageFrom(err))), [slug]);
+  useEffect(() => { load(); }, [load]);
+
+  function insertVariable(token: string) {
+    const el = contentRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? start;
+    el.value = el.value.slice(0, start) + token + el.value.slice(end);
+    const caret = start + token.length;
+    el.focus();
+    el.setSelectionRange(caret, caret);
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editing) return;
@@ -99,31 +121,11 @@ export function useCannedReplies({ slug, vars, onInsert, canManage = true }: { s
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
 
-  const popup = query !== null ? (
-    <div className="canned-popup">
-      {matches.length ? matches.map((item, i) => (
-        <button type="button" key={item.id} className={i === index ? "active" : ""} onMouseDown={(e) => { e.preventDefault(); pick(item); }} onMouseEnter={() => setIndex(i)}>
-          <strong>/{item.shortcut}</strong>
-          <small>{renderCanned(item.content, vars)}</small>
-        </button>
-      )) : <p className="muted">{items.length ? t("portal.canned.noMatches") : t("portal.canned.empty")}</p>}
-      {canManage && <footer>
-        <button type="button" onMouseDown={(e) => { e.preventDefault(); setQuery(null); setEditing(null); setConfirmId(null); setError(""); setManaging(true); }}>
-          <Zap size={13} /> {t("portal.canned.manage")}
-        </button>
-      </footer>}
-    </div>
-  ) : null;
-
-  const manager = (
-    <Modal
-      open={managing}
-      title={t("portal.canned.manageTitle")}
-      description={t("portal.canned.manageDescription")}
-      onClose={() => { setManaging(false); setEditing(null); setConfirmId(null); setError(""); }}
-    >
+  return <section className="form-section">
+    <div className="section-copy"><h2>{t("portal.canned.manageTitle")}</h2><p>{t("portal.canned.manageDescription")}</p></div>
+    <div className="form-fields">
       {editing ? (
-        <form className="modal-form" onSubmit={save}>
+        <form className="modal-form canned-editor" onSubmit={save}>
           <label>{t("portal.canned.form.shortcut")}
             <div className="canned-shortcut-field"><span>/</span><input name="shortcut" required pattern="[a-z0-9_-]+" maxLength={60} defaultValue={editing === "new" ? "" : editing.shortcut} placeholder="saludo" autoFocus /></div>
             <span className="field-help">{t("portal.canned.form.shortcutHelp")}</span>
@@ -140,13 +142,13 @@ export function useCannedReplies({ slug, vars, onInsert, canManage = true }: { s
           </div>
         </form>
       ) : (
-        <div className="modal-form">
+        <>
           {error && <Alert>{error}</Alert>}
           <div className="canned-manage-list">
             {items.map((item) => (
               <div key={item.id} className="canned-manage-row">
                 <div><strong>/{item.shortcut}</strong><small>{item.content}</small></div>
-                {confirmId === item.id ? (
+                {canManage && (confirmId === item.id ? (
                   <div className="canned-row-actions">
                     <button type="button" className="button danger small" disabled={busy} onClick={() => remove(item)}>{busy ? <LoaderCircle className="spin" size={14} /> : t("portal.canned.deleteConfirm")}</button>
                     <button type="button" className="button small" onClick={() => setConfirmId(null)}>{t("portal.contacts.form.cancel")}</button>
@@ -156,18 +158,14 @@ export function useCannedReplies({ slug, vars, onInsert, canManage = true }: { s
                     <button type="button" className="icon-button" title={t("portal.canned.edit")} aria-label={t("portal.canned.edit")} onClick={() => { setError(""); setEditing(item); }}><Pencil size={15} /></button>
                     <button type="button" className="icon-button danger" title={t("portal.canned.delete")} aria-label={t("portal.canned.delete")} onClick={() => setConfirmId(item.id)}><Trash2 size={15} /></button>
                   </div>
-                )}
+                ))}
               </div>
             ))}
             {!items.length && <p className="muted">{t("portal.canned.empty")}</p>}
           </div>
-          <div className="modal-actions">
-            <button type="button" className="button primary" onClick={() => { setError(""); setEditing("new"); }}><Plus size={15} /> {t("portal.canned.new")}</button>
-          </div>
-        </div>
+          {canManage && <button type="button" className="button primary align-start" onClick={() => { setError(""); setEditing("new"); }}><Plus size={15} /> {t("portal.canned.new")}</button>}
+        </>
       )}
-    </Modal>
-  );
-
-  return { popup, manager, onChange, onKeyDown, reset, openManager: () => setManaging(true) };
+    </div>
+  </section>;
 }

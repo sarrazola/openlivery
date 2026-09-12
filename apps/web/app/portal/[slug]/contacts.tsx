@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { BadgeCheck, Ban, Bot, CalendarRange, Check, CheckCircle2, ChevronDown, Clock, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MessageSquareText, MoreHorizontal, Pencil, Plus, Search, Settings2, Tag, Trash2, Upload, UserRound, Users, X } from "lucide-react";
+import { BadgeCheck, Ban, Bot, CalendarRange, Check, CheckCircle2, ChevronDown, Clock, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MessageSquareText, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload, UserRound, Users, X } from "lucide-react";
 import { TemplatePicker } from "./templates";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { MessageAttachments, type GalleryImage } from "@/components/attachments";
@@ -21,7 +21,6 @@ import type { Attachment, Contact, ContactImportResult, ContactTag, Conversation
 
 const LIMIT = 50;
 const HISTORY_LIMIT = 20;
-const TAG_COLORS = ["gray", "blue", "green", "amber", "red", "violet", "pink", "teal"];
 
 // Machine reasons the API returns for rejected rows, mapped to copy.
 const IMPORT_REASONS: Record<string, I18nKey> = {
@@ -73,9 +72,6 @@ export function ContactsView({ slug, channels, openConversation, can }: { slug: 
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [tagPicker, setTagPicker] = useState(false);
   const [tagQuery, setTagQuery] = useState("");
-  const [managingTags, setManagingTags] = useState(false);
-  const [deletingTag, setDeletingTag] = useState<ContactTag | null>(null);
-  const [newTagName, setNewTagName] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<ContactImportResult | null>(null);
   const [importError, setImportError] = useState("");
@@ -131,35 +127,14 @@ export function ContactsView({ slug, channels, openConversation, can }: { slug: 
     setBusy(true); setError("");
     try {
       const created = await api<ContactTag>(`/portal/${slug}/tags`, { method: "POST", body: JSON.stringify({ name: trimmed }) });
-      setTagQuery(""); setNewTagName("");
+      setTagQuery("");
       await loadTags();
       if (assignTo) await applyContactTags(assignTo, [...(assignTo.tags ?? []).map((item) => item.id), created.id]);
-    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
-  }
-  async function updateTag(tag: ContactTag, patch: { name?: string; color?: string }) {
-    if (patch.name !== undefined && (!patch.name.trim() || patch.name.trim() === tag.name)) return;
-    setError("");
-    try {
-      await api<ContactTag>(`/portal/${slug}/tags/${tag.id}`, { method: "PATCH", body: JSON.stringify(patch) });
-      await Promise.all([loadTags(), load()]);
-      if (selected) setSelected(await api<Contact>(`/portal/${slug}/contacts/${selected.id}`));
-    } catch (err) { setError(messageFrom(err)); }
-  }
-  async function removeTag(tag: ContactTag) {
-    setBusy(true); setError("");
-    try {
-      await api(`/portal/${slug}/tags/${tag.id}`, { method: "DELETE" });
-      setDeletingTag(null);
-      if (tagFilter === tag.id) setTagFilter(null);
-      await Promise.all([loadTags(), load()]);
-      if (selected) setSelected(await api<Contact>(`/portal/${slug}/contacts/${selected.id}`));
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
   const tagQueryTrimmed = tagQuery.trim();
   const pickerTags = tags.filter((tag) => !tagQueryTrimmed || tag.name.toLowerCase().includes(tagQueryTrimmed.toLowerCase()));
   const pickerExact = tags.some((tag) => tag.name.toLowerCase() === tagQueryTrimmed.toLowerCase());
-
-  function openTagManager() { setTagPicker(false); setListMenu(false); setDeletingTag(null); setNewTagName(""); setManagingTags(true); }
 
   function openImport() { setImportFile(null); setImportResult(null); setImportError(""); setImporting(true); }
   async function runImport(event: FormEvent<HTMLFormElement>) {
@@ -377,14 +352,13 @@ export function ContactsView({ slug, channels, openConversation, can }: { slug: 
           <span>{t("portal.contacts.count", { count: total ?? items.length })}</span>
           <div className="toolbar-actions">
             <button className="button primary small" onClick={() => setEditing("new")}><Plus size={15} /> {t("portal.contacts.new")}</button>
-            {(canManageContacts || canManageTags) && <div className="start-line-wrap">
+            {canManageContacts && <div className="start-line-wrap">
               <button type="button" className="icon-button" onClick={() => setListMenu((v) => !v)} title={t("portal.contacts.moreActions")} aria-label={t("portal.contacts.moreActions")} aria-haspopup="menu" aria-expanded={listMenu}><MoreHorizontal size={16} /></button>
               {listMenu && <>
                 <div className="menu-backdrop" onClick={() => setListMenu(false)} />
                 <div className="start-line-menu" role="menu">
                   {canManageContacts && <button type="button" role="menuitem" onClick={() => { setListMenu(false); openImport(); }}><Upload size={15} /><span><strong>{t("portal.contacts.import.title")}</strong><small>{t("portal.contacts.import.menuHint")}</small></span></button>}
                   {canManageContacts && <a role="menuitem" href={apiUrl(`/portal/${slug}/contacts/export`)} download onClick={() => setListMenu(false)}><Download size={15} /><span><strong>{t("portal.contacts.export")}</strong><small>{t("portal.contacts.exportHint")}</small></span></a>}
-                  {canManageTags && <button type="button" role="menuitem" onClick={openTagManager}><Tag size={15} /><span><strong>{t("portal.contacts.tags.manage")}</strong><small>{t("portal.contacts.tags.manageHint")}</small></span></button>}
                 </div>
               </>}
             </div>}
@@ -453,7 +427,6 @@ export function ContactsView({ slug, channels, openConversation, can }: { slug: 
                       {pickerTags.map((tag) => { const has = (selected.tags ?? []).some((item) => item.id === tag.id); return <button type="button" key={tag.id} role="menuitemcheckbox" aria-checked={has} onClick={() => toggleTag(tag)} disabled={busy}><i className="tag-dot" data-color={tag.color} /><span><strong>{tag.name}</strong>{(tag.route_assignee_name || tag.route_team_name) && <small>{t("portal.contacts.tags.routedTo", { team: tag.route_assignee_name ?? tag.route_team_name ?? "" })}</small>}</span>{has && <Check size={14} />}</button>; })}
                       {canManageTags && tagQueryTrimmed && !pickerExact && <button type="button" role="menuitem" className="tag-create" onClick={() => createTag(tagQueryTrimmed, selected)} disabled={busy}><Plus size={14} /><span><strong>{t("portal.contacts.tags.create", { name: tagQueryTrimmed })}</strong></span></button>}
                       {!tags.length && !tagQueryTrimmed && <small>{t("portal.contacts.tags.emptyHint")}</small>}
-                      {canManageTags && <button type="button" role="menuitem" className="tag-picker-manage" onClick={openTagManager}><Settings2 size={14} /><span><strong>{t("portal.contacts.tags.manage")}</strong></span></button>}
                     </div>
                   </>}
                 </div>
@@ -589,26 +562,6 @@ export function ContactsView({ slug, channels, openConversation, can }: { slug: 
           </span>
         </div>
       </div>}
-    </Modal>
-    <Modal open={managingTags} title={t("portal.contacts.tags.manageTitle")} onClose={() => setManagingTags(false)}>
-      <div className="modal-form tag-manage">
-        <p className="muted tag-manage-hint">{t("portal.contacts.tags.manageIntro")}</p>
-        {!tags.length && <p className="muted">{t("portal.contacts.tags.noTags")}</p>}
-        {tags.map((tag) => deletingTag?.id === tag.id
-          ? <div key={tag.id} className="tag-manage-confirm"><span>{t("portal.contacts.tags.deleteConfirm", { name: tag.name, count: tag.contact_count })}</span><span className="tag-manage-confirm-actions"><button type="button" className="button small" onClick={() => setDeletingTag(null)}>{t("portal.contacts.form.cancel")}</button><button type="button" className="button danger small" disabled={busy} onClick={() => removeTag(tag)}>{t("portal.contacts.tags.deleteAction")}</button></span></div>
-          : <div key={tag.id} className="tag-manage-row">
-            <div className="tag-swatches" role="radiogroup" aria-label={tag.name}>{TAG_COLORS.map((color) => <button type="button" key={color} data-color={color} className={color === tag.color ? "active" : ""} role="radio" aria-checked={color === tag.color} aria-label={color} onClick={() => updateTag(tag, { color })} />)}</div>
-            <input defaultValue={tag.name} maxLength={40} onBlur={(e) => updateTag(tag, { name: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
-            {(tag.route_assignee_name || tag.route_team_name) && <span className="tag-route-note">{t("portal.contacts.tags.routedTo", { team: tag.route_assignee_name ?? tag.route_team_name ?? "" })}</span>}
-            <small>{t("portal.contacts.tags.count", { count: tag.contact_count })}</small>
-            <button type="button" className="icon-button danger" onClick={() => setDeletingTag(tag)} title={t("portal.contacts.tags.deleteAction")} aria-label={t("portal.contacts.tags.deleteAction")}><Trash2 size={15} /></button>
-          </div>)}
-        <form className="tag-manage-new" onSubmit={(e) => { e.preventDefault(); createTag(newTagName); }}>
-          <input value={newTagName} onChange={(e) => setNewTagName(e.target.value)} maxLength={40} placeholder={t("portal.contacts.tags.newPlaceholder")} />
-          <button className="button primary small" disabled={busy || !newTagName.trim()}>{t("portal.contacts.tags.newAction")}</button>
-        </form>
-        {error && <Alert>{error}</Alert>}
-      </div>
     </Modal>
     <Modal open={importing} title={t("portal.contacts.import.title")} onClose={() => setImporting(false)}>
       <form className="modal-form" onSubmit={runImport}>

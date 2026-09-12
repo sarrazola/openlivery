@@ -34,8 +34,6 @@ const en = {
     },
   },
   settings: {
-    preferencesTitle: "Preferences",
-    preferencesCopy: "Language and appearance of the portal on this browser. Each person chooses their own.",
     templatesCopy: "Approved templates are the only way to reach someone first, or after 24 hours without a reply. Meta reviews each one.",
   },
   templates: {
@@ -485,8 +483,6 @@ const es: typeof en = {
     },
   },
   settings: {
-    preferencesTitle: "Preferencias",
-    preferencesCopy: "Idioma y apariencia del portal en este navegador. Cada persona elige los suyos.",
     templatesCopy: "Las plantillas aprobadas son la única forma de escribirle a alguien primero, o tras 24 horas sin respuesta. Meta revisa cada una.",
   },
   templates: {
