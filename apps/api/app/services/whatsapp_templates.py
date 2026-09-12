@@ -13,8 +13,11 @@ import re
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from ..models import now_utc
+from ..models import Client, WhatsAppCloudChannel, now_utc
+from ..security import decrypt_secret
 from .whatsapp_cloud import _graph_error, _graph_request, _graph_url
 
 
@@ -35,6 +38,18 @@ def window_open_until(last_inbound_at: datetime | None) -> datetime | None:
 def window_is_open(last_inbound_at: datetime | None) -> bool:
     until = window_open_until(last_inbound_at)
     return bool(until and until > now_utc())
+
+
+def template_credentials(db: Session, client: Client) -> tuple[str, str]:
+    """The token and WABA id templates are managed with, from the client's
+    WhatsApp API channel. Both the portal and the agency go through here."""
+    channel = db.scalar(select(WhatsAppCloudChannel).where(WhatsAppCloudChannel.client_id == client.id))
+    if not channel or not channel.encrypted_access_token or not channel.waba_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Templates need the WhatsApp API channel with its access token and WhatsApp Business account id",
+        )
+    return decrypt_secret(channel.encrypted_access_token), channel.waba_id
 
 
 def variable_count(body: str) -> int:

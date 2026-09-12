@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Agency, Client, PortalUser, PushDevice, now_utc
+from ..portal_permissions import permissions_for
 from ..ratelimit import login_rate_limit
 from ..services.notifications import configured_provider, push_enabled
 from ..services.mobile_privacy import MobilePrivacy, disclosure
@@ -70,6 +71,10 @@ class MobileSession(BaseModel):
     client_id: uuid.UUID
     user_id: uuid.UUID | None = None
     user_name: str = ""
+    # What this person may do; see app.portal_permissions. Empty when no
+    # person is behind the session.
+    role: str | None = None
+    permissions: list[str] = []
     branding: MobileBranding
     push: PushConfig = Field(default_factory=PushConfig)
     api_version: int = API_VERSION
@@ -110,6 +115,8 @@ def _session_for(client: Client, agency: Agency, user: PortalUser | None, db: Se
         # next to the business - a session that has no name for the person
         # falls back to the agency, which the app decides.
         user_name=(user.name or "").strip() if user else "",
+        role=user.role if user else None,
+        permissions=sorted(permissions_for(user.role)) if user else [],
         branding=_branding(client, agency),
         push=PushConfig(enabled=push_enabled(), provider=configured_provider()),
         privacy=disclosure(db, client),

@@ -207,9 +207,9 @@ def test_portal_contact_tags(authenticated_client: TestClient):
     vip = client.post(f"{base}/tags", json={"name": "VIP"})
     assert vip.status_code == 201, vip.text
     vip = vip.json()
-    assert vip["color"] == "gray" and vip["contact_count"] == 0
-    priority = client.post(f"{base}/tags", json={"name": "Priority", "color": "red"}).json()
-    assert priority["color"] == "red"
+    assert vip["color"] == "#6b7280" and vip["contact_count"] == 0
+    priority = client.post(f"{base}/tags", json={"name": "Priority", "color": "#EF4444"}).json()
+    assert priority["color"] == "#ef4444"
     assert client.post(f"{base}/tags", json={"name": "vip"}).status_code == 409
     assert client.post(f"{base}/tags", json={"name": "Odd", "color": "neon"}).status_code == 422
 
@@ -227,8 +227,8 @@ def test_portal_contact_tags(authenticated_client: TestClient):
     assert [c["id"] for c in client.get(f"{base}/contacts?tag={vip['id']}").json()] == [ana["id"]]
     assert client.get(f"{base}/contacts?tag={vip['id']}").headers["x-total-count"] == "1"
 
-    renamed = client.patch(f"{base}/tags/{vip['id']}", json={"name": "Very important", "color": "violet"})
-    assert renamed.status_code == 200 and renamed.json()["color"] == "violet"
+    renamed = client.patch(f"{base}/tags/{vip['id']}", json={"name": "Very important", "color": "#8b5cf6"})
+    assert renamed.status_code == 200 and renamed.json()["color"] == "#8b5cf6"
     assert client.patch(f"{base}/tags/{vip['id']}", json={"name": "priority"}).status_code == 409
 
     exported = client.get(f"{base}/contacts/export").text.lstrip("\ufeff").splitlines()
@@ -310,10 +310,84 @@ def test_tagged_contact_routes_new_conversations_to_a_team(authenticated_client:
     assert cleared["route_team_id"] is None and cleared["route_assignee_id"] is None and cleared["name"] == "VIP"
     listed = client.get(agency_tags).json()
     assert [(row["name"], row["route_team_id"]) for row in listed] == [("VIP", None)]
-    assert client.patch(f"{agency_tags}/{vip['id']}", json={"name": "x"}).status_code == 422
+    # The agency renames too, since it manages the catalog from the client page.
+    assert client.patch(f"{agency_tags}/{vip['id']}", json={"name": "x"}).json()["name"] == "x"
+    assert client.patch(f"{agency_tags}/{vip['id']}", json={"name": "VIP"}).status_code == 200
 
     # The contact's history pages with a total, and can be limited to a date range.
     history = client.get(f"{base}/contacts/{contact['id']}/conversations?limit=1")
     assert history.headers["x-total-count"] == "2" and len(history.json()) == 1
     assert client.get(f"{base}/contacts/{contact['id']}/conversations?until=2000-01-01").headers["x-total-count"] == "0"
     assert client.get(f"{base}/contacts/{contact['id']}/conversations?since=2000-01-01").headers["x-total-count"] == "2"
+
+
+def test_the_agency_manages_tags_from_the_client_page(authenticated_client: TestClient):
+    client = authenticated_client
+    customer = _portal(client, "Agency Tags Co")
+    slug = customer["portal_slug"]
+    base = f"/api/clients/{customer['id']}/contact-tags"
+
+    created = client.post(base, json={"name": "Mayorista", "color": "#0EA5E9"})
+    assert created.status_code == 201, created.text
+    tag = created.json()
+    assert tag["color"] == "#0ea5e9" and tag["contact_count"] == 0
+    assert client.post(base, json={"name": "mayorista"}).status_code == 409
+    assert client.post(base, json={"name": "Odd", "color": "sky"}).status_code == 422
+
+    # The portal sees it, and a rename from the agency shows there too.
+    assert [row["name"] for row in client.get(f"/api/portal/{slug}/tags").json()] == ["Mayorista"]
+    renamed = client.patch(f"{base}/{tag['id']}", json={"name": "Distribuidor", "color": "#22c55e"})
+    assert renamed.status_code == 200 and renamed.json()["name"] == "Distribuidor" and renamed.json()["color"] == "#22c55e"
+    assert client.get(f"/api/portal/{slug}/tags").json()[0]["name"] == "Distribuidor"
+    assert client.patch(f"{base}/{tag['id']}", json={}).status_code == 422
+
+    # Another agency's client is out of reach.
+    other = client.post("/api/clients", json={"name": "Elsewhere"}).json()
+    assert client.patch(f"/api/clients/{other['id']}/contact-tags/{tag['id']}", json={"name": "Hijack"}).status_code == 404
+
+    assert client.delete(f"{base}/{tag['id']}").status_code == 204
+    assert client.get(f"/api/portal/{slug}/tags").json() == []
+
+
+def test_the_agent_is_told_who_it_is_talking_to(authenticated_client: TestClient, monkeypatch):
+    """The system prompt carries the contact's phone, e-mail and tags, so a
+    form or an e-mail the agent fills never says "not specified" for what the
+    conversation already knows. What is missing is simply absent."""
+    client = authenticated_client
+    customer = _portal(client, "Context Co")
+    slug = customer["portal_slug"]
+    client.put("/api/providers/openai", json={"api_key": "secret"})
+    agent = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Beto", "instructions": "Capture leads.", "is_active": True},
+    ).json()
+    channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
+    headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
+    completion = AsyncMock(return_value=ai_service.Completion(text="Hello!", input_tokens=1, output_tokens=1))
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", completion)
+
+    def inbound(message_id: str, text: str):
+        return client.post(
+            f"/api/internal/whatsapp/channels/{channel['id']}/inbound",
+            json={"external_message_id": message_id, "remote_jid": "573001112233@s.whatsapp.net", "sender_name": "Juan Luis", "text": text},
+            headers=headers,
+        ).json()
+
+    inbound("m1", "Hola")
+    prompt = completion.await_args.args[4][0]["content"]
+    assert "## Contacto" in prompt
+    assert "**Nombre:** Juan Luis" in prompt and "**Teléfono:** 573001112233" in prompt and "**Canal:** WhatsApp" in prompt
+    assert "Correo" not in prompt
+    assert "No se los pidas al cliente si ya están aquí" in prompt
+
+    # Once the business fills in the e-mail and a tag, the next reply knows them.
+    contact = client.get(f"/api/portal/{slug}/contacts").json()[0]
+    client.patch(f"/api/portal/{slug}/contacts/{contact['id']}", json={"email": "juan@example.com"})
+    tag = client.post(f"/api/portal/{slug}/tags", json={"name": "Inversionista"}).json()
+    client.put(f"/api/portal/{slug}/contacts/{contact['id']}/tags", json={"tag_ids": [tag["id"]]})
+    inbound("m2", "Sigo aquí")
+    prompt = completion.await_args.args[4][0]["content"]
+    assert "**Correo:** juan@example.com" in prompt and "**Etiquetas:** Inversionista" in prompt
+
+    # The playground has no contact and no block.
+    assert "## Contacto" not in client.get(f"/api/agents/{agent['id']}/prompt").json()["prompt"]

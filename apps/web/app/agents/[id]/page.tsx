@@ -17,7 +17,6 @@ import { EscalationRulesEditor } from "@/components/escalation-rules";
 import { Combobox } from "@/components/combobox";
 import { PROVIDERS, modelsFor, modelOptionsFor, defaultModelFor, estimateTokens, modelContextWindow, AUDIO_MODELS, IMAGE_MODELS } from "@/lib/providers";
 import { narrowModels, useAvailableModels } from "@/lib/use-available-models";
-import { TIMEZONES } from "@/lib/timezones";
 import type { Agent, AgentTool, KnowledgeDocument, QAPair } from "@/types";
 
 type Tab = "basics" | "knowledge" | "tools" | "playground";
@@ -34,7 +33,6 @@ export default function AgentDetailPage() {
   const [promptTokens, setPromptTokens] = useState<number | null>(null);
   const [provider, setProvider] = useState("openai");
   const [model, setModel] = useState("");
-  const [timezone, setTimezone] = useState("UTC");
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
   const [memoryLimit, setMemoryLimit] = useState(30);
@@ -56,7 +54,7 @@ export default function AgentDetailPage() {
     setAgent(a); setName(a.name); setDocuments(d); setQaPairs(q); setTools(tl);
     // What the model receives on every message, measured on the real prompt.
     api<{ prompt: string }>(`/agents/${id}/prompt`).then((r) => setPromptTokens(estimateTokens(r.prompt))).catch(() => setPromptTokens(null));
-    setProvider(a.provider); setModel(a.model); setTimezone(a.timezone || "UTC");
+    setProvider(a.provider); setModel(a.model);
     setTemperature(a.temperature); setMaxTokens(a.max_tokens); setMemoryLimit(a.memory_limit); setReplyDelayMin(a.reply_delay_min_seconds); setReplyDelayMax(a.reply_delay_max_seconds);
     setImageEnabled(a.image_enabled); setImageModel(a.image_model || "gpt-4.1");
     setAudioEnabled(a.audio_enabled); setAudioModel(a.audio_model || "whisper-1");
@@ -73,7 +71,7 @@ export default function AgentDetailPage() {
   async function saveConfig(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true);
     const form = new FormData(event.currentTarget);
-    const payload = { name, instructions: form.get("instructions"), personality: form.get("personality"), brief_summary: form.get("brief_summary"), brief_products: form.get("brief_products"), brief_audience: form.get("brief_audience"), brief_policies: form.get("brief_policies"), brief_dos: form.get("brief_dos"), brief_donts: form.get("brief_donts"), provider, model, timezone, prompt_language: lang, temperature, max_tokens: maxTokens, memory_limit: memoryLimit, reply_delay_min_seconds: replyDelayMin, reply_delay_max_seconds: replyDelayMax, image_enabled: imageEnabled, image_model: imageModel, audio_enabled: audioEnabled, audio_model: audioModel };
+    const payload = { name, instructions: form.get("instructions"), personality: form.get("personality"), brief_summary: form.get("brief_summary"), brief_products: form.get("brief_products"), brief_audience: form.get("brief_audience"), brief_policies: form.get("brief_policies"), brief_dos: form.get("brief_dos"), brief_donts: form.get("brief_donts"), provider, model, prompt_language: lang, temperature, max_tokens: maxTokens, memory_limit: memoryLimit, reply_delay_min_seconds: replyDelayMin, reply_delay_max_seconds: replyDelayMax, image_enabled: imageEnabled, image_model: imageModel, audio_enabled: audioEnabled, audio_model: audioModel };
     try {
       setAgent(await api<Agent>(`/agents/${id}`, { method: "PATCH", body: JSON.stringify(payload) }));
       api<{ prompt: string }>(`/agents/${id}/prompt`).then((r) => setPromptTokens(estimateTokens(r.prompt))).catch(() => {});
@@ -177,7 +175,6 @@ export default function AgentDetailPage() {
       </div></section>
       <EscalationRulesEditor agentId={agent.id} clientId={agent.client_id} />
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.aiModelHeading")}</h3><p>{t("agents.detail.aiModelCopy")}</p></div><div className="settings-fields">
-        <label>{t("agents.detail.timezoneLabel")}<Combobox value={timezone} onChange={setTimezone} options={TIMEZONES} placeholder={t("agents.detail.timezoneLabel")} /></label>
         <div className="form-grid"><label>{t("agents.detail.providerLabel")}<select value={provider} onChange={(e) => { setProvider(e.target.value); if (!modelsFor(e.target.value).includes(model)) setModel(defaultModelFor(e.target.value)); }}>{PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label><label>{t("agents.detail.modelLabel")}{(() => { const allowed = narrowModels(modelsFor(provider), available?.chat?.[provider]); const known = modelOptionsFor(provider).filter((item) => allowed.includes(item.id)); const ordered = [...known.filter((item) => item.recommended), ...known.filter((item) => !item.recommended)].map((item) => item.id); const options = [...ordered, ...allowed.filter((id) => !ordered.includes(id))]; const labels = Object.fromEntries(known.map((item) => [item.id, item.label])); const tierOf = (g: string) => g === "fast" ? t("agents.wizard.modelGroupFast") : g === "balanced" ? t("agents.wizard.modelGroupBalanced") : t("agents.wizard.modelGroupCapable"); const tags = Object.fromEntries(known.map((item) => [item.id, item.recommended ? t("agents.wizard.modelBadgeRecommended") : tierOf(item.group)])); return <Combobox value={model} onChange={setModel} options={options} labels={labels} tags={tags} placeholder={t("agents.detail.modelPlaceholder")} allowCustom />; })()}</label></div>
         <div className="context-bar"><div style={{ width: `${contextPct}%` }} /><small><Sparkles size={12} /> {t("agents.detail.promptTokens", { count: (promptTokens ?? 0).toLocaleString(lang) })} · {t("agents.detail.contextUsage", { count: (promptTokens ?? 0).toLocaleString(lang), total: contextWindow.toLocaleString(lang) })}</small></div>
         <Alert type="info">{t("agents.detail.providerKeysPrefix")}<Link href="/settings">{t("agents.detail.settingsLink")}</Link>.</Alert>

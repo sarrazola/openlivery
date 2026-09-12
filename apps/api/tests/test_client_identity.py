@@ -113,3 +113,23 @@ def test_empty_job_and_tone_are_not_sent(authenticated_client: TestClient):
     prompt = client.get(f"/api/agents/{agent['id']}/prompt").json()["prompt"]
     assert "## Tu trabajo" not in prompt and "## Tono" not in prompt and "### Siempre" not in prompt
     assert "## Reglas\n### Nunca\n- Nunca inventes ni supongas datos" in prompt
+
+
+def test_the_client_timezone_is_validated_and_reaches_every_agent(authenticated_client: TestClient):
+    client = authenticated_client
+    assert client.post("/api/clients", json={"name": "Nowhere", "timezone": "Mars/Olympus"}).status_code == 422
+    customer = client.post("/api/clients", json={"name": "Bogota Co", "timezone": "America/Bogota"}).json()
+    assert customer["timezone"] == "America/Bogota"
+    client.put("/api/providers/openai", json={"api_key": "secret"})
+    agent = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "provider": "openai", "model": "gpt-4.1-mini", "name": "Ramiro", "instructions": "x", "is_active": True},
+    ).json()
+    assert "timezone" not in agent
+    assert "America/Bogota" in client.get(f"/api/agents/{agent['id']}/prompt").json()["prompt"]
+
+    # Changing it on the client changes what the agent is told; blank means UTC.
+    assert client.patch(f"/api/clients/{customer['id']}", json={"timezone": "Europe/Madrid"}).json()["timezone"] == "Europe/Madrid"
+    assert "Europe/Madrid" in client.get(f"/api/agents/{agent['id']}/prompt").json()["prompt"]
+    assert client.patch(f"/api/clients/{customer['id']}", json={"timezone": "nope"}).status_code == 422
+    assert client.patch(f"/api/clients/{customer['id']}", json={"timezone": ""}).json()["timezone"] == "UTC"

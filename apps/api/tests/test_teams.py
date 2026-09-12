@@ -177,3 +177,31 @@ def test_escalation_rules_replace_and_validate(authenticated_client: TestClient)
     # Deleting the destination team leaves the rule visibly broken.
     client.delete(f"/api/portal/{slug}/teams/{team['id']}")
     assert client.get(base).json()["rules"][0]["broken"] is True
+
+
+def test_the_agency_manages_the_same_teams_from_the_client_page(authenticated_client: TestClient):
+    client = authenticated_client
+    customer, slug, members = _portal_with_members(client, ["Ana", "Beto"], company="Agency Teams Co")
+    base = f"/api/clients/{customer['id']}/teams"
+
+    # The agency sees the same people the portal does, and creates a tray.
+    assert [m["email"] for m in client.get(f"/api/clients/{customer['id']}/members").json()] == [m["email"] for m in members]
+    created = client.post(base, json={"name": "Soporte", "strategy": "least_busy", "member_ids": [members[1]["id"]]})
+    assert created.status_code == 201, created.text
+    team = created.json()
+    assert [m["id"] for m in team["members"]] == [members[1]["id"]]
+    assert client.post(base, json={"name": "Soporte", "member_ids": []}).status_code == 409
+
+    # The portal sees it at once, and an edit from either door shows in the other.
+    assert [row["name"] for row in client.get(f"/api/portal/{slug}/teams").json()] == ["Soporte"]
+    updated = client.patch(f"{base}/{team['id']}", json={"name": "Soporte", "is_default": True, "member_ids": [members[0]["id"]]}).json()
+    assert updated["is_default"] is True and [m["id"] for m in updated["members"]] == [members[0]["id"]]
+    assert client.get(f"/api/portal/{slug}/teams").json()[0]["is_default"] is True
+
+    # Another agency's client is out of reach.
+    other = client.post("/api/clients", json={"name": "Elsewhere"}).json()
+    assert client.get(f"/api/clients/{other['id']}/teams").json() == []
+    assert client.patch(f"/api/clients/{other['id']}/teams/{team['id']}", json={"name": "Hijack", "member_ids": []}).status_code == 404
+
+    assert client.delete(f"{base}/{team['id']}").status_code == 204
+    assert client.get(f"/api/portal/{slug}/teams").json() == []

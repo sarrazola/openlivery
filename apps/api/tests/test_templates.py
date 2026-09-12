@@ -159,3 +159,32 @@ def test_a_template_starts_a_conversation_and_the_window_rules_replies(authentic
         db.commit()
     assert client.get(base).json()["reply_window_open"] is False
     assert client.post(f"{base}/reply", json={"content": "Sigues ahi?"}).status_code == 409
+
+
+def test_the_agency_manages_templates_from_the_client_page(authenticated_client: TestClient, monkeypatch):
+    from app.routers import clients as clients_router
+
+    client = authenticated_client
+    customer = _portal_with_cloud_line(client)
+    base = f"/api/clients/{customer['id']}/templates"
+    listed = AsyncMock(return_value=[APPROVED, PENDING])
+    created = AsyncMock(return_value={**PENDING, "name": "bienvenida", "body": "Bienvenido {{1}}", "variables": 1})
+    deleted = AsyncMock(return_value=None)
+    monkeypatch.setattr(clients_router, "list_templates", listed)
+    monkeypatch.setattr(clients_router, "create_template", created)
+    monkeypatch.setattr(clients_router, "delete_template", deleted)
+
+    rows = client.get(base).json()
+    assert [r["name"] for r in rows] == ["saludo_inicial", "promo"]
+    assert listed.call_args.args == ("tok", "WABA1")
+
+    submitted = client.post(base, json={"name": "bienvenida", "language": "es", "body": "Bienvenido {{1}}", "examples": ["Ana"]})
+    assert submitted.status_code == 201, submitted.text
+    assert created.call_args.kwargs["name"] == "bienvenida" and created.call_args.args == ("tok", "WABA1")
+
+    assert client.delete(f"{base}/saludo_inicial?hsm_id=1").status_code == 204
+    assert deleted.call_args.kwargs == {"name": "saludo_inicial", "hsm_id": "1"}
+
+    # Without the API channel the agency gets the same answer the portal does.
+    bare = client.post("/api/clients", json={"name": "No Line Co"}).json()
+    assert client.get(f"/api/clients/{bare['id']}/templates").status_code == 409

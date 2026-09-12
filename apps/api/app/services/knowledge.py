@@ -203,6 +203,13 @@ _PROMPT_TEXT = {
         "a": "R",
         "documents": "Documentos",
         "grounding": "Usa este conocimiento cuando sea relevante. No inventes información que no aparezca aquí.",
+        "contact": "Contacto",
+        "contact_name": "Nombre",
+        "contact_phone": "Teléfono",
+        "contact_email": "Correo",
+        "contact_tags": "Etiquetas",
+        "contact_channel": "Canal",
+        "contact_rule": "Usa estos datos cuando una tarea los necesite (llenar un registro, enviar un correo, usar una herramienta). No se los pidas al cliente si ya están aquí y no los repitas sin motivo. Lo que no aparece, no lo sabes: pídelo con naturalidad si hace falta.",
     },
     "en": {
         "title": "{name}, AI assistant for {client}",
@@ -232,12 +239,59 @@ _PROMPT_TEXT = {
         "a": "A",
         "documents": "Documents",
         "grounding": "Use this knowledge when it is relevant. Do not invent information that is not here.",
+        "contact": "Contact",
+        "contact_name": "Name",
+        "contact_phone": "Phone",
+        "contact_email": "Email",
+        "contact_tags": "Tags",
+        "contact_channel": "Channel",
+        "contact_rule": "Use these details when a task needs them (filling a record, sending an email, calling a tool). Do not ask the customer for what is already here and do not repeat it without reason. What is not listed you do not know: ask for it naturally if needed.",
     },
 }
 
 
 def _section(title: str, body: str, level: int = 2) -> str:
     return f"{'#' * level} {title}\n{body.strip()}"
+
+
+_CHANNEL_NAMES = {
+    "whatsapp": "WhatsApp", "whatsapp_cloud": "WhatsApp", "instagram": "Instagram", "messenger": "Facebook Messenger",
+    "widget": {"es": "Chat web", "en": "Web chat"},
+}
+
+
+def contact_context(conversation, lang: str | None = None) -> str:
+    """The ``Contact`` section: who the agent is talking to, from the contact
+    record, built at reply time. Only what exists is listed, so a missing
+    e-mail is simply absent and the agent asks for it. Empty when the
+    conversation has no contact at all (the playground)."""
+    contact = getattr(conversation, "contact", None)
+    channel = getattr(conversation, "channel", "") or ""
+    if contact is None and channel in ("", "playground"):
+        return ""
+    lang = lang if lang in _PROMPT_TEXT else "es"
+    text = _PROMPT_TEXT[lang]
+    name = ""
+    if contact is not None:
+        name = (contact.name or "").strip() or (contact.whatsapp_contact_name or "").strip()
+    name = name or (getattr(conversation, "contact_name", None) or "").strip()
+    lines = []
+    if name:
+        lines.append(f"- **{text['contact_name']}:** {name}")
+    if contact is not None and contact.phone:
+        lines.append(f"- **{text['contact_phone']}:** {contact.phone}")
+    if contact is not None and contact.email:
+        lines.append(f"- **{text['contact_email']}:** {contact.email}")
+    if contact is not None and contact.tags:
+        lines.append(f"- **{text['contact_tags']}:** " + ", ".join(tag.name for tag in contact.tags))
+    channel_name = _CHANNEL_NAMES.get(channel)
+    if isinstance(channel_name, dict):
+        channel_name = channel_name[lang]
+    if channel_name:
+        lines.append(f"- **{text['contact_channel']}:** {channel_name}")
+    if not lines:
+        return ""
+    return _section(text["contact"], "\n".join(lines) + "\n\n" + text["contact_rule"])
 
 
 def build_system_prompt(agent: Agent, knowledge_text: str) -> str:
@@ -249,7 +303,7 @@ def build_system_prompt(agent: Agent, knowledge_text: str) -> str:
     client = agent.client
     lang = agent.prompt_language if agent.prompt_language in _PROMPT_TEXT else "es"
     text = _PROMPT_TEXT[lang]
-    tz_name = (agent.timezone or "UTC").strip() or "UTC"
+    tz_name = (client.timezone or "UTC").strip() or "UTC"
     try:
         now = datetime.now(ZoneInfo(tz_name))
     except (ZoneInfoNotFoundError, ValueError):

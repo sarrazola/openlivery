@@ -22,6 +22,19 @@ On a client you configure these fields:
 
 Enabling the portal without both an email and a password is rejected.
 
+## People and roles
+
+The people who sign in to a portal are managed by the agency from the client's **Portal** tab (`/api/clients/{id}/portal-users`). Each person has a role:
+
+- **Admin** can do everything in the portal.
+- **Agent** works the inbox: reads and answers, takes a conversation from the AI and hands it back, changes its status, assigns it to a person or a team, creates contacts and puts existing tags on them, and sets their own availability. An agent cannot delete or archive conversations, import, export, delete, merge or block contacts, manage tags, WhatsApp templates, saved replies or teams, or open the reports.
+
+The first person added to a business is its admin; everyone added after starts as an agent until the agency changes it. The API guards every route by permission key (`app/portal_permissions.py`), so the mobile app is covered by the same rule, and the portal session (`GET /api/portal/{slug}/me`) lists the permissions the person holds so the UI can hide what they cannot do.
+
+## Teams and templates from the agency
+
+Teams and WhatsApp templates belong to the client and can be managed from either side: the client's portal, or the agency's client page under its **Teams** and **WhatsApp templates** tabs (`/api/clients/{id}/teams`, `/api/clients/{id}/templates`). Both doors edit the same rows.
+
 ## Portal URL
 
 Every enabled portal is served at:

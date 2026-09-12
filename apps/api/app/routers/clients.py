@@ -1,13 +1,14 @@
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
 from ..deps import get_current_user
 from .. import industries
-from ..models import Agent, Client, Contact, ContactTag, ContactTagLink, Conversation, PortalUser, PushDevice, User, new_domain_token, Team
+from ..models import Agent, Client, Contact, Conversation, PortalUser, PushDevice, User, new_domain_token, Team
+from ..portal_permissions import DEFAULT_ROLE
 from ..schemas import (
     ClientDeletionPreview,
     ClientCreate,
@@ -16,15 +17,30 @@ from ..schemas import (
     ClientOut,
     ClientPortalUpdate,
     ClientUpdate,
+    PortalMemberOut,
     PortalUserCreate,
     PortalUserOut,
     PortalUserUpdate,
+    ContactTagCreate,
     ContactTagOut,
     ContactTagUpdate,
+    TeamOut,
+    TeamUpsert,
+    TemplateCreate,
+    TemplateOut,
 )
 from ..security import hash_password
 from ..services.attachments import logo_response
+from ..services.tags import create_tag, delete_tag, get_tag, list_tags, rename_tag, tag_count, tag_out
+from ..services.teams import create_team, delete_team, list_teams, members_out, team_out, update_team
 from ..services.whatsapp import bridge_command
+from ..services.whatsapp_templates import (
+    create_template,
+    delete_template,
+    list_templates,
+    template_credentials,
+    validate_template_name,
+)
 from ..services import dns as dns_service
 from ..slugs import slugify, unique_slug
 
@@ -282,6 +298,7 @@ def _portal_user_out(db: Session, portal_user: PortalUser) -> PortalUserOut:
         id=portal_user.id,
         email=portal_user.email,
         name=portal_user.name,
+        role=portal_user.role,
         is_active=portal_user.is_active,
         devices=devices or 0,
         created_at=portal_user.created_at,
@@ -302,71 +319,126 @@ def list_portal_users(
     return [_portal_user_out(db, row) for row in rows]
 
 
-@router.get("/{client_id}/teams")
+# Teams and WhatsApp templates belong to the client and are managed from two
+# doors: the client's own portal and this page of the agency. Same rows, same
+# service code; only the way the client is resolved differs.
+
+
+@router.get("/{client_id}/members", response_model=list[PortalMemberOut])
+def client_members(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """The active portal users, as the team editor needs them."""
+    return members_out(db, _client(db, user, client_id))
+
+
+@router.get("/{client_id}/teams", response_model=list[TeamOut])
 def client_teams(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """The client's trays, for pickers like the escalation rule editor."""
+    """The client's trays, for this page and for pickers like the escalation rule editor."""
     client = _client(db, user, client_id)
-    teams = db.scalars(select(Team).where(Team.client_id == client.id).order_by(Team.name)).all()
-    return [{"id": str(team.id), "name": team.name, "is_default": team.is_default} for team in teams]
+    return [team_out(db, team) for team in list_teams(db, client)]
+
+
+@router.post("/{client_id}/teams", response_model=TeamOut, status_code=status.HTTP_201_CREATED)
+def client_create_team(client_id: uuid.UUID, payload: TeamUpsert, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    client = _client(db, user, client_id)
+    return team_out(db, create_team(db, client, payload))
+
+
+@router.patch("/{client_id}/teams/{team_id}", response_model=TeamOut)
+def client_update_team(
+    client_id: uuid.UUID, team_id: uuid.UUID, payload: TeamUpsert, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    client = _client(db, user, client_id)
+    return team_out(db, update_team(db, client, team_id, payload))
+
+
+@router.delete("/{client_id}/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
+def client_delete_team(client_id: uuid.UUID, team_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    delete_team(db, _client(db, user, client_id), team_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{client_id}/templates", response_model=list[TemplateOut])
+async def client_templates(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    token, waba_id = template_credentials(db, _client(db, user, client_id))
+    return await list_templates(token, waba_id)
+
+
+@router.post("/{client_id}/templates", response_model=TemplateOut, status_code=status.HTTP_201_CREATED)
+async def client_create_template(
+    client_id: uuid.UUID, payload: TemplateCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    token, waba_id = template_credentials(db, _client(db, user, client_id))
+    return await create_template(
+        token,
+        waba_id,
+        name=validate_template_name(payload.name),
+        language=payload.language.strip(),
+        category=payload.category,
+        body=payload.body.strip(),
+        footer=payload.footer,
+        examples=payload.examples,
+    )
+
+
+@router.delete("/{client_id}/templates/{name}", status_code=status.HTTP_204_NO_CONTENT)
+async def client_delete_template(
+    client_id: uuid.UUID,
+    name: str,
+    hsm_id: str | None = Query(default=None, max_length=64),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    token, waba_id = template_credentials(db, _client(db, user, client_id))
+    await delete_template(token, waba_id, name=validate_template_name(name), hsm_id=hsm_id)
 
 
 @router.get("/{client_id}/contact-tags", response_model=list[ContactTagOut])
 def client_contact_tags(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """The client's contact tags, with where each one routes, for the agent's
-    escalation editor. Tags themselves are created in the client portal."""
-    client = _client(db, user, client_id)
-    counts = (
-        select(ContactTagLink.tag_id, func.count(ContactTagLink.contact_id).label("n"))
-        .group_by(ContactTagLink.tag_id)
-        .subquery()
-    )
-    rows = db.execute(
-        select(ContactTag, counts.c.n).outerjoin(counts, counts.c.tag_id == ContactTag.id)
-        .where(ContactTag.client_id == client.id)
-        .order_by(func.lower(ContactTag.name))
-    ).all()
-    return [_tag_out(tag, int(n or 0)) for tag, n in rows]
+    """The client's contact tags, with where each one routes. Managed here and
+    in the client portal alike; routing only here."""
+    return list_tags(db, _client(db, user, client_id))
 
 
-def _tag_out(tag: ContactTag, count: int) -> ContactTagOut:
-    assignee = tag.route_assignee if tag.route_assignee_id else None
-    return ContactTagOut(
-        id=tag.id, name=tag.name, color=tag.color, contact_count=count,
-        route_team_id=tag.route_team_id, route_team_name=tag.route_team.name if tag.route_team_id and tag.route_team else None,
-        route_assignee_id=tag.route_assignee_id, route_assignee_name=(assignee.name.strip() or assignee.email) if assignee else None,
-    )
+@router.post("/{client_id}/contact-tags", response_model=ContactTagOut, status_code=status.HTTP_201_CREATED)
+def client_create_contact_tag(client_id: uuid.UUID, payload: ContactTagCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return tag_out(create_tag(db, _client(db, user, client_id), payload.name, payload.color))
 
 
 @router.patch("/{client_id}/contact-tags/{tag_id}", response_model=ContactTagOut)
-def client_route_contact_tag(
+def client_update_contact_tag(
     client_id: uuid.UUID, tag_id: uuid.UUID, payload: ContactTagUpdate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    """Only the routing is editable from the agency side; name and color
-    belong to the client's people in the portal."""
+    """Name, color and routing. Routing points at a team or a person; sending
+    either sets it and clears the other, explicit nulls clear it."""
     client = _client(db, user, client_id)
-    tag = db.scalar(select(ContactTag).where(ContactTag.id == tag_id, ContactTag.client_id == client.id))
-    if tag is None:
-        raise HTTPException(status_code=404, detail="Tag not found")
+    tag = get_tag(db, client, tag_id)
+    rename_tag(db, client, tag, payload.name, payload.color)
     sent = payload.model_fields_set
-    if "route_team_id" not in sent and "route_assignee_id" not in sent:
-        raise HTTPException(status_code=422, detail="Send route_team_id or route_assignee_id")
-    if payload.route_team_id is not None:
-        team = db.scalar(select(Team).where(Team.id == payload.route_team_id, Team.client_id == client.id))
-        if team is None:
-            raise HTTPException(status_code=404, detail="Team not found")
-        tag.route_team_id, tag.route_assignee_id = team.id, None
-    elif payload.route_assignee_id is not None:
-        person = db.scalar(select(PortalUser).where(PortalUser.id == payload.route_assignee_id, PortalUser.client_id == client.id))
-        if person is None:
-            raise HTTPException(status_code=404, detail="Person not found")
-        tag.route_team_id, tag.route_assignee_id = None, person.id
-    else:
-        tag.route_team_id, tag.route_assignee_id = None, None
+    if "route_team_id" in sent or "route_assignee_id" in sent:
+        if payload.route_team_id is not None:
+            team = db.scalar(select(Team).where(Team.id == payload.route_team_id, Team.client_id == client.id))
+            if team is None:
+                raise HTTPException(status_code=404, detail="Team not found")
+            tag.route_team_id, tag.route_assignee_id = team.id, None
+        elif payload.route_assignee_id is not None:
+            person = db.scalar(select(PortalUser).where(PortalUser.id == payload.route_assignee_id, PortalUser.client_id == client.id))
+            if person is None:
+                raise HTTPException(status_code=404, detail="Person not found")
+            tag.route_team_id, tag.route_assignee_id = None, person.id
+        else:
+            tag.route_team_id, tag.route_assignee_id = None, None
+    elif not sent:
+        raise HTTPException(status_code=422, detail="Nothing to change")
     db.commit()
     db.refresh(tag)
-    count = db.scalar(select(func.count(ContactTagLink.contact_id)).where(ContactTagLink.tag_id == tag.id)) or 0
-    return _tag_out(tag, int(count))
+    return tag_out(tag, tag_count(db, tag))
+
+
+@router.delete("/{client_id}/contact-tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
+def client_delete_contact_tag(client_id: uuid.UUID, tag_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    delete_tag(db, _client(db, user, client_id), tag_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{client_id}/portal-users", response_model=PortalUserOut, status_code=status.HTTP_201_CREATED)
@@ -383,10 +455,17 @@ def create_portal_user(
     )
     if existing:
         raise HTTPException(status_code=409, detail="That e-mail is already on this portal")
+    role = payload.role
+    if role is None:
+        # The first person at a business runs it; the ones added later work
+        # the inbox until the agency says otherwise.
+        anyone = db.scalar(select(PortalUser.id).where(PortalUser.client_id == client.id).limit(1))
+        role = DEFAULT_ROLE if anyone else "admin"
     portal_user = PortalUser(
         client_id=client.id,
         email=email,
         name=payload.name.strip(),
+        role=role,
         password_hash=hash_password(payload.password),
     )
     db.add(portal_user)

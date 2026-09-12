@@ -33,6 +33,9 @@ const en = {
       security: "Private access managed by {name}.",
     },
   },
+  settings: {
+    templatesCopy: "Approved templates are the only way to reach someone first, or after 24 hours without a reply. Meta reviews each one.",
+  },
   templates: {
     intro: "Approved templates are the only way to write to someone first, or after 24 hours without a reply from them. Meta reviews each one.",
     new: "New template",
@@ -158,6 +161,7 @@ const en = {
       heading: "Tags",
       add: "Add tag",
       searchOrCreate: "Search or create a tag…",
+      search: "Search a tag…",
       create: "Create \"{name}\"",
       emptyHint: "No tags yet. Type a name to create the first one.",
       all: "All",
@@ -173,6 +177,8 @@ const en = {
       noTags: "No tags yet. Create one here or from a contact.",
       manageIntro: "Tags are put on contacts by hand. A tag can also send its contacts straight to a team, without the AI; your agency sets that up from the agent.",
       routedTo: "→ {team}",
+      customColor: "Custom color",
+      pickColor: "Change color",
     },
     list: {
       showing: "Showing {shown} of {total}",
@@ -283,6 +289,7 @@ const en = {
     noMembers: "No members yet.",
     emptyTitle: "No teams yet",
     emptyDescription: "Create trays like Sales or Support, add your people, and conversations can be routed to them.",
+    emptyReadOnly: "An admin can create trays like Sales or Support and route conversations to them.",
     openCount: "{count} open",
     unassignedCount: "{count} waiting",
     table: { name: "Team", strategy: "Assignment", members: "Members", open: "Open" },
@@ -298,6 +305,7 @@ const en = {
     form: {
       name: "Name",
       strategy: "Assignment rule",
+      strategyHint: "Who gets the next unassigned conversation. Round robin: the member who has waited longest since their last one, so everyone takes turns. Least busy: the member holding the fewest open conversations right now.",
       description: "Description",
       descriptionPlaceholder: "What this team handles",
       descriptionHelp: "For your people: what this tray is for. Where the AI escalates is decided only by the rules in the bot settings.",
@@ -326,7 +334,7 @@ const en = {
       teams: "Teams",
       templates: "WhatsApp templates",
       reports: "Reports",
-      agents: "Agents",
+      settings: "Settings",
       logout: "Log out",
     },
     header: {
@@ -477,6 +485,9 @@ const es: typeof en = {
       security: "Acceso privado administrado por {name}.",
     },
   },
+  settings: {
+    templatesCopy: "Las plantillas aprobadas son la única forma de escribirle a alguien primero, o tras 24 horas sin respuesta. Meta revisa cada una.",
+  },
   templates: {
     intro: "Las plantillas aprobadas son la única forma de escribirle primero a alguien, o después de 24 horas sin respuesta. Meta revisa cada una.",
     new: "Nueva plantilla",
@@ -602,6 +613,7 @@ const es: typeof en = {
       heading: "Etiquetas",
       add: "Agregar etiqueta",
       searchOrCreate: "Buscar o crear una etiqueta…",
+      search: "Buscar una etiqueta…",
       create: "Crear \"{name}\"",
       emptyHint: "Aún no hay etiquetas. Escribe un nombre para crear la primera.",
       all: "Todas",
@@ -617,6 +629,8 @@ const es: typeof en = {
       noTags: "Aún no hay etiquetas. Crea una aquí o desde un contacto.",
       manageIntro: "Las etiquetas se ponen a mano en cada contacto. Una etiqueta también puede mandar a sus contactos directo a un equipo, sin IA; eso lo configura tu agencia desde el agente.",
       routedTo: "→ {team}",
+      customColor: "Color personalizado",
+      pickColor: "Cambiar color",
     },
     list: {
       showing: "Mostrando {shown} de {total}",
@@ -727,6 +741,7 @@ const es: typeof en = {
     noMembers: "Aún no hay integrantes.",
     emptyTitle: "Aún no hay equipos",
     emptyDescription: "Crea bandejas como Ventas o Soporte, agrega a tu gente, y las conversaciones podrán enrutarse a ellas.",
+    emptyReadOnly: "Un administrador puede crear bandejas como Ventas o Soporte y enrutar conversaciones a ellas.",
     openCount: "{count} abiertas",
     unassignedCount: "{count} en espera",
     table: { name: "Equipo", strategy: "Asignación", members: "Miembros", open: "Abiertas" },
@@ -742,6 +757,7 @@ const es: typeof en = {
     form: {
       name: "Nombre",
       strategy: "Regla de asignación",
+      strategyHint: "Quién recibe la siguiente conversación sin asignar. Por turnos: la persona que más lleva esperando desde su última, así todos rotan. Menos ocupado: la persona con menos conversaciones abiertas en este momento.",
       description: "Descripción",
       descriptionPlaceholder: "Qué atiende este equipo",
       descriptionHelp: "Para tu gente: para qué es esta bandeja. A dónde escala la IA lo deciden solo las reglas en la configuración del bot.",
@@ -770,7 +786,7 @@ const es: typeof en = {
       teams: "Equipos",
       templates: "Plantillas de WhatsApp",
       reports: "Reportes",
-      agents: "Agentes",
+      settings: "Configuración",
       logout: "Cerrar sesión",
     },
     header: {

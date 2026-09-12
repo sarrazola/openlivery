@@ -444,6 +444,11 @@ textarea { line-height: 1.55; }
 .compact-channel-grid article > span { width: 38px; height: 38px; display: grid; place-items: center; color: var(--accent-text); border-radius: 8px; background: var(--accent-soft); }
 .compact-channel-grid article div { flex: 1; display: flex; flex-direction: column; }
 .compact-channel-grid article small { color: var(--subtle); }
+.compact-channel-grid article strong { display: flex; align-items: center; gap: 8px; }
+.channel-state-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--line); }
+.channel-state-dot.connected { background: var(--green-text); }
+.channel-state-dot.pending { background: var(--amber-text); }
+.channel-state-dot.disconnected { background: var(--red-text); }
 .compact-channel-grid article button { color: var(--subtle); border: 0; background: transparent; }
 .slug-input { display: flex; align-items: center; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-2); overflow: hidden; }
 .slug-input span { padding-left: 12px; color: var(--muted); font-size: 13px; font-weight: 400; white-space: nowrap; }
@@ -784,6 +789,7 @@ textarea { line-height: 1.55; }
 .portal-template-name small { display: block; margin-top: 3px; color: var(--subtle); white-space: pre-wrap; }
 .portal-template-name small.danger { color: var(--red-text); }
 .portal-template-actions { text-align: right; white-space: nowrap; }
+.portal-template-actions .icon-button + .icon-button { margin-left: 6px; }
 .portal-teams-table { margin-top: 14px; }
 .portal-teams-table td { height: auto; padding-top: 14px; padding-bottom: 14px; vertical-align: middle; }
 .portal-team-name { min-width: 200px; }
@@ -922,11 +928,34 @@ textarea { line-height: 1.55; }
 
 /* Teams: the tray cards, member presence dots, and the routing surfaces. */
 .portal-teams { padding: 18px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); height: calc(100vh - 125px); }
+/* Portal settings: the agency's section layout, tabs first. Views that size
+   themselves to the viewport in their own tab size to their content here. */
+.portal-settings .tabs { margin: 0 0 20px; }
+.portal-settings .portal-teams { height: auto; }
+.portal-settings .portal-templates { padding: 0; }
+.portal-settings .canned-editor { max-width: 560px; }
+/* The foot of the portal sidebar: a rule, then the person with their
+   availability switch, plain on the sidebar, then Log out. */
+.portal-nav-foot { margin-top: auto; padding-top: 12px; display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--line-soft); }
+.portal-nav-foot > button { height: 40px; display: flex; align-items: center; gap: 9px; color: var(--muted); border: 0; background: transparent; }
+.portal-nav-foot > button.availability-toggle { width: 100%; height: auto; min-height: 44px; margin: 0; padding: 6px 10px; gap: 10px; color: var(--ink); border: 0; border-radius: 8px; background: transparent; font-size: 13px; text-align: left; transition: .15s ease; }
+.portal-nav-foot > button.availability-toggle:hover { background: var(--surface-3); }
+.portal-nav-foot > button.availability-toggle.away { color: var(--muted); }
+.portal-nav-foot > button.availability-toggle .availability-switch { margin-left: auto; }
+/* The same views inside the agency's client page: sized by their content, not the viewport. */
+.embedded-portal-view .portal-teams { height: auto; }
+.embedded-portal-view .portal-templates { padding-top: 12px; }
 .team-members { display: flex; flex-wrap: wrap; gap: 6px; }
 .team-member { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; font-size: 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
 .team-member i { width: 7px; height: 7px; border-radius: 999px; background: var(--green); }
 .team-member.away i { background: var(--surface-5); }
-.team-channel-options { display: flex; gap: 14px; flex-wrap: wrap; }
+.team-channel-options { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip-toggle { height: 32px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 13px; font-weight: 600; cursor: pointer; transition: .15s ease; }
+.chip-toggle:hover { color: var(--ink); border-color: var(--line-strong); }
+.chip-toggle.active { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
+/* A hint near the top of a dialog opens downwards, where there is room. */
+.modal-form .ai-hint-tip { top: calc(100% + 8px); bottom: auto; }
+.modal-form .ai-hint-tip::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: var(--inverse); }
 .mini-badge.team { color: var(--ink-2); border-color: var(--line); background: var(--surface-3); }
 .inbox-filter-row { display: flex; gap: 8px; margin: 10px 12px 2px; }
 .inbox-mini-select { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 6px 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--muted); }
@@ -1038,6 +1067,7 @@ textarea { line-height: 1.55; }
   .portal-login > section { min-height: 360px; }
   .portal-app { grid-template-columns: 76px minmax(0,1fr); }
   .portal-nav strong, .portal-nav nav a span, .portal-nav > button { font-size: 0; }
+  .portal-nav-foot > button { font-size: 0; }
   .portal-nav .availability-toggle { justify-content: center; padding: 8px 0; }
   .portal-nav .availability-name { display: none; }
   .portal-inbox { grid-template-columns: 260px minmax(0,1fr); }
@@ -1856,6 +1886,7 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 
 /* Settings: the same rows, at page scale, one under the other. */
 .pref-list { display: flex; flex-direction: column; }
+.pref-list .pref-row > div { width: auto; }
 .pref-list .pref-row { min-height: 0; padding: 14px 0; gap: 16px; border-top: 1px solid var(--line-soft); }
 .pref-list .pref-row:first-child { padding-top: 0; border-top: 0; }
 .pref-list .pref-row:last-child { padding-bottom: 0; }
@@ -1898,21 +1929,19 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .tag-chips.large { align-items: center; gap: 6px; margin-top: 0; }
 .tag-chips.large .tag-chip { padding: 3px 10px; font-size: 12.5px; }
 .tag-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--subtle); }
-.tag-swatches button[data-color="gray"] { background: var(--subtle); }
-.tag-chip[data-color="blue"] { color: var(--blue-text); border-color: var(--blue-line); background: var(--blue-soft); }
-.tag-dot[data-color="blue"], .tag-swatches button[data-color="blue"] { background: var(--blue); }
-.tag-chip[data-color="green"] { color: var(--green-text); border-color: var(--green-line); background: var(--green-soft); }
-.tag-dot[data-color="green"], .tag-swatches button[data-color="green"] { background: var(--green); }
-.tag-chip[data-color="amber"] { color: var(--amber-text); border-color: var(--amber-line); background: var(--amber-soft); }
-.tag-dot[data-color="amber"], .tag-swatches button[data-color="amber"] { background: var(--amber); }
-.tag-chip[data-color="red"] { color: var(--red-text); border-color: var(--red-line); background: var(--red-soft); }
-.tag-dot[data-color="red"], .tag-swatches button[data-color="red"] { background: var(--red); }
-.tag-chip[data-color="violet"] { color: var(--violet-text); border-color: var(--violet-line); background: var(--violet-soft); }
-.tag-dot[data-color="violet"], .tag-swatches button[data-color="violet"] { background: var(--violet); }
-.tag-chip[data-color="pink"] { color: var(--pink-text); border-color: var(--pink-line); background: var(--pink-soft); }
-.tag-dot[data-color="pink"], .tag-swatches button[data-color="pink"] { background: var(--pink); }
-.tag-chip[data-color="teal"] { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
-.tag-dot[data-color="teal"], .tag-swatches button[data-color="teal"] { background: var(--accent); }
+/* A tag's color is any hex; the element carries it as --tag and the tint is
+   mixed here, so chips stay readable on both themes. */
+.tag-chip { --tag: var(--muted); color: color-mix(in srgb, var(--tag) 78%, var(--ink)); border-color: color-mix(in srgb, var(--tag) 45%, transparent); background: color-mix(in srgb, var(--tag) 14%, transparent); }
+.tag-dot, .tag-swatches button { background: var(--tag, var(--subtle)); }
+.tag-color-pick { position: relative; flex: 0 0 auto; }
+.tag-color-current { width: 22px; height: 22px; padding: 0; border: 2px solid var(--surface); border-radius: 50%; background: var(--tag); box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+.tag-color-current:disabled { cursor: default; }
+.tag-color-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; padding: 10px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 10px 30px rgba(var(--shadow-rgb), calc(.16 * var(--shadow-k))); }
+.tag-color-menu .tag-swatches { display: grid; grid-template-columns: repeat(8, 18px); gap: 6px; }
+.tag-color-menu .tag-swatches button { width: 18px; height: 18px; }
+.tag-swatch-custom { position: relative; width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; background: conic-gradient(#ef4444, #f59e0b, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444); cursor: pointer; }
+.tag-swatch-custom.active { background: var(--tag); border-color: var(--ink); }
+.tag-swatch-custom input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .portal-contact-tags { margin-bottom: 18px; }
 .tag-add { display: inline-flex; align-items: center; gap: 4px; min-height: 26px; padding: 0 10px; color: var(--muted); border: 1px dashed var(--line-strong); border-radius: 999px; background: transparent; font-size: 12px; font-weight: 600; cursor: pointer; }
 .tag-add:hover { color: var(--ink); border-color: var(--accent-line); background: var(--accent-soft); }

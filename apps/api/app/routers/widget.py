@@ -23,7 +23,7 @@ from ..services.attachments import (
     store_attachment,
 )
 from ..services.tools import run_completion
-from ..services.knowledge import build_system_prompt, retrieve_knowledge
+from ..services.knowledge import contact_context, build_system_prompt, retrieve_knowledge
 from ..services.providers import resolve_agent_credentials
 from ..services.usage import record_usage
 from ..services.notifications import notify_needs_human
@@ -277,8 +277,12 @@ async def _widget_ai_reply(db: Session, agent: Agent, conversation: Conversation
         .limit(agent.memory_limit or HISTORY_LIMIT)
     ).all()
     history = list(reversed(history))
+    system_content = build_system_prompt(agent, knowledge.text)
+    contact_block = contact_context(conversation, agent.prompt_language)
+    if contact_block:
+        system_content += "\n\n" + contact_block
     messages = [
-        {"role": "system", "content": build_system_prompt(agent, knowledge.text)},
+        {"role": "system", "content": system_content},
         *[{"role": item.role, "content": llm_text(item)} for item in history],
     ]
     base_url, api_key = credentials

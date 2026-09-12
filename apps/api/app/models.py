@@ -69,6 +69,9 @@ class Client(Base):
     business_type: Mapped[str] = mapped_column(String(80), default="", server_default="")
     # Free words for the kind of business when the catalog only offers "other".
     business_custom: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    # IANA timezone of the business (e.g. "America/Bogota"). Every agent of
+    # the client tells the time in it; the prompt reads it from here.
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Optional per-client logo, shown in the widget and portal (falls back to
     # the agency logo). Bytes stored in Postgres like the agency logo.
@@ -153,9 +156,10 @@ class Agent(Base):
     # AI provider ("openai" or "anthropic"); the agency's key for that provider is used.
     provider: Mapped[str] = mapped_column(String(30), default="openai", server_default="openai")
     model: Mapped[str] = mapped_column(String(180), default="")
-    # IANA timezone (e.g. "America/Bogota"); injected into the system prompt so
-    # the agent knows the local date/time. "UTC" when unset.
-    timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC")
+    # The timezone lives on the client since 0041 (``Client.timezone``). The
+    # ``agents.timezone`` column is still in the database, unmapped, so the
+    # previous release keeps running while the migration is applied; a later
+    # migration drops it.
     # Language of the prompt's headings and fixed sentences ("es" or "en").
     # Set from the UI language when the agent is saved; the operator's own
     # text is inserted as written.
@@ -427,7 +431,13 @@ class Contact(Base):
     )
 
 
-TAG_COLORS = ("gray", "blue", "green", "amber", "red", "violet", "pink", "teal")
+# Colors a tag can be given without picking one: rotated so neighbours differ.
+# Any #rrggbb is accepted; these are the presets the palette offers.
+TAG_COLORS = (
+    "#6b7280", "#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6",
+    "#f97316", "#84cc16", "#06b6d4", "#6366f1", "#a855f7", "#f43f5e", "#0ea5e9", "#10b981",
+)
+TAG_COLOR_PATTERN = r"^#[0-9a-f]{6}$"
 
 
 class ContactTag(Base):
@@ -441,8 +451,8 @@ class ContactTag(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(40))
-    # A palette name, not a hex: the interface maps it to its theme colors.
-    color: Mapped[str] = mapped_column(String(20), default="gray", server_default="gray")
+    # A #rrggbb color, lowercase. Before 0041 it was a palette name.
+    color: Mapped[str] = mapped_column(String(20), default="#6b7280", server_default="#6b7280")
     # When set, a new conversation from a contact carrying this tag starts in
     # human hands on that team, before any AI reply and ahead of the agent's
     # escalation rules. Cleared when the team is deleted.
@@ -675,6 +685,11 @@ class PortalUser(Base):
     email: Mapped[str] = mapped_column(String(320), index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # admin | agent. What each role may do is the permission set in
+    # app.portal_permissions; the API checks permission keys, never the role
+    # name, so a role can grow or a new one can be added without touching the
+    # routes. New people start as agents; everyone from before 0041 is an admin.
+    role: Mapped[str] = mapped_column(String(20), default="agent", server_default="agent")
     # online | away: whether routing may hand this person new conversations.
     # Deliberately manual; last_seen_at records real activity beside it.
     availability: Mapped[str] = mapped_column(String(10), default="online", server_default="online")

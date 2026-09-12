@@ -3,6 +3,8 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { LoaderCircle, Pencil, Plus, Search, Trash2, Users, X } from "lucide-react";
 import { Alert, EmptyState, Modal } from "@/components/ui";
+import { AiHint } from "@/components/ai-hint";
+import { ChannelIcon } from "@/lib/channels";
 import { api, ApiError, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import type { PortalMember, Team } from "@/types";
@@ -10,7 +12,10 @@ import type { PortalMember, Team } from "@/types";
 const STRATEGIES = ["round_robin", "least_busy"] as const;
 const CHANNEL_OPTIONS = ["whatsapp", "whatsapp_cloud", "instagram", "messenger", "widget"] as const;
 
-export function TeamsView({ slug }: { slug: string }) {
+/** The client's teams. `base` is the API prefix the rows live under: the portal's
+ * own (`/portal/{slug}`) or the agency's client page (`/clients/{id}`). Without
+ * `canManage` the list is read-only. */
+export function TeamsView({ base, canManage = true }: { base: string; canManage?: boolean }) {
   const t = useT();
   const [items, setItems] = useState<Team[]>([]);
   const [members, setMembers] = useState<PortalMember[]>([]);
@@ -26,12 +31,12 @@ export function TeamsView({ slug }: { slug: string }) {
 
   const load = useCallback(async () => {
     const [teams, people] = await Promise.all([
-      api<Team[]>(`/portal/${slug}/teams`),
-      api<PortalMember[]>(`/portal/${slug}/members`),
+      api<Team[]>(`${base}/teams`),
+      api<PortalMember[]>(`${base}/members`),
     ]);
     setItems(teams);
     setMembers(people);
-  }, [slug]);
+  }, [base]);
 
   useEffect(() => {
     setLoading(true);
@@ -62,8 +67,8 @@ export function TeamsView({ slug }: { slug: string }) {
     };
     setBusy(true); setError("");
     try {
-      if (editing === "new") await api<Team>(`/portal/${slug}/teams`, { method: "POST", body: JSON.stringify(body) });
-      else if (editing) await api<Team>(`/portal/${slug}/teams/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      if (editing === "new") await api<Team>(`${base}/teams`, { method: "POST", body: JSON.stringify(body) });
+      else if (editing) await api<Team>(`${base}/teams/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) });
       setEditing(null);
       await load();
     } catch (err) {
@@ -75,7 +80,7 @@ export function TeamsView({ slug }: { slug: string }) {
     if (!deleting) return;
     setBusy(true); setError("");
     try {
-      await api(`/portal/${slug}/teams/${deleting.id}`, { method: "DELETE" });
+      await api(`${base}/teams/${deleting.id}`, { method: "DELETE" });
       setDeleting(null);
       await load();
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
@@ -102,7 +107,7 @@ export function TeamsView({ slug }: { slug: string }) {
     <div className="portal-teams">
       <div className="portal-contacts-toolbar">
         <span>{t("portal.teams.count", { count: items.length })}</span>
-        <button className="button primary small" onClick={() => openEditor("new")}><Plus size={15} /> {t("portal.teams.new")}</button>
+        {canManage && <button className="button primary small" onClick={() => openEditor("new")}><Plus size={15} /> {t("portal.teams.new")}</button>}
       </div>
       {error && !editing && !deleting && <Alert>{error}</Alert>}
       {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>
@@ -127,20 +132,22 @@ export function TeamsView({ slug }: { slug: string }) {
               </div></td>
               <td>{team.open_count}{team.unassigned_count > 0 && <em className="nav-count">{t("portal.teams.unassignedCount", { count: team.unassigned_count })}</em>}</td>
               <td className="portal-template-actions">
-                <button className="icon-button" onClick={() => openEditor(team)} title={t("portal.teams.edit")} aria-label={t("portal.teams.edit")}><Pencil size={15} /></button>
-                <button className="icon-button danger" onClick={() => { setError(""); setDeleting(team); }} title={t("portal.teams.delete")} aria-label={t("portal.teams.delete")}><Trash2 size={15} /></button>
+                {canManage && <>
+                  <button className="icon-button" onClick={() => openEditor(team)} title={t("portal.teams.edit")} aria-label={t("portal.teams.edit")}><Pencil size={15} /></button>
+                  <button className="icon-button danger" onClick={() => { setError(""); setDeleting(team); }} title={t("portal.teams.delete")} aria-label={t("portal.teams.delete")}><Trash2 size={15} /></button>
+                </>}
               </td>
             </tr>)}</tbody>
           </table>
         </div>
-        : <EmptyState icon={<Users />} title={t("portal.teams.emptyTitle")} description={t("portal.teams.emptyDescription")} />}
+        : <EmptyState icon={<Users />} title={t("portal.teams.emptyTitle")} description={canManage ? t("portal.teams.emptyDescription") : t("portal.teams.emptyReadOnly")} />}
     </div>
 
     <Modal open={editing !== null} title={editing === "new" ? t("portal.teams.newTitle") : t("portal.teams.editTitle")} onClose={() => setEditing(null)}>
       <form className="modal-form" onSubmit={save}>
         <div className="form-grid">
           <label>{t("portal.teams.form.name")}<input name="name" required maxLength={120} defaultValue={editing !== "new" && editing ? editing.name : ""} autoFocus /></label>
-          <label>{t("portal.teams.form.strategy")}
+          <label><span className="label-row">{t("portal.teams.form.strategy")} <AiHint text={t("portal.teams.form.strategyHint")} /></span>
             <select name="strategy" defaultValue={editing !== "new" && editing ? editing.strategy : "round_robin"}>
               {STRATEGIES.map((value) => <option key={value} value={value}>{strategyLabel(value)}</option>)}
             </select>
@@ -182,10 +189,9 @@ export function TeamsView({ slug }: { slug: string }) {
         </div>
         <label>{t("portal.teams.form.channels")}</label>
         <div className="team-channel-options">
-          {CHANNEL_OPTIONS.map((channel) => <label key={channel} className="switch-row small">
-            <input type="checkbox" checked={selectedChannels.includes(channel)} onChange={() => setSelectedChannels((list) => toggle(list, channel))} />
-            <span>{channelLabel(channel)}</span>
-          </label>)}
+          {CHANNEL_OPTIONS.map((channel) => <button type="button" key={channel} className={`chip-toggle${selectedChannels.includes(channel) ? " active" : ""}`} aria-pressed={selectedChannels.includes(channel)} onClick={() => setSelectedChannels((list) => toggle(list, channel))}>
+            <ChannelIcon channel={channel} size={14} /> {channelLabel(channel)}
+          </button>)}
         </div>
         <label className="switch-row small">
           <input type="checkbox" name="is_default" defaultChecked={editing !== "new" && editing ? editing.is_default : false} />
