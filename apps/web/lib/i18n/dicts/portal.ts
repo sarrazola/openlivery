@@ -33,6 +33,11 @@ const en = {
       security: "Private access managed by {name}.",
     },
   },
+  settings: {
+    preferencesTitle: "Preferences",
+    preferencesCopy: "Language and appearance of the portal on this browser. Each person chooses their own.",
+    templatesCopy: "Approved templates are the only way to reach someone first, or after 24 hours without a reply. Meta reviews each one.",
+  },
   templates: {
     intro: "Approved templates are the only way to write to someone first, or after 24 hours without a reply from them. Meta reviews each one.",
     new: "New template",
@@ -328,7 +333,7 @@ const en = {
       teams: "Teams",
       templates: "WhatsApp templates",
       reports: "Reports",
-      agents: "Agents",
+      settings: "Settings",
       logout: "Log out",
     },
     header: {
@@ -478,6 +483,11 @@ const es: typeof en = {
       submit: "Entrar al Inbox",
       security: "Acceso privado administrado por {name}.",
     },
+  },
+  settings: {
+    preferencesTitle: "Preferencias",
+    preferencesCopy: "Idioma y apariencia del portal en este navegador. Cada persona elige los suyos.",
+    templatesCopy: "Las plantillas aprobadas son la única forma de escribirle a alguien primero, o tras 24 horas sin respuesta. Meta revisa cada una.",
   },
   templates: {
     intro: "Las plantillas aprobadas son la única forma de escribirle primero a alguien, o después de 24 horas sin respuesta. Meta revisa cada una.",
@@ -774,7 +784,7 @@ const es: typeof en = {
       teams: "Equipos",
       templates: "Plantillas de WhatsApp",
       reports: "Reportes",
-      agents: "Agentes",
+      settings: "Configuración",
       logout: "Cerrar sesión",
     },
     header: {

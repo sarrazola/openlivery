@@ -927,6 +927,11 @@ textarea { line-height: 1.55; }
 
 /* Teams: the tray cards, member presence dots, and the routing surfaces. */
 .portal-teams { padding: 18px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); height: calc(100vh - 125px); }
+.portal-settings { display: flex; flex-direction: column; gap: 16px; }
+.portal-settings > section { padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.portal-settings > section .settings-copy { margin-bottom: 14px; }
+.portal-settings .portal-settings-prefs { margin-top: 0; padding: 0; border: 0; max-width: 380px; }
+.portal-settings .portal-templates { padding: 0; }
 /* The same views inside the agency's client page: sized by their content, not the viewport. */
 .embedded-portal-view .portal-teams { height: auto; }
 .embedded-portal-view .portal-templates { padding-top: 12px; }
