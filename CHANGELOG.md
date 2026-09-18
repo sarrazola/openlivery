@@ -14,6 +14,7 @@ Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
 
+- The sidebar links to the GitHub repository next to Discord, as logos, with the live star count from GitHub's public API. `NEXT_PUBLIC_COMMUNITY_LINKS` picks which logos a build shows (`discord,github` by default, `none` hides the row).
 - WhatsApp templates are built whole: a header (text with one variable, an image, video or PDF sample, or a location), the message, a footer and up to ten buttons (quick replies, website with a per-person suffix, call, copy code), with named variables (`{{name}}`), every language Meta supports, live checks of Meta's rules with guidance per field, and a preview that shows the message as WhatsApp renders it. Sending fills header, body and button values. Header samples go through Meta's resumable upload, which needs `WHATSAPP_APP_ID`.
 - Pick the knowledge base's embedding model per agent from OpenRouter's embedding catalog (`openai/text-embedding-3-small` stays the default); changing it reindexes the agent's documents, and a Reindex button repairs documents indexed without a working key. Semantic search keeps the ten best chunks instead of filling the budget. Migration `0046` adds `agents.embedding_model` and `knowledge_chunks.embedding_model`.
 - Choose which tools of an MCP server the agent may call, with read-only and modifies-data badges from the server's annotations. Migration `0045` adds `agent_tools.enabled_tools`.
