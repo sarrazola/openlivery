@@ -453,7 +453,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
                   <button type="button" title={t("portal.inbox.conversation.reply")} aria-label={t("portal.inbox.conversation.reply")} onClick={() => { setQuoting(message); replyInputRef.current?.focus(); }}><Reply size={14} /></button>
                 </span>}
                 <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={stamp} />
-                {message.content && <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}{mine && (selected.channel === "whatsapp_cloud" || isSocialChannel(selected.channel)) && <DeliveryTicks status={message.delivery_status} error={message.delivery_error} />}</time></p>}
+                {message.content && <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}{mine && (selected.channel === "whatsapp_cloud" || isSocialChannel(selected.channel)) && <DeliveryTicks status={message.delivery_status} error={message.delivery_error} />}</time>{mine && message.delivery_status === "failed" && message.delivery_error && <span className="msg-error">{message.delivery_error}</span>}</p>}
                 <ReactionBadge emoji={message.reaction} />
                 <ReactionBadge emoji={message.incoming_reaction} incoming />
                 {!message.content && !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}

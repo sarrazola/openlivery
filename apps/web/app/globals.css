@@ -774,6 +774,10 @@ textarea { line-height: 1.55; }
 .ticks.read { color: #34b7f1; opacity: 1; }
 .ticks.failed { color: var(--red-text); opacity: 1; }
 .portal-messages article.mine.ai .ticks.failed { color: var(--red-text); }
+/* A failed send shows why below the message, in the quiet register of the
+   timestamp: the alert icon already carries the severity. */
+.msg-error { display: block; margin-top: 4px; font-size: 11px; line-height: 1.45; opacity: .85; }
+.portal-messages article.mine.ai .msg-error { color: var(--red-text); opacity: 1; }
 .window-pill { display: inline-flex; align-items: center; gap: 4px; margin-left: 0; padding: 2px 8px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
 .window-pill.open { color: var(--ink-2); background: var(--green-soft); }
 .window-pill.closed { color: var(--amber-text); background: var(--amber-soft); }
