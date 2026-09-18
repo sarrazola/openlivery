@@ -1504,6 +1504,10 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .row-arrow:hover { color: var(--accent-text); background: var(--accent-soft); }
 .pill.purple { color: var(--accent-text); border-color: var(--line-strong); background: var(--accent-soft); }
 .compact-channel-grid article > span { color: var(--accent-text); background: var(--accent-soft); }
+.compact-channel-grid article > span.whatsapp { color: var(--green-text); background: var(--green-soft); }
+.compact-channel-grid article > span.webchat { color: var(--accent-text); background: var(--accent-soft); }
+.compact-channel-grid article > span.instagram { color: var(--pink-text); background: var(--pink-soft); }
+.compact-channel-grid article > span.facebook { color: var(--blue-text); background: var(--blue-soft); }
 .connection-dot { border-color: var(--line); background: var(--green); }
 .model-chips button:hover, .model-chips button.active { color: var(--accent-text); border-color: var(--accent); background: var(--accent-soft); }
 .model-recommendations > button.active { border-color: var(--accent); background: var(--surface-3); box-shadow: 0 0 0 2px rgba(var(--green-rgb), .1); }
