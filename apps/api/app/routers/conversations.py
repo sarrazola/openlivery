@@ -32,6 +32,7 @@ from ..services.operator_media import store_operator_media_reply
 from ..services.providers import resolve_agent_credentials
 from ..services.usage import record_usage
 from ..services.whatsapp import deliver_reaction, resolve_quote, send_channel_message, signal_channel_read
+from ..services import channel_accounts
 from ..services.whatsapp_inbound import InboundMessage, resolve_inbound_content
 
 
@@ -77,7 +78,9 @@ def list_conversations(
     query = query.outerjoin(last_inbound, last_inbound.c.cid == Conversation.id).order_by(
         func.coalesce(last_inbound.c.at, Conversation.created_at).desc(), Conversation.created_at.desc()
     )
-    return db.scalars(query).all()
+    items = db.scalars(query).all()
+    channel_accounts.annotate(db, items)
+    return items
 
 
 @router.get("/inbox", response_model=list[ConversationInboxOut])
@@ -156,6 +159,7 @@ def inbox(
         .limit(limit)
         .offset(offset)
     ).all()
+    channel_accounts.annotate(db, [conv for conv, *_rest in rows])
     return [
         {
             "id": conv.id,
@@ -165,6 +169,7 @@ def inbox(
             "title": conv.title,
             "contact_name": conv.contact_name,
             "channel": conv.channel,
+            "account_label": conv.account_label,
             "mode": conv.mode,
             "preview": (content or "")[:140].strip(),
             "unread": int(row_unread_count) > 0,

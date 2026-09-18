@@ -1413,6 +1413,14 @@ textarea { line-height: 1.55; }
 .wa-phone em { color: var(--muted); font-size: 12px; font-style: normal; }
 .wa-ready { display: flex; align-items: center; gap: 7px; color: var(--green-text); font-size: 12px; font-weight: 600; }
 .wa-actions { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
+.line-switcher { margin: -14px 0 22px; display: flex; flex-wrap: wrap; gap: 8px; }
+.line-switcher button { min-height: 34px; padding: 0 13px; display: inline-flex; align-items: center; gap: 8px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 13px; font-weight: 600; transition: .15s ease; }
+.line-switcher button:hover { color: var(--ink); border-color: var(--line-strong); }
+.line-switcher button.active { color: var(--ink); border-color: var(--line-strong); background: var(--surface-2); }
+.line-switcher button.add { border-style: dashed; }
+.wa-actions .button.quiet { margin-right: auto; color: var(--muted); border-color: transparent; background: transparent; }
+.wa-actions .button.quiet:hover { color: var(--red-text); background: var(--red-soft); }
+.account-badge { max-width: 140px; padding: 1px 7px; overflow: hidden; color: var(--muted); border-radius: 20px; background: var(--surface-3); font-size: 11px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
 .wa-cloud-form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .wa-cloud-form label { display: flex; flex-direction: column; gap: 7px; color: var(--ink-2); font-size: 13px; font-weight: 600; }
 /* Web chat channel: one column, the switch on its own row, color and

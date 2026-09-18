@@ -145,6 +145,7 @@ export type ConversationInbox = {
   title: string;
   contact_name: string | null;
   channel: string;
+  account_label?: string | null;
   mode: "ai" | "human";
   preview: string;
   unread: boolean;
@@ -188,6 +189,7 @@ export type Conversation = {
   human_reply_window_until?: string | null;
   reply_block_reason?: string | null;
   social_channel_id?: string | null;
+  account_label?: string | null;
   channel_capabilities?: ChannelCapabilities;
   channel: string;
   external_chat_id: string | null;
@@ -210,6 +212,7 @@ export type WhatsAppChannel = {
   status: "disconnected" | "connecting" | "qr" | "connected" | "reconnecting" | "error";
   phone_number: string | null;
   display_name: string | null;
+  label: string | null;
   qr_code: string | null;
   last_error: string | null;
   is_enabled: boolean;
@@ -239,6 +242,7 @@ export type WhatsAppCloudChannel = {
   status: "disconnected" | "connected" | "error";
   phone_number: string | null;
   display_name: string | null;
+  label: string | null;
   phone_number_id: string;
   waba_id: string | null;
   coexistence: boolean;
@@ -333,6 +337,7 @@ export type CannedResponse = {
 export type PortalChannel = {
   channel: "whatsapp" | "whatsapp_cloud" | SocialProvider;
   id?: string;
+  label?: string | null;
   provider?: SocialProvider;
   external_account_id?: string | null;
   username?: string | null;
@@ -419,6 +424,7 @@ export type SocialChannel = {
   external_account_id: string | null;
   display_name: string | null;
   username: string | null;
+  label: string | null;
   status: string;
   is_enabled: boolean;
   has_access_token: boolean;

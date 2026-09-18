@@ -45,7 +45,7 @@ Agency
     │   ├── KnowledgeDocument → KnowledgeChunk
     │   ├── AgentQA           (question/answer pairs)
     │   └── Conversation → Message
-    └── WhatsAppChannel  (one per client, bound to an agent)
+    └── WhatsAppChannel  (several per client, each bound to an agent)
 ```
 
 A `Conversation` records its `channel` (playground, widget or WhatsApp) and a `mode` (`ai` or `human`); switching to `human` pauses the AI so an operator can answer from the inbox. Messages store their role, content and any knowledge `sources` used. See [Agents](agents.md) for how an agent's instructions, brief and knowledge compose into the prompt.

@@ -97,13 +97,26 @@ def owned_client(db: Session, user: User, client_id, agent_id=None):
     return client
 
 
-def owned_channel(db: Session, user: User, client_id, provider: str):
+def owned_channel(db: Session, user: User, ref, provider: str):
+    """``ref`` is a channel id, or a client id for that client's first account
+    of the provider (the shape the routes had while a client could only have one)."""
     graph.provider_name(provider)
-    owned_client(db, user, client_id)
-    channel = db.scalar(select(SocialChannel).where(SocialChannel.client_id == client_id, SocialChannel.agency_id == user.agency_id, SocialChannel.provider == provider))
+    channel = db.scalar(select(SocialChannel).where(SocialChannel.id == ref, SocialChannel.agency_id == user.agency_id, SocialChannel.provider == provider))
+    if channel:
+        return channel
+    owned_client(db, user, ref)
+    channel = db.scalar(select(SocialChannel).where(SocialChannel.client_id == ref, SocialChannel.agency_id == user.agency_id,
+        SocialChannel.provider == provider).order_by(SocialChannel.created_at).limit(1))
     if not channel:
         raise HTTPException(404, "This messaging channel has not been configured")
     return channel
+
+
+def client_channels(db: Session, user: User, client_id, provider: str) -> list[SocialChannel]:
+    graph.provider_name(provider)
+    owned_client(db, user, client_id)
+    return db.scalars(select(SocialChannel).where(SocialChannel.client_id == client_id, SocialChannel.agency_id == user.agency_id,
+        SocialChannel.provider == provider).order_by(SocialChannel.created_at)).all()
 
 
 def public_channel(channel: SocialChannel) -> dict:
@@ -111,7 +124,7 @@ def public_channel(channel: SocialChannel) -> dict:
     parsed = urlsplit(config.redirect_uri)
     origin = urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
     webhook = config.webhook_url if channel.connection_source != "manual" else f"{origin}/api/public/social/channels/{channel.id}/webhook"
-    keys = ("id", "client_id", "agent_id", "provider", "external_account_id", "app_id", "display_name", "username", "status", "is_enabled", "token_expires_at", "last_error", "human_agent_enabled", "connection_source", "granted_scopes", "last_connected_at", "created_at", "updated_at")
+    keys = ("id", "client_id", "agent_id", "provider", "external_account_id", "app_id", "display_name", "username", "label", "status", "is_enabled", "token_expires_at", "last_error", "human_agent_enabled", "connection_source", "granted_scopes", "last_connected_at", "created_at", "updated_at")
     return {**{key: getattr(channel, key) for key in keys}, "webhook_url": webhook,
             "webhook_verify_token": channel.webhook_verify_token if channel.connection_source == "manual" else (None if config.managed else config.verify_token),
             "has_access_token": bool(channel.encrypted_access_token), "has_app_secret": bool(channel.encrypted_app_secret)}
@@ -121,8 +134,12 @@ def _parse_expiry(value):
     return datetime.fromisoformat(value) if value else None
 
 
-async def connect_account(db: Session, user: User, client_id, agent_id, provider: str, account: dict, config: SocialAppConfig, *, source: str, human_agent_enabled=False, activate=True) -> SocialChannel:
-    """Check ownership first; persist credentials only after remote validation."""
+async def connect_account(db: Session, user: User, client_id, agent_id, provider: str, account: dict, config: SocialAppConfig, *, source: str, human_agent_enabled=False, activate=True, channel: SocialChannel | None = None, label: str | None = None) -> SocialChannel:
+    """Check ownership first; persist credentials only after remote validation.
+
+    The client's row for this account is updated, or a new one is added: a
+    client can hold several accounts of a provider. ``channel`` pins the row
+    being edited, which must already be this account."""
     owned_client(db, user, client_id, agent_id)
     account_id = graph.object_id(account["id"])
     app_id = graph.object_id(config.app_id)
@@ -132,9 +149,14 @@ async def connect_account(db: Session, user: User, client_id, agent_id, provider
         SocialChannel.client_id != client_id, SocialChannel.encrypted_access_token.is_not(None)))
     if collision:
         raise HTTPException(409, "This account is already connected to another client")
-    channel = db.scalar(select(SocialChannel).where(SocialChannel.client_id == client_id, SocialChannel.agency_id == user.agency_id, SocialChannel.provider == provider).with_for_update())
-    if channel and channel.external_account_id and channel.external_account_id != account_id:
-        raise HTTPException(409, "An existing channel cannot be reassigned to a different account. Create a separate client to preserve conversation routing")
+    if channel is not None:
+        if channel.client_id != client_id or channel.provider != provider:
+            raise HTTPException(404, "This messaging channel has not been configured")
+        if channel.external_account_id and channel.external_account_id != account_id:
+            raise HTTPException(409, "An existing channel cannot be reassigned to a different account. Connect the other account as a new one to preserve conversation routing")
+    else:
+        channel = db.scalar(select(SocialChannel).where(SocialChannel.client_id == client_id, SocialChannel.agency_id == user.agency_id,
+            SocialChannel.provider == provider, SocialChannel.external_account_id == account_id).with_for_update())
     token = account["access_token"]
     token_changed = not channel or not channel.encrypted_access_token or decrypt_secret(channel.encrypted_access_token) != token
     profile = await graph.verify_account(provider, token, account_id, app_id, config.app_secret, scopes=account.get("scopes"))
@@ -144,6 +166,8 @@ async def connect_account(db: Session, user: User, client_id, agent_id, provider
             channel = SocialChannel(agency_id=user.agency_id, client_id=client_id, agent_id=agent_id, provider=provider, webhook_verify_token=new_public_id())
             db.add(channel)
         channel.agent_id = agent_id
+        if label is not None:
+            channel.label = label.strip()[:80] or None
         channel.external_account_id = account_id
         channel.app_id = app_id
         channel.display_name = profile["name"]

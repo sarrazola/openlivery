@@ -16,7 +16,7 @@ import { TemplatesView } from "@/app/portal/[slug]/templates";
 import { FormSkeleton, ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { PasswordInput } from "@/components/password-input";
-import { ChannelIcon, channelLabel } from "@/lib/channels";
+import { accountName, ChannelIcon, channelLabel } from "@/lib/channels";
 import { SocialReplyNotice, useReplyPolicy } from "@/components/reply-policy";
 import { api, ApiError, messageFrom } from "@/lib/api";
 import { useLanguage, useT } from "@/lib/i18n";
@@ -31,6 +31,17 @@ type ChannelStatus = { state: ChannelState; detail?: string };
 function socialState(channel: SocialChannel | null): ChannelStatus {
   if (!channel) return { state: "off" };
   return { state: channel.is_enabled && channel.status === "connected" ? "connected" : "disconnected", detail: channel.username ? `@${channel.username}` : channel.display_name || "" };
+}
+
+/** The card state for a kind with several accounts: connected when any is,
+ * pending when any is; the detail is the single account's, or their names. */
+function manyState<T>(items: T[], stateOf: (item: T) => ChannelState, detailOf: (item: T) => string, nameOf: (item: T, n: number) => string, summary: string): ChannelStatus {
+  if (!items.length) return { state: "off" };
+  const states = items.map(stateOf);
+  const state: ChannelState = states.includes("connected") ? "connected" : states.includes("pending") ? "pending" : "disconnected";
+  if (items.length === 1) return { state, detail: detailOf(items[0]) };
+  const names = items.map((item, index) => nameOf(item, index + 1));
+  return { state, detail: items.length <= 3 ? names.join(" \u00b7 ") : summary };
 }
 
 /** A small dot beside the channel's name: green connected, amber connecting,
@@ -59,25 +70,25 @@ export default function ClientDetailPage() {
   const logoRef = useRef<HTMLInputElement>(null);
   const load = () => api<Client>(`/clients/${id}`).then((c) => { setClient(c); setBusiness({ industry: c.industry, businessType: c.business_type, custom: c.business_custom }); setTimezone(c.timezone || "UTC"); });
   useEffect(() => { load(); api<ClientDomain>(`/clients/${id}/domain`).then(setDomain); }, [id]);
-  // One line per channel: is it connected, and to what. Each channel has its
-  // own endpoint and answers 404 when the client never set it up.
+  // One card per channel kind. A client may have several accounts on a kind:
+  // the card is connected when any of them is, and its detail names them.
   const [channelStates, setChannelStates] = useState<Record<ChannelKey, ChannelStatus> | null>(null);
   useEffect(() => {
     const missing = (err: unknown) => { if (err instanceof ApiError && err.status === 404) return null; throw err; };
     Promise.all([
-      api<WhatsAppCloudChannel>(`/whatsapp-cloud/channels/${id}`).catch(missing),
-      api<WhatsAppChannel>(`/whatsapp/channels/${id}`).catch(missing),
+      api<WhatsAppCloudChannel[]>(`/whatsapp-cloud/clients/${id}/channels`),
+      api<WhatsAppChannel[]>(`/whatsapp/clients/${id}/channels`),
       api<WidgetChannel>(`/webchat/channels/${id}`).catch(missing),
-      api<SocialChannel>(`/social/instagram/channels/${id}`).catch(missing),
-      api<SocialChannel>(`/social/messenger/channels/${id}`).catch(missing),
+      api<SocialChannel[]>(`/social/instagram/clients/${id}/channels`),
+      api<SocialChannel[]>(`/social/messenger/clients/${id}/channels`),
     ]).then(([cloud, qr, widget, instagram, messenger]) => setChannelStates({
-      whatsapp_cloud: cloud ? { state: cloud.status === "connected" ? "connected" : "disconnected", detail: cloud.phone_number || cloud.display_name || "" } : { state: "off" },
-      whatsapp: qr ? { state: qr.status === "connected" ? "connected" : qr.status === "qr" || qr.status === "connecting" || qr.status === "reconnecting" ? "pending" : "disconnected", detail: qr.phone_number || "" } : { state: "off" },
+      whatsapp_cloud: manyState(cloud, (item) => item.status === "connected" ? "connected" : "disconnected", (item) => item.phone_number || item.display_name || "", (item, n) => accountName(item, t("clients.whatsappCloud.numberFallback", { n })), t("clients.detail.channelNumbers", { count: cloud.length, connected: cloud.filter((item) => item.status === "connected").length })),
+      whatsapp: manyState(qr, (item) => item.status === "connected" ? "connected" : item.status === "qr" || item.status === "connecting" || item.status === "reconnecting" ? "pending" : "disconnected", (item) => item.phone_number || "", (item, n) => accountName(item, t("clients.whatsapp.lineFallback", { n })), t("clients.detail.channelNumbers", { count: qr.length, connected: qr.filter((item) => item.status === "connected").length })),
       webchat: widget ? { state: widget.is_enabled ? "connected" : "disconnected" } : { state: "off" },
-      instagram: socialState(instagram),
-      messenger: socialState(messenger),
+      instagram: manyState(instagram, (item) => socialState(item).state, (item) => socialState(item).detail || "", (item, n) => accountName(item, t("social.accountFallback", { n })), t("clients.detail.channelAccounts", { count: instagram.length, connected: instagram.filter((item) => socialState(item).state === "connected").length })),
+      messenger: manyState(messenger, (item) => socialState(item).state, (item) => socialState(item).detail || "", (item, n) => accountName(item, t("social.accountFallback", { n })), t("clients.detail.channelAccounts", { count: messenger.length, connected: messenger.filter((item) => socialState(item).state === "connected").length })),
     })).catch(() => {});
-  }, [id]);
+  }, [id, t]);
   const channelState = (key: ChannelKey): ChannelState => channelStates?.[key]?.state ?? "loading";
   const channelDetail = (key: ChannelKey): string => channelStates?.[key]?.detail ?? "";
 

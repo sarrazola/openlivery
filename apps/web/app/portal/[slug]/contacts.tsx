@@ -77,15 +77,16 @@ export function ContactsView({ slug, channels, openConversation, can, agentName 
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<ContactImportResult | null>(null);
   const [importError, setImportError] = useState("");
-  const cloudLine = channels.find((c) => c.channel === "whatsapp_cloud");
-  const qrLine = channels.find((c) => c.channel === "whatsapp");
-  const lines = [cloudLine, qrLine].filter((line): line is PortalChannel & { channel: "whatsapp" | "whatsapp_cloud" } => Boolean(line));
-  const [starting, setStarting] = useState<"whatsapp_cloud" | "whatsapp" | null>(null);
+  // Every WhatsApp line of the business, API ones first; a contact can be
+  // written to first from any of them.
+  type WhatsAppLine = PortalChannel & { channel: "whatsapp" | "whatsapp_cloud" };
+  const lines = [...channels.filter((c): c is WhatsAppLine => c.channel === "whatsapp_cloud"), ...channels.filter((c): c is WhatsAppLine => c.channel === "whatsapp")];
+  const [starting, setStarting] = useState<WhatsAppLine | null>(null);
   const [choosingLine, setChoosingLine] = useState(false);
-  const lineDetail = (line: PortalChannel) => [line.display_name, formatPhone(line.phone_number)].filter(Boolean).join(" · ");
+  const lineDetail = (line: PortalChannel) => [line.label, line.display_name, formatPhone(line.phone_number)].filter(Boolean).join(" · ");
   async function startWithTemplate(payload: TemplateSend) {
-    if (!selected) return;
-    const conv = await api<Conversation>(`/portal/${slug}/contacts/${selected.id}/conversations`, { method: "POST", body: JSON.stringify({ channel: "whatsapp_cloud", template: payload }) });
+    if (!selected || !starting) return;
+    const conv = await api<Conversation>(`/portal/${slug}/contacts/${selected.id}/conversations`, { method: "POST", body: JSON.stringify({ channel: "whatsapp_cloud", channel_id: starting.id, template: payload }) });
     openConversation(conv);
   }
   async function startWithText(event: FormEvent<HTMLFormElement>) {
@@ -94,7 +95,7 @@ export function ContactsView({ slug, channels, openConversation, can, agentName 
     const text = String(new FormData(event.currentTarget).get("text") || "").trim();
     setBusy(true); setError("");
     try {
-      const conv = await api<Conversation>(`/portal/${slug}/contacts/${selected.id}/conversations`, { method: "POST", body: JSON.stringify({ channel: "whatsapp", text }) });
+      const conv = await api<Conversation>(`/portal/${slug}/contacts/${selected.id}/conversations`, { method: "POST", body: JSON.stringify({ channel: "whatsapp", channel_id: starting?.id, text }) });
       setStarting(null);
       openConversation(conv);
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
@@ -399,12 +400,12 @@ export function ContactsView({ slug, channels, openConversation, can, agentName 
             </div>
             <div className="thread-actions">
               {lines.length > 0 && selected.phone && <div className="start-line-wrap">
-                <button className="button primary small" onClick={() => (lines.length === 1 ? setStarting(lines[0].channel) : setChoosingLine((v) => !v))}><MessageSquarePlus size={15} /> {t("portal.contacts.startConversation")}{lines.length > 1 && <ChevronDown size={14} />}</button>
+                <button className="button primary small" onClick={() => (lines.length === 1 ? setStarting(lines[0]) : setChoosingLine((v) => !v))}><MessageSquarePlus size={15} /> {t("portal.contacts.startConversation")}{lines.length > 1 && <ChevronDown size={14} />}</button>
                 {choosingLine && <>
                   <div className="menu-backdrop" onClick={() => setChoosingLine(false)} />
                   <div className="start-line-menu" role="menu">
                     <small>{t("portal.contacts.startLine")}</small>
-                    {lines.map((line) => <button type="button" key={line.channel} role="menuitem" onClick={() => { setChoosingLine(false); setStarting(line.channel); }}>
+                    {lines.map((line) => <button type="button" key={line.id ?? line.channel} role="menuitem" onClick={() => { setChoosingLine(false); setStarting(line); }}>
                       <span className={`channel-dot ${line.channel}`}>{line.channel === "whatsapp_cloud" ? <BadgeCheck size={14} /> : <MessageCircle size={14} />}</span>
                       <span><strong>{line.channel === "whatsapp_cloud" ? t("inbox.channelWhatsappCloud") : t("inbox.channelWhatsapp")}</strong>{lineDetail(line) && <small>{lineDetail(line)}</small>}</span>
                     </button>)}
@@ -482,8 +483,8 @@ export function ContactsView({ slug, channels, openConversation, can, agentName 
         </> : <EmptyState icon={<UserRound />} title={t("portal.contacts.selectTitle")} description={t("portal.contacts.selectDescription")} />}
       </section>
     </div>
-    <TemplatePicker base={`/portal/${slug}`} open={starting === "whatsapp_cloud" && Boolean(selected)} title={t("portal.contacts.startTitle", { name: selected ? nameOf(selected) : "" })} contactValues={selected ? { contact_name: selected.name || "", contact_phone: selected.phone || "", contact_email: selected.email || "", agent_name: agentName } as ContactValues : undefined} onClose={() => setStarting(null)} onSend={startWithTemplate} />
-    <Modal open={starting === "whatsapp" && Boolean(selected)} title={t("portal.contacts.startQrTitle", { name: selected ? nameOf(selected) : "" })} description={t("portal.contacts.startQrDescription")} onClose={() => setStarting(null)}>
+    <TemplatePicker base={`/portal/${slug}`} open={starting?.channel === "whatsapp_cloud" && Boolean(selected)} title={t("portal.contacts.startTitle", { name: selected ? nameOf(selected) : "" })} contactValues={selected ? { contact_name: selected.name || "", contact_phone: selected.phone || "", contact_email: selected.email || "", agent_name: agentName } as ContactValues : undefined} onClose={() => setStarting(null)} onSend={startWithTemplate} />
+    <Modal open={starting?.channel === "whatsapp" && Boolean(selected)} title={t("portal.contacts.startQrTitle", { name: selected ? nameOf(selected) : "" })} description={t("portal.contacts.startQrDescription")} onClose={() => setStarting(null)}>
       <form className="modal-form" onSubmit={startWithText}>
         <label>{t("portal.contacts.startMessage")}<textarea name="text" rows={4} required autoFocus /></label>
         {error && <Alert>{error}</Alert>}

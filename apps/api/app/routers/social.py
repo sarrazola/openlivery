@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..deps import get_current_user
 from ..models import SocialChannel, User
-from ..schemas_social import SocialChannelOut, SocialChannelUpdate, SocialOAuthComplete, SocialOAuthStart
+from ..schemas_social import SocialChannelOut, SocialChannelRename, SocialChannelUpdate, SocialOAuthComplete, SocialOAuthStart
 from ..security import decrypt_secret
 from ..services import social_connections as connections
 from ..services.social_graph import PROVIDERS, provider_name
@@ -29,18 +29,51 @@ def configuration(user: User = Depends(get_current_user)):
     return result
 
 
-@router.get("/{provider}/channels/{client_id}", response_model=SocialChannelOut)
-def get_channel(provider: str, client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return connections.public_channel(connections.owned_channel(db, user, client_id, provider))
+@router.get("/{provider}/clients/{client_id}/channels", response_model=list[SocialChannelOut])
+def list_channels(provider: str, client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Every account of the provider connected to the client, oldest first."""
+    return [connections.public_channel(item) for item in connections.client_channels(db, user, client_id, provider)]
 
 
-@router.put("/{provider}/channels/{client_id}", response_model=SocialChannelOut)
-async def configure_channel(provider: str, client_id: uuid.UUID, payload: SocialChannelUpdate,
+@router.get("/{provider}/channels/{ref}", response_model=SocialChannelOut)
+def get_channel(provider: str, ref: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return connections.public_channel(connections.owned_channel(db, user, ref, provider))
+
+
+@router.patch("/{provider}/channels/{channel_id}", response_model=SocialChannelOut)
+def rename_channel(provider: str, channel_id: uuid.UUID, payload: SocialChannelRename,
+                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Change the agent or the name of an account without touching its authorization."""
+    channel = db.scalar(select(SocialChannel).where(SocialChannel.id == channel_id, SocialChannel.agency_id == user.agency_id,
+        SocialChannel.provider == provider_name(provider)))
+    if not channel:
+        raise HTTPException(404, "This messaging channel has not been configured")
+    if payload.agent_id is not None:
+        connections.owned_client(db, user, channel.client_id, payload.agent_id)
+        channel.agent_id = payload.agent_id
+    if "label" in payload.model_fields_set:
+        channel.label = (payload.label or "").strip()[:80] or None
+    db.commit()
+    db.refresh(channel)
+    return connections.public_channel(channel)
+
+
+@router.put("/{provider}/channels/{ref}", response_model=SocialChannelOut)
+async def configure_channel(provider: str, ref: uuid.UUID, payload: SocialChannelUpdate,
                             db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Connect an account with credentials the operator holds. ``ref`` is the
+    row to update, or a client id to add the account to that client (or update
+    the row that already holds this account)."""
     provider_name(provider)
+    channel = db.scalar(select(SocialChannel).where(SocialChannel.id == ref, SocialChannel.agency_id == user.agency_id, SocialChannel.provider == provider))
+    if channel:
+        client_id = channel.client_id
+    else:
+        client_id = ref
+        connections.owned_client(db, user, client_id)
+        channel = db.scalar(select(SocialChannel).where(SocialChannel.client_id == client_id, SocialChannel.agency_id == user.agency_id,
+            SocialChannel.provider == provider, SocialChannel.external_account_id == payload.external_account_id))
     connections.owned_client(db, user, client_id, payload.agent_id)
-    channel = db.scalar(select(SocialChannel).where(SocialChannel.client_id == client_id,
-        SocialChannel.agency_id == user.agency_id, SocialChannel.provider == provider))
     config = connections.get_app_config(provider)
     if config.managed and (not channel or payload.access_token or payload.app_secret or
                            payload.external_account_id != channel.external_account_id or
@@ -58,26 +91,27 @@ async def configure_channel(provider: str, client_id: uuid.UUID, payload: Social
         account.update({"expires_at": channel.token_expires_at.isoformat() if channel.token_expires_at else None, "scopes": channel.granted_scopes})
     human_agent = config.human_agent_enabled if config.managed else (payload.human_agent_enabled if payload.human_agent_enabled is not None else bool(channel and channel.human_agent_enabled))
     channel = await connections.connect_account(db, user, client_id, payload.agent_id, provider, account, config,
-        source=source, human_agent_enabled=human_agent, activate=bool(channel and channel.status == "connected"))
+        source=source, human_agent_enabled=human_agent, activate=bool(channel and channel.status == "connected"),
+        channel=channel, label=payload.label if "label" in payload.model_fields_set else None)
     return connections.public_channel(channel)
 
 
-@router.post("/{provider}/channels/{client_id}/connect", response_model=SocialChannelOut)
-async def connect_channel(provider: str, client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    channel = connections.owned_channel(db, user, client_id, provider)
+@router.post("/{provider}/channels/{ref}/connect", response_model=SocialChannelOut)
+async def connect_channel(provider: str, ref: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    channel = connections.owned_channel(db, user, ref, provider)
     if not channel.encrypted_access_token or not channel.encrypted_app_secret:
         raise HTTPException(400, "Authorize this account or provide credentials before connecting")
     config = replace(connections.get_app_config(provider), app_id=channel.app_id,
                      app_secret=decrypt_secret(channel.encrypted_app_secret))
     account = {"id": channel.external_account_id, "access_token": decrypt_secret(channel.encrypted_access_token),
                "expires_at": channel.token_expires_at.isoformat() if channel.token_expires_at else None, "scopes": channel.granted_scopes}
-    return connections.public_channel(await connections.connect_account(db, user, client_id, channel.agent_id, provider,
-        account, config, source=channel.connection_source, human_agent_enabled=channel.human_agent_enabled))
+    return connections.public_channel(await connections.connect_account(db, user, channel.client_id, channel.agent_id, provider,
+        account, config, source=channel.connection_source, human_agent_enabled=channel.human_agent_enabled, channel=channel))
 
 
-@router.post("/{provider}/channels/{client_id}/disconnect", status_code=204)
-async def disconnect_channel(provider: str, client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    await connections.disconnect_account(db, connections.owned_channel(db, user, client_id, provider))
+@router.post("/{provider}/channels/{ref}/disconnect", status_code=204)
+async def disconnect_channel(provider: str, ref: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    await connections.disconnect_account(db, connections.owned_channel(db, user, ref, provider))
 
 
 @router.post("/{provider}/oauth/start")
@@ -105,16 +139,16 @@ async def complete_oauth(provider: str, payload: SocialOAuthComplete, db: Sessio
     return connections.public_channel(await connections.complete_oauth(db, user, provider, payload.setup_id, payload.external_account_id))
 
 
-@router.post("/{provider}/channels/{client_id}/import-history", status_code=202)
-def import_history(provider: str, client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+@router.post("/{provider}/channels/{ref}/import-history", status_code=202)
+def import_history(provider: str, ref: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     from ..services.social_history import public_job, request_import
-    return public_job(request_import(db, user, client_id, provider))
+    return public_job(request_import(db, user, ref, provider))
 
 
-@router.get("/{provider}/channels/{client_id}/import-history")
-def history_import_status(provider: str, client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+@router.get("/{provider}/channels/{ref}/import-history")
+def history_import_status(provider: str, ref: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     from ..services.social_history import latest_job, public_job
-    channel = connections.owned_channel(db, user, client_id, provider)
+    channel = connections.owned_channel(db, user, ref, provider)
     job = latest_job(db, channel)
     if not job:
         raise HTTPException(404, "No history import has been requested for this channel")

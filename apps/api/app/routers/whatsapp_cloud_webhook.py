@@ -138,29 +138,34 @@ async def receive_webhook(channel_id: uuid.UUID, request: Request, db: Session =
     if not channel.is_enabled:
         return {"status": "ok"}
 
-    access_token = decrypt_secret(channel.encrypted_access_token) if channel.encrypted_access_token else None
+    registered = channel
     for entry in payload.get("entry") or []:
         for change in entry.get("changes") or []:
             from ..services.whatsapp_coexistence import FIELDS, accept_change
             if change.get("field") in FIELDS:
-                accept_change(db, channel, change["field"], change.get("value") or {}, waba_id=str(entry.get("id") or ""))
+                accept_change(db, registered, change["field"], change.get("value") or {}, waba_id=str(entry.get("id") or ""))
                 continue
             if change.get("field") != "messages":
                 continue
             value = change.get("value") or {}
             # A Meta app has one callback URL, so an app serving several
-            # channels delivers all of their traffic to whichever one was
-            # registered. Without this the messages of one client would be
-            # answered as another: same agency, wrong number, wrong agent.
-            # Each channel needs its own Meta app.
+            # numbers delivers all of their traffic to whichever channel was
+            # registered. The traffic is handed to the channel that holds the
+            # number (same client or a sibling under the same agency) so it is
+            # answered by that line's agent, in that line's conversations.
+            # A number no channel holds is dropped, never answered as another.
             delivered_to = (value.get("metadata") or {}).get("phone_number_id")
-            if channel.phone_number_id and delivered_to and delivered_to != channel.phone_number_id:
-                logger.warning(
-                    "channel %s received traffic for phone number %s, which belongs to another channel",
-                    channel.id,
-                    delivered_to,
-                )
-                continue
+            channel = registered
+            if registered.phone_number_id and delivered_to and delivered_to != registered.phone_number_id:
+                channel = _sibling_for_number(db, registered, delivered_to)
+                if channel is None:
+                    logger.warning(
+                        "channel %s received traffic for phone number %s, which no line of this agency holds",
+                        registered.id,
+                        delivered_to,
+                    )
+                    continue
+            access_token = decrypt_secret(channel.encrypted_access_token) if channel.encrypted_access_token else None
             for status in value.get("statuses") or []:
                 _record_status(db, channel, status)
             contacts = contact_names(value.get("contacts") or [])
@@ -173,6 +178,17 @@ async def receive_webhook(channel_id: uuid.UUID, request: Request, db: Session =
                     continue
                 await _handle_message(db, channel, inbound, raw_message, access_token)
     return {"status": "ok"}
+
+
+def _sibling_for_number(db: Session, registered: WhatsAppCloudChannel, phone_number_id: str) -> WhatsAppCloudChannel | None:
+    """The enabled channel of the same agency that holds ``phone_number_id``."""
+    return db.scalar(
+        select(WhatsAppCloudChannel).where(
+            WhatsAppCloudChannel.agency_id == registered.agency_id,
+            WhatsAppCloudChannel.phone_number_id == phone_number_id,
+            WhatsAppCloudChannel.is_enabled.is_(True),
+        )
+    )
 
 
 _DELIVERY_ORDER = {"sent": 1, "delivered": 2, "read": 3, "failed": 4}

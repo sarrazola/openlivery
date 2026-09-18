@@ -12,7 +12,7 @@ Como tiene estado, el puente no guarda las sesiones solo en memoria: whatsmeow p
 
 ## Conectar un número
 
-Una sesión de WhatsApp pertenece a un solo cliente. Para conectarla:
+Una sesión de WhatsApp pertenece a un solo cliente, y un cliente puede vincular varios números, cada uno atendido por el agente que elijas (el mismo agente puede atender más de uno). Para conectar uno:
 
 1. Abre un **cliente**, ve a su canal de **WhatsApp** y elige el agente que responderá los mensajes entrantes.
 2. Pulsa conectar. El backend le pide al puente iniciar una sesión y aparece un **código QR**.

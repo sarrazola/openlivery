@@ -494,7 +494,7 @@ def test_configure_channel_refuses_a_number_another_client_uses(authenticated_cl
         json={"agent_id": agent["id"], "phone_number_id": "111"},
     )
     assert taken.status_code == 400
-    assert "another client" in taken.json()["detail"]
+    assert "already connected" in taken.json()["detail"]
 
     # A different number is fine, and saving the same one again on its own
     # client still is.

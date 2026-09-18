@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, LargeBinary, Numeric, String, Text, UniqueConstraint
 from sqlalchemy import text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import object_session, Mapped, mapped_column, relationship
 
 from .database import Base
 
@@ -89,11 +89,11 @@ class Client(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
     agents: Mapped[list["Agent"]] = relationship(back_populates="client", cascade="all, delete-orphan")
-    whatsapp_channel: Mapped["WhatsAppChannel | None"] = relationship(
-        back_populates="client", cascade="all, delete-orphan", uselist=False
+    whatsapp_channels: Mapped[list["WhatsAppChannel"]] = relationship(
+        back_populates="client", cascade="all, delete-orphan", order_by="WhatsAppChannel.created_at"
     )
-    whatsapp_cloud_channel: Mapped["WhatsAppCloudChannel | None"] = relationship(
-        back_populates="client", cascade="all, delete-orphan", uselist=False
+    whatsapp_cloud_channels: Mapped[list["WhatsAppCloudChannel"]] = relationship(
+        back_populates="client", cascade="all, delete-orphan", order_by="WhatsAppCloudChannel.created_at"
     )
     widget_channel: Mapped["WidgetChannel | None"] = relationship(
         back_populates="client", cascade="all, delete-orphan", uselist=False
@@ -243,8 +243,10 @@ class AgentTool(Base):
 
 
 class WhatsAppChannel(Base):
+    """A WhatsApp number linked by QR. A client can have several, each bound to
+    an agent (the same agent may answer more than one)."""
+
     __tablename__ = "whatsapp_channels"
-    __table_args__ = (UniqueConstraint("client_id", name="uq_whatsapp_channels_client_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     agency_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agencies.id", ondelete="CASCADE"), index=True)
@@ -253,6 +255,8 @@ class WhatsAppChannel(Base):
     status: Mapped[str] = mapped_column(String(30), default="disconnected")
     phone_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    # The operator's own name for this line; display_name is what the phone reports.
+    label: Mapped[str | None] = mapped_column(String(80), nullable=True)
     encrypted_auth_state: Mapped[str | None] = mapped_column(Text, nullable=True)
     encrypted_qr: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -261,18 +265,17 @@ class WhatsAppChannel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
-    client: Mapped[Client] = relationship(back_populates="whatsapp_channel")
+    client: Mapped[Client] = relationship(back_populates="whatsapp_channels")
     agent: Mapped[Agent] = relationship(back_populates="whatsapp_channels")
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="whatsapp_channel")
 
 
 class WhatsAppCloudChannel(Base):
-    """Official WhatsApp Business Cloud API channel (Meta Graph API). Coexists
-    with the Baileys channel: a client can have one of each, on different
-    numbers. Credentials are provided manually (bring your own Meta app)."""
+    """Official WhatsApp Business Cloud API channel (Meta Graph API). A client
+    can have several numbers, next to its QR lines, each bound to an agent.
+    Credentials are provided manually (bring your own Meta app)."""
 
     __tablename__ = "whatsapp_cloud_channels"
-    __table_args__ = (UniqueConstraint("client_id", name="uq_whatsapp_cloud_channels_client_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     agency_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agencies.id", ondelete="CASCADE"), index=True)
@@ -281,6 +284,7 @@ class WhatsAppCloudChannel(Base):
     status: Mapped[str] = mapped_column(String(30), default="disconnected")
     phone_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    label: Mapped[str | None] = mapped_column(String(80), nullable=True)
     phone_number_id: Mapped[str] = mapped_column(String(80), default="", server_default="")
     waba_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     coexistence: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
@@ -296,7 +300,7 @@ class WhatsAppCloudChannel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
-    client: Mapped[Client] = relationship(back_populates="whatsapp_cloud_channel")
+    client: Mapped[Client] = relationship(back_populates="whatsapp_cloud_channels")
     agent: Mapped[Agent] = relationship(back_populates="whatsapp_cloud_channels")
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="whatsapp_cloud_channel")
 
@@ -523,11 +527,12 @@ class Conversation(Base):
     social_reply_claimed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     social_thread_owned: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     social_pending_escalation: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+    # Removing a line keeps its conversations as history.
     whatsapp_channel_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("whatsapp_channels.id", ondelete="CASCADE"), nullable=True, index=True
+        ForeignKey("whatsapp_channels.id", ondelete="SET NULL"), nullable=True, index=True
     )
     whatsapp_cloud_channel_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("whatsapp_cloud_channels.id", ondelete="CASCADE"), nullable=True, index=True
+        ForeignKey("whatsapp_cloud_channels.id", ondelete="SET NULL"), nullable=True, index=True
     )
     widget_channel_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("widget_channels.id", ondelete="CASCADE"), nullable=True, index=True
@@ -583,6 +588,17 @@ class Conversation(Base):
     widget_channel: Mapped["WidgetChannel | None"] = relationship(back_populates="conversations")
     social_channel: Mapped["SocialChannel | None"] = relationship()
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")
+
+    @property
+    def account_label(self) -> str | None:
+        """Which of the client's accounts this conversation runs on, for the
+        inbox: the line's own name, or a short fallback when the client has
+        more than one on this channel. List endpoints precompute it in batch
+        with ``channel_accounts.annotate``."""
+        if "_account_label" in self.__dict__:
+            return self.__dict__["_account_label"]
+        from .services.channel_accounts import account_label
+        return account_label(object_session(self), self)
 
     def _reply_policy(self) -> dict:
         if self.channel == "whatsapp_cloud" and self.whatsapp_cloud_channel and self.whatsapp_cloud_channel.coexistence:
@@ -858,11 +874,12 @@ class PushDevice(Base):
 
 
 class SocialChannel(Base):
-    """A professional Instagram account or Messenger Page assigned to a client."""
+    """A professional Instagram account or Messenger Page assigned to a client.
+    A client can have several of each provider; an account belongs to one
+    client at a time."""
 
     __tablename__ = "social_channels"
     __table_args__ = (
-        UniqueConstraint("client_id", "provider", name="uq_social_channels_client_provider"),
         Index("uq_social_channels_account", "provider", "external_account_id", unique=True,
               postgresql_where=text("external_account_id <> '' AND encrypted_access_token IS NOT NULL")),
     )
@@ -875,6 +892,7 @@ class SocialChannel(Base):
     external_account_id: Mapped[str] = mapped_column(String(128), default="", server_default="")
     display_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
     username: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    label: Mapped[str | None] = mapped_column(String(80), nullable=True)
     encrypted_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     encrypted_app_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

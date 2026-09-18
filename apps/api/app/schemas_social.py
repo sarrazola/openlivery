@@ -7,11 +7,17 @@ from pydantic import BaseModel, Field
 
 class SocialChannelUpdate(BaseModel):
     agent_id: uuid.UUID
+    label: str | None = Field(default=None, max_length=80)
     external_account_id: str = Field(min_length=1, max_length=64, pattern=r"^[0-9]+$")
     app_id: str | None = Field(default=None, max_length=64, pattern=r"^[0-9]*$")
     access_token: str | None = Field(default=None, max_length=8192)
     app_secret: str | None = Field(default=None, max_length=512)
     human_agent_enabled: bool | None = None
+
+
+class SocialChannelRename(BaseModel):
+    agent_id: uuid.UUID | None = None
+    label: str | None = Field(default=None, max_length=80)
 
 
 class SocialChannelOut(BaseModel):
@@ -23,6 +29,7 @@ class SocialChannelOut(BaseModel):
     app_id: str | None = None
     display_name: str | None = None
     username: str | None = None
+    label: str | None = None
     status: str
     is_enabled: bool
     token_expires_at: datetime | None = None

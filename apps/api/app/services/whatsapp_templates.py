@@ -86,10 +86,18 @@ def window_is_open(last_inbound_at: datetime | None) -> bool:
     return bool(until and until > now_utc())
 
 
-def template_credentials(db: Session, client: Client) -> tuple[str, str]:
+def template_credentials(db: Session, client: Client, channel: WhatsAppCloudChannel | None = None) -> tuple[str, str]:
     """The token and WABA id templates are managed with, from the client's
-    WhatsApp API channel. Both the portal and the agency go through here."""
-    channel = db.scalar(select(WhatsAppCloudChannel).where(WhatsAppCloudChannel.client_id == client.id))
+    WhatsApp API channel. Both the portal and the agency go through here.
+    Without ``channel`` the client's first number that can manage templates is used."""
+    if channel is None:
+        channel = db.scalar(
+            select(WhatsAppCloudChannel).where(
+                WhatsAppCloudChannel.client_id == client.id,
+                WhatsAppCloudChannel.encrypted_access_token.is_not(None),
+                WhatsAppCloudChannel.waba_id.is_not(None),
+            ).order_by(WhatsAppCloudChannel.is_enabled.desc(), WhatsAppCloudChannel.created_at).limit(1)
+        )
     if not channel or not channel.encrypted_access_token or not channel.waba_id:
         raise HTTPException(
             status_code=409,

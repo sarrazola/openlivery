@@ -390,6 +390,8 @@ class ConversationOut(ORMModel):
     reply_block_reason: str | None = None
     channel_capabilities: dict[str, bool] | None = None
     social_channel_id: uuid.UUID | None = None
+    # The account this runs on, for clients with several on one channel.
+    account_label: str | None = None
     preview: str = ""
     unread: bool = False
     unread_count: int = 0
@@ -445,6 +447,7 @@ class ConversationInboxOut(BaseModel):
     title: str
     contact_name: str | None = None
     channel: str
+    account_label: str | None = None
     mode: str
     preview: str = ""
     unread: bool = False
@@ -590,6 +593,7 @@ class PortalChannelOut(BaseModel):
     id: uuid.UUID | None = None
     channel: str
     status: str
+    label: str | None = None
     phone_number: str | None = None
     display_name: str | None = None
     supports_templates: bool = False
@@ -742,6 +746,8 @@ class CannedResponseUpdate(BaseModel):
 class ConversationStart(BaseModel):
     # whatsapp_cloud needs a template; whatsapp (QR) takes free text.
     channel: str | None = Field(default=None, pattern=r"^(whatsapp|whatsapp_cloud)$")
+    # Which of the business's lines to send from; the first enabled one otherwise.
+    channel_id: uuid.UUID | None = None
     template: TemplateSend | None = None
     text: str | None = Field(default=None, max_length=4000)
 
@@ -978,6 +984,7 @@ class DashboardMetrics(BaseModel):
 
 class WhatsAppChannelUpdate(BaseModel):
     agent_id: uuid.UUID
+    label: str | None = Field(default=None, max_length=80)
 
 
 class WhatsAppChannelOut(ORMModel):
@@ -987,6 +994,7 @@ class WhatsAppChannelOut(ORMModel):
     status: str
     phone_number: str | None
     display_name: str | None
+    label: str | None = None
     qr_code: str | None = None
     last_error: str | None
     is_enabled: bool

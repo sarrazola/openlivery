@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 class WhatsAppCloudChannelUpdate(BaseModel):
     agent_id: uuid.UUID
+    label: str | None = Field(default=None, max_length=80)
     phone_number_id: str | None = Field(default=None, max_length=80)
     waba_id: str | None = Field(default=None, max_length=80)
     # Secrets are write-only: omitted or blank values keep the stored ones.
@@ -20,6 +21,7 @@ class WhatsAppCloudChannelOut(BaseModel):
     status: str
     phone_number: str | None
     display_name: str | None
+    label: str | None = None
     phone_number_id: str
     waba_id: str | None
     coexistence: bool = False

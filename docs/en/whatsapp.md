@@ -12,7 +12,7 @@ Because it is stateful, the bridge does not keep sessions in memory only: whatsm
 
 ## Connect a number
 
-One WhatsApp session belongs to one client. To connect it:
+A WhatsApp session belongs to one client, and a client can link several numbers, each answered by the agent you pick (the same agent may answer more than one). To connect one:
 
 1. Open a **client**, go to its **WhatsApp** channel, and pick the agent that should answer incoming messages.
 2. Click connect. The backend asks the bridge to start a session, and a **QR code** appears.

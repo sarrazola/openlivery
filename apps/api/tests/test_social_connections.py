@@ -72,8 +72,17 @@ def test_account_rebind_and_cross_client_assignment_are_rejected(authenticated_c
     client = authenticated_client
     first, agent = resources(client)
     second, other_agent = resources(client)
-    assert manual(client, first, agent).status_code == 200
-    assert manual(client, first, agent, "222").status_code == 409
+    created = manual(client, first, agent)
+    assert created.status_code == 200
+    # A second account joins the same client as its own channel...
+    added = manual(client, first, agent, "222")
+    assert added.status_code == 200, added.text
+    assert added.json()["id"] != created.json()["id"]
+    assert [row["external_account_id"] for row in client.get(f"/api/social/instagram/clients/{first['id']}/channels").json()] == ["111", "222"]
+    # ...but an existing channel is never moved to a different account.
+    assert client.put(f"/api/social/instagram/channels/{created.json()['id']}", json={
+        "agent_id": agent["id"], "external_account_id": "333", "app_id": "999",
+        "access_token": "private-token", "app_secret": "private-secret"}).status_code == 409
     assert manual(client, second, other_agent).status_code == 409
     assert manual(client, first, other_agent).status_code == 400
 

@@ -61,6 +61,7 @@ from ..schemas import (
     TeamUpsert,
 )
 from ..security import create_portal_token, decode_portal_token, verify_password
+from ..services import channel_accounts
 from ..services.contacts import display_name, merge_contacts, normalize_phone, rename_conversations
 from ..services.tags import create_tag, delete_tag, get_tag, list_tags, rename_tag, tag_count, tag_out
 from ..services.teams import TEAM_CHANNELS, create_team, delete_team, get_team, list_teams, members_out, team_out, update_team
@@ -511,6 +512,7 @@ def portal_conversations(
         .limit(limit)
         .offset(offset)
     ).all()
+    channel_accounts.annotate(db, [row[0] for row in rows])
     return [
         ConversationOut.model_validate(conv).model_copy(
             update={
@@ -1058,6 +1060,7 @@ def portal_contact_conversations(
         .limit(limit)
         .offset(offset)
     ).all()
+    channel_accounts.annotate(db, [row[0] for row in rows])
     return [
         ConversationOut.model_validate(conv).model_copy(update={"preview": (content or "")[:140].strip()})
         for conv, content in rows
@@ -1082,12 +1085,20 @@ def _require_open_window(conversation: Conversation) -> None:
         raise HTTPException(status_code=409, detail=WINDOW_CLOSED)
 
 
-def _cloud_channel(db: Session, client: Client) -> WhatsAppCloudChannel | None:
-    return db.scalar(select(WhatsAppCloudChannel).where(WhatsAppCloudChannel.client_id == client.id))
+def _cloud_channel(db: Session, client: Client, channel_id: uuid.UUID | None = None) -> WhatsAppCloudChannel | None:
+    """The requested WhatsApp API number of the business, or its first enabled one."""
+    query = select(WhatsAppCloudChannel).where(WhatsAppCloudChannel.client_id == client.id)
+    if channel_id:
+        return db.scalar(query.where(WhatsAppCloudChannel.id == channel_id))
+    return db.scalar(query.order_by(WhatsAppCloudChannel.is_enabled.desc(), WhatsAppCloudChannel.created_at).limit(1))
 
 
-def _qr_channel(db: Session, client: Client) -> WhatsAppChannel | None:
-    return db.scalar(select(WhatsAppChannel).where(WhatsAppChannel.client_id == client.id))
+def _qr_channel(db: Session, client: Client, channel_id: uuid.UUID | None = None) -> WhatsAppChannel | None:
+    """The requested QR line of the business, or its first enabled one."""
+    query = select(WhatsAppChannel).where(WhatsAppChannel.client_id == client.id)
+    if channel_id:
+        return db.scalar(query.where(WhatsAppChannel.id == channel_id))
+    return db.scalar(query.order_by(WhatsAppChannel.is_enabled.desc(), WhatsAppChannel.created_at).limit(1))
 
 
 @router.get("/{slug}/channels", response_model=list[PortalChannelOut])
@@ -1096,19 +1107,22 @@ def portal_channels(slug: str, client: Client = Depends(_portal_client), db: Ses
     reach a contact first."""
     from ..models import SocialChannel
     from ..services.social_policy import CAPABILITIES
-    out = [{"id": item.id, "channel": item.provider, "status": item.status,
+    out = [{"id": item.id, "channel": item.provider, "status": item.status, "label": item.label,
             "external_account_id": item.external_account_id, "display_name": item.display_name,
             "username": item.username, "capabilities": CAPABILITIES.copy()} for item in db.scalars(
-        select(SocialChannel).where(SocialChannel.client_id == client.id, SocialChannel.is_enabled.is_(True)))]
-    cloud = _cloud_channel(db, client)
-    if cloud and cloud.is_enabled:
+        select(SocialChannel).where(SocialChannel.client_id == client.id, SocialChannel.is_enabled.is_(True))
+        .order_by(SocialChannel.created_at))]
+    for cloud in db.scalars(select(WhatsAppCloudChannel).where(
+            WhatsAppCloudChannel.client_id == client.id, WhatsAppCloudChannel.is_enabled.is_(True)).order_by(WhatsAppCloudChannel.created_at)):
         out.append({
-            "channel": "whatsapp_cloud", "status": cloud.status, "phone_number": cloud.phone_number,
-            "display_name": cloud.display_name, "supports_templates": bool(cloud.encrypted_access_token and cloud.waba_id),
+            "id": cloud.id, "channel": "whatsapp_cloud", "status": cloud.status, "label": cloud.label,
+            "phone_number": cloud.phone_number, "display_name": cloud.display_name,
+            "supports_templates": bool(cloud.encrypted_access_token and cloud.waba_id),
         })
-    qr = _qr_channel(db, client)
-    if qr and qr.is_enabled:
-        out.append({"channel": "whatsapp", "status": qr.status, "phone_number": qr.phone_number, "display_name": qr.display_name})
+    for qr in db.scalars(select(WhatsAppChannel).where(
+            WhatsAppChannel.client_id == client.id, WhatsAppChannel.is_enabled.is_(True)).order_by(WhatsAppChannel.created_at)):
+        out.append({"id": qr.id, "channel": "whatsapp", "status": qr.status, "label": qr.label,
+                    "phone_number": qr.phone_number, "display_name": qr.display_name})
     return out
 
 
@@ -1430,10 +1444,11 @@ def portal_report(
     )
 
 
-async def _send_template_to(db: Session, client: Client, to: str, payload: TemplateSend) -> tuple[str | None, str]:
-    """Send the template and return (external id, text as the person reads it)."""
-    channel = _cloud_channel(db, client)
-    token, waba_id = template_credentials(db, client)
+async def _send_template_to(db: Session, client: Client, to: str, payload: TemplateSend, channel: WhatsAppCloudChannel | None) -> tuple[str | None, str]:
+    """Send the template from ``channel`` and return (external id, text as the person reads it)."""
+    if channel is None:
+        raise HTTPException(status_code=409, detail="This conversation's WhatsApp API number no longer exists")
+    token, waba_id = template_credentials(db, client, channel)
     approved = next(
         (t for t in await list_templates(token, waba_id)
          if t["name"] == payload.name and t["language"] == payload.language and t["status"] == "APPROVED"),
@@ -1470,7 +1485,7 @@ async def portal_start_conversation(
     contact = _portal_contact(db, client, contact_id)
     if not contact.phone:
         raise HTTPException(status_code=409, detail="This contact has no phone number")
-    cloud, qr = _cloud_channel(db, client), _qr_channel(db, client)
+    cloud, qr = _cloud_channel(db, client, payload.channel_id), _qr_channel(db, client, payload.channel_id)
     channel_name = payload.channel or ("whatsapp_cloud" if cloud and cloud.is_enabled else "whatsapp" if qr and qr.is_enabled else None)
     if channel_name == "whatsapp_cloud" and cloud and cloud.is_enabled:
         if not payload.template:
@@ -1512,7 +1527,7 @@ async def portal_start_conversation(
     db.flush()
 
     if channel_name == "whatsapp_cloud":
-        external_message_id, text = await _send_template_to(db, client, contact.phone, payload.template)
+        external_message_id, text = await _send_template_to(db, client, contact.phone, payload.template, channel_row)
     else:
         text = payload.text.strip()
         external_message_id = await send_channel_message(db, conversation, text)
@@ -1556,7 +1571,9 @@ async def portal_reply_template(
     if conversation.phone_pause_until is not None:
         set_mode(db, conversation, "human")
         db.commit()
-    external_message_id, text = await _send_template_to(db, client, conversation.external_chat_id, payload)
+    external_message_id, text = await _send_template_to(
+        db, client, conversation.external_chat_id, payload, _cloud_channel(db, client, conversation.whatsapp_cloud_channel_id)
+    )
     db.add(
         Message(
             conversation_id=conversation.id,

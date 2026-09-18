@@ -25,3 +25,22 @@ export function ChannelIcon({ channel, size = 10 }: { channel: string; size?: nu
 export function isSocialChannel(channel?: string): boolean {
   return channel === "instagram" || channel === "messenger";
 }
+
+/** The last digits of a number, however the provider formatted it. */
+export function phoneSuffix(phone?: string | null, digits = 4): string | null {
+  const only = (phone || "").replace(/\D/g, "");
+  return only.length >= digits ? only.slice(-digits) : null;
+}
+
+type NamedAccount = { label?: string | null; phone_number?: string | null; display_name?: string | null; username?: string | null };
+
+/** What to call one of a client's accounts: the operator's label, else the
+ * number's last digits or the handle, else ``fallback`` (e.g. "Line 2"). */
+export function accountName(channel: NamedAccount, fallback: string): string {
+  const label = (channel.label || "").trim();
+  if (label) return label;
+  const suffix = phoneSuffix(channel.phone_number);
+  if (suffix) return `\u00b7\u00b7\u00b7${suffix}`;
+  if (channel.username) return `@${channel.username.replace(/^@/, "")}`;
+  return channel.display_name || fallback;
+}

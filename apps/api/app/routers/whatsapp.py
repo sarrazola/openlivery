@@ -33,16 +33,47 @@ router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
 internal_router = APIRouter(prefix="/internal/whatsapp", tags=["WhatsApp internal"])
 
 
-def _channel_for_user(db: Session, user: User, client_id: uuid.UUID) -> WhatsAppChannel:
+def _channel_for_user(db: Session, user: User, ref: uuid.UUID) -> WhatsAppChannel:
+    """``ref`` is a line id, or a client id for that client's first line (the
+    shape these routes had while a client could only have one)."""
+    channel = db.scalar(select(WhatsAppChannel).where(WhatsAppChannel.id == ref, WhatsAppChannel.agency_id == user.agency_id))
+    if channel:
+        return channel
     channel = db.scalar(
-        select(WhatsAppChannel).where(
-            WhatsAppChannel.client_id == client_id,
-            WhatsAppChannel.agency_id == user.agency_id,
-        )
+        select(WhatsAppChannel)
+        .where(WhatsAppChannel.client_id == ref, WhatsAppChannel.agency_id == user.agency_id)
+        .order_by(WhatsAppChannel.created_at)
+        .limit(1)
     )
     if not channel:
         raise HTTPException(status_code=404, detail="This client does not have WhatsApp configured yet")
     return channel
+
+
+def _owned_client(db: Session, user: User, client_id: uuid.UUID) -> Client:
+    client = db.scalar(select(Client).where(Client.id == client_id, Client.agency_id == user.agency_id))
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return client
+
+
+def _client_agent(db: Session, user: User, client_id: uuid.UUID, agent_id: uuid.UUID) -> Agent:
+    agent = db.scalar(
+        select(Agent).where(
+            Agent.id == agent_id,
+            Agent.client_id == client_id,
+            Agent.agency_id == user.agency_id,
+            Agent.deleted_at.is_(None),
+        )
+    )
+    if not agent:
+        raise HTTPException(status_code=400, detail="Select an agent that belongs to this client")
+    return agent
+
+
+def _apply_label(channel: WhatsAppChannel, payload: WhatsAppChannelUpdate) -> None:
+    if "label" in payload.model_fields_set:
+        channel.label = (payload.label or "").strip()[:80] or None
 
 
 def _public_channel(channel: WhatsAppChannel) -> dict:
@@ -54,6 +85,7 @@ def _public_channel(channel: WhatsAppChannel) -> dict:
         "status": channel.status,
         "phone_number": channel.phone_number,
         "display_name": channel.display_name,
+        "label": channel.label,
         "qr_code": qr_code,
         "last_error": channel.last_error,
         "is_enabled": channel.is_enabled,
@@ -81,46 +113,86 @@ def _internal_channel(db: Session, channel_id: uuid.UUID) -> WhatsAppChannel:
     return channel
 
 
-@router.get("/channels/{client_id}", response_model=WhatsAppChannelOut)
-def get_channel(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return _public_channel(_channel_for_user(db, user, client_id))
+@router.get("/clients/{client_id}/channels", response_model=list[WhatsAppChannelOut])
+def list_channels(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Every QR line of the client, oldest first."""
+    client = _owned_client(db, user, client_id)
+    rows = db.scalars(
+        select(WhatsAppChannel).where(WhatsAppChannel.client_id == client.id).order_by(WhatsAppChannel.created_at)
+    ).all()
+    return [_public_channel(item) for item in rows]
 
 
-@router.put("/channels/{client_id}", response_model=WhatsAppChannelOut)
-def configure_channel(
+@router.post("/clients/{client_id}/channels", response_model=WhatsAppChannelOut, status_code=status.HTTP_201_CREATED)
+def create_channel(
     client_id: uuid.UUID,
     payload: WhatsAppChannelUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    client = db.scalar(select(Client).where(Client.id == client_id, Client.agency_id == user.agency_id))
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
-    agent = db.scalar(
-        select(Agent).where(
-            Agent.id == payload.agent_id,
-            Agent.client_id == client.id,
-            Agent.agency_id == user.agency_id,
-            Agent.deleted_at.is_(None),
-        )
-    )
-    if not agent:
-        raise HTTPException(status_code=400, detail="Select an agent that belongs to this client")
-    channel = db.scalar(select(WhatsAppChannel).where(WhatsAppChannel.client_id == client.id))
-    if channel:
-        channel.agent_id = agent.id
-        channel.is_enabled = True
-    else:
-        channel = WhatsAppChannel(agency_id=user.agency_id, client_id=client.id, agent_id=agent.id)
-        db.add(channel)
+    """Add another line to the client. It is linked afterwards by scanning its QR."""
+    client = _owned_client(db, user, client_id)
+    agent = _client_agent(db, user, client.id, payload.agent_id)
+    channel = WhatsAppChannel(agency_id=user.agency_id, client_id=client.id, agent_id=agent.id)
+    _apply_label(channel, payload)
+    db.add(channel)
     db.commit()
     db.refresh(channel)
     return _public_channel(channel)
 
 
-@router.post("/channels/{client_id}/connect", response_model=WhatsAppChannelOut)
-async def connect_channel(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    channel = _channel_for_user(db, user, client_id)
+@router.get("/channels/{ref}", response_model=WhatsAppChannelOut)
+def get_channel(ref: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return _public_channel(_channel_for_user(db, user, ref))
+
+
+@router.put("/channels/{ref}", response_model=WhatsAppChannelOut)
+def configure_channel(
+    ref: uuid.UUID,
+    payload: WhatsAppChannelUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Change the agent or the name of a line. Called with a client id it
+    configures that client's first line, creating it when there is none."""
+    channel = db.scalar(select(WhatsAppChannel).where(WhatsAppChannel.id == ref, WhatsAppChannel.agency_id == user.agency_id))
+    if not channel:
+        client = _owned_client(db, user, ref)
+        channel = db.scalar(
+            select(WhatsAppChannel).where(WhatsAppChannel.client_id == client.id).order_by(WhatsAppChannel.created_at).limit(1)
+        )
+        if not channel:
+            agent = _client_agent(db, user, client.id, payload.agent_id)
+            channel = WhatsAppChannel(agency_id=user.agency_id, client_id=client.id, agent_id=agent.id)
+            db.add(channel)
+    agent = _client_agent(db, user, channel.client_id, payload.agent_id)
+    channel.agent_id = agent.id
+    channel.is_enabled = True
+    _apply_label(channel, payload)
+    db.commit()
+    db.refresh(channel)
+    return _public_channel(channel)
+
+
+@router.delete("/channels/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_channel(channel_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Remove a line. The phone is logged out first (best effort) and the
+    line's conversations stay as history."""
+    channel = db.scalar(select(WhatsAppChannel).where(WhatsAppChannel.id == channel_id, WhatsAppChannel.agency_id == user.agency_id))
+    if not channel:
+        raise HTTPException(status_code=404, detail="Line not found")
+    if channel.encrypted_auth_state:
+        try:
+            await bridge_command("POST", f"/channels/{channel.id}/disconnect")
+        except HTTPException:
+            pass
+    db.delete(channel)
+    db.commit()
+
+
+@router.post("/channels/{ref}/connect", response_model=WhatsAppChannelOut)
+async def connect_channel(ref: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    channel = _channel_for_user(db, user, ref)
     channel.status = "connecting"
     channel.last_error = None
     channel.is_enabled = True
@@ -136,9 +208,9 @@ async def connect_channel(client_id: uuid.UUID, db: Session = Depends(get_db), u
     return _public_channel(channel)
 
 
-@router.post("/channels/{client_id}/disconnect", response_model=WhatsAppChannelOut)
-async def disconnect_channel(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    channel = _channel_for_user(db, user, client_id)
+@router.post("/channels/{ref}/disconnect", response_model=WhatsAppChannelOut)
+async def disconnect_channel(ref: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    channel = _channel_for_user(db, user, ref)
     await bridge_command("POST", f"/channels/{channel.id}/disconnect")
     db.refresh(channel)
     return _public_channel(channel)
@@ -204,8 +276,24 @@ def update_status(channel_id: uuid.UUID, payload: WhatsAppInternalStatus, db: Se
         channel.encrypted_qr = None
     channel.last_error = payload.error
     if payload.status == "connected":
-        channel.last_connected_at = now_utc()
-        channel.is_enabled = True
+        # The same phone scanned on two lines would answer every message
+        # twice. The second line is refused; the operator disconnects it.
+        twin = db.scalar(
+            select(WhatsAppChannel.id).where(
+                WhatsAppChannel.agency_id == channel.agency_id,
+                WhatsAppChannel.id != channel.id,
+                WhatsAppChannel.phone_number == channel.phone_number,
+                WhatsAppChannel.is_enabled.is_(True),
+                WhatsAppChannel.encrypted_auth_state.is_not(None),
+            )
+        ) if channel.phone_number else None
+        if twin:
+            channel.status = "error"
+            channel.last_error = "This number is already connected on another line. Disconnect this one."
+            channel.is_enabled = False
+        else:
+            channel.last_connected_at = now_utc()
+            channel.is_enabled = True
     channel.updated_at = now_utc()
     db.commit()
 

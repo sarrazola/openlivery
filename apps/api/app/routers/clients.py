@@ -249,12 +249,12 @@ async def delete_client(client_id: uuid.UUID, db: Session = Depends(get_db), use
     down must not keep a client from being deleted.
     """
     client = _client(db, user, client_id)
-    whatsapp = client.whatsapp_channel
-    if whatsapp is not None and whatsapp.encrypted_auth_state:
-        try:
-            await bridge_command("POST", f"/channels/{whatsapp.id}/disconnect")
-        except Exception:  # noqa: BLE001 - the deletion goes ahead regardless
-            pass
+    for whatsapp in client.whatsapp_channels:
+        if whatsapp.encrypted_auth_state:
+            try:
+                await bridge_command("POST", f"/channels/{whatsapp.id}/disconnect")
+            except Exception:  # noqa: BLE001 - the deletion goes ahead regardless
+                pass
     from ..models import SocialChannel
     from ..services.social_connections import disconnect_channel
     for channel in db.scalars(select(SocialChannel).where(SocialChannel.client_id == client.id)).all():
@@ -272,7 +272,7 @@ def client_deletion_preview(client_id: uuid.UUID, db: Session = Depends(get_db),
     def count(model, *conds) -> int:
         return db.scalar(select(func.count()).select_from(model).where(*conds)) or 0
 
-    channels = sum(1 for item in (client.whatsapp_channel, client.whatsapp_cloud_channel, client.widget_channel) if item is not None)
+    channels = len(client.whatsapp_channels) + len(client.whatsapp_cloud_channels) + (1 if client.widget_channel is not None else 0)
     return {
         "agents": count(Agent, Agent.client_id == client.id, Agent.deleted_at.is_(None)),
         "channels": channels,

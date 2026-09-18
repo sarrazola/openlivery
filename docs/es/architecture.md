@@ -45,7 +45,7 @@ Agency
     │   ├── KnowledgeDocument → KnowledgeChunk
     │   ├── AgentQA           (pares de pregunta/respuesta)
     │   └── Conversation → Message
-    └── WhatsAppChannel  (uno por cliente, vinculado a un agente)
+    └── WhatsAppChannel  (varios por cliente, cada uno vinculado a un agente)
 ```
 
 Una `Conversation` registra su `channel` (playground, widget o WhatsApp) y un `mode` (`ai` o `human`); cambiar a `human` pausa la IA para que un operador pueda responder desde el inbox. Los mensajes guardan su rol, contenido y las `sources` de conocimiento utilizadas. Consulta [Agentes](agents.md) para ver cómo las instrucciones, el brief y el conocimiento de un agente componen el prompt.
