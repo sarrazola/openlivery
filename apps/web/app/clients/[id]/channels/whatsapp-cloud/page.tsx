@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, BadgeCheck, Bot, CheckCircle2, CircleAlert, ClipboardCopy, KeyRound, LoaderCircle, Plug, Power, RefreshCw, ShieldCheck, Smartphone, Trash2, Webhook } from "lucide-react";
 import { Alert, Modal } from "@/components/ui";
 import { AccountList } from "@/components/account-list";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { api, messageFrom } from "@/lib/api";
 import { accountName, accountTitle, messagingLimitLabel, qualityLabel, qualityTone, rememberLine, requestedLine } from "@/lib/channels";
 import { useT, type I18nKey } from "@/lib/i18n";
@@ -51,6 +52,7 @@ export default function WhatsAppCloudChannelPage() {
   const [error, setError] = useState("");
   const [refreshNotice, setRefreshNotice] = useState("");
   const [removing, setRemoving] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const channel = adding ? null : lines.find((line) => line.id === selectedId) ?? null;
 
   const upsert = useCallback((saved: WhatsAppCloudChannel) => {
@@ -119,10 +121,8 @@ export default function WhatsAppCloudChannelPage() {
   }
 
   async function disconnect() {
-    if (!channel || !confirm(t("clients.whatsappCloud.confirmDisconnect"))) return;
-    setBusy(true); setError("");
-    try { upsert(await api<WhatsAppCloudChannel>(`/whatsapp-cloud/channels/${channel.id}/disconnect`, { method: "POST" })); }
-    catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+    if (!channel) return;
+    upsert(await api<WhatsAppCloudChannel>(`/whatsapp-cloud/channels/${channel.id}/disconnect`, { method: "POST" }));
   }
 
   async function remove() {
@@ -165,16 +165,17 @@ export default function WhatsAppCloudChannelPage() {
           <label>{t("clients.whatsappCloud.accessTokenLabel")}<input type="password" value={accessToken} onChange={(event) => setAccessToken(event.target.value)} placeholder={channel?.has_access_token ? t("clients.whatsappCloud.secretSavedPlaceholder") : ""} disabled={busy} /></label>
           <label>{t("clients.whatsappCloud.appSecretLabel")}<input type="password" value={appSecret} onChange={(event) => setAppSecret(event.target.value)} placeholder={channel?.has_app_secret ? t("clients.whatsappCloud.secretSavedPlaceholder") : ""} disabled={busy} /></label>
         </div>
-        {channel?.status === "connected" && <div className="wa-connected"><div className="wa-phone"><Smartphone size={24} /><span><small>{t("clients.whatsapp.connectedNumber")}</small><strong>{channel.phone_number || channel.phone_number_id}</strong>{channel.display_name && <em>{channel.display_name}</em>}</span></div><div className="wa-ready"><CheckCircle2 size={18} /> {t("clients.whatsapp.readyForMessages")}</div></div>}
+        {channel?.status === "connected" && <div className="wa-connected"><div className="wa-phone"><Smartphone size={24} /><span><small>{t("clients.whatsapp.connectedNumber")}</small><strong>{channel.phone_number || channel.phone_number_id}</strong>{channel.display_name && <em>{channel.display_name}</em>}</span></div><div className="wa-connected-side"><div className="wa-ready"><CheckCircle2 size={18} /> {t("clients.whatsapp.readyForMessages")}</div><button type="button" className="button ghost small" onClick={refreshStatus} disabled={busy}>{busy ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />} {busy ? t("clients.whatsappCloud.refreshing") : t("clients.whatsappCloud.refresh")}</button></div></div>}
         {channel?.status === "connected" && (channel.quality_rating || channel.messaging_limit) && <p className="wa-quality"><i className={`channel-state-dot ${qualityTone(channel.quality_rating)}`} aria-hidden="true" /><span>{t("clients.whatsappCloud.qualityLabel")}: <strong>{qualityLabel(channel.quality_rating, t)}</strong></span>{messagingLimitLabel(channel.messaging_limit, t) && <span>· {messagingLimitLabel(channel.messaging_limit, t)}</span>}</p>}
         {channel?.last_error && <Alert>{channel.last_error}</Alert>}
         {refreshNotice && <p className="social-meta" role="status">{refreshNotice}</p>}
         <div className="wa-actions">
-          {channel && <button className="button quiet" onClick={() => setRemoving(true)} disabled={busy}><Trash2 size={16} /> {t("clients.whatsappCloud.removeNumber")}</button>}
+          {channel && <div className="wa-actions-side">
+            <button className="button quiet" onClick={() => setRemoving(true)} disabled={busy}><Trash2 size={16} /> {t("clients.whatsappCloud.removeNumber")}</button>
+            {channel.status === "connected" && <button className="button quiet" onClick={() => setDisconnecting(true)} disabled={busy}><Power size={16} /> {t("clients.whatsappCloud.disconnect")}</button>}
+          </div>}
           <button className="button secondary" onClick={saveOnly} disabled={!agentId || busy}>{t("clients.whatsappCloud.save")}</button>
           <button className="button primary" onClick={saveAndConnect} disabled={!canConnect}>{busy ? <LoaderCircle className="spin" size={17} /> : <Plug size={17} />} {t("clients.whatsappCloud.connectVerify")}</button>
-          {channel?.status === "connected" && <button className="button ghost" onClick={refreshStatus} disabled={busy}><RefreshCw size={17} /> {busy ? t("clients.whatsappCloud.refreshing") : t("clients.whatsappCloud.refresh")}</button>}
-          {channel?.status === "connected" && <button className="button danger" onClick={disconnect} disabled={busy}><Power size={17} /> {t("clients.whatsappCloud.disconnect")}</button>}
         </div>
       </section>
       {channel && <section className="wa-panel"><div className="wa-panel-head"><span><Webhook size={19} /></span><div><h2>{t("clients.whatsappCloud.webhookTitle")}</h2><p>{t("clients.whatsappCloud.webhookCopy")}</p></div></div>
@@ -183,6 +184,7 @@ export default function WhatsAppCloudChannelPage() {
         <ol className="wa-webhook-steps"><li>{t("clients.whatsappCloud.webhookStep1")}</li><li>{t("clients.whatsappCloud.webhookStep2")}</li><li>{t("clients.whatsappCloud.webhookStep3")}</li></ol>
       </section>}
     </main><aside className="wa-side"><ShieldCheck size={22} /><h3>{t("clients.whatsapp.separationTitle")}</h3><p>{t("clients.whatsapp.separationCopy")}<strong>{client.name}</strong>.</p><hr /><h3>{t("clients.whatsapp.humanControlTitle")}</h3><p>{t("clients.whatsapp.humanControlCopy")}</p></aside></div>}
+    {disconnecting && channel && <ConfirmModal title={t("clients.whatsappCloud.disconnect")} message={t("clients.whatsappCloud.confirmDisconnect")} confirmLabel={t("clients.whatsappCloud.disconnect")} cancelLabel={t("common.cancel")} confirmIcon={<Power size={15} />} onConfirm={disconnect} onClose={() => setDisconnecting(false)} />}
     <Modal open={removing && Boolean(channel)} title={t("clients.whatsappCloud.removeNumberTitle", { name: channel ? nameOf(channel) : "" })} onClose={() => setRemoving(false)}>
       <div className="modal-form">
         <p className="modal-copy">{t("clients.whatsappCloud.removeNumberCopy")}</p>

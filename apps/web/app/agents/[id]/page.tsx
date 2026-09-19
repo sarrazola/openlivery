@@ -9,6 +9,7 @@ import { api, messageFrom } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { businessLabel, useIndustries } from "@/lib/industries";
 import { Alert, Modal } from "@/components/ui";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { FormSkeleton } from "@/components/skeleton";
 import { AiHint } from "@/components/ai-hint";
 import { useToast } from "@/components/toast";
@@ -125,6 +126,7 @@ export default function AgentDetailPage() {
 
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [docToDelete, setDocToDelete] = useState<KnowledgeDocument | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteName, setDeleteName] = useState("");
   async function removeAgent() {
@@ -157,7 +159,6 @@ export default function AgentDetailPage() {
   }
 
   async function removeDocument(doc: KnowledgeDocument) {
-    if (!confirm(t("agents.detail.confirmDelete", { filename: doc.filename }))) return;
     await api(`/agents/${id}/documents/${doc.id}`, { method: "DELETE" });
     setDocuments((items) => items.filter((item) => item.id !== doc.id));
   }
@@ -181,6 +182,7 @@ export default function AgentDetailPage() {
   return <div className="page agent-detail-page">
     <Link href="/agents" className="back-link"><ArrowLeft size={16} /> {t("agents.detail.back")}</Link>
     <header className="agent-detail-head"><div className="agent-title-wrap"><span className="agent-avatar xl"><Bot size={29} /></span><div><div className="title-line"><h1>{agent.name}</h1><span className={agent.is_active ? "pill purple" : "pill"}>{agent.is_active ? t("agents.detail.published") : t("agents.detail.unpublished")}</span></div><p><Link href={`/clients/${agent.client_id}`} className="table-link">{agent.client.name}</Link>{businessLabel(catalog, agent.client, lang) ? ` · ${businessLabel(catalog, agent.client, lang)}` : ""}</p></div></div><div className="header-actions"><button className={agent.is_active ? "button ghost" : "button primary"} onClick={togglePublish} disabled={busy}>{agent.is_active ? <><PowerOff size={16} /> {t("agents.detail.unpublish")}</> : <><Power size={16} /> {t("agents.detail.publish")}</>}</button><Link href={`/playground`} className="button secondary"><MessageSquareText size={17} /> {t("agents.detail.openPlayground")}</Link></div></header>
+    {docToDelete && <ConfirmModal title={t("agents.detail.confirmDelete", { filename: docToDelete.filename })} confirmLabel={t("agents.detail.delete")} cancelLabel={t("common.cancel")} confirmIcon={<Trash2 size={15} />} onConfirm={() => removeDocument(docToDelete)} onClose={() => setDocToDelete(null)} />}
     <Modal open={deleteOpen} title={t("agents.detail.deleteTitle", { name: agent.name })} onClose={() => setDeleteOpen(false)}>
       <div className="modal-form">
         <p className="modal-copy">{t("agents.detail.deleteCopy")}</p>
@@ -252,7 +254,7 @@ export default function AgentDetailPage() {
     {tab === "knowledge" && <div className="knowledge-stack">
       <section className="panel documents-panel"><div className="panel-head"><div><h3>{t("agents.detail.pdfHeading")}</h3><p>{t("agents.detail.pdfCopy")}</p></div></div>
         <button className="dropzone" onClick={() => fileRef.current?.click()} disabled={busy}><span><UploadCloud size={24} /></span><strong>{busy ? t("agents.detail.processing") : t("agents.detail.uploadPdf")}</strong><small>{t("agents.detail.uploadHint")}</small></button><input ref={fileRef} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => upload(e.target.files?.[0])} />
-        <div className="documents-list">{documents.map((doc) => <div className="document-row" key={doc.id}><span className={`document-icon ${doc.status}`}><FileText size={19} /></span><div><strong>{doc.filename}</strong><small>{doc.status === "processed" ? `${t("agents.detail.charsExtracted", { count: doc.character_count.toLocaleString("es") })} · ${smallBase ? t("agents.detail.sentInFull") : doc.chunk_count && doc.indexed_model === agent.embedding_model ? t("agents.detail.indexedChunks", { count: doc.chunk_count }) : t("agents.detail.notIndexed")}` : doc.error_message}</small></div><span className={`document-status ${doc.status}`}>{doc.status === "processed" ? <><CheckCircle2 size={14} /> {t("agents.detail.processed")}</> : <><XCircle size={14} /> {t("agents.detail.error")}</>}</span>{doc.status === "processed" && !smallBase && <button className="icon-button" onClick={() => reindexOne(doc)} disabled={indexing || busy} title={t("agents.detail.reindex")}><RefreshCw size={15} /></button>}<button className="icon-button danger-icon" onClick={() => removeDocument(doc)} title={t("agents.detail.delete")}><Trash2 size={16} /></button></div>)}{!documents.length && <div className="inline-empty slim"><FileText size={22} /><div><strong>{t("agents.detail.noDocumentsTitle")}</strong><span>{t("agents.detail.noDocumentsHint")}</span></div></div>}</div>
+        <div className="documents-list">{documents.map((doc) => <div className="document-row" key={doc.id}><span className={`document-icon ${doc.status}`}><FileText size={19} /></span><div><strong>{doc.filename}</strong><small>{doc.status === "processed" ? `${t("agents.detail.charsExtracted", { count: doc.character_count.toLocaleString("es") })} · ${smallBase ? t("agents.detail.sentInFull") : doc.chunk_count && doc.indexed_model === agent.embedding_model ? t("agents.detail.indexedChunks", { count: doc.chunk_count }) : t("agents.detail.notIndexed")}` : doc.error_message}</small></div><span className={`document-status ${doc.status}`}>{doc.status === "processed" ? <><CheckCircle2 size={14} /> {t("agents.detail.processed")}</> : <><XCircle size={14} /> {t("agents.detail.error")}</>}</span>{doc.status === "processed" && !smallBase && <button className="icon-button" onClick={() => reindexOne(doc)} disabled={indexing || busy} title={t("agents.detail.reindex")}><RefreshCw size={15} /></button>}<button className="icon-button danger-icon" onClick={() => setDocToDelete(doc)} title={t("agents.detail.delete")}><Trash2 size={16} /></button></div>)}{!documents.length && <div className="inline-empty slim"><FileText size={22} /><div><strong>{t("agents.detail.noDocumentsTitle")}</strong><span>{t("agents.detail.noDocumentsHint")}</span></div></div>}</div>
       </section>
     <section className="panel"><div className="panel-head"><div><h3>{t("agents.detail.embeddingHeading")} <AiHint text={t("aiContext.embedding")} /></h3><p>{t("agents.detail.embeddingCopy")}</p></div><button type="button" className="button secondary" onClick={() => reindex()} disabled={indexing || busy || !documents.some((doc) => doc.status === "processed")}>{indexing ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />} {indexing ? t("agents.detail.reindexing") : t("agents.detail.reindex")}</button></div>
       <label className="embedding-picker">{t("agents.detail.embeddingModelLabel")}

@@ -1419,7 +1419,12 @@ textarea { line-height: 1.55; }
 /* Meta's quality rating and messaging limit, under the connected number. */
 .wa-quality { margin: 10px 0 0; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
 .wa-quality strong { color: var(--ink-2); font-weight: 600; }
-.wa-actions { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
+.wa-actions { margin-top: 20px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.wa-actions .button { white-space: nowrap; }
+/* Destructive actions sit apart on the left; saving and connecting on the right. */
+.wa-actions-side { margin-right: auto; display: flex; flex-wrap: wrap; gap: 4px; }
+.wa-actions-side .button.quiet { margin-right: 0; }
+.wa-connected-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 /* A channel's accounts, one row each: the number is what an operator scans
    for, so it leads; then who answers and the state. The channel page shows
    this list until one account is picked. */
@@ -1481,7 +1486,8 @@ button.back-link { padding: 0; border: 0; background: transparent; cursor: point
   .wa-qr { grid-template-columns: 1fr; justify-items: center; }
   .wa-qr > div { width: 100%; }
   .wa-connected { align-items: flex-start; flex-direction: column; }
-  .wa-actions .button { width: 100%; }
+  .wa-connected-side { align-items: flex-start; }
+  .wa-actions .button, .wa-actions-side { width: 100%; }
 }
 
 /* Identidad OpenLivery: azul institucional, verde como acento y superficies neutras. */
