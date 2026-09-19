@@ -1417,11 +1417,30 @@ textarea { line-height: 1.55; }
 .wa-phone em { color: var(--muted); font-size: 12px; font-style: normal; }
 .wa-ready { display: flex; align-items: center; gap: 7px; color: var(--green-text); font-size: 12px; font-weight: 600; }
 .wa-actions { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
-.line-switcher { margin: -14px 0 22px; display: flex; flex-wrap: wrap; gap: 8px; }
-.line-switcher button { min-height: 34px; padding: 0 13px; display: inline-flex; align-items: center; gap: 8px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 13px; font-weight: 600; transition: .15s ease; }
-.line-switcher button:hover { color: var(--ink); border-color: var(--line-strong); }
-.line-switcher button.active { color: var(--ink); border-color: var(--line-strong); background: var(--surface-2); }
-.line-switcher button.add { border-style: dashed; }
+/* A channel's accounts, one row each: the number is what an operator scans
+   for, so it leads; then who answers and the state. The channel page shows
+   this list until one account is picked. */
+.account-list { margin-bottom: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.account-list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.account-list-head p { margin: 0; color: var(--muted); font-size: 13px; font-weight: 600; }
+.account-list-head .button { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+button.back-link { padding: 0; border: 0; background: transparent; cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; }
+.channel-accounts { margin: 0; padding: 0; list-style: none; }
+.channel-accounts li { display: grid; grid-template-columns: 10px minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 16px; border-bottom: 1px solid var(--line-soft); font-size: 14px; }
+.channel-accounts li:last-child { border-bottom: 0; }
+.channel-accounts .account-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.channel-accounts .account-id strong { color: var(--ink); font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.channel-accounts .account-id small { color: var(--subtle); font-size: 12.5px; }
+.channel-accounts .account-agent { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.channel-accounts .account-state { font-weight: 600; }
+.channel-accounts .account-state.connected { color: var(--green-text); }
+.channel-accounts .account-state.pending { color: var(--amber-text); }
+.channel-accounts .account-state.disconnected { color: var(--red-text); }
+.channel-accounts .button { min-height: 36px; padding: 0 14px; white-space: nowrap; }
+@media (max-width: 720px) {
+  .channel-accounts li { grid-template-columns: 10px minmax(0, 1fr) auto; row-gap: 6px; }
+  .channel-accounts .account-agent, .channel-accounts .account-state { grid-column: 2; }
+}
 .wa-actions .button.quiet { margin-right: auto; color: var(--muted); border-color: transparent; background: transparent; }
 .wa-actions .button.quiet:hover { color: var(--red-text); background: var(--red-soft); }
 .account-badge { max-width: 140px; padding: 1px 7px; overflow: hidden; color: var(--muted); border-radius: 20px; background: var(--surface-3); font-size: 11px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }

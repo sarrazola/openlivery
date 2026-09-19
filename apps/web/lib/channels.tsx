@@ -44,3 +44,33 @@ export function accountName(channel: NamedAccount, fallback: string): string {
   if (channel.username) return `@${channel.username.replace(/^@/, "")}`;
   return channel.display_name || fallback;
 }
+
+/** The number or handle an account is known by, with the operator's label
+ * beside it when there is one: "+57 321 788 7609 · COL". Before the account
+ * is linked there is no number, so the name alone. */
+export function accountTitle(channel: NamedAccount, fallback: string): string {
+  const label = (channel.label || "").trim();
+  const phone = (channel.phone_number || "").trim();
+  const primary = phone ? (phone.startsWith("+") ? phone : `+${phone}`)
+    : channel.username ? `@${channel.username.replace(/^@/, "")}` : (channel.display_name || "").trim();
+  if (!primary) return label || fallback;
+  return label && label !== primary ? `${primary} · ${label}` : primary;
+}
+
+/** Which of a client's accounts a channel page opens on. `?line=<id>` names
+ * one and `?new` starts another; with neither, the first account. */
+export function requestedLine(): { line: string | null; adding: boolean } {
+  if (typeof window === "undefined") return { line: null, adding: false };
+  const params = new URLSearchParams(window.location.search);
+  return { line: params.get("line"), adding: params.has("new") };
+}
+
+/** Keep the open account in the address, so a reload or a return from a
+ * provider's authorization lands on it; `null` while a new one is set up. */
+export function rememberLine(id: string | null) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("new");
+  if (id) url.searchParams.set("line", id); else url.searchParams.delete("line");
+  window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+}

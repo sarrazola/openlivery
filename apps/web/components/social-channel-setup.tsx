@@ -5,17 +5,16 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Bot, CheckCircle2, ChevronDown, CircleAlert, Facebook, Instagram, History, KeyRound, LoaderCircle, Plug, Power, ShieldCheck, Webhook } from "lucide-react";
 import { Alert, Modal } from "@/components/ui";
-import { LineSwitcher, type LineState } from "@/components/line-switcher";
+import { AccountList } from "@/components/account-list";
 import { api, ApiError, messageFrom } from "@/lib/api";
-import { accountName } from "@/lib/channels";
+import { accountName, accountTitle, rememberLine, requestedLine } from "@/lib/channels";
 import { useLanguage } from "@/lib/i18n";
 import type { Client, SocialChannel, SocialConfig, SocialHistoryJob, SocialPending, SocialProvider } from "@/types";
 
-const lineState = (line: SocialChannel): LineState => (line.is_enabled && line.status === "connected" ? "connected" : "disconnected");
-
-/** A client's accounts on one provider. One is selected at a time and the
- * panels below configure that one; "connect another account" starts a new
- * one, through the same authorization or manual credentials. */
+/** A client's accounts on one provider. The page opens on the list of them;
+ * one is picked from there (or named by `?line=<id>`) and the panels below
+ * then configure that one. `?new`, or an empty list, starts another, through
+ * the same authorization or manual credentials. */
 export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
   const { t, lang } = useLanguage();
   const { id } = useParams<{ id: string }>();
@@ -57,6 +56,7 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
     upsert(current);
     setAdding(false);
     setSelectedId(current.id);
+    rememberLine(current.id);
     setAgentId(current.agent_id);
     setLabel(current.label || "");
     setAccountId(current.external_account_id || "");
@@ -66,8 +66,14 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
     setAppSecret("");
   }, [upsert]);
 
+  /** Back to the list of accounts, with none picked. */
+  const showList = useCallback(() => {
+    setAdding(false); setSelectedId(null); rememberLine(null);
+    setPending(null); setHistoryJob(null); setError(""); setSaved(false);
+  }, []);
+
   const startAdding = useCallback((owner: Client | null) => {
-    setAdding(true); setSelectedId(null);
+    setAdding(true); setSelectedId(null); rememberLine(null);
     setAgentId(owner?.agents[0]?.id || ""); setLabel(""); setAccountId(""); setAppId(""); setHumanAgent(false);
     setAccessToken(""); setAppSecret(""); setError(""); setSaved(false);
   }, []);
@@ -95,8 +101,12 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
         }),
       ]);
       setClient(owner); setConfig(setup[provider]); setLines(items); setPending(selection);
-      if (items[0]) { applyChannel(items[0]); await loadHistory(items[0].id); }
-      else startAdding(owner);
+      const wanted = requestedLine();
+      const line = items.find((item) => item.id === wanted.line) ?? null;
+      // A pending authorization belongs to the account being added: stay on it.
+      if (wanted.adding || selection || (!line && !items.length)) startAdding(owner);
+      else if (line) { applyChannel(line); await loadHistory(line.id); }
+      else showList();
       setAccountChoice(selection?.accounts.length === 1 ? selection.accounts[0].id : "");
       const callbackStatus = new URLSearchParams(window.location.search).get("social_status");
       if (callbackStatus === "error") setCallbackIssue("failed");
@@ -109,7 +119,7 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
       }
     } catch (err) { setError(messageFrom(err)); }
     finally { setLoading(false); }
-  }, [id, provider, applyChannel, startAdding, loadHistory]);
+  }, [id, provider, applyChannel, startAdding, showList, loadHistory]);
   useEffect(() => { void load(); }, [load]);
   const importing = historyJob?.status === "pending" || historyJob?.status === "processing";
   const channelId = channel?.id ?? null;
@@ -135,13 +145,6 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
     try { await action(); }
     catch (err) { setError(messageFrom(err)); }
     finally { setBusy(false); }
-  }
-
-  function select(lineId: string) {
-    const line = lines.find((item) => item.id === lineId);
-    if (!line) return;
-    applyChannel(line); setError(""); setSaved(false);
-    void loadHistory(line.id);
   }
 
   async function authorize() {
@@ -198,10 +201,10 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
     if (!channel) return;
     await run(async () => {
       await api(`${path}/disconnect`, { method: "POST" });
-      // The account is gone; the page shows the next one, or starts over.
+      // The account is gone; back to the list, or start over with none left.
       const rest = lines.filter((line) => line.id !== channel.id);
-      setLines(rest); setDisconnectOpen(false); setPending(null); setHistoryJob(null);
-      if (rest[0]) { applyChannel(rest[0]); void loadHistory(rest[0].id); } else startAdding(client);
+      setLines(rest); setDisconnectOpen(false);
+      if (rest.length) showList(); else startAdding(client);
     });
   }
 
@@ -213,15 +216,29 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
   const canSaveManual = agentId && accountId.trim() && (accessToken.trim() || channel?.has_access_token) && !busy;
   const dirty = Boolean(channel && (channel.agent_id !== agentId || (channel.label || "") !== label.trim()));
   const nameOf = (line: SocialChannel) => accountName(line, t("social.accountFallback", { n: lines.indexOf(line) + 1 }));
+  const listView = !adding && !channel;
+  const agentNameOf = (line: SocialChannel) => client.agents.find((agent) => agent.id === line.agent_id)?.name || t("clients.detail.noAgent");
+  const rows = lines.map((line) => {
+    const live = line.is_enabled && line.status === "connected";
+    return {
+      id: line.id, title: line.display_name || (line.username ? `@${line.username.replace(/^@/, "")}` : "") || line.external_account_id || nameOf(line), inboxName: nameOf(line),
+      agentName: `${t("clients.detail.colAgent")}: ${agentNameOf(line)}`,
+      state: live ? "connected" as const : "disconnected" as const,
+      stateLabel: t(live ? "social.connected" : line.status === "error" ? "social.error" : line.status === "expired" ? "social.expired" : "social.disconnected"),
+    };
+  });
+  const connectedCount = rows.filter((row) => row.state === "connected").length;
 
   return <div className="page wa-page social-page">
-    <Link href={`/clients/${id}`} className="back-link"><ArrowLeft size={17} /> {t("clients.whatsapp.back", { name: client.name })}</Link>
-    <header className="wa-header"><div className={`wa-mark ${provider}`}><Icon size={26} /></div><div><span>{t("clients.whatsapp.channelOf", { name: client.name })}</span><h1>{t(`social.${provider}.title`)}</h1><p>{t(`social.${provider}.description`)}</p></div>{channel && <div className={`wa-state ${connected ? "connected" : channel.status === "error" ? "error" : "disconnected"}`}>{connected ? <CheckCircle2 size={17} /> : <CircleAlert size={17} />} {t(statusLabel)}</div>}</header>
-    <LineSwitcher lines={lines.map((line) => ({ id: line.id, name: nameOf(line), state: lineState(line) }))} selectedId={selectedId} adding={adding} addLabel={t("social.addAccount")} newLabel={t("social.newAccount")} onSelect={select} onAdd={() => startAdding(client)} />
+    {listView || !lines.length
+      ? <Link href={`/clients/${id}?tab=channels`} className="back-link"><ArrowLeft size={17} /> {t("clients.whatsapp.back", { name: client.name })}</Link>
+      : <button type="button" className="back-link" onClick={showList}><ArrowLeft size={17} /> {t(`social.${provider}.title`)}</button>}
+    <header className="wa-header"><div className={`wa-mark ${provider}`}><Icon size={26} /></div><div><span>{listView ? t("clients.whatsapp.channelOf", { name: client.name }) : `${t(`social.${provider}.title`)} · ${client.name}`}</span><h1>{channel ? accountTitle(channel, nameOf(channel)) : adding ? t("social.newAccount") : t(`social.${provider}.title`)}</h1><p>{t(`social.${provider}.description`)}</p></div>{channel && <div className={`wa-state ${connected ? "connected" : channel.status === "error" ? "error" : "disconnected"}`}>{connected ? <CheckCircle2 size={17} /> : <CircleAlert size={17} />} {t(statusLabel)}</div>}</header>
     {error && <Alert>{error}</Alert>}
+    {listView && <AccountList rows={rows} summary={lines.length === 1 ? t("clients.detail.channelAccountOne") : t("clients.detail.channelAccounts", { count: lines.length, connected: connectedCount })} addLabel={t("clients.detail.addAccount")} openLabel={t("clients.detail.configure")} onOpen={(lineId) => { const line = lines.find((item) => item.id === lineId); if (line) { applyChannel(line); setError(""); setSaved(false); void loadHistory(line.id); } }} onAdd={() => startAdding(client)} />}
     {callbackIssue && <Alert>{t(callbackIssue === "failed" ? "social.authorizationFailed" : callbackIssue === "expired" ? "social.authorizationExpired" : "social.authorizationEmpty")}</Alert>}
     {saved && <p className="social-feedback" role="status"><CheckCircle2 size={16} /> {t("social.saved")}</p>}
-    <div className="wa-layout"><main>
+    {!listView && <div className="wa-layout"><main>
       <section className="wa-panel"><div className="wa-panel-head"><span><Bot size={19} /></span><div><h2>{t("clients.whatsapp.assignedAgent")}</h2><p>{t("clients.whatsapp.assignedAgentCopy")}</p></div></div><div className="wa-agent-row"><label>{t("clients.whatsapp.agentToRespond")}<select value={agentId} onChange={(event) => setAgentId(event.target.value)} disabled={busy || Boolean(pending)}><option value="">{t("clients.whatsapp.selectAgent")}</option>{client.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}{agent.is_active ? "" : t("clients.whatsapp.inactiveSuffix")}</option>)}</select></label><label>{t("social.accountName")}<input value={label} maxLength={80} placeholder={t("social.accountNamePlaceholder")} onChange={(event) => setLabel(event.target.value)} disabled={busy || Boolean(pending)} /></label>{channel && <button className="button secondary" disabled={!agentId || !dirty || busy || Boolean(pending)} onClick={saveDetails}>{t("social.agentSave")}</button>}</div><p className="social-meta">{t("social.accountNameHint")}</p>{!client.agents.length && <Alert>{t("clients.whatsapp.needsAgent")}</Alert>}</section>
       <section className="wa-panel"><div className="wa-panel-head"><span><Plug size={19} /></span><div><h2>{t("social.accountTitle")}</h2><p>{t("social.accountCopy")}</p></div></div>
         <p>{t(`social.${provider}.requirement`)}</p>
@@ -242,6 +259,6 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
       {channel && (connected || historyJob) && <section className="wa-panel"><div className="wa-panel-head"><span><History size={19} /></span><div><h2>{t("social.historyTitle")}</h2><p>{t("social.importHistoryCopy")}</p></div></div>{provider === "instagram" && <p className="social-meta">{t("social.instagramHistoryLimit")}</p>}{historyJob && <div className="social-history-status" role="status"><strong>{t(historyJob.status === "pending" ? "social.historyPending" : historyJob.status === "processing" ? "social.historyProcessing" : historyJob.status === "completed" ? "social.historyCompleted" : "social.historyFailed")}</strong><small>{t("social.historyCounts", { conversations: historyJob.conversations_count, messages: historyJob.messages_count })}</small></div>}{historyJob?.last_error && <Alert>{historyJob.last_error}</Alert>}{historyPollFailed && <p className="social-meta" role="status">{t("social.historyPollError")}</p>}<div className="wa-actions"><button className="button secondary" onClick={importHistory} disabled={!connected || importing || busy}>{importing ? <LoaderCircle className="spin" size={17} /> : <History size={17} />} {t("social.importHistory")}</button></div></section>}
       {manualAvailable && <details className="wa-panel social-manual"><summary><KeyRound size={19} /> {t("social.manualTitle")}<ChevronDown className="social-disclosure" size={16} /></summary><p>{t("social.manualCopy")} <a href={guideUrl} target="_blank" rel="noreferrer">{t("social.guide")}</a>.</p><div className="wa-cloud-form"><label>{t(provider === "instagram" ? "social.instagramAppId" : "social.metaAppId")}<input value={appId} onChange={(event) => setAppId(event.target.value)} disabled={busy} autoComplete="off" /></label><label>{t(provider === "instagram" ? "social.accountId" : "social.pageId")}<input value={accountId} onChange={(event) => setAccountId(event.target.value)} disabled={busy} autoComplete="off" /></label><label>{t("social.accessToken")}<input type="password" value={accessToken} onChange={(event) => setAccessToken(event.target.value)} placeholder={channel?.has_access_token ? t("social.secretSaved") : ""} disabled={busy} autoComplete="new-password" /></label><label>{t("social.appSecret")}<input type="password" value={appSecret} onChange={(event) => setAppSecret(event.target.value)} placeholder={channel?.has_app_secret ? t("social.secretSaved") : ""} disabled={busy} autoComplete="new-password" /></label></div><label className="switch-row social-human-agent"><span><strong>{t("social.humanAgent")}</strong><small>{t("social.humanAgentCopy")}</small></span><input type="checkbox" checked={humanAgent} onChange={(event) => setHumanAgent(event.target.checked)} disabled={busy} /></label><div className="wa-actions"><button className="button primary" onClick={saveManual} disabled={!canSaveManual}>{t("social.saveConnect")}</button></div></details>}
       {manualAvailable && channel && <section className="wa-panel"><div className="wa-panel-head"><span><Webhook size={19} /></span><div><h2>{t("social.webhookTitle")}</h2><p>{t("social.webhookCopy")}</p></div></div><div className="social-webhook-fields"><label>{t("social.webhookUrl")}<input readOnly value={channel.webhook_url} onFocus={(event) => event.currentTarget.select()} /></label><label>{t("social.verifyToken")}<input readOnly value={channel.webhook_verify_token || ""} onFocus={(event) => event.currentTarget.select()} /></label></div></section>}
-    </main><aside className="wa-side"><ShieldCheck size={22} /><h3>{t("social.rulesTitle")}</h3><p>{t("social.rulesCopy")}</p><hr /><h3>{t("social.historyTitle")}</h3><p>{t("social.historyCopy")}</p></aside></div>
+    </main><aside className="wa-side"><ShieldCheck size={22} /><h3>{t("social.rulesTitle")}</h3><p>{t("social.rulesCopy")}</p><hr /><h3>{t("social.historyTitle")}</h3><p>{t("social.historyCopy")}</p></aside></div>}
   </div>;
 }

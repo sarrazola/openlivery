@@ -65,6 +65,11 @@ export default function ClientDetailPage() {
   const [business, setBusiness] = useState<IndustryValue>({ industry: "", businessType: "", custom: "" });
   const [timezone, setTimezone] = useState("UTC");
   const [tab, setTab] = useState<Tab>("details");
+  // A channel page sends its "back" here with the tab it came from.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    if (wanted && (["details", "agents", "channels", "inbox", "teams", "tags", "templates", "portal"] as const).some((item) => item === wanted)) setTab(wanted as Tab);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [logoVersion, setLogoVersion] = useState(0);
   const logoRef = useRef<HTMLInputElement>(null);
