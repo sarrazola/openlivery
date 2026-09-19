@@ -329,16 +329,48 @@ def test_late_refresh_cannot_disconnect_a_new_authorization(channel, authenticat
         assert decrypt_secret(db.get(WhatsAppCloudChannel, channel).encrypted_access_token) == "new-authorization"
 
 
-def test_refresh_requires_ownership_and_coexistence(channel, authenticated_client, monkeypatch):
-    graph = AsyncMock()
+def test_refresh_requires_ownership_and_rereads_the_profile_of_any_number(channel, authenticated_client, monkeypatch):
+    graph = AsyncMock(return_value=httpx.Response(200, json={
+        "id": "111", "is_on_biz_app": False, "platform_type": "CLOUD_API",
+        "display_phone_number": "+1 555 078 3881", "verified_name": "Bistro Renamed"}))
     monkeypatch.setattr(coex, "_graph_request", graph)
     assert authenticated_client.post(f"/api/whatsapp-cloud/channels/{uuid.uuid4()}/refresh").status_code == 404
+    graph.assert_not_called()
     with TestingSession() as db:
         row = db.get(WhatsAppCloudChannel, channel)
         row.coexistence = False
         db.commit()
-    assert authenticated_client.post(refresh_url(channel)).status_code == 409
-    graph.assert_not_called()
+    # A number that is not shared with the WhatsApp Business app is not
+    # judged by that app's registration; only its profile is refreshed.
+    fetched = authenticated_client.post(refresh_url(channel))
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["status"] == "connected"
+    assert fetched.json()["display_name"] == "Bistro Renamed"
+    assert fetched.json()["phone_number"] == "+1 555 078 3881"
+
+
+def test_history_export_errors_are_counted_not_fatal(channel):
+    with TestingSession() as db:
+        batch = value(history=[{"metadata": {"phase": 2, "chunk_order": 1, "progress": 60},
+            "errors": [{"code": 2593107, "message": "thread not exportable"}],
+            "threads": [{"id": PERSON, "messages": [raw("kept")]}]}])
+        receive(db, channel, "history", batch)
+        asyncio.run(coex.process_pending(db))
+        state = db.get(WhatsAppCloudChannel, channel).coexistence_sync["history"]
+        assert state["status"] == "syncing" and state["progress"] == 60 and state["errors"] == 1
+        assert db.scalars(select(Message).where(Message.kind == "message")).all()
+
+
+def test_name_update_applies_an_approved_display_name(channel):
+    with TestingSession() as db:
+        row = db.get(WhatsAppCloudChannel, channel)
+        rejected = {"display_phone_number": BUSINESS, "decision": "REJECTED", "requested_verified_name": "Nope"}
+        assert coex.accept_change(db, row, "phone_number_name_update", rejected, waba_id="waba-1") is False
+        other = {"display_phone_number": "19990000000", "decision": "APPROVED", "requested_verified_name": "Other"}
+        assert coex.accept_change(db, row, "phone_number_name_update", other, waba_id="waba-1") is False
+        approved = {"display_phone_number": BUSINESS, "decision": "APPROVED", "requested_verified_name": "Bistro Nuevo"}
+        assert coex.accept_change(db, row, "phone_number_name_update", approved, waba_id="waba-1") is True
+        assert db.get(WhatsAppCloudChannel, channel).display_name == "Bistro Nuevo"
 
 
 def test_import_query_count_does_not_grow_per_message(channel):

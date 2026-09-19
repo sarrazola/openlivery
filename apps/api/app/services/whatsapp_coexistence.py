@@ -28,7 +28,7 @@ from .whatsapp_cloud import _graph_request, _graph_url, fetch_media
 from .whatsapp_identity import is_user_id, peer_id, resolve_peer_contact, user_id
 
 logger = logging.getLogger(__name__)
-FIELDS = frozenset({"history", "smb_app_state_sync", "smb_message_echoes", "account_update"})
+FIELDS = frozenset({"history", "smb_app_state_sync", "smb_message_echoes", "account_update", "phone_number_name_update"})
 _task = None
 _scope_runner = None
 
@@ -198,9 +198,10 @@ def mark_disconnected(channel, *, offboarded: bool, message: str):
 
 
 async def refresh_connection(db, channel):
-    """Reconcile with Meta without registering, disconnecting, or sending anything."""
-    if not channel.coexistence:
-        raise HTTPException(status_code=409, detail="Status refresh is available for WhatsApp Business app connections.")
+    """Reconcile with Meta without registering, disconnecting, or sending
+    anything: the number's display name and formatting as Meta has them now,
+    and, for a number shared with the WhatsApp Business app, whether it is
+    still connected there."""
     if not channel.encrypted_access_token or not channel.phone_number_id:
         if channel.is_enabled or channel.status == "connected":
             mark_disconnected(channel, offboarded=False, message="WhatsApp authorization is missing. Connect the account again.")
@@ -211,7 +212,7 @@ async def refresh_connection(db, channel):
     access_token = decrypt_secret(channel.encrypted_access_token)
     db.rollback()
     response = await _graph_request("GET", _graph_url(expected[0]), access_token,
-        params={"fields": "id,is_on_biz_app,platform_type"})
+        params={"fields": "id,is_on_biz_app,platform_type,display_phone_number,verified_name"})
     try:
         data = response.json()
     except ValueError as exc:
@@ -235,14 +236,35 @@ async def refresh_connection(db, channel):
         return
     if inaccessible:
         mark_disconnected(current, offboarded=False, message="WhatsApp authorization is no longer available. Connect the account again.")
-    elif not data["is_on_biz_app"] or data["platform_type"] != "CLOUD_API":
+    elif current.coexistence and (not data["is_on_biz_app"] or data["platform_type"] != "CLOUD_API"):
         mark_disconnected(current, offboarded=True, message="WhatsApp Business disconnected this number. Connect it again to resume.")
+    if not inaccessible:
+        current.display_name = (data.get("verified_name") or current.display_name or None)
+        current.phone_number = (data.get("display_phone_number") or current.phone_number or None)
     current.coexistence_sync = {**(current.coexistence_sync or {}), "status_checked_at": now_utc().isoformat()}
     db.commit()
 
 
+def accept_name_update(db, channel, value: dict) -> bool:
+    """Meta reviews a number's display name out of band and reports the
+    outcome here, for any Cloud API number; an approved name replaces the one
+    captured when the number was connected."""
+    phone = normalize_phone(value.get("display_phone_number"))
+    if phone and channel.phone_number and phone != normalize_phone(channel.phone_number):
+        return False
+    name = str(value.get("requested_verified_name") or "").strip()
+    if value.get("decision") != "APPROVED" or not name:
+        return False
+    channel.display_name = name[:180]
+    channel.updated_at = now_utc()
+    db.commit()
+    return True
+
+
 def accept_change(db, channel, field: str, value: dict, *, waba_id: str = "") -> bool:
     """Caller must verify the signature. Failure to commit must cause a retry."""
+    if field == "phone_number_name_update":
+        return accept_name_update(db, channel, value)
     if field not in FIELDS or not channel.coexistence:
         return False
     delivered = (value.get("metadata") or {}).get("phone_number_id")
@@ -373,10 +395,17 @@ async def process_pending(db, *, limit=2, batch_size=100):
                 done = item.cursor >= len(rows)
                 if done:
                     for batch in value.get("history", []):
-                        for error in batch.get("errors", []):
-                            sync_state(db, channel, "history", status="declined" if error.get("code") == 2593109 else "error")
+                        errors = batch.get("errors") or []
+                        if any(error.get("code") == 2593109 for error in errors):
+                            sync_state(db, channel, "history", status="declined")
+                            continue
+                        if errors:
+                            # A thread Meta could not export is counted, not read as the
+                            # whole import failing: the other batches keep arriving.
+                            prior_errors = (channel.coexistence_sync or {}).get("history", {}).get("errors", 0)
+                            channel = sync_state(db, channel, "history", errors=prior_errors + len(errors))
                         progress = (batch.get("metadata") or {}).get("progress")
-                        if isinstance(progress, int) and not batch.get("errors"):
+                        if isinstance(progress, int):
                             prior = (channel.coexistence_sync or {}).get("history", {}).get("progress", 0)
                             progress = min(100, max(prior, progress))
                             other_pending = db.scalar(select(WhatsAppCoexistenceEvent.id).where(

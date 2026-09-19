@@ -304,9 +304,20 @@ def test_receipts_land_on_the_outbound_message(authenticated_client: TestClient,
     assert failed["delivery_status"] == "failed" and "131047" in failed["delivery_error"]
 
 
-def test_webhook_failed_status_surfaces_delivery_error(authenticated_client: TestClient):
+def test_webhook_failed_status_stays_off_the_channel(authenticated_client: TestClient):
+    """A message's delivery failure is the message's own; the channel keeps
+    reading as healthy, and a value an earlier release stored there is dropped."""
+    import uuid
+
+    from conftest import TestingSession
+
+    from app.models import WhatsAppCloudChannel
+
     client = authenticated_client
     customer, _agent, channel = _setup_channel(client)
+    with TestingSession() as db:
+        db.get(WhatsAppCloudChannel, uuid.UUID(channel["id"])).last_error = "Meta could not deliver a message (131047: old)"
+        db.commit()
     payload = {
         "object": "whatsapp_business_account",
         "entry": [
@@ -336,8 +347,7 @@ def test_webhook_failed_status_surfaces_delivery_error(authenticated_client: Tes
     }
     assert _post_signed(client, channel["id"], payload).status_code == 200
     detail = client.get(f"/api/whatsapp-cloud/channels/{customer['id']}").json()
-    assert "131053" in (detail["last_error"] or "")
-    assert "ogg/opus" in detail["last_error"]
+    assert detail["last_error"] is None
 
 
 def test_transcoded_voice_note_uploads_with_ogg_filename(monkeypatch):

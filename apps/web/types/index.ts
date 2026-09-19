@@ -249,9 +249,9 @@ export type WhatsAppCloudChannel = {
   coexistence_sync: {
     started_at?: string;
     offboarded_at?: string;
-    contacts?: { status: string; request_id?: string; error?: string };
+    contacts?: { status: string; request_id?: string; error?: string; last_received_at?: string };
     media?: { status: string; error?: string };
-    history?: { status: string; progress?: number; request_id?: string; error?: string };
+    history?: { status: string; progress?: number; errors?: number; request_id?: string; error?: string };
   };
   has_access_token: boolean;
   has_app_secret: boolean;

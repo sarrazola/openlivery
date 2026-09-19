@@ -216,18 +216,14 @@ def _apply_delivery_status(db: Session, channel: WhatsAppCloudChannel, status: d
 
 
 def _record_status(db: Session, channel: WhatsAppCloudChannel, status: dict) -> None:
-    """Keep each outbound message's delivery state, and surface failures on
-    the channel too, so a message Meta accepted (wamid returned) but dropped
-    at delivery leaves a trace of the reason."""
+    """Keep each outbound message's delivery state. A delivery failure is that
+    message's problem and stays on it: the channel's ``last_error`` is for the
+    number itself (authorization, registration), and one bad template must not
+    read as a broken number until the next send succeeds."""
     state = status.get("status")
     if state in ("sent", "delivered", "read"):
         _apply_delivery_status(db, channel, status, None)
-        # A delivery error is transient state: clear it once traffic flows again
-        # so the channel UI stops showing a stale failure.
-        if channel.last_error and channel.last_error.startswith("Meta could not deliver"):
-            channel.last_error = None
-            channel.updated_at = now_utc()
-            db.commit()
+        _clear_legacy_delivery_error(db, channel)
         return
     if state != "failed":
         return
@@ -242,9 +238,16 @@ def _record_status(db: Session, channel: WhatsAppCloudChannel, status: dict) -> 
         status.get("id") or "unknown message",
         summary,
     )
-    channel.last_error = f"Meta could not deliver a message ({summary})"[:400]
-    channel.updated_at = now_utc()
-    db.commit()
+    _clear_legacy_delivery_error(db, channel)
+
+
+def _clear_legacy_delivery_error(db: Session, channel: WhatsAppCloudChannel) -> None:
+    """Earlier releases copied a message's delivery failure onto the channel;
+    any such value still stored is dropped as soon as the number sees traffic."""
+    if channel.last_error and channel.last_error.startswith("Meta could not deliver"):
+        channel.last_error = None
+        channel.updated_at = now_utc()
+        db.commit()
 
 
 async def _handle_message(
