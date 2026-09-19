@@ -253,6 +253,8 @@ export type WhatsAppCloudChannel = {
     media?: { status: string; error?: string };
     history?: { status: string; progress?: number; errors?: number; request_id?: string; error?: string };
   };
+  quality_rating: string | null;
+  messaging_limit: string | null;
   has_access_token: boolean;
   has_app_secret: boolean;
   webhook_url: string;

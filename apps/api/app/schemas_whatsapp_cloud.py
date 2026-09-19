@@ -26,6 +26,8 @@ class WhatsAppCloudChannelOut(BaseModel):
     waba_id: str | None
     coexistence: bool = False
     coexistence_sync: dict = Field(default_factory=dict)
+    quality_rating: str | None = None
+    messaging_limit: str | None = None
     has_access_token: bool
     has_app_secret: bool
     webhook_url: str

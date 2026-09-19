@@ -332,7 +332,8 @@ def test_late_refresh_cannot_disconnect_a_new_authorization(channel, authenticat
 def test_refresh_requires_ownership_and_rereads_the_profile_of_any_number(channel, authenticated_client, monkeypatch):
     graph = AsyncMock(return_value=httpx.Response(200, json={
         "id": "111", "is_on_biz_app": False, "platform_type": "CLOUD_API",
-        "display_phone_number": "+1 555 078 3881", "verified_name": "Bistro Renamed"}))
+        "display_phone_number": "+1 555 078 3881", "verified_name": "Bistro Renamed",
+        "quality_rating": "GREEN", "messaging_limit_tier": "TIER_1K"}))
     monkeypatch.setattr(coex, "_graph_request", graph)
     assert authenticated_client.post(f"/api/whatsapp-cloud/channels/{uuid.uuid4()}/refresh").status_code == 404
     graph.assert_not_called()
@@ -347,6 +348,40 @@ def test_refresh_requires_ownership_and_rereads_the_profile_of_any_number(channe
     assert fetched.json()["status"] == "connected"
     assert fetched.json()["display_name"] == "Bistro Renamed"
     assert fetched.json()["phone_number"] == "+1 555 078 3881"
+    assert fetched.json()["quality_rating"] == "GREEN" and fetched.json()["messaging_limit"] == "TIER_1K"
+
+
+def test_quality_update_keeps_the_limit_and_flags(channel):
+    with TestingSession() as db:
+        row = db.get(WhatsAppCloudChannel, channel)
+        upgrade = {"display_phone_number": BUSINESS, "event": "UPGRADE", "current_limit": "TIER_10K"}
+        assert coex.accept_change(db, row, "phone_number_quality_update", upgrade, waba_id="waba-1") is True
+        row = db.get(WhatsAppCloudChannel, channel)
+        assert row.messaging_limit == "TIER_10K" and row.quality_rating is None
+        flagged = {"display_phone_number": BUSINESS, "event": "FLAGGED", "current_limit": "TIER_10K"}
+        assert coex.accept_change(db, row, "phone_number_quality_update", flagged, waba_id="waba-1") is True
+        assert db.get(WhatsAppCloudChannel, channel).quality_rating == "RED"
+        other = {"display_phone_number": "19990000000", "event": "UNFLAGGED", "current_limit": "TIER_50"}
+        assert coex.accept_change(db, row, "phone_number_quality_update", other, waba_id="waba-1") is False
+        assert db.get(WhatsAppCloudChannel, channel).messaging_limit == "TIER_10K"
+
+
+def test_account_restriction_lands_on_the_channel_for_any_number(channel):
+    with TestingSession() as db:
+        row = db.get(WhatsAppCloudChannel, channel)
+        row.coexistence = False
+        row.waba_id = "waba-1"
+        db.commit()
+        restriction = {"event": "ACCOUNT_RESTRICTION", "phone_number": BUSINESS,
+            "restriction_info": [{"restriction_type": "RESTRICTED_BIZ_INITIATED_MESSAGING", "expiration": "2026-10-01T00:00:00+0000"}]}
+        assert coex.accept_change(db, row, "account_update", restriction, waba_id="waba-1") is True
+        row = db.get(WhatsAppCloudChannel, channel)
+        assert row.status == "connected" and row.is_enabled
+        assert "restricted" in row.last_error and "biz initiated messaging" in row.last_error and "2026-10-01" in row.last_error
+        # Another WABA's event never lands here.
+        assert coex.accept_change(db, row, "account_update", restriction, waba_id="waba-2") is False
+        # Offboarding stays a Business app matter: a plain API number ignores it.
+        assert coex.accept_change(db, row, "account_update", {"event": "PARTNER_REMOVED"}, waba_id="waba-1") is False
 
 
 def test_history_export_errors_are_counted_not_fatal(channel):

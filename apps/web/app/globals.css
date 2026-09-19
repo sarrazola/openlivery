@@ -1416,6 +1416,9 @@ textarea { line-height: 1.55; }
 .wa-phone strong { color: var(--ink); font-size: 16px; }
 .wa-phone em { color: var(--muted); font-size: 12px; font-style: normal; }
 .wa-ready { display: flex; align-items: center; gap: 7px; color: var(--green-text); font-size: 12px; font-weight: 600; }
+/* Meta's quality rating and messaging limit, under the connected number. */
+.wa-quality { margin: 10px 0 0; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
+.wa-quality strong { color: var(--ink-2); font-weight: 600; }
 .wa-actions { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
 /* A channel's accounts, one row each: the number is what an operator scans
    for, so it leads; then who answers and the state. The channel page shows

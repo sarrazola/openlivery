@@ -28,7 +28,13 @@ from .whatsapp_cloud import _graph_request, _graph_url, fetch_media
 from .whatsapp_identity import is_user_id, peer_id, resolve_peer_contact, user_id
 
 logger = logging.getLogger(__name__)
-FIELDS = frozenset({"history", "smb_app_state_sync", "smb_message_echoes", "account_update", "phone_number_name_update"})
+FIELDS = frozenset({
+    "history", "smb_app_state_sync", "smb_message_echoes", "account_update",
+    "phone_number_name_update", "phone_number_quality_update",
+})
+# account_update events that concern any Cloud API number, not only one
+# shared with the WhatsApp Business app: Meta limiting or disabling the account.
+RESTRICTION_EVENTS = frozenset({"ACCOUNT_RESTRICTION", "ACCOUNT_VIOLATION", "DISABLED_UPDATE"})
 _task = None
 _scope_runner = None
 
@@ -212,7 +218,7 @@ async def refresh_connection(db, channel):
     access_token = decrypt_secret(channel.encrypted_access_token)
     db.rollback()
     response = await _graph_request("GET", _graph_url(expected[0]), access_token,
-        params={"fields": "id,is_on_biz_app,platform_type,display_phone_number,verified_name"})
+        params={"fields": "id,is_on_biz_app,platform_type,display_phone_number,verified_name,quality_rating,messaging_limit_tier"})
     try:
         data = response.json()
     except ValueError as exc:
@@ -241,6 +247,11 @@ async def refresh_connection(db, channel):
     if not inaccessible:
         current.display_name = (data.get("verified_name") or current.display_name or None)
         current.phone_number = (data.get("display_phone_number") or current.phone_number or None)
+        rating = str(data.get("quality_rating") or "").upper()
+        if rating and rating != "NA":
+            current.quality_rating = rating[:20]
+        if data.get("messaging_limit_tier"):
+            current.messaging_limit = str(data["messaging_limit_tier"]).upper()[:30]
     current.coexistence_sync = {**(current.coexistence_sync or {}), "status_checked_at": now_utc().isoformat()}
     db.commit()
 
@@ -261,10 +272,72 @@ def accept_name_update(db, channel, value: dict) -> bool:
     return True
 
 
+def accept_quality_update(db, channel, value: dict) -> bool:
+    """Meta reports the number's messaging limit and whether its quality was
+    flagged. The event names the outcome, not the rating; a refresh reads the
+    exact rating, so only a flag or its removal moves the stored one."""
+    phone = normalize_phone(value.get("display_phone_number"))
+    if phone and channel.phone_number and phone != normalize_phone(channel.phone_number):
+        return False
+    event = str(value.get("event") or "").upper()
+    limit = str(value.get("current_limit") or "").strip().upper()
+    if limit:
+        channel.messaging_limit = limit[:30]
+    if event == "FLAGGED":
+        channel.quality_rating = "RED"
+    elif event == "UNFLAGGED":
+        channel.quality_rating = "GREEN"
+    channel.updated_at = now_utc()
+    db.commit()
+    return True
+
+
+def accept_account_restriction(db, channel, value: dict, *, waba_id: str) -> bool:
+    """Meta limited or disabled the WhatsApp account: that is the number's own
+    health, so it is what the channel's last_error is for."""
+    waba_id = account_event_waba_id(value, waba_id)
+    if not waba_id or waba_id != channel.waba_id:
+        return False
+    phone = normalize_phone(value.get("phone_number"))
+    if phone and channel.phone_number and phone != normalize_phone(channel.phone_number):
+        return False
+    event = str(value.get("event") or "").upper()
+    if event == "ACCOUNT_RESTRICTION":
+        kinds = ", ".join(
+            str(item.get("restriction_type") or "").replace("RESTRICTED_", "").replace("_", " ").lower()
+            for item in value.get("restriction_info") or [] if isinstance(item, dict) and item.get("restriction_type")
+        )
+        until = next((str(item.get("expiration")) for item in value.get("restriction_info") or []
+                      if isinstance(item, dict) and item.get("expiration")), "")
+        message = "Meta restricted this WhatsApp account"
+        if kinds:
+            message += f" ({kinds})"
+        if until:
+            message += f" until {until}"
+    elif event == "ACCOUNT_VIOLATION":
+        kind = str((value.get("violation_info") or {}).get("violation_type") or "").replace("_", " ").lower()
+        message = "Meta reported a policy violation on this WhatsApp account"
+        if kind:
+            message += f" ({kind})"
+    else:
+        state = str((value.get("ban_info") or {}).get("waba_ban_state") or "").replace("_", " ").lower()
+        message = "Meta disabled this WhatsApp account"
+        if state:
+            message += f" ({state})"
+    channel.last_error = f"{message}. Check WhatsApp Manager for the details."[:400]
+    channel.updated_at = now_utc()
+    db.commit()
+    return True
+
+
 def accept_change(db, channel, field: str, value: dict, *, waba_id: str = "") -> bool:
     """Caller must verify the signature. Failure to commit must cause a retry."""
     if field == "phone_number_name_update":
         return accept_name_update(db, channel, value)
+    if field == "phone_number_quality_update":
+        return accept_quality_update(db, channel, value)
+    if field == "account_update" and str(value.get("event") or "").upper() in RESTRICTION_EVENTS:
+        return accept_account_restriction(db, channel, value, waba_id=waba_id)
     if field not in FIELDS or not channel.coexistence:
         return False
     delivered = (value.get("metadata") or {}).get("phone_number_id")

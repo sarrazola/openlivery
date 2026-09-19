@@ -65,6 +65,32 @@ export function requestedLine(): { line: string | null; adding: boolean } {
   return { line: params.get("line"), adding: params.has("new") };
 }
 
+type Translate = (key: I18nKey, vars?: Record<string, string | number>) => string;
+
+/** The state dot tone for Meta's quality rating of a WhatsApp number. */
+export function qualityTone(rating?: string | null): "connected" | "pending" | "disconnected" | "off" {
+  const value = (rating || "").toUpperCase();
+  return value === "GREEN" ? "connected" : value === "YELLOW" ? "pending" : value === "RED" ? "disconnected" : "off";
+}
+
+export function qualityLabel(rating: string | null | undefined, t: Translate): string {
+  const value = (rating || "").toUpperCase();
+  return value === "GREEN" ? t("clients.whatsappCloud.qualityGreen")
+    : value === "YELLOW" ? t("clients.whatsappCloud.qualityYellow")
+    : value === "RED" ? t("clients.whatsappCloud.qualityRed") : t("clients.whatsappCloud.qualityUnknown");
+}
+
+/** Meta's messaging limit tier as a sentence: business-initiated
+ * conversations the number may open in 24 hours. */
+export function messagingLimitLabel(tier: string | null | undefined, t: Translate): string | null {
+  const counts: Record<string, number> = { TIER_50: 50, TIER_250: 250, TIER_1K: 1000, TIER_10K: 10000, TIER_100K: 100000 };
+  const value = (tier || "").toUpperCase();
+  if (!value) return null;
+  if (value === "TIER_UNLIMITED") return t("clients.whatsappCloud.limitUnlimited");
+  const count = counts[value];
+  return count ? t("clients.whatsappCloud.limitLabel", { n: count.toLocaleString() }) : null;
+}
+
 /** Keep the open account in the address, so a reload or a return from a
  * provider's authorization lands on it; `null` while a new one is set up. */
 export function rememberLine(id: string | null) {

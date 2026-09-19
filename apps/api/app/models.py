@@ -289,6 +289,11 @@ class WhatsAppCloudChannel(Base):
     waba_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     coexistence: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     coexistence_sync: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+    # Meta's view of the number: quality rating (GREEN, YELLOW, RED) and the
+    # messaging limit tier (TIER_1K...). Read on refresh, kept current by the
+    # phone_number_quality_update webhook.
+    quality_rating: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    messaging_limit: Mapped[str | None] = mapped_column(String(30), nullable=True)
     encrypted_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     encrypted_app_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Token the owner pastes into their Meta app's webhook config; it must be
