@@ -75,6 +75,18 @@ pytest tests/test_flows.py::test_register_login_logout_and_me -v
 
 Any schema change requires a new Alembic migration — Docker runs `alembic upgrade head` on backend start, so a change without a migration will break the containerized stack. Generate one after editing the models, review the generated file, then apply it.
 
+A migration runs on installs that already hold data and are serving traffic, so a few rules apply, each enforced by `apps/api/tests/test_migration_conventions.py`:
+
+- **One file per revision, named after it, and a single head.** If `main` gained a migration while you worked, rebase yours onto it. Watch for stray copies of a file in `migrations/versions/`.
+- **A revision id of 32 characters at most.** That is what Alembic's version table stores.
+- **No schema names.** Leave tables unqualified and do not set `search_path` or create extensions; a migration runs under the `search_path` its deployment gives it.
+- **A `downgrade()` that works.** It is the way back when a release is reverted.
+- **`conversations` before the channel tables.** A reply locks them in that order, and a migration that takes them the other way round deadlocks against live traffic.
+- **Removing data is a written decision.** Dropping a table or column, changing a column type or deleting rows needs a `# contract: reviewed` line saying why the previous release keeps working, or what the operator must do first. Prefer removing in a later release than the one that stops reading it.
+- **A merged migration is never edited.** Installs that ran it will not run it again; add a new revision.
+
+Every pull request runs the `Tests` workflow: the API suite, the migrations applied to an empty database and the newest ones reverted and applied again, the web lint and build, and the bridge's `go vet` and `go test`.
+
 ## Conventions
 
 All code, identifiers, comments, commit messages and docs are written in **English**, always. The only thing localized is the end-user UI, through the typed i18n system in `apps/web/lib/i18n` (English default, Spanish for now). Never introduce non-English in code or docs — put user-facing copy behind i18n keys instead.

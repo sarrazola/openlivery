@@ -76,6 +76,18 @@ pytest tests/test_flows.py::test_register_login_logout_and_me -v
 
 Cualquier cambio de esquema requiere una nueva migración de Alembic — Docker ejecuta `alembic upgrade head` al arrancar el backend, así que un cambio sin migración romperá el stack en contenedores. Genera una tras editar los modelos, revisa el archivo generado y luego aplícala.
 
+Una migración corre en instalaciones que ya tienen datos y están atendiendo tráfico, así que aplican algunas reglas, cada una verificada por `apps/api/tests/test_migration_conventions.py`:
+
+- **Un archivo por revisión, con su mismo nombre, y una sola cabeza.** Si `main` ganó una migración mientras trabajabas, rebasa la tuya sobre ella. Cuidado con copias sueltas de un archivo en `migrations/versions/`.
+- **Un id de revisión de 32 caracteres como máximo.** Es lo que guarda la tabla de versiones de Alembic.
+- **Sin nombres de esquema.** Deja las tablas sin calificar y no fijes `search_path` ni crees extensiones; una migración corre bajo el `search_path` que le dé su despliegue.
+- **Un `downgrade()` que funcione.** Es el camino de vuelta cuando se revierte una versión.
+- **`conversations` antes que las tablas de canales.** Una respuesta las bloquea en ese orden, y una migración que las tome al revés entra en deadlock con el tráfico en vivo.
+- **Borrar datos es una decisión escrita.** Eliminar una tabla o columna, cambiar el tipo de una columna o borrar filas exige una línea `# contract: reviewed` que diga por qué la versión anterior sigue funcionando, o qué debe hacer antes quien opera la instalación. Es preferible borrar en una versión posterior a la que deja de leer el dato.
+- **Una migración ya integrada no se edita.** Las instalaciones que la corrieron no la volverán a correr; agrega una revisión nueva.
+
+Cada pull request ejecuta el workflow `Tests`: la suite del API, las migraciones aplicadas a una base vacía y las más recientes revertidas y aplicadas de nuevo, el lint y el build del web, y el `go vet` y `go test` del puente.
+
 ## Convenciones
 
 Todo el código, los identificadores, los comentarios, los mensajes de commit y la documentación se escriben en **inglés**, siempre. Lo único que se localiza es la interfaz de usuario final, a través del sistema tipado de i18n en `apps/web/lib/i18n` (inglés por defecto, español por ahora). Nunca introduzcas texto que no sea inglés en el código o la documentación — coloca el texto visible para el usuario detrás de claves de i18n.

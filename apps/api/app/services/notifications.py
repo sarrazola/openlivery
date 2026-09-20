@@ -18,8 +18,8 @@ Two providers ship here because neither ties you to a company:
               whatever service you already pay for.
 
 Anything else is ~20 lines: write the function, call :func:`register_provider`
-at startup. Deployments that add one (including our hosted build) do it from
-outside this repository, which is why no vendor is named in here.
+at startup. A deployment that adds one does it from outside this repository,
+which is why no vendor is named in here.
 
 A note worth knowing before you plan around this: on iOS and Android the push
 credentials are bound to the app binary, so a server can only notify an app that

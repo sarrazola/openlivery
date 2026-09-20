@@ -1,0 +1,118 @@
+name: Tests
+
+# The checks the contributing guide asks for, run on every pull request: the
+# API suite, the migrations applied to a real database, the web lint and build,
+# and the bridge's vet and tests. No secrets are used, so it is safe on forks.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      db:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_DB: openlivery_test
+          POSTGRES_USER: openlivery
+          POSTGRES_PASSWORD: openlivery
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U openlivery -d openlivery_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the merged-migrations check compares against the base branch
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+
+      - name: Install
+        run: pip install -q -r requirements.txt
+
+      # A migration that is already on the base branch has run on installs that
+      # will never run it again, so a fix is a new revision, not an edit.
+      - name: Merged migrations are not edited
+        if: github.event_name == 'pull_request'
+        run: |
+          CHANGED=$(git diff --name-only --diff-filter=MRD "origin/${{ github.base_ref }}...HEAD" -- migrations/versions/)
+          if [ -n "$CHANGED" ]; then
+            echo "::error::These migrations are already on ${{ github.base_ref }}; add a new revision instead of editing them:"
+            echo "$CHANGED"
+            exit 1
+          fi
+
+      # The suite builds its tables with create_all, so this is the only place
+      # the migrations themselves run: from nothing to head, then the newest ten
+      # walked back and forward, which is what reverting a release does.
+      - name: Migrations apply, revert and apply again
+        env:
+          DATABASE_URL: postgresql+psycopg://openlivery:openlivery@127.0.0.1:5432/openlivery_migrations
+          PGPASSWORD: openlivery
+        run: |
+          psql -h 127.0.0.1 -U openlivery -d openlivery_test -c "CREATE DATABASE openlivery_migrations"
+          alembic upgrade head
+          alembic downgrade -10
+          alembic upgrade head
+
+      - name: Run the suite
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://openlivery:openlivery@127.0.0.1:5432/openlivery_test
+        run: pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
+  whatsapp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/whatsapp
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/whatsapp/go.mod
+          cache-dependency-path: apps/whatsapp/go.sum
+      - run: go vet ./...
+      - run: go test ./...
