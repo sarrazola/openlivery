@@ -23,10 +23,10 @@ which is why no vendor is named in here.
 
 A note worth knowing before you plan around this: on iOS and Android the push
 credentials are bound to the app binary, so a server can only notify an app that
-was built against its provider. Notifying the official OpenLivery build requires
-that build's own backend; to get push on a self-hosted server you rebuild the
-app under your own identifiers (see apps/mobile/WHITELABEL.md) and register the
-matching provider here.
+was built against its provider. The store build only accepts notifications sent
+with the credentials it was signed with, which belong to whoever published it;
+to get push on your own server you rebuild the app under your own identifiers
+(see apps/mobile/WHITELABEL.md) and register the matching provider here.
 
 Delivery is best-effort by design. The message is already stored and will be
 there when the app next opens, so a failed notification must never fail the
