@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
@@ -129,7 +130,9 @@ def test_reindex_single_document(authenticated_client: TestClient, monkeypatch):
     assert reindexed.json()["indexed_model"] == "qwen/qwen3-embedding-8b"
 
     # Unknown document is a 404, and a provider that returns nothing is a 502.
-    assert client.post(f"/api/agents/{agent_id}/documents/{doc['id'].replace('0', '1')}/reindex").status_code in (404, 422)
+    # A fresh id, not a variation of the real one: swapping digits leaves an id
+    # with none of them unchanged, and the request then finds the document.
+    assert client.post(f"/api/agents/{agent_id}/documents/{uuid.uuid4()}/reindex").status_code in (404, 422)
     monkeypatch.setattr(knowledge_module, "embed_texts", AsyncMock(return_value=None))
     assert client.post(f"/api/agents/{agent_id}/documents/{doc['id']}/reindex").status_code == 502
 
