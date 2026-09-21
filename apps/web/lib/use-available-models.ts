@@ -2,8 +2,8 @@
 
 // Which models this workspace can actually pick, asked from the API: the
 // catalog is what OpenRouter serves right now, and a deployment may narrow it
-// (the cloud does, to what its platform credit covers). While loading or on
-// error the static seed lists apply unchanged.
+// (to what a shared key covers, say). While loading or on error the static
+// seed lists apply unchanged.
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";

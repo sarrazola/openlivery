@@ -8,8 +8,8 @@ channel. Everything here reads core tables (``conversations``, ``messages``,
 
 Written as raw SQL because the metrics lean on window/percentile functions and
 a lateral join that read poorly through the ORM. The session's search_path is
-already the caller's (a tenant schema on the cloud, the single schema on a
-self-hosted install), and every query is scoped to the agency by id.
+already the caller's, whatever the deployment set it to, and every query is
+scoped to the agency by id.
 """
 
 from __future__ import annotations

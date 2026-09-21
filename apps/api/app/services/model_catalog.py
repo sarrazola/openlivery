@@ -15,9 +15,9 @@ the fact like any other reply.
 
 The list is cached in process and refreshed after CATALOG_TTL; a refresh that
 fails keeps serving the last good list, so a hiccup at OpenRouter never empties
-the pickers. A deployment may narrow ``available_models`` (the cloud does, to
-the models its platform credit serves), which is why the frontend asks for it
-instead of trusting a static list.
+the pickers. A deployment may narrow ``available_models`` (to the models a
+shared key serves, say), which is why the frontend asks for it instead of
+trusting a static list.
 """
 
 from __future__ import annotations
