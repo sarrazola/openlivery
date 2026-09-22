@@ -376,7 +376,7 @@ h1, h2, h3, .brand { font-family: var(--font-display); }
 .button.danger { color: var(--red-text); border: 1px solid var(--red-line); background: var(--surface); }
 .align-start { align-self: flex-start; }
 .toolbar { min-height: 58px; margin-bottom: 16px; }
-.toolbar.filters { justify-content: flex-start; gap: 12px; }
+.toolbar.filters { justify-content: flex-start; gap: 12px; flex-wrap: wrap; }
 .search-box { width: min(500px, 100%); height: 44px; border-color: var(--line); border-radius: 7px; background: var(--surface); box-shadow: var(--shadow); }
 .search-box input { font-size: 14px; }
 .result-count { font-size: 13px; }
@@ -1124,8 +1124,8 @@ textarea { line-height: 1.55; }
 .report-custom-range input { width: auto; height: 36px; min-height: 0; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 13px; color: var(--muted); }
 .report-selects { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
 .report-selects select { width: auto; height: 36px; min-height: 0; min-width: 140px; padding: 0 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 13px; cursor: pointer; }
-.report-ranges { display: flex; gap: 6px; }
-.report-ranges button { padding: 7px 14px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 13px; font-weight: 600; cursor: pointer; }
+.report-ranges { display: flex; gap: 6px; flex: 0 0 auto; }
+.report-ranges button { padding: 7px 14px; white-space: nowrap; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 13px; font-weight: 600; cursor: pointer; }
 .report-ranges button.active { color: white; border-color: var(--portal-color, var(--accent)); background: var(--portal-color, var(--accent)); }
 .report-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
 .report-tile { display: flex; flex-direction: column; gap: 4px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
