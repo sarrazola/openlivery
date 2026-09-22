@@ -54,7 +54,7 @@ export function useCannedReplies({ slug, vars, onInsert }: { slug: string; vars:
 
   const reset = useCallback(() => { setQuery(null); setIndex(0); }, []);
 
-  function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (query === null) return;
     if (event.key === "Escape") { setQuery(null); return; }
     if (!matches.length) return;

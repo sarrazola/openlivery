@@ -7,6 +7,7 @@ import { AttachButton, MessageAttachments, PendingAttachment, RecordButton, useF
 import { MediaPanel } from "@/components/media-panel";
 import { DeliveryTicks } from "@/components/delivery-ticks";
 import { RichText } from "@/components/rich-text";
+import { GrowingTextarea } from "@/components/growing-textarea";
 import { QuotedSnippet, ReactionBadge } from "@/components/message-gestures";
 import { ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
@@ -165,7 +166,7 @@ export default function InboxPage() {
     loadFirst({ silent: true });
   }
 
-  const composerRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   async function reply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected || !policy.canReply || busy) return;
@@ -286,7 +287,7 @@ export default function InboxPage() {
             <form className="inbox-composer" onSubmit={reply}>
               <AttachButton onFile={setPendingFile} disabled={!policy.canAttach || busy} title={t("chat.attachFile")} />
               <RecordButton onRecorded={sendAttachment} onError={() => toast.error(t("chat.micDenied"))} disabled={!policy.canRecord || busy} title={t("chat.recordAudio")} titleStop={t("chat.stopRecording")} />
-              <input ref={composerRef} name="content" placeholder={selected.mode === "human" ? t("inbox.composerHuman") : t("inbox.composerLocked")} disabled={!policy.canReply || busy} required={!pendingFile} />
+              <GrowingTextarea ref={composerRef} name="content" placeholder={selected.mode === "human" ? t("inbox.composerHuman") : t("inbox.composerLocked")} disabled={!policy.canReply || busy} required={!pendingFile} />
               <button disabled={!policy.canReply || busy}>{t("inbox.send")}</button>
             </form>
             <MediaPanel open={mediaOpen} onClose={() => setMediaOpen(false)} messages={selected.messages ?? []} urlFor={attachmentUrl} />
