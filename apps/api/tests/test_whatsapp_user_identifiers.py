@@ -31,7 +31,7 @@ def setup(client, monkeypatch):
     completion = AsyncMock(return_value=Completion(text="Welcome!"))
     monkeypatch.setattr(whatsapp_inbound, "run_completion", completion)
     graph = AsyncMock(return_value=httpx.Response(200, json={"messages": [{"id": "wamid.reply"}]}))
-    monkeypatch.setattr(whatsapp_cloud, "_graph_request", graph)
+    monkeypatch.setattr(whatsapp_cloud, "graph_request", graph)
     monkeypatch.setattr(whatsapp_inbound, "notify_needs_human", AsyncMock())
     with TestingSession() as db:
         stored = db.get(WhatsAppCloudChannel, uuid.UUID(channel["id"]))
@@ -96,7 +96,7 @@ def test_identity_transitions_preserve_case_and_phone_takeover(authenticated_cli
 @pytest.mark.parametrize("recipient", [BSUID, "CO.ENT.123456789012345Ab", PHONE])
 def test_all_outbound_types_use_the_correct_address_field(monkeypatch, recipient):
     graph = AsyncMock(return_value=httpx.Response(200, json={"messages": [{"id": "out"}]}))
-    monkeypatch.setattr(whatsapp_cloud, "_graph_request", graph)
+    monkeypatch.setattr(whatsapp_cloud, "graph_request", graph)
     asyncio.run(whatsapp_cloud.send_text("token", "111", recipient, "Hello"))
     asyncio.run(whatsapp_cloud.send_reaction("token", "111", recipient, "wamid.in", "👍"))
     asyncio.run(whatsapp_cloud.send_media("token", "111", recipient, "image", "media-1"))

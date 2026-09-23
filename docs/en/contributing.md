@@ -100,6 +100,27 @@ Every pull request runs the `Tests` workflow: the API suite, the migrations appl
 
 All code, identifiers, comments, commit messages and docs are written in **English**, always. The only thing localized is the end-user UI, through the typed i18n system in `apps/web/lib/i18n` (English default, Spanish for now). Never introduce non-English in code or docs — put user-facing copy behind i18n keys instead.
 
+## Extension points
+
+A deployment that runs OpenLivery for others may need to add to it without
+forking. These are the places that are meant for that, kept stable on purpose;
+changing their shape is a breaking change and gets a line in the changelog:
+
+- `app.database.get_db` (a FastAPI dependency) and `new_session()`: the one
+  place sessions come from, so a substituted session reaches every query.
+- `app.services.providers.register_credential_fallback(fn, available=probe)`:
+  lends a key to an agency that stored none; `credential_source()` says which
+  one would answer, and `GET /api/providers` reports it as `source`.
+- `app.services.usage.register_usage_hook(fn)`: sees every usage record as it
+  is written, inside the caller's session; it cannot fail the reply.
+- `app.services.notifications.register_provider(name, fn)`: delivers push
+  notifications; `PUSH_PROVIDER` selects one.
+- `apps/web/lib/extensions/agent-tools.tsx`: keeps deployment-managed tools out
+  of the agent editor's custom list and renders a section under it. Replaced at
+  build time.
+- `NEXT_PUBLIC_EXTRA_NAV`, `NEXT_PUBLIC_PUBLIC_PATHS`, `NEXT_PUBLIC_COMMUNITY_LINKS`:
+  build-time hooks of the web shell.
+
 ## Command reference
 
 | Service | Command | What it does |

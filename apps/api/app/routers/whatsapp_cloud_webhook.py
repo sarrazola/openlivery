@@ -57,7 +57,7 @@ def verify_webhook(
     return PlainTextResponse(hub_challenge)
 
 
-def _parse_message(message: dict, contacts: dict[str, str]) -> InboundMessage | None:
+def parse_message(message: dict, contacts: dict[str, str]) -> InboundMessage | None:
     """Map one Cloud API message to the shared inbound shape; None to skip."""
     kind = message.get("type")
     sender = peer_id(message) or ""
@@ -88,7 +88,7 @@ def _parse_message(message: dict, contacts: dict[str, str]) -> InboundMessage | 
     return None
 
 
-def _apply_incoming_reaction(db: Session, channel: WhatsAppCloudChannel, message: dict) -> None:
+def apply_incoming_reaction(db: Session, channel: WhatsAppCloudChannel, message: dict) -> None:
     """The customer reacted to a message (or removed the reaction)."""
     reaction = message.get("reaction") or {}
     target_id = reaction.get("message_id")
@@ -167,16 +167,16 @@ async def receive_webhook(channel_id: uuid.UUID, request: Request, db: Session =
                     continue
             access_token = decrypt_secret(channel.encrypted_access_token) if channel.encrypted_access_token else None
             for status in value.get("statuses") or []:
-                _record_status(db, channel, status)
+                record_status(db, channel, status)
             contacts = contact_names(value.get("contacts") or [])
             for raw_message in value.get("messages") or []:
                 if raw_message.get("type") == "reaction":
-                    _apply_incoming_reaction(db, channel, raw_message)
+                    apply_incoming_reaction(db, channel, raw_message)
                     continue
-                inbound = _parse_message(raw_message, contacts)
+                inbound = parse_message(raw_message, contacts)
                 if not inbound:
                     continue
-                await _handle_message(db, channel, inbound, raw_message, access_token)
+                await handle_message(db, channel, inbound, raw_message, access_token)
     return {"status": "ok"}
 
 
@@ -215,7 +215,7 @@ def _apply_delivery_status(db: Session, channel: WhatsAppCloudChannel, status: d
     db.commit()
 
 
-def _record_status(db: Session, channel: WhatsAppCloudChannel, status: dict) -> None:
+def record_status(db: Session, channel: WhatsAppCloudChannel, status: dict) -> None:
     """Keep each outbound message's delivery state. A delivery failure is that
     message's problem and stays on it: the channel's ``last_error`` is for the
     number itself (authorization, registration), and one bad template must not
@@ -250,7 +250,7 @@ def _clear_legacy_delivery_error(db: Session, channel: WhatsAppCloudChannel) -> 
         db.commit()
 
 
-async def _handle_message(
+async def handle_message(
     db: Session,
     channel: WhatsAppCloudChannel,
     inbound: InboundMessage,
@@ -303,3 +303,10 @@ async def _handle_message(
     # Files a tool produced go out as attachments after the text.
     if conversation and result.attachment_message_ids:
         await send_reply_attachments(db, conversation, result.attachment_message_ids)
+
+
+# The names these had before they were public. Kept for one release.
+_parse_message = parse_message
+_apply_incoming_reaction = apply_incoming_reaction
+_record_status = record_status
+_handle_message = handle_message

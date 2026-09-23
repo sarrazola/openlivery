@@ -23,7 +23,7 @@ def _response(status: int, body: dict) -> httpx.Response:
 async def test_a_sample_becomes_a_handle(monkeypatch):
     monkeypatch.setattr(get_settings(), "whatsapp_app_id", "APP1")
     opened = AsyncMock(return_value=_response(200, {"id": "upload:SESSION1"}))
-    monkeypatch.setattr(templates, "_graph_request", opened)
+    monkeypatch.setattr(templates, "graph_request", opened)
     posted = AsyncMock(return_value=_response(200, {"h": "4:handle"}))
     client = MagicMock()
     client.__aenter__ = AsyncMock(return_value=client)

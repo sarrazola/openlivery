@@ -92,6 +92,28 @@ Cada pull request ejecuta el workflow `Tests`: la suite del API, las migraciones
 
 Todo el código, los identificadores, los comentarios, los mensajes de commit y la documentación se escriben en **inglés**, siempre. Lo único que se localiza es la interfaz de usuario final, a través del sistema tipado de i18n en `apps/web/lib/i18n` (inglés por defecto, español por ahora). Nunca introduzcas texto que no sea inglés en el código o la documentación — coloca el texto visible para el usuario detrás de claves de i18n.
 
+## Puntos de extensión
+
+Un despliegue que opere OpenLivery para terceros puede necesitar agregarle cosas
+sin hacer fork. Estos son los lugares pensados para eso, y se mantienen estables
+a propósito; cambiar su forma es un breaking change y lleva una línea en el
+changelog:
+
+- `app.database.get_db` (dependencia de FastAPI) y `new_session()`: el único
+  origen de sesiones, para que una sesión sustituida llegue a todas las consultas.
+- `app.services.providers.register_credential_fallback(fn, available=sonda)`: presta una clave a
+  una agencia que no guardó ninguna; `credential_source()` dice cuál respondería
+  y `GET /api/providers` lo reporta como `source`.
+- `app.services.usage.register_usage_hook(fn)`: ve cada registro de uso al
+  escribirse, dentro de la sesión de quien lo escribe; no puede fallar la respuesta.
+- `app.services.notifications.register_provider(name, fn)`: entrega
+  notificaciones push; `PUSH_PROVIDER` elige una.
+- `apps/web/lib/extensions/agent-tools.tsx`: deja fuera de la lista de
+  herramientas propias las que gestiona el despliegue y muestra una sección
+  debajo. Se reemplaza al construir.
+- `NEXT_PUBLIC_EXTRA_NAV`, `NEXT_PUBLIC_PUBLIC_PATHS`, `NEXT_PUBLIC_COMMUNITY_LINKS`:
+  ganchos de build del shell web.
+
 ## Referencia de comandos
 
 | Servicio | Comando | Qué hace |

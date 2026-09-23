@@ -9,6 +9,13 @@ and are released together.
 
 ## [Unreleased]
 
+### Extension points
+
+- `services.providers.register_credential_fallback()` lends a key to an agency that stored none; `GET /api/providers` gains `source` (`agency`, `deployment`, `none`) and `configured` is true for a lent key too.
+- `services.usage.register_usage_hook()` sees every usage record as it is written.
+- `apps/web/lib/extensions/agent-tools.tsx`: the agent editor's tools tab takes a managed-tools section from a deployment.
+- The WhatsApp Cloud Graph helpers (`graph_request`, `graph_url`, `graph_error`) and the webhook handlers (`parse_message`, `handle_message`, `record_status`, `apply_incoming_reaction`) are public names now; the underscored ones remain for one release.
+
 Upgrading: this release adds database migrations (applied automatically by the
 Docker stack; run `alembic upgrade head` on local setups).
 

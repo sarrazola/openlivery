@@ -87,6 +87,8 @@ export type Provider = {
   provider: string;
   label: string;
   configured: boolean;
+  // "agency": a key of the agency's own; "deployment": one the deployment lends; "none": no key.
+  source?: "agency" | "deployment" | "none";
   api_key_masked: string;
 };
 

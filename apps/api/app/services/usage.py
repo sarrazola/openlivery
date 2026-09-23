@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import uuid
+from collections.abc import Callable
 
 import httpx
 from sqlalchemy.orm import Session
@@ -10,6 +11,19 @@ from ..models import Conversation, Message, UsageRecord, new_uuid
 from .ai import Completion, auth_headers
 
 logger = logging.getLogger(__name__)
+
+# A deployment may want to know about each usage record as it is written (to
+# attribute it, meter it, or note which key answered) without replacing this
+# module. Hooks run inside the caller's session before the commit and must not
+# fail the reply: an error is logged and the record stands.
+UsageHook = Callable[..., None]
+_usage_hooks: list[UsageHook] = []
+
+
+def register_usage_hook(hook: UsageHook) -> None:
+    """``hook(db, record, completion, conversation=..., message=...)`` after every record."""
+    if hook not in _usage_hooks:
+        _usage_hooks.append(hook)
 
 # The router indexes a call's record some ten seconds after answering. These
 # are the waits between reads of it, about two minutes in all.
@@ -55,6 +69,11 @@ def record_usage(
         message_id=message.id if message is not None else None,
     )
     db.add(record)
+    for hook in _usage_hooks:
+        try:
+            hook(db, record, completion, conversation=conversation, message=message)
+        except Exception:  # noqa: BLE001 - a hook must never fail the reply
+            logger.exception("Usage hook %s failed", getattr(hook, "__name__", hook))
     return record
 
 

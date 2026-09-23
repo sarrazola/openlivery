@@ -24,7 +24,7 @@ from ..security import decrypt_secret
 from .attachments import ensure_uploadable, store_attachment
 from .contacts import display_name, normalize_phone
 from .social_inbound import event_time
-from .whatsapp_cloud import _graph_request, _graph_url, fetch_media
+from .whatsapp_cloud import graph_request, graph_url, fetch_media
 from .whatsapp_identity import is_user_id, peer_id, resolve_peer_contact, user_id
 
 logger = logging.getLogger(__name__)
@@ -217,7 +217,7 @@ async def refresh_connection(db, channel):
     expected = (channel.phone_number_id, channel.encrypted_access_token, channel.last_connected_at)
     access_token = decrypt_secret(channel.encrypted_access_token)
     db.rollback()
-    response = await _graph_request("GET", _graph_url(expected[0]), access_token,
+    response = await graph_request("GET", graph_url(expected[0]), access_token,
         params={"fields": "id,is_on_biz_app,platform_type,display_phone_number,verified_name,quality_rating,messaging_limit_tier"})
     try:
         data = response.json()
@@ -385,7 +385,7 @@ async def request_sync(db, channel):
         phone = channel.phone_number_id
         db.commit()
         try:
-            response = await _graph_request("POST", _graph_url(f"{phone}/smb_app_data"), access_token,
+            response = await graph_request("POST", graph_url(f"{phone}/smb_app_data"), access_token,
                 json={"messaging_product": "whatsapp", "sync_type": sync_type})
             result = response.json()
             if response.status_code >= 400 or not result.get("request_id"):

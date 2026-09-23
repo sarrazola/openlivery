@@ -8,7 +8,7 @@ from ..models import ProviderCredential, User
 from ..schemas import ProviderKeyUpdate, ProviderOut
 from ..security import decrypt_secret, encrypt_secret, mask_secret
 from ..services.ai import test_provider
-from ..services.providers import PROVIDERS, SUPPORTED, base_url_for
+from ..services.providers import PROVIDERS, SUPPORTED, base_url_for, credential_source
 
 
 router = APIRouter(prefix="/providers", tags=["AI providers"])
@@ -28,11 +28,15 @@ def _credential(db: Session, user: User, provider: str) -> ProviderCredential | 
     )
 
 
-def _out(provider: str, credential: ProviderCredential | None) -> dict:
+def _out(provider: str, credential: ProviderCredential | None, source: str | None = None) -> dict:
+    # "configured" is what the UI asks before letting an agent reply: true when
+    # the agency stored a key, and also when the deployment lends one.
+    source = source or ("agency" if credential is not None else "none")
     return {
         "provider": provider,
         "label": PROVIDERS[provider]["label"],
-        "configured": credential is not None,
+        "configured": source != "none",
+        "source": source,
         "api_key_masked": mask_secret(decrypt_secret(credential.encrypted_api_key)) if credential else "",
     }
 
@@ -42,7 +46,10 @@ def list_providers(db: Session = Depends(get_db), user: User = Depends(get_curre
     by_provider = {c.provider: c for c in db.scalars(
         select(ProviderCredential).where(ProviderCredential.agency_id == user.agency_id)
     ).all()}
-    return [_out(provider, by_provider.get(provider)) for provider in SUPPORTED]
+    return [
+        _out(provider, by_provider.get(provider), credential_source(db, user.agency_id, provider))
+        for provider in SUPPORTED
+    ]
 
 
 @router.put("/{provider}", response_model=ProviderOut)

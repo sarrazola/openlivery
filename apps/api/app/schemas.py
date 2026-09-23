@@ -2,6 +2,8 @@ import uuid
 from datetime import date, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from .services.model_catalog import DEFAULT_AUDIO_MODEL, DEFAULT_EMBEDDING_MODEL
@@ -189,6 +191,9 @@ class ProviderOut(BaseModel):
     provider: str
     label: str
     configured: bool
+    # "agency": the agency's own key; "deployment": a key the deployment lends
+    # (see services.providers.register_credential_fallback); "none": no key.
+    source: Literal["agency", "deployment", "none"] = "none"
     api_key_masked: str = ""
 
 

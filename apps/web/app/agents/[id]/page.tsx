@@ -15,6 +15,7 @@ import { AiHint } from "@/components/ai-hint";
 import { useToast } from "@/components/toast";
 import { ChatPlayground } from "@/components/chat-playground";
 import { AgentToolsTab } from "@/components/agent-tools/agent-tools-tab";
+import { agentToolsExtensions } from "@/lib/extensions/agent-tools";
 import { EscalationRulesEditor } from "@/components/escalation-rules";
 import { Combobox } from "@/components/combobox";
 import { DEFAULT_PROVIDER, DEFAULT_AUDIO_MODEL, DEFAULT_EMBEDDING_MODEL, DEFAULT_IMAGE_MODEL, modelsFor, modelOptionsFor, estimateTokens, modelContextWindow, AUDIO_MODELS, EMBEDDING_MODELS, IMAGE_MODELS } from "@/lib/providers";
@@ -48,6 +49,10 @@ export default function AgentDetailPage() {
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [qaPairs, setQaPairs] = useState<QAPair[]>([]);
   const [tools, setTools] = useState<AgentTool[]>([]);
+  // Tools a deployment manages on the agent's behalf stay out of the custom list (see lib/extensions/agent-tools).
+  const customTools = tools.filter((tool) => !agentToolsExtensions.isManaged(tool));
+  const managedTools = tools.filter((tool) => agentToolsExtensions.isManaged(tool));
+  const ManagedSection = agentToolsExtensions.ManagedSection;
   const [tab, setTab] = useState<Tab>("basics");
   const [busy, setBusy] = useState(false);
   const [indexing, setIndexing] = useState(false);
@@ -272,7 +277,8 @@ export default function AgentDetailPage() {
       <div className="qa-list">{qaPairs.map((pair) => <div className="qa-item" key={pair.id}><div><strong>{pair.question}</strong><small>{pair.answer}</small></div><button type="button" className="icon-button danger-icon" onClick={() => removeQA(pair)} title={t("agents.detail.delete")}><Trash2 size={16} /></button></div>)}{!qaPairs.length && <div className="inline-empty slim"><MessageSquareText size={22} /><div><strong>{t("agents.detail.qaEmpty")}</strong></div></div>}</div>
     </section></div>}
 
-    {tab === "tools" && <AgentToolsTab agentId={id} tools={tools} onToolsChange={setTools} />}
+    {tab === "tools" && <AgentToolsTab agentId={id} tools={customTools} onToolsChange={(next) => setTools([...next, ...managedTools])} />}
+    {tab === "tools" && ManagedSection && <ManagedSection agentId={id} onToolsChange={() => api<AgentTool[]>(`/agents/${id}/tools`).then(setTools).catch(() => {})} />}
 
     {tab === "playground" && <ChatPlayground lockedAgentId={agent.id} />}
   </div>;

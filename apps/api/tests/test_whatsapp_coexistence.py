@@ -179,7 +179,7 @@ def test_history_declined_is_a_supported_choice(channel):
 
 def test_sync_requests_are_once_only_and_store_meta_request_ids(channel, monkeypatch):
     send = AsyncMock(side_effect=[httpx.Response(200, json={"request_id": "contacts-1"}), httpx.Response(200, json={"request_id": "history-1"})])
-    monkeypatch.setattr(coex, "_graph_request", send)
+    monkeypatch.setattr(coex, "graph_request", send)
     with TestingSession() as db:
         row = db.get(WhatsAppCloudChannel, channel)
         asyncio.run(coex.request_sync(db, row))
@@ -192,7 +192,7 @@ def test_sync_requests_are_once_only_and_store_meta_request_ids(channel, monkeyp
 
 def test_ambiguous_sync_response_is_not_retried(channel, monkeypatch):
     send = AsyncMock(side_effect=HTTPException(status_code=502))
-    monkeypatch.setattr(coex, "_graph_request", send)
+    monkeypatch.setattr(coex, "graph_request", send)
     with TestingSession() as db:
         row = db.get(WhatsAppCloudChannel, channel)
         asyncio.run(coex.request_sync(db, row))
@@ -253,7 +253,7 @@ def test_refresh_reconciles_revoked_access_and_preserves_history(channel, authen
         receive(db, channel, "smb_message_echoes", value(message_echoes=[echo]))
         agent_id = str(row.agent_id)
     graph = AsyncMock(return_value=httpx.Response(400, json={"error": meta_error}))
-    monkeypatch.setattr(coex, "_graph_request", graph)
+    monkeypatch.setattr(coex, "graph_request", graph)
     response = authenticated_client.post(refresh_url(channel))
     assert response.status_code == 200, response.text
     data = response.json()
@@ -276,7 +276,7 @@ def test_refresh_reconciles_revoked_access_and_preserves_history(channel, authen
     (True, "CLOUD_API", "connected"), (False, "CLOUD_API", "disconnected"), (True, "NOT_APPLICABLE", "disconnected")])
 def test_refresh_checks_business_app_registration(channel, authenticated_client, monkeypatch, on_app, platform, expected_status):
     graph = AsyncMock(return_value=httpx.Response(200, json={"id": "111", "is_on_biz_app": on_app, "platform_type": platform}))
-    monkeypatch.setattr(coex, "_graph_request", graph)
+    monkeypatch.setattr(coex, "graph_request", graph)
     response = authenticated_client.post(refresh_url(channel))
     assert response.status_code == 200, response.text
     assert response.json()["status"] == expected_status
@@ -296,7 +296,7 @@ def test_refresh_checks_business_app_registration(channel, authenticated_client,
     httpx.Response(502, text="Bad Gateway"),
 ])
 def test_uncertain_meta_status_never_revokes_credentials(channel, authenticated_client, monkeypatch, response):
-    monkeypatch.setattr(coex, "_graph_request", AsyncMock(return_value=response))
+    monkeypatch.setattr(coex, "graph_request", AsyncMock(return_value=response))
     result = authenticated_client.post(refresh_url(channel))
     assert result.status_code == 502, result.text
     with TestingSession() as db:
@@ -306,7 +306,7 @@ def test_uncertain_meta_status_never_revokes_credentials(channel, authenticated_
 
 
 def test_refresh_network_failure_keeps_connection(channel, authenticated_client, monkeypatch):
-    monkeypatch.setattr(coex, "_graph_request", AsyncMock(side_effect=HTTPException(502, "Could not reach the Meta API.")))
+    monkeypatch.setattr(coex, "graph_request", AsyncMock(side_effect=HTTPException(502, "Could not reach the Meta API.")))
     assert authenticated_client.post(refresh_url(channel)).status_code == 502
     with TestingSession() as db:
         row = db.get(WhatsAppCloudChannel, channel)
@@ -322,7 +322,7 @@ def test_late_refresh_cannot_disconnect_a_new_authorization(channel, authenticat
             row.last_connected_at = now_utc()
             db.commit()
         return httpx.Response(400, json={"error": {"code": 190}})
-    monkeypatch.setattr(coex, "_graph_request", reconnect)
+    monkeypatch.setattr(coex, "graph_request", reconnect)
     response = authenticated_client.post(refresh_url(channel))
     assert response.status_code == 200 and response.json()["status"] == "connected"
     with TestingSession() as db:
@@ -334,7 +334,7 @@ def test_refresh_requires_ownership_and_rereads_the_profile_of_any_number(channe
         "id": "111", "is_on_biz_app": False, "platform_type": "CLOUD_API",
         "display_phone_number": "+1 555 078 3881", "verified_name": "Bistro Renamed",
         "quality_rating": "GREEN", "messaging_limit_tier": "TIER_1K"}))
-    monkeypatch.setattr(coex, "_graph_request", graph)
+    monkeypatch.setattr(coex, "graph_request", graph)
     assert authenticated_client.post(f"/api/whatsapp-cloud/channels/{uuid.uuid4()}/refresh").status_code == 404
     graph.assert_not_called()
     with TestingSession() as db:
@@ -463,7 +463,7 @@ def test_history_does_not_open_the_api_reply_window(channel):
 
 def test_restart_does_not_repeat_an_inflight_sync(channel, monkeypatch):
     send = AsyncMock()
-    monkeypatch.setattr(coex, "_graph_request", send)
+    monkeypatch.setattr(coex, "graph_request", send)
     with TestingSession() as db:
         row = db.get(WhatsAppCloudChannel, channel)
         row.coexistence_sync = {part: {"status": "requesting", "requested_at": (now_utc()-timedelta(minutes=10)).isoformat()}

@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..models import Client, WhatsAppCloudChannel, now_utc
 from ..security import decrypt_secret
-from .whatsapp_cloud import GRAPH_TIMEOUT, _graph_error, _graph_request, _graph_url
+from .whatsapp_cloud import GRAPH_TIMEOUT, graph_error, graph_request, graph_url
 
 
 REPLY_WINDOW_HOURS = 24
@@ -421,16 +421,16 @@ def send_components(
 
 
 async def list_templates(access_token: str, waba_id: str) -> list[dict]:
-    response = await _graph_request(
+    response = await graph_request(
         "GET",
-        _graph_url(
+        graph_url(
             f"{waba_id}/message_templates"
             "?fields=id,name,status,category,language,parameter_format,components,rejected_reason&limit=200"
         ),
         access_token,
     )
     if response.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Could not read the templates: {_graph_error(response)}")
+        raise HTTPException(status_code=502, detail=f"Could not read the templates: {graph_error(response)}")
     try:
         data = response.json().get("data") or []
     except ValueError as exc:
@@ -464,9 +464,9 @@ async def create_template(
         "allow_category_change": True,
         "components": components,
     }
-    response = await _graph_request("POST", _graph_url(f"{waba_id}/message_templates"), access_token, json=payload)
+    response = await graph_request("POST", graph_url(f"{waba_id}/message_templates"), access_token, json=payload)
     if response.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Meta did not accept the template: {_graph_error(response)}")
+        raise HTTPException(status_code=502, detail=f"Meta did not accept the template: {graph_error(response)}")
     try:
         created = response.json()
     except ValueError as exc:
@@ -501,14 +501,14 @@ async def upload_sample(access_token: str, *, data: bytes, mime: str, filename: 
     app_id = get_settings().whatsapp_app_id
     if not app_id:
         raise HTTPException(status_code=409, detail="Set WHATSAPP_APP_ID to upload header samples for templates")
-    opened = await _graph_request(
+    opened = await graph_request(
         "POST",
-        _graph_url(f"{app_id}/uploads"),
+        graph_url(f"{app_id}/uploads"),
         access_token,
         params={"file_name": filename, "file_length": len(data), "file_type": mime},
     )
     if opened.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Meta refused the sample: {_graph_error(opened)}")
+        raise HTTPException(status_code=502, detail=f"Meta refused the sample: {graph_error(opened)}")
     try:
         session_id = opened.json().get("id")
     except ValueError:
@@ -518,11 +518,11 @@ async def upload_sample(access_token: str, *, data: bytes, mime: str, filename: 
     headers = {"Authorization": f"OAuth {access_token}", "file_offset": "0"}
     try:
         async with httpx.AsyncClient(timeout=GRAPH_TIMEOUT * 4) as client:
-            uploaded = await client.post(_graph_url(session_id), headers=headers, content=data)
+            uploaded = await client.post(graph_url(session_id), headers=headers, content=data)
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="Could not reach the Meta API.") from exc
     if uploaded.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Meta could not store the sample: {_graph_error(uploaded)}")
+        raise HTTPException(status_code=502, detail=f"Meta could not store the sample: {graph_error(uploaded)}")
     try:
         handle = uploaded.json().get("h")
     except ValueError:
@@ -539,9 +539,9 @@ async def delete_template(access_token: str, waba_id: str, *, name: str, hsm_id:
     params: dict[str, str] = {"name": name}
     if hsm_id:
         params["hsm_id"] = hsm_id
-    response = await _graph_request("DELETE", _graph_url(f"{waba_id}/message_templates"), access_token, params=params)
+    response = await graph_request("DELETE", graph_url(f"{waba_id}/message_templates"), access_token, params=params)
     if response.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Meta could not delete the template: {_graph_error(response)}")
+        raise HTTPException(status_code=502, detail=f"Meta could not delete the template: {graph_error(response)}")
 
 
 async def send_template(
@@ -551,9 +551,9 @@ async def send_template(
     if components:
         template["components"] = components
     payload = {"messaging_product": "whatsapp", "to": to, "type": "template", "template": template}
-    response = await _graph_request("POST", _graph_url(f"{phone_number_id}/messages"), access_token, json=payload)
+    response = await graph_request("POST", graph_url(f"{phone_number_id}/messages"), access_token, json=payload)
     if response.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"WhatsApp could not send the template: {_graph_error(response)}")
+        raise HTTPException(status_code=502, detail=f"WhatsApp could not send the template: {graph_error(response)}")
     try:
         messages = response.json().get("messages") or []
         return messages[0].get("id") if messages else None
