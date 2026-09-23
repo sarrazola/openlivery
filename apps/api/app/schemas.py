@@ -852,6 +852,22 @@ class PortalInboxSummary(BaseModel):
     unassigned: int = 0
 
 
+class PortalInboxMine(BaseModel):
+    id: uuid.UUID
+    title: str
+
+
+class PortalInboxOut(BaseModel):
+    """One refresh of the portal inbox: the page of conversations the filters
+    select, how many there are in total, the counters behind the switches and
+    chips, and the open conversations held by the signed-in person."""
+
+    items: list[ConversationOut]
+    total: int
+    summary: PortalInboxSummary
+    mine: list[PortalInboxMine] = []
+
+
 class PortalLoginRequest(BaseModel):
     email: EmailStr
     password: str

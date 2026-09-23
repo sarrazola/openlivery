@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 
@@ -10,7 +12,7 @@ from sqlalchemy import Interval, and_, case, exists, func, literal, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import get_settings
-from ..database import get_db
+from ..database import get_db, new_session
 from ..models import Agency, Agent, CannedResponse, Client, Contact, ContactTag, ContactTagLink, Conversation, Message, PortalUser, Team, WhatsAppChannel, WhatsAppCloudChannel, now_utc
 from ..portal_permissions import CANNED_MANAGE, CONTACTS_MANAGE, INBOX_DELETE, REPORTS_VIEW, TAGS_MANAGE, TEAMS_MANAGE, TEMPLATES_MANAGE, has_permission, permissions_for
 from ..ratelimit import login_rate_limit, public_asset_rate_limit
@@ -48,6 +50,8 @@ from ..schemas import (
     ConversationModeUpdate,
     ConversationStatusUpdate,
     ConversationOut,
+    PortalInboxMine,
+    PortalInboxOut,
     PortalInboxSummary,
     PortalLoginRequest,
     PortalMemberOut,
@@ -93,6 +97,7 @@ from ..services.whatsapp import deliver_reaction, resolve_quote, send_channel_me
 PLAYGROUND = "playground"
 
 router = APIRouter(prefix="/portal", tags=["Client portal"])
+logger = logging.getLogger(__name__)
 
 
 def _public_client(db: Session, slug: str) -> Client:
@@ -403,9 +408,11 @@ def portal_agents(slug: str, client: Client = Depends(_portal_client), db: Sessi
     return db.scalars(select(Agent).where(Agent.client_id == client.id, Agent.deleted_at.is_(None)).order_by(Agent.name)).all()
 
 
-@router.get("/{slug}/conversations", response_model=list[ConversationOut])
-def portal_conversations(
-    slug: str,
+def _conversation_page(
+    db: Session,
+    client: Client,
+    user: PortalUser | None,
+    *,
     status: str | None = None,
     mode: str | None = None,
     archived: bool = False,
@@ -414,13 +421,10 @@ def portal_conversations(
     team: uuid.UUID | None = None,
     search: str | None = None,
     unread: bool = False,
-    limit: int = Query(default=100, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-    response: Response = None,  # type: ignore[assignment]
-    client: Client = Depends(_portal_client),
-    user: PortalUser | None = Depends(_portal_user),
-    db: Session = Depends(get_db),
-):
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[ConversationOut], int]:
+    """One page of the portal inbox and the total behind the same filters."""
     # Same shape as the agency inbox: the latest message and the unread count
     # are resolved in SQL, so the list never loads message histories, and the
     # filters run server-side so paging stays consistent with what is shown.
@@ -502,18 +506,14 @@ def portal_conversations(
     # A conversation moves up only when the contact writes. Reading it,
     # replying, assigning or resolving all touch updated_at, and none of them
     # should reshuffle the list under the person working it.
-    # The total for the same filters travels in a header so the list can say
-    # how far it has paged without changing the body shape.
-    if response is not None:
-        total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery())) or 0
-        response.headers["X-Total-Count"] = str(total)
+    total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery())) or 0
     rows = db.execute(
         query.order_by(func.coalesce(last_inbound.c.at, Conversation.created_at).desc(), Conversation.created_at.desc())
         .limit(limit)
         .offset(offset)
     ).all()
     channel_accounts.annotate(db, [row[0] for row in rows])
-    return [
+    items = [
         ConversationOut.model_validate(conv).model_copy(
             update={
                 "preview": (content or "")[:140].strip(),
@@ -527,6 +527,85 @@ def portal_conversations(
         )
         for conv, content, row_unread_count, assignee_name, assignee_email, last_inbound_at, team_name in rows
     ]
+    return items, total
+
+
+@router.get("/{slug}/conversations", response_model=list[ConversationOut])
+def portal_conversations(
+    slug: str,
+    status: str | None = None,
+    mode: str | None = None,
+    archived: bool = False,
+    channel: str | None = None,
+    assignee: str | None = None,
+    team: uuid.UUID | None = None,
+    search: str | None = None,
+    unread: bool = False,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    response: Response = None,  # type: ignore[assignment]
+    client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
+    db: Session = Depends(get_db),
+):
+    items, total = _conversation_page(
+        db, client, user, status=status, mode=mode, archived=archived, channel=channel, assignee=assignee,
+        team=team, search=search, unread=unread, limit=limit, offset=offset,
+    )
+    # The total for the same filters travels in a header so the list can say
+    # how far it has paged without changing the body shape.
+    if response is not None:
+        response.headers["X-Total-Count"] = str(total)
+    return items
+
+
+@router.get("/{slug}/inbox", response_model=PortalInboxOut)
+def portal_inbox(
+    slug: str,
+    status: str | None = None,
+    mode: str | None = None,
+    archived: bool = False,
+    channel: str | None = None,
+    assignee: str | None = None,
+    team: uuid.UUID | None = None,
+    search: str | None = None,
+    unread: bool = False,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
+    db: Session = Depends(get_db),
+):
+    """Everything one refresh of the inbox needs, in one response.
+
+    The portal refreshes every few seconds and used to ask three questions for
+    it: the page of conversations, the counters, and the open conversations
+    held by the signed-in person (to announce a new assignment). Each paid the
+    full cost of a request for one part of the same picture. The separate
+    endpoints remain for callers that want one part.
+    """
+    items, total = _conversation_page(
+        db, client, user, status=status, mode=mode, archived=archived, channel=channel, assignee=assignee,
+        team=team, search=search, unread=unread, limit=limit, offset=offset,
+    )
+    mine: list[dict] = []
+    if user:
+        rows = db.execute(
+            select(Conversation.id, Conversation.title)
+            .outerjoin(Contact, Contact.id == Conversation.contact_id)
+            .where(
+                Conversation.client_id == client.id,
+                Conversation.channel != PLAYGROUND,
+                Contact.blocked_at.is_(None),
+                Conversation.archived_at.is_(None),
+                Conversation.status == "open",
+                Conversation.assignee_id == user.id,
+            )
+            .order_by(Conversation.created_at.desc())
+            .limit(100)
+        ).all()
+        mine = [{"id": row.id, "title": row.title} for row in rows]
+    return {"items": items, "total": total, "summary": _inbox_summary(db, client, user), "mine": mine}
 
 
 @router.post("/{slug}/conversations/{conversation_id}/read", status_code=status.HTTP_204_NO_CONTENT)
@@ -544,7 +623,9 @@ async def portal_mark_read(
     conversation.operator_read_at = now_utc()
     db.commit()
     # Opening the thread is the operator reading it: blue-tick the latest
-    # visitor message on WhatsApp too. Best-effort by design.
+    # visitor message on WhatsApp too. Best-effort by design, and off the
+    # request: the portal opens the thread on this answer, and the channel's
+    # API takes longer than everything else the click does put together.
     latest_external = db.scalar(
         select(Message.external_message_id)
         .where(
@@ -556,8 +637,39 @@ async def portal_mark_read(
         .limit(1)
     )
     if latest_external:
-        await signal_channel_read(db, conversation, [latest_external], typing=False)
+        _signal_read_later(conversation.id, [latest_external])
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# Read signals in flight, so the loop keeps a reference until each is done.
+_read_signals: set["asyncio.Task[None]"] = set()
+
+
+def _signal_read_later(conversation_id: uuid.UUID, external_ids: list[str]) -> None:
+    """Blue-tick ``external_ids`` on the conversation's channel after the
+    response has gone out. Opens its own session, since the request's is
+    closed by then; the failure of a read receipt is logged, never surfaced."""
+
+    async def run() -> None:
+        db = new_session()
+        try:
+            conversation = db.get(Conversation, conversation_id)
+            if conversation:
+                await signal_channel_read(db, conversation, external_ids, typing=False)
+        except Exception:  # noqa: BLE001
+            logger.warning("read signal for conversation %s failed", conversation_id, exc_info=True)
+        finally:
+            db.close()
+
+    task = asyncio.get_running_loop().create_task(run())
+    _read_signals.add(task)
+    task.add_done_callback(_read_signals.discard)
+
+
+async def flush_read_signals() -> None:
+    """Wait for every read signal in flight. For tests."""
+    if _read_signals:
+        await asyncio.gather(*list(_read_signals), return_exceptions=True)
 
 
 def _contact_stats():
@@ -1600,6 +1712,10 @@ def portal_inbox_summary(
     user: PortalUser | None = Depends(_portal_user),
     db: Session = Depends(get_db),
 ):
+    return _inbox_summary(db, client, user)
+
+
+def _inbox_summary(db: Session, client: Client, user: PortalUser | None) -> dict:
     """Counts behind the list's switches and chips, computed the same way the
     list is so a badge never promises something the filter does not show."""
     unread_exists = (

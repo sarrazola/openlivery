@@ -49,6 +49,11 @@ const LIMIT = 30;
 type Session = { client_id: string; client_name: string; portal_slug: string; agency_name: string; user_id?: string | null; user_name?: string | null; role?: "admin" | "agent" | null; permissions?: string[] };
 type Member = { id: string; name: string; email: string };
 type InboxSummary = { open: number; resolved: number; archived: number; human: number; ai: number; unread: number; mine: number; unassigned: number };
+// One refresh of the inbox: the page, its total, the counters and what is mine.
+type InboxPayload = { items: Conversation[]; total: number; summary: InboxSummary; mine: { id: string; title: string }[] };
+// What a thread's response updates on its row in the list. The preview and
+// the unread state come from the next refresh, which runs right behind.
+const ROW_FIELDS = ["status", "mode", "assignee_id", "assignee_name", "team_id", "team_name", "taken_over_at", "resolved_at", "archived_at", "phone_pause_until", "reply_window_until", "reply_window_open", "human_reply_window_open", "human_reply_window_until", "reply_block_reason", "updated_at"] as const;
 type InboxKind = "open" | "resolved" | "archived";
 
 export default function PortalPage() {
@@ -104,9 +109,8 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   // Conversations handed to me: the first poll only learns what is mine,
   // every later one announces what is new, so a transfer is felt at once.
   const mineKnownRef = useRef<Set<string> | null>(null);
-  const announceAssignments = useCallback(async () => {
+  const announceAssignments = useCallback((mine: { id: string; title: string }[]) => {
     if (!session.user_id) return;
-    const mine = await api<Conversation[]>(`/portal/${slug}/conversations?status=open&assignee=me&limit=100`);
     const known = mineKnownRef.current;
     const next = new Set(mine.map((row) => row.id));
     if (known) {
@@ -123,7 +127,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
       }
     }
     mineKnownRef.current = next;
-  }, [slug, session.user_id, t, toast, portal.portal_title]);
+  }, [session.user_id, t, toast, portal.portal_title]);
   useEffect(() => {
     if (typeof Notification !== "undefined" && Notification.permission === "default") {
       Notification.requestPermission().catch(() => {});
@@ -223,11 +227,13 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   }, [slug]);
 
   const refresh = useCallback(async () => {
-    api<InboxSummary>(`/portal/${slug}/conversations/summary`).then(setSummary).catch(() => {});
-    announceAssignments().catch(() => {});
-    const { data: rows, headers } = await apiWithHeaders<Conversation[]>(`/portal/${slug}/conversations?${buildParams(0)}`);
-    const count = Number(headers.get("X-Total-Count"));
-    setListTotal(Number.isFinite(count) ? count : null);
+    // One request for the page, the counters and what is mine; the open
+    // thread is the only other thing asked for.
+    const payload = await api<InboxPayload>(`/portal/${slug}/inbox?${buildParams(0)}`);
+    const rows = payload.items;
+    setSummary(payload.summary);
+    announceAssignments(payload.mine);
+    setListTotal(payload.total);
     setItems(rows); setOffset(rows.length); setHasMore(rows.length === LIMIT);
     // Only the thread the person opened is refreshed. The list used to open
     // its first thread on its own when nothing was selected, which read as
@@ -251,6 +257,20 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
     const id = setInterval(() => { if (offset <= LIMIT) refresh().catch(() => {}); }, POLL_MS);
     return () => clearInterval(id);
   }, [refresh, offset]);
+
+  // A thread's response after an action is the truth about that thread: show
+  // it, update its row, and let the list catch up behind instead of holding
+  // the person until it has.
+  const applyThread = useCallback((conv: Conversation) => {
+    setSelected(conv);
+    setItems((rows) => rows.map((row) => {
+      if (row.id !== conv.id) return row;
+      const next = { ...row } as Record<string, unknown>;
+      for (const key of ROW_FIELDS) if (key in conv) next[key] = conv[key];
+      return next as Conversation;
+    }));
+    refresh().catch(() => {});
+  }, [refresh]);
 
   async function loadMore() {
     if (!hasMore || loadingMore) return;
@@ -285,11 +305,10 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
       setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/messages/${message.id}/reaction`, { method: "POST", body: JSON.stringify({ emoji }) }));
     } catch (err) { setError(messageFrom(err)); }
   }
-  async function setMode(mode: "ai" | "human") { if (!selected) return; setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/mode`, { method: "PATCH", body: JSON.stringify({ mode }) })); await refresh(); }
+  async function setMode(mode: "ai" | "human") { if (!selected) return; applyThread(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/mode`, { method: "PATCH", body: JSON.stringify({ mode }) })); }
   async function setConversationStatus(next: "open" | "resolved") {
     if (!selected) return;
-    setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/status`, { method: "PATCH", body: JSON.stringify({ status: next }) }));
-    await refresh();
+    applyThread(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/status`, { method: "PATCH", body: JSON.stringify({ status: next }) }));
   }
   async function setArchived(archived: boolean) {
     if (!selected) return;
@@ -332,18 +351,15 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   }
   async function setConversationTeam(teamId: string) {
     if (!selected) return;
-    setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/team`, { method: "PATCH", body: JSON.stringify({ team_id: teamId || null }) }));
-    await refresh();
+    applyThread(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/team`, { method: "PATCH", body: JSON.stringify({ team_id: teamId || null }) }));
   }
   async function assignTo(assigneeId: string) {
     if (!selected) return;
-    setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/assignment`, { method: "POST", body: JSON.stringify({ assignee_id: assigneeId }) }));
-    await refresh();
+    applyThread(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/assignment`, { method: "POST", body: JSON.stringify({ assignee_id: assigneeId }) }));
   }
   async function replyWithTemplate(payload: TemplateSend) {
     if (!selected || selected.channel !== "whatsapp_cloud") return;
-    setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply-template`, { method: "POST", body: JSON.stringify(payload) }));
-    await refresh();
+    applyThread(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply-template`, { method: "POST", body: JSON.stringify(payload) }));
   }
   const memberLabel = (member: Member) => (member.id === session.user_id ? t("portal.inbox.assignment.me", { name: member.name }) : member.name);
   // Deleting asks for the word in the UI language, typed by hand.
@@ -355,7 +371,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   const windowClosed = Boolean(selected) && selected?.channel === "whatsapp_cloud" && policy.blocked;
   const canReply = policy.canReply;
   const activityText = (message: Message) => activityLine(t, message);
-  async function reply(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected || !canReply || busy) return; if (pendingFile) { const file = pendingFile; setPendingFile(null); await sendAttachment(file); return; } const form = event.currentTarget; const data = new FormData(form); setBusy(true); setError(""); try { setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply`, { method: "POST", body: JSON.stringify({ content: data.get("content"), quoted_message_id: quoting?.id ?? null }) })); form.reset(); canned.reset(); setQuoting(null); await refresh(); } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); } }
+  async function reply(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected || !canReply || busy) return; if (pendingFile) { const file = pendingFile; setPendingFile(null); await sendAttachment(file); return; } const form = event.currentTarget; const data = new FormData(form); setBusy(true); setError(""); try { applyThread(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply`, { method: "POST", body: JSON.stringify({ content: data.get("content"), quoted_message_id: quoting?.id ?? null }) })); form.reset(); canned.reset(); setQuoting(null); } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); } }
   const replyInputRef = useRef<HTMLTextAreaElement>(null);
   // The contact and agent values a saved reply or a template fills itself with.
   const contactValues: ContactValues = {
@@ -380,10 +396,9 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
       const data = new FormData();
       data.append("file", file);
       if (caption) data.append("caption", caption);
-      setSelected(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply-media`, { method: "POST", body: data }));
+      applyThread(await api<Conversation>(`/portal/${slug}/conversations/${selected.id}/reply-media`, { method: "POST", body: data }));
       if (replyInputRef.current) replyInputRef.current.value = "";
       canned.reset();
-      await refresh();
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
   const { dropProps, overlay } = useFileDrop(setPendingFile, { enabled: policy.canAttach && !busy, label: t("chat.dropToSend") });
