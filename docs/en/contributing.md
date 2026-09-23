@@ -57,6 +57,15 @@ The bridge is a single Go binary (Go 1.27+); there is no install step. Run `go t
 
 ## Tests
 
+All changes to `main`, including documentation, go through a pull request.
+The required GitHub Actions checks are `api`, `web`, and `whatsapp` from the
+`Tests` workflow. Wait for all three to pass before merging. Direct pushes to
+`main` are blocked, including for repository administrators.
+
+If a check fails, read its log in the pull request's **Checks** tab and push the
+fix to the same branch; the workflow runs again automatically. Workflows for
+external contributors require maintainer approval before they run.
+
 The backend tests need a **separate** database — never point them at your dev DB. They default to `openlivery_test` on localhost and create/drop all tables per test. Override the target with `TEST_DATABASE_URL`:
 
 ```bash
