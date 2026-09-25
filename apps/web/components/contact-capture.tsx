@@ -51,6 +51,8 @@ export function ContactCaptureEditor({ agentId, clientId }: { agentId: string; c
 
   const unused = available.filter((field) => !fields.some((row) => row.field_key === field.key));
   const kindLabel = (kind: ContactFieldKind) => t(`clients.fields.kind_${kind}`);
+  const labelOf = (field: { key: string; label: string; builtin: boolean }) =>
+    field.builtin && (field.key === "name" || field.key === "email" || field.key === "phone") ? t(`agents.capture.builtin_${field.key}`) : field.label;
   const patch = (index: number, changes: Partial<CaptureField>) => setFields((list) => list.map((row, i) => (i === index ? { ...row, ...changes } : row)));
   const move = (index: number, delta: number) => setFields((list) => {
     const next = [...list];
@@ -71,8 +73,8 @@ export function ContactCaptureEditor({ agentId, clientId }: { agentId: string; c
     const name = available.find((field) => field.key === "name");
     const email = available.find((field) => field.key === "email");
     setFields([
-      ...(name ? [{ field_key: name.key, label: name.label, kind: name.kind, builtin: true, instruction: t("agents.capture.defaultNameInstruction"), channels: [] }] : []),
-      ...(email ? [{ field_key: email.key, label: email.label, kind: email.kind, builtin: true, instruction: t("agents.capture.defaultEmailInstruction"), channels: [] }] : []),
+      ...(name ? [{ field_key: name.key, label: labelOf(name), kind: name.kind, builtin: true, instruction: t("agents.capture.defaultNameInstruction"), channels: [] }] : []),
+      ...(email ? [{ field_key: email.key, label: labelOf(email), kind: email.kind, builtin: true, instruction: t("agents.capture.defaultEmailInstruction"), channels: [] }] : []),
     ]);
     setEnabled(true);
   }
@@ -123,7 +125,7 @@ export function ContactCaptureEditor({ agentId, clientId }: { agentId: string; c
           {enabled && <>
             {fields.map((row, index) => <div key={row.field_key} className="capture-field">
               <div className="capture-field-head">
-                <div><strong>{row.label}</strong> <code>{row.field_key}</code> <span className="pill">{kindLabel(row.kind)}</span></div>
+                <div><strong>{labelOf({ key: row.field_key, label: row.label, builtin: row.builtin })}</strong> <code>{row.field_key}</code> <span className="pill">{kindLabel(row.kind)}</span></div>
                 <span className="escalation-actions">
                   <button type="button" className="icon-button" onClick={() => move(index, -1)} disabled={index === 0} title={t("agents.escalation.moveUp")} aria-label={t("agents.escalation.moveUp")}><ArrowUp size={14} /></button>
                   <button type="button" className="icon-button" onClick={() => move(index, 1)} disabled={index === fields.length - 1} title={t("agents.escalation.moveDown")} aria-label={t("agents.escalation.moveDown")}><ArrowDown size={14} /></button>
@@ -154,7 +156,7 @@ export function ContactCaptureEditor({ agentId, clientId }: { agentId: string; c
             </div> : <div className="esc-rules-foot capture-foot">
               <select value={picking} onChange={(e) => pick(e.target.value)} aria-label={t("agents.capture.addField")}>
                 <option value="">{t("agents.capture.addField")}</option>
-                {unused.map((field) => <option key={field.key} value={field.key}>{field.label} ({field.key})</option>)}
+                {unused.map((field) => <option key={field.key} value={field.key}>{labelOf(field)} ({field.key})</option>)}
                 <option value={NEW_FIELD}>{t("agents.capture.newField")}</option>
               </select>
               <button type="button" className="text-button" onClick={restoreDefault}><RotateCcw size={14} /> {t("agents.capture.restoreDefault")}</button>

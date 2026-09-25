@@ -28,6 +28,8 @@ export function ContactFieldsView({ base }: { base: string }) {
   useEffect(() => { load(); }, [load]);
 
   const kindLabel = (kind: ContactFieldKind) => t(`clients.fields.kind_${kind}`);
+  const labelOf = (field: { key: string; label: string; builtin: boolean }) =>
+    field.builtin && (field.key === "name" || field.key === "email" || field.key === "phone") ? t(`agents.capture.builtin_${field.key}`) : field.label;
   const custom = fields.filter((field) => !field.builtin);
   const builtins = fields.filter((field) => field.builtin);
 
@@ -60,7 +62,7 @@ export function ContactFieldsView({ base }: { base: string }) {
     <div className="section-copy"><h2>{t("clients.fields.title")}</h2><p>{t("clients.fields.intro")}</p></div>
     <div className="form-fields contact-fields">
       <div className="contact-fields-builtin">
-        {builtins.map((field) => <span key={field.key} className="pill" title={field.key}>{field.label} <code>{field.key}</code></span>)}
+        {builtins.map((field) => <span key={field.key} className="pill" title={field.key}>{labelOf(field)} <code>{field.key}</code></span>)}
         <small className="muted">{t("clients.fields.builtinHint")}</small>
       </div>
       {!custom.length && <p className="muted">{t("clients.fields.empty")}</p>}

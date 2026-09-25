@@ -1022,7 +1022,7 @@ textarea { line-height: 1.55; }
 .capture-channels > small { color: var(--muted); font-size: 12px; margin-right: 4px; }
 .capture-channels .chip-toggle { height: 28px; padding: 0 10px; font-size: 12px; }
 .capture-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.capture-foot select { min-height: 34px; }
+.capture-foot select { width: auto; max-width: 320px; min-height: 34px; }
 .capture-new { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border: 1px dashed var(--line); border-radius: 10px; }
 .capture-new-actions { display: flex; justify-content: flex-end; gap: 8px; }
 /* The client's field catalog. */
@@ -1032,7 +1032,7 @@ textarea { line-height: 1.55; }
 .contact-field-row { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line-soft); }
 .contact-field-main { display: flex; align-items: center; gap: 10px; }
 .contact-field-main input { flex: 1 1 160px; min-width: 0; min-height: 32px; }
-.contact-field-main select { flex: 0 0 auto; min-height: 32px; }
+.contact-field-main select { flex: 0 0 auto; width: auto; min-height: 32px; }
 .contact-field-new { display: flex; flex-direction: column; gap: 12px; padding-top: 14px; border-top: 1px dashed var(--line); }
 /* The values on the portal's contact card. */
 .portal-contact-fields { margin-bottom: 18px; }
