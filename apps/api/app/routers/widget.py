@@ -23,6 +23,7 @@ from ..services.attachments import (
     store_attachment,
 )
 from ..services.tools import run_completion
+from ..services.capture import apply_captures, build_capture_spec, capture_context, field_definitions
 from ..services.knowledge import contact_context, build_system_prompt, llm_turns, retrieve_knowledge
 from ..services.providers import resolve_agent_credentials
 from ..services.usage import record_usage
@@ -278,9 +279,15 @@ async def _widget_ai_reply(db: Session, agent: Agent, conversation: Conversation
     ).all()
     history = list(reversed(history))
     system_content = build_system_prompt(agent, knowledge.text)
-    contact_block = contact_context(conversation, agent.prompt_language)
+    definitions = field_definitions(db, agent.client_id, agent.prompt_language)
+    contact_block = contact_context(conversation, agent.prompt_language, definitions)
     if contact_block:
         system_content += "\n\n" + contact_block
+    capture_block = capture_context(agent, conversation, definitions, agent.prompt_language)
+    if capture_block:
+        system_content += "\n\n" + capture_block
+    capture_holder: list = []
+    capture_spec = build_capture_spec(agent, conversation, definitions, capture_holder)
     messages = [
         {"role": "system", "content": system_content},
         *llm_turns(history, agent.prompt_language),
@@ -290,10 +297,12 @@ async def _widget_ai_reply(db: Session, agent: Agent, conversation: Conversation
         completion = await run_completion(
             db, agent, base_url, api_key, messages,
             temperature=agent.temperature, max_tokens=agent.max_tokens,
+            extra_specs=[capture_spec] if capture_spec else None,
         )
     except HTTPException:
         return None
 
+    apply_captures(db, conversation, capture_holder, definitions)
     conversation.updated_at = now_utc()
     reply = Message(conversation_id=conversation.id, role="assistant", content=completion.text, sources=knowledge.sources, tool_calls=completion.tool_calls, sender_type="ai", sender_name=agent.name)
     db.add(reply)

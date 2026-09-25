@@ -103,6 +103,9 @@ class Client(Base):
     )
     teams: Mapped[list["Team"]] = relationship(back_populates="client", cascade="all, delete-orphan")
     social_channels: Mapped[list["SocialChannel"]] = relationship(back_populates="client", cascade="all, delete-orphan")
+    contact_fields: Mapped[list["ContactField"]] = relationship(
+        back_populates="client", cascade="all, delete-orphan", order_by="ContactField.position"
+    )
 
     @property
     def logo_url(self) -> str | None:
@@ -145,6 +148,9 @@ class Agent(Base):
     )
     # The built-in triggers can be switched off; business rules keep working.
     escalation_builtin_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Whether the agent collects contact details in conversation. The fields it
+    # asks for, and on which channels, are ``AgentCaptureField`` rows.
+    capture_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Structured business brief. Optional guided fields that compose into the
     # system prompt alongside the instructions.
     brief_summary: Mapped[str] = mapped_column(Text, default="", server_default="")
@@ -203,6 +209,32 @@ class Agent(Base):
     whatsapp_cloud_channels: Mapped[list["WhatsAppCloudChannel"]] = relationship(back_populates="agent")
     widget_channels: Mapped[list["WidgetChannel"]] = relationship(back_populates="agent")
     tools: Mapped[list["AgentTool"]] = relationship(back_populates="agent", cascade="all, delete-orphan", order_by="AgentTool.created_at")
+    capture_fields: Mapped[list["AgentCaptureField"]] = relationship(
+        back_populates="agent", cascade="all, delete-orphan", order_by="AgentCaptureField.position"
+    )
+
+
+class AgentCaptureField(Base):
+    """One detail an agent asks the customer for and saves on the contact.
+
+    ``field_key`` is a built-in key (``name``, ``email``, ``phone``) or the key
+    of one of the client's ``ContactField`` definitions. ``instruction`` tells
+    the model when and how to ask; ``channels`` limits where it asks (empty
+    means every channel). The value itself is saved on the contact, so the
+    next conversation already knows it and the agent does not ask again."""
+
+    __tablename__ = "agent_capture_fields"
+    __table_args__ = (UniqueConstraint("agent_id", "field_key", name="uq_agent_capture_fields_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), index=True)
+    field_key: Mapped[str] = mapped_column(String(60))
+    instruction: Mapped[str] = mapped_column(Text, default="")
+    channels: Mapped[list] = mapped_column(JSON, default=list)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+    agent: Mapped["Agent"] = relationship(back_populates="capture_fields")
 
 
 class AgentTool(Base):
@@ -450,6 +482,9 @@ class Contact(Base):
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Values of the client's custom contact fields, keyed by field key. The
+    # built-in details (name, phone, email) stay in their own columns.
+    attributes: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     # A blocked contact talks to a wall: their messages are stored but nobody
     # answers, nothing rings, and their conversations leave the inboxes.
     blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -471,6 +506,29 @@ TAG_COLORS = (
     "#f97316", "#84cc16", "#06b6d4", "#6366f1", "#a855f7", "#f43f5e", "#0ea5e9", "#10b981",
 )
 TAG_COLOR_PATTERN = r"^#[0-9a-f]{6}$"
+
+
+class ContactField(Base):
+    """A custom detail a client keeps on its contacts, defined once per client
+    and shared by every agent and the portal. ``key`` is the identifier the
+    model and the API use (``snake_case``); ``label`` is what people see;
+    ``description`` tells the agent what the value is and when it applies."""
+
+    __tablename__ = "contact_fields"
+    __table_args__ = (UniqueConstraint("client_id", "key", name="uq_contact_fields_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    key: Mapped[str] = mapped_column(String(60))
+    label: Mapped[str] = mapped_column(String(80))
+    # text, number, email or phone: what the agent validates before saving.
+    kind: Mapped[str] = mapped_column(String(20), default="text", server_default="text")
+    description: Mapped[str] = mapped_column(Text, default="")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+    client: Mapped[Client] = relationship(back_populates="contact_fields")
 
 
 class ContactTag(Base):

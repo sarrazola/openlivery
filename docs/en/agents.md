@@ -42,7 +42,8 @@ Both features go through the same OpenRouter key as the chat model.
 | Tone | `personality` | Tone and style guidance for replies. |
 | Business brief | `brief_summary`, `brief_products`, `brief_audience`, `brief_policies`, `brief_dos`, `brief_donts` | What the business is and offers, plus the agent's always/never rules. Composed into the system prompt. |
 | Business identity | `industry`, `business_type`, `business_custom` (on the client) | Catalog codes (`GET /api/industries`) that name the kind of business in the prompt's first line; when the catalog only offers "other", `business_custom` holds the client's own words. |
-| Contact | from the conversation | Name, phone, e-mail, tags and channel of the person writing, added to the prompt at reply time so a form, an e-mail or a tool gets them instead of "not specified". Only what the contact record has is listed. Absent in the playground. |
+| Contact | from the conversation | Name, phone, e-mail, custom fields, tags and channel of the person writing, added to the prompt at reply time so a form, an e-mail or a tool gets them instead of "not specified". Only what the contact record has is listed. Absent in the playground. |
+| Contact details to collect | `capture_enabled`, `GET`/`PUT /api/agents/{id}/capture` | What the agent asks the customer for and saves on the contact. See [Collecting contact details](#collecting-contact-details). |
 | Prompt language | `prompt_language` | `es` or `en`: the language of the prompt's headings and fixed sentences. Set from the UI language when the agent is saved. |
 | Timezone | `timezone` (on the client) | IANA timezone of the business (e.g. `America/Bogota`), injected so every agent of the client knows the local date and time. Set on the client, defaults to `UTC`. |
 | Provider | `provider` | Always `openrouter`. |
@@ -55,6 +56,34 @@ Both features go through the same OpenRouter key as the chat model.
 | Audio transcription | `audio_enabled`, `audio_model` | Enable transcription and pick the model that transcribes inbound audio (default `whisper-1`). |
 
 Sampling parameters are applied best-effort; models that reject a value fall back to their own defaults.
+
+## Collecting contact details
+
+An agent can ask the customer for details and save them on the contact, so the
+next conversation with that person already has them and the agent does not ask
+again. Under **Contact details** in the agent's settings, switch it on and pick
+the fields: the built-in name, e-mail and phone, or any custom field the client
+defined. Each entry takes an instruction in your words (when and how to ask,
+e.g. "ask for it naturally once the customer shows interest") and, optionally,
+the channels it applies to (WhatsApp, Instagram, Messenger, web chat); with none
+picked it applies everywhere. **Restore default** puts back name and e-mail.
+
+Custom fields belong to the client and are shared by every agent and the client
+portal: **Contact fields** on the client page (`/api/clients/{id}/contact-fields`).
+A field has a `snake_case` key the agent and the API use (it cannot change
+later), a label people see, a type (text, number, e-mail, phone) the value is
+validated against, and a description that tells the agent what the value is and
+when it applies.
+
+At reply time, only the fields still unknown for that contact reach the prompt,
+as a "Details to collect" section with their instructions, and the agent gets a
+`save_contact_field` tool. The rule it follows: ask naturally, one at a time,
+never as a form, and save only what the customer stated explicitly. Built-in
+values go to the contact's own columns; custom values to `attributes` on the
+contact, which the portal shows and edits on the contact card
+(`PATCH /api/portal/{slug}/contacts/{id}` with `attributes`). A phone another
+contact already holds is not overwritten. The playground rehearses the fields
+without saving anything.
 
 ## Business hours and future requests
 

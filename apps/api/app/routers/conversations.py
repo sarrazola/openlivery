@@ -27,6 +27,7 @@ from ..services.attachments import (
     store_attachment,
 )
 from ..services.tools import run_completion
+from ..services.capture import build_capture_spec, capture_context, field_definitions
 from ..services.knowledge import build_system_prompt, llm_turns, retrieve_knowledge
 from ..services.operator_media import store_operator_media_reply
 from ..services.providers import resolve_agent_credentials
@@ -255,10 +256,19 @@ async def _generate_reply(
     exchanged = [item for item in refreshed.messages if item.kind == "message"]
     recent = exchanged[-agent.memory_limit:] if agent.memory_limit else []
     history = llm_turns(recent, agent.prompt_language)
-    messages = [{"role": "system", "content": build_system_prompt(agent, knowledge.text)}, *history]
+    system_content = build_system_prompt(agent, knowledge.text)
+    # The playground rehearses the capture fields: the tool answers as it
+    # would live, but there is no contact to write to.
+    definitions = field_definitions(db, agent.client_id, agent.prompt_language)
+    capture_block = capture_context(agent, refreshed, definitions, agent.prompt_language)
+    if capture_block:
+        system_content += "\n\n" + capture_block
+    capture_spec = build_capture_spec(agent, refreshed, definitions, [])
+    messages = [{"role": "system", "content": system_content}, *history]
     base_url, api_key = credentials
     completion = await run_completion(
-        db, agent, base_url, api_key, messages, temperature=agent.temperature, max_tokens=agent.max_tokens
+        db, agent, base_url, api_key, messages, temperature=agent.temperature, max_tokens=agent.max_tokens,
+        extra_specs=[capture_spec] if capture_spec else None,
     )
     note_reply(conversation)
     reply = Message(

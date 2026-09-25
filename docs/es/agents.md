@@ -42,7 +42,8 @@ Ambas funciones pasan por la misma clave de OpenRouter que el modelo de chat.
 | Tono | `personality` | Guía de tono y estilo para las respuestas. |
 | Brief del negocio | `brief_summary`, `brief_products`, `brief_audience`, `brief_policies`, `brief_dos`, `brief_donts` | Qué es y qué ofrece el negocio, más las reglas de siempre/nunca del agente. Se compone en el prompt del sistema. |
 | Identidad del negocio | `industry`, `business_type`, `business_custom` (en el cliente) | Códigos del catálogo (`GET /api/industries`) que nombran el tipo de negocio en la primera línea del prompt; cuando el catálogo solo ofrece "otro", `business_custom` guarda las palabras del propio cliente. |
-| Contacto | de la conversación | Nombre, teléfono, correo, etiquetas y canal de quien escribe, añadidos al prompt al responder para que un registro, un correo o una herramienta los reciba en vez de "no especificado". Solo se lista lo que la ficha del contacto tiene. No aparece en el playground. |
+| Contacto | de la conversación | Nombre, teléfono, correo, campos personalizados, etiquetas y canal de quien escribe, añadidos al prompt al responder para que un registro, un correo o una herramienta los reciba en vez de "no especificado". Solo se lista lo que la ficha del contacto tiene. No aparece en el playground. |
+| Datos del contacto por recopilar | `capture_enabled`, `GET`/`PUT /api/agents/{id}/capture` | Lo que el agente le pregunta al cliente y guarda en el contacto. Ver [Recopilar datos del contacto](#recopilar-datos-del-contacto). |
 | Idioma del prompt | `prompt_language` | `es` o `en`: el idioma de los títulos y frases fijas del prompt. Se toma del idioma de la interfaz al guardar el agente. |
 | Zona horaria | `timezone` (en el cliente) | Zona horaria IANA del negocio (p. ej. `America/Bogota`), inyectada para que todos los agentes del cliente conozcan la fecha y hora locales. Se define en el cliente, por defecto `UTC`. |
 | Proveedor | `provider` | Siempre `openrouter`. |
@@ -55,6 +56,35 @@ Ambas funciones pasan por la misma clave de OpenRouter que el modelo de chat.
 | Transcripción de audio | `audio_enabled`, `audio_model` | Activa la transcripción y elige el modelo que transcribe el audio entrante (por defecto `whisper-1`). |
 
 Los parámetros de muestreo se aplican con mejor esfuerzo; los modelos que rechazan un valor recurren a sus propios valores por defecto.
+
+## Recopilar datos del contacto
+
+Un agente puede preguntarle datos al cliente y guardarlos en el contacto, así la
+siguiente conversación con esa persona ya los tiene y el agente no vuelve a
+preguntar. En **Datos del contacto**, dentro de los ajustes del agente, actívalo
+y elige los campos: el nombre, correo y teléfono integrados, o cualquier campo
+personalizado que el cliente haya definido. Cada entrada lleva una instrucción
+en tus palabras (cuándo y cómo preguntarlo, p. ej. "pídelo con naturalidad
+cuando el cliente muestre interés") y, si quieres, los canales en los que aplica
+(WhatsApp, Instagram, Messenger, chat web); sin ninguno elegido aplica en todos.
+**Restaurar predeterminado** vuelve a nombre y correo.
+
+Los campos personalizados pertenecen al cliente y los comparten todos sus agentes
+y el portal del cliente: **Campos del contacto** en la página del cliente
+(`/api/clients/{id}/contact-fields`). Un campo tiene una clave en `snake_case`
+que usan el agente y el API (no se puede cambiar después), una etiqueta que ve la
+gente, un tipo (texto, número, correo, teléfono) contra el que se valida el
+valor, y una descripción que le dice al agente qué es el valor y cuándo aplica.
+
+Al responder, solo los campos que aún no se conocen de ese contacto llegan al
+prompt, como una sección "Datos por capturar" con sus instrucciones, y el agente
+recibe la herramienta `save_contact_field`. La regla que sigue: preguntar con
+naturalidad, de uno en uno, nunca como formulario, y guardar solo lo que el
+cliente dijo explícitamente. Los valores integrados van a las columnas propias
+del contacto; los personalizados a `attributes` en el contacto, que el portal
+muestra y edita en la ficha (`PATCH /api/portal/{slug}/contacts/{id}` con
+`attributes`). Un teléfono que ya tiene otro contacto no se sobrescribe. El
+playground ensaya los campos sin guardar nada.
 
 ## El conocimiento en el prompt del sistema
 

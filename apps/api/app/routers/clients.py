@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..database import get_db
 from ..deps import get_current_user
 from .. import industries
-from ..models import Agent, Client, Contact, Conversation, PortalUser, PushDevice, User, new_domain_token, Team
+from ..models import Agent, AgentCaptureField, Client, Contact, ContactField, Conversation, PortalUser, PushDevice, User, new_domain_token, Team
 from ..portal_permissions import DEFAULT_ROLE
 from ..schemas import (
     ClientDeletionPreview,
@@ -21,6 +21,9 @@ from ..schemas import (
     PortalUserCreate,
     PortalUserOut,
     PortalUserUpdate,
+    ContactFieldIn,
+    ContactFieldOut,
+    ContactFieldUpdate,
     ContactTagCreate,
     ContactTagOut,
     ContactTagUpdate,
@@ -32,6 +35,7 @@ from ..schemas import (
 )
 from ..security import hash_password
 from ..services.attachments import logo_response
+from ..services.capture import BUILTIN_FIELDS, field_definitions
 from ..services.tags import create_tag, delete_tag, get_tag, list_tags, rename_tag, tag_count, tag_out
 from ..services.teams import create_team, delete_team, list_teams, members_out, team_out, update_team
 from ..services.whatsapp import bridge_command
@@ -536,5 +540,86 @@ def delete_portal_user(
     """
     portal_user = _portal_user(db, user, client_id, portal_user_id)
     db.delete(portal_user)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Custom contact fields ---------------------------------------------------
+# Defined once per client; every agent of the client can ask for them and the
+# portal shows them on the contact.
+
+
+def _field_out(definition) -> ContactFieldOut:
+    return ContactFieldOut(
+        id=getattr(definition, "id", None), key=definition.key, label=definition.label, kind=definition.kind,
+        description=definition.description, builtin=getattr(definition, "builtin", False),
+    )
+
+
+def _contact_field(db: Session, client: Client, field_id: uuid.UUID) -> ContactField:
+    row = db.scalar(select(ContactField).where(ContactField.id == field_id, ContactField.client_id == client.id))
+    if not row:
+        raise HTTPException(status_code=404, detail="Contact field not found")
+    return row
+
+
+@router.get("/{client_id}/contact-fields", response_model=list[ContactFieldOut])
+def list_contact_fields(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Built-ins first, then the client's own, in their order."""
+    client = _client(db, user, client_id)
+    return [_field_out(definition) for definition in field_definitions(db, client.id).values()]
+
+
+@router.post("/{client_id}/contact-fields", response_model=ContactFieldOut, status_code=status.HTTP_201_CREATED)
+def create_contact_field(
+    client_id: uuid.UUID, payload: ContactFieldIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    client = _client(db, user, client_id)
+    if payload.key in BUILTIN_FIELDS:
+        raise HTTPException(status_code=409, detail="That key is a built-in field")
+    if db.scalar(select(ContactField.id).where(ContactField.client_id == client.id, ContactField.key == payload.key)):
+        raise HTTPException(status_code=409, detail="A field with that key already exists")
+    position = db.scalar(select(func.count()).select_from(ContactField).where(ContactField.client_id == client.id)) or 0
+    row = ContactField(
+        client_id=client.id, key=payload.key, label=payload.label.strip(), kind=payload.kind,
+        description=payload.description.strip(), position=position,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _field_out(row)
+
+
+@router.patch("/{client_id}/contact-fields/{field_id}", response_model=ContactFieldOut)
+def update_contact_field(
+    client_id: uuid.UUID, field_id: uuid.UUID, payload: ContactFieldUpdate,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    """The key never changes: agents and contacts refer to it."""
+    client = _client(db, user, client_id)
+    row = _contact_field(db, client, field_id)
+    if payload.label is not None:
+        row.label = payload.label.strip()
+    if payload.kind is not None:
+        row.kind = payload.kind
+    if payload.description is not None:
+        row.description = payload.description.strip()
+    db.commit()
+    db.refresh(row)
+    return _field_out(row)
+
+
+@router.delete("/{client_id}/contact-fields/{field_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_contact_field(
+    client_id: uuid.UUID, field_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    """Removes the definition and every agent's request for it. Values already
+    saved on contacts stay in their record until the contact is edited."""
+    client = _client(db, user, client_id)
+    row = _contact_field(db, client, field_id)
+    agent_ids = select(Agent.id).where(Agent.client_id == client.id)
+    for capture in db.scalars(select(AgentCaptureField).where(AgentCaptureField.field_key == row.key, AgentCaptureField.agent_id.in_(agent_ids))):
+        db.delete(capture)
+    db.delete(row)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

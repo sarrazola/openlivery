@@ -372,11 +372,13 @@ _CHANNEL_NAMES = {
 }
 
 
-def contact_context(conversation, lang: str | None = None) -> str:
+def contact_context(conversation, lang: str | None = None, definitions: dict | None = None) -> str:
     """The ``Contact`` section: who the agent is talking to, from the contact
     record, built at reply time. Only what exists is listed, so a missing
     e-mail is simply absent and the agent asks for it. Empty when the
-    conversation has no contact at all (the playground)."""
+    conversation has no contact at all (the playground). ``definitions`` (from
+    ``services.capture.field_definitions``) labels the client's custom fields,
+    whose values are listed after the built-in ones."""
     contact = getattr(conversation, "contact", None)
     channel = getattr(conversation, "channel", "") or ""
     if contact is None and channel in ("", "playground"):
@@ -394,6 +396,12 @@ def contact_context(conversation, lang: str | None = None) -> str:
         lines.append(f"- **{text['contact_phone']}:** {contact.phone}")
     if contact is not None and contact.email:
         lines.append(f"- **{text['contact_email']}:** {contact.email}")
+    if contact is not None and definitions:
+        for key, value in (contact.attributes or {}).items():
+            definition = definitions.get(key)
+            if definition is None or getattr(definition, "builtin", False) or not str(value).strip():
+                continue
+            lines.append(f"- **{definition.label}:** {str(value).strip()}")
     if contact is not None and contact.tags:
         lines.append(f"- **{text['contact_tags']}:** " + ", ".join(tag.name for tag in contact.tags))
     channel_name = _CHANNEL_NAMES.get(channel)

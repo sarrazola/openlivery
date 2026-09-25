@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
+from .services.capture import CAPTURE_CHANNELS, FIELD_KEY_PATTERN, FIELD_KINDS
 from .services.model_catalog import DEFAULT_AUDIO_MODEL, DEFAULT_EMBEDDING_MODEL
 
 # OpenRouter slug: "vendor/model", optionally with a ":variant" suffix.
@@ -762,6 +763,8 @@ class ContactCreate(BaseModel):
     phone: str = Field(min_length=7, max_length=40)
     email: EmailStr | None = None
     notes: str = Field(default="", max_length=5000)
+    # Custom field values by key; only keys the client defined are kept.
+    attributes: dict[str, str] = Field(default_factory=dict)
 
 
 class ContactUpdate(BaseModel):
@@ -769,6 +772,76 @@ class ContactUpdate(BaseModel):
     phone: str | None = Field(default=None, min_length=7, max_length=40)
     email: EmailStr | None = None
     notes: str | None = Field(default=None, max_length=5000)
+    # The whole set at once; an empty value drops the key.
+    attributes: dict[str, str] | None = None
+
+
+class ContactFieldIn(BaseModel):
+    """A custom contact field of a client. The key is what the agent and the
+    API use (``snake_case``); the label is what people see; the description
+    tells the agent what the value is and when it applies."""
+
+    key: str = Field(pattern=FIELD_KEY_PATTERN, max_length=60)
+    label: str = Field(min_length=1, max_length=80)
+    kind: str = Field(default="text", pattern="^(" + "|".join(FIELD_KINDS) + ")$")
+    description: str = Field(default="", max_length=1000)
+
+
+class ContactFieldUpdate(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=80)
+    kind: str | None = Field(default=None, pattern="^(" + "|".join(FIELD_KINDS) + ")$")
+    description: str | None = Field(default=None, max_length=1000)
+
+
+class ContactFieldOut(BaseModel):
+    id: uuid.UUID | None = None
+    key: str
+    label: str
+    kind: str
+    description: str = ""
+    # Name, email and phone: always there, stored in their own columns.
+    builtin: bool = False
+
+
+class CaptureFieldIn(BaseModel):
+    field_key: str = Field(pattern=FIELD_KEY_PATTERN, max_length=60)
+    # When and how the agent asks for it, in the operator's words.
+    instruction: str = Field(default="", max_length=1000)
+    # Channel groups it is asked on; empty means every channel.
+    channels: list[str] = Field(default_factory=list, max_length=len(CAPTURE_CHANNELS))
+
+    @field_validator("channels")
+    @classmethod
+    def _known_channels(cls, value: list[str]) -> list[str]:
+        unknown = [channel for channel in value if channel not in CAPTURE_CHANNELS]
+        if unknown:
+            raise ValueError(f"Unknown channel: {', '.join(unknown)}")
+        return list(dict.fromkeys(value))
+
+
+class CaptureFieldOut(BaseModel):
+    field_key: str
+    label: str
+    kind: str
+    builtin: bool = False
+    instruction: str = ""
+    channels: list[str] = Field(default_factory=list)
+    position: int = 0
+
+
+class CaptureConfigIn(BaseModel):
+    """The whole ordered list at once, like the escalation rules."""
+
+    enabled: bool = False
+    fields: list[CaptureFieldIn] = Field(default_factory=list, max_length=30)
+
+
+class CaptureConfigOut(BaseModel):
+    enabled: bool = False
+    fields: list[CaptureFieldOut] = Field(default_factory=list)
+    # Everything the agent could ask for: built-ins plus the client's fields.
+    available: list[ContactFieldOut] = Field(default_factory=list)
+    channels: list[str] = Field(default_factory=lambda: list(CAPTURE_CHANNELS))
 
 
 class ContactTagOut(BaseModel):
@@ -806,6 +879,7 @@ class ContactOut(BaseModel):
     phone: str | None = None
     email: str | None = None
     notes: str = ""
+    attributes: dict[str, str] = Field(default_factory=dict)
     tags: list[ContactTagOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
