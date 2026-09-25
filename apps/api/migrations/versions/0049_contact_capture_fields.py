@@ -28,7 +28,6 @@ def upgrade():
         sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column("agent_id", sa.Uuid(), sa.ForeignKey("agents.id", ondelete="CASCADE"), nullable=False),
         sa.Column("field_key", sa.String(60), nullable=False),
-        sa.Column("instruction", sa.Text(), nullable=False, server_default=""),
         sa.Column("channels", sa.JSON(), nullable=False, server_default="[]"),
         sa.Column("position", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),

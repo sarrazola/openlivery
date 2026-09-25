@@ -515,6 +515,8 @@ export type ContactField = {
   kind: ContactFieldKind;
   description: string;
   builtin: boolean;
+  // Contacts of the client holding a value (custom fields only).
+  contact_count?: number;
 };
 
 /** What an agent asks the customer for, and on which channel groups. */
@@ -522,10 +524,9 @@ export type CaptureField = {
   field_key: string;
   label: string;
   kind: ContactFieldKind;
+  description: string;
   builtin: boolean;
-  instruction: string;
   channels: string[];
-  position?: number;
 };
 export type CaptureConfig = {
   enabled: boolean;

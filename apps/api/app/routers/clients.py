@@ -35,7 +35,7 @@ from ..schemas import (
 )
 from ..security import hash_password
 from ..services.attachments import logo_response
-from ..services.capture import BUILTIN_FIELDS, field_definitions
+from ..services.capture import BUILTIN_FIELDS, contacts_holding, field_definitions, strip_attribute
 from ..services.tags import create_tag, delete_tag, get_tag, list_tags, rename_tag, tag_count, tag_out
 from ..services.teams import create_team, delete_team, list_teams, members_out, team_out, update_team
 from ..services.whatsapp import bridge_command
@@ -549,10 +549,12 @@ def delete_portal_user(
 # portal shows them on the contact.
 
 
-def _field_out(definition) -> ContactFieldOut:
+def _field_out(db: Session, client_id: uuid.UUID, definition) -> ContactFieldOut:
+    builtin = getattr(definition, "builtin", False)
     return ContactFieldOut(
         id=getattr(definition, "id", None), key=definition.key, label=definition.label, kind=definition.kind,
-        description=definition.description, builtin=getattr(definition, "builtin", False),
+        description=definition.description, builtin=builtin,
+        contact_count=0 if builtin else contacts_holding(db, client_id, definition.key),
     )
 
 
@@ -567,7 +569,7 @@ def _contact_field(db: Session, client: Client, field_id: uuid.UUID) -> ContactF
 def list_contact_fields(client_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Built-ins first, then the client's own, in their order."""
     client = _client(db, user, client_id)
-    return [_field_out(definition) for definition in field_definitions(db, client.id).values()]
+    return [_field_out(db, client.id, definition) for definition in field_definitions(db, client.id).values()]
 
 
 @router.post("/{client_id}/contact-fields", response_model=ContactFieldOut, status_code=status.HTTP_201_CREATED)
@@ -587,7 +589,7 @@ def create_contact_field(
     db.add(row)
     db.commit()
     db.refresh(row)
-    return _field_out(row)
+    return _field_out(db, client.id, row)
 
 
 @router.patch("/{client_id}/contact-fields/{field_id}", response_model=ContactFieldOut)
@@ -606,20 +608,21 @@ def update_contact_field(
         row.description = payload.description.strip()
     db.commit()
     db.refresh(row)
-    return _field_out(row)
+    return _field_out(db, client.id, row)
 
 
 @router.delete("/{client_id}/contact-fields/{field_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_contact_field(
     client_id: uuid.UUID, field_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    """Removes the definition and every agent's request for it. Values already
-    saved on contacts stay in their record until the contact is edited."""
+    """Removes the definition, every agent's request for it, and the value
+    from every contact that held one: nothing keeps a value no field labels."""
     client = _client(db, user, client_id)
     row = _contact_field(db, client, field_id)
     agent_ids = select(Agent.id).where(Agent.client_id == client.id)
     for capture in db.scalars(select(AgentCaptureField).where(AgentCaptureField.field_key == row.key, AgentCaptureField.agent_id.in_(agent_ids))):
         db.delete(capture)
+    strip_attribute(db, client.id, row.key)
     db.delete(row)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -370,8 +370,8 @@ def _capture_out(db: Session, agent: Agent) -> CaptureConfigOut:
         if definition is None:
             continue
         fields.append(CaptureFieldOut(
-            field_key=row.field_key, label=definition.label, kind=definition.kind, builtin=definition.builtin,
-            instruction=row.instruction, channels=list(row.channels or []), position=row.position,
+            field_key=row.field_key, label=definition.label, kind=definition.kind, description=definition.description,
+            builtin=definition.builtin, channels=list(row.channels or []),
         ))
     available = [
         ContactFieldOut(key=d.key, label=d.label, kind=d.kind, description=d.description, builtin=d.builtin)
@@ -389,8 +389,8 @@ def get_capture_config(agent_id: uuid.UUID, db: Session = Depends(get_db), user:
 def replace_capture_config(
     agent_id: uuid.UUID, config: CaptureConfigIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    """The whole ordered list at once. Every key must be a built-in or one of
-    the client's own fields, each at most once."""
+    """The whole list at once. Every key must be a built-in or one of the
+    client's own fields, each at most once."""
     agent = _agent(db, user, agent_id)
     definitions = field_definitions(db, agent.client_id)
     seen: set[str] = set()
@@ -405,10 +405,7 @@ def replace_capture_config(
         db.delete(existing)
     db.flush()
     for position, item in enumerate(config.fields):
-        db.add(AgentCaptureField(
-            agent_id=agent.id, field_key=item.field_key, instruction=item.instruction.strip(),
-            channels=list(item.channels), position=position,
-        ))
+        db.add(AgentCaptureField(agent_id=agent.id, field_key=item.field_key, channels=list(item.channels), position=position))
     db.commit()
     db.refresh(agent)
     return _capture_out(db, agent)

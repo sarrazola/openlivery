@@ -73,8 +73,8 @@ def test_client_defines_fields_and_agent_picks_them(authenticated_client: TestCl
     config = client.put(
         f"/api/agents/{agent['id']}/capture",
         json={"enabled": True, "fields": [
-            {"field_key": "email", "instruction": "Ask once the customer shows interest", "channels": ["whatsapp"]},
-            {"field_key": "presupuesto", "instruction": "When they ask for prices"},
+            {"field_key": "email", "channels": ["whatsapp"]},
+            {"field_key": "presupuesto"},
         ]},
     )
     assert config.status_code == 200, config.text
@@ -88,9 +88,15 @@ def test_client_defines_fields_and_agent_picks_them(authenticated_client: TestCl
     assert client.put(f"/api/agents/{agent['id']}/capture", json={"enabled": True, "fields": [{"field_key": "email", "channels": ["sms"]}]}).status_code == 422
     assert client.put(f"/api/agents/{agent['id']}/capture", json={"enabled": True, "fields": [{"field_key": "email"}, {"field_key": "email"}]}).status_code == 422
 
-    # Deleting the definition removes the agent's request for it.
+    # A contact holding a value is counted, and deleting the definition removes
+    # the agent's request for it and the value from every contact.
+    contact = client.post(f"/api/portal/{slug}/contacts", json={"name": "Sam", "phone": "+57 300 111 2233", "attributes": {"presupuesto": "2500"}}).json()
+    listed = {f["key"]: f for f in client.get(base).json()}
+    assert listed["presupuesto"]["id"] == created.json()["id"] and listed["presupuesto"]["contact_count"] == 1
+    assert listed["name"]["contact_count"] == 0
     assert client.delete(f"{base}/{created.json()['id']}").status_code == 204
     assert [f["field_key"] for f in client.get(f"/api/agents/{agent['id']}/capture").json()["fields"]] == ["email"]
+    assert client.get(f"/api/portal/{slug}/contacts/{contact['id']}").json()["attributes"] == {}
 
 
 def test_agent_asks_for_what_is_missing_and_saves_it(authenticated_client: TestClient, monkeypatch):
@@ -101,8 +107,8 @@ def test_agent_asks_for_what_is_missing_and_saves_it(authenticated_client: TestC
         f"/api/agents/{agent['id']}/capture",
         json={"enabled": True, "fields": [
             {"field_key": "name"},
-            {"field_key": "email", "instruction": "Pídelo cuando muestre interés"},
-            {"field_key": "presupuesto", "instruction": "Cuando pregunte precios"},
+            {"field_key": "email"},
+            {"field_key": "presupuesto"},
         ]},
     )
     monkeypatch.setattr(whatsapp_service, "bridge_command", AsyncMock(return_value={}))
@@ -116,8 +122,8 @@ def test_agent_asks_for_what_is_missing_and_saves_it(authenticated_client: TestC
     assert body["reply"] == "Perfecto, anotado."
     # The name came with the message, so only the two unknown details are listed.
     assert "Datos por capturar" in captured["system"]
-    assert "**Correo** (`email`): Pídelo cuando muestre interés" in captured["system"]
-    assert "**Presupuesto** (`presupuesto`): Monto que planea invertir Cuando pregunte precios" in captured["system"]
+    assert "**Correo** (`email`): Correo electrónico del cliente. Pídelo con naturalidad cuando muestre interés." in captured["system"]
+    assert "**Presupuesto** (`presupuesto`): Monto que planea invertir" in captured["system"]
     assert "`name`" not in captured["system"]
     assert captured["specs"][TOOL_NAME].input_schema["properties"]["field"]["enum"] == ["email", "presupuesto"]
     assert captured["results"][0][1] is False

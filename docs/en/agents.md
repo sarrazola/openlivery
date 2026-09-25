@@ -63,20 +63,21 @@ An agent can ask the customer for details and save them on the contact, so the
 next conversation with that person already has them and the agent does not ask
 again. Under **Contact details** in the agent's settings, switch it on and pick
 the fields: the built-in name, e-mail and phone, or any custom field the client
-defined. Each entry takes an instruction in your words (when and how to ask,
-e.g. "ask for it naturally once the customer shows interest") and, optionally,
-the channels it applies to (WhatsApp, Instagram, Messenger, web chat); with none
-picked it applies everywhere. **Restore default** puts back name and e-mail.
+defined, and optionally the channels each applies to (WhatsApp, Instagram,
+Messenger, web chat); with none picked it applies everywhere. What a field is
+and when to ask for it is the field's own description, so every agent of the
+client asks the same way; the built-in three carry one of their own.
 
 Custom fields belong to the client and are shared by every agent and the client
 portal: **Contact fields** on the client page (`/api/clients/{id}/contact-fields`).
 A field has a `snake_case` key the agent and the API use (it cannot change
 later), a label people see, a type (text, number, e-mail, phone) the value is
 validated against, and a description that tells the agent what the value is and
-when it applies.
+when to ask for it. Deleting a field removes it from every agent and clears its
+value from every contact that held one.
 
 At reply time, only the fields still unknown for that contact reach the prompt,
-as a "Details to collect" section with their instructions, and the agent gets a
+as a "Details to collect" section with their descriptions, and the agent gets a
 `save_contact_field` tool. The rule it follows: ask naturally, one at a time,
 never as a form, and save only what the customer stated explicitly. Built-in
 values go to the contact's own columns; custom values to `attributes` on the

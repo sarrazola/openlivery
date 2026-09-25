@@ -218,9 +218,9 @@ class AgentCaptureField(Base):
     """One detail an agent asks the customer for and saves on the contact.
 
     ``field_key`` is a built-in key (``name``, ``email``, ``phone``) or the key
-    of one of the client's ``ContactField`` definitions. ``instruction`` tells
-    the model when and how to ask; ``channels`` limits where it asks (empty
-    means every channel). The value itself is saved on the contact, so the
+    of one of the client's ``ContactField`` definitions, whose description tells
+    the model what it is and when to ask; ``channels`` limits where it asks
+    (empty means every channel). The value itself is saved on the contact, so the
     next conversation already knows it and the agent does not ask again."""
 
     __tablename__ = "agent_capture_fields"
@@ -229,7 +229,6 @@ class AgentCaptureField(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), index=True)
     field_key: Mapped[str] = mapped_column(String(60))
-    instruction: Mapped[str] = mapped_column(Text, default="")
     channels: Mapped[list] = mapped_column(JSON, default=list)
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)

@@ -1013,27 +1013,27 @@ textarea { line-height: 1.55; }
 /* Contact capture on the agent: one card per field the agent asks for, its
    instruction and the channel chips; the adder and the inline creator. */
 .capture-editor { gap: 12px; }
-.capture-field { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
-.capture-field-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.capture-field-head > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
-.capture-field-head code, .contact-field-row code, .contact-fields-builtin code { padding: 1px 6px; border-radius: 6px; background: var(--surface-4); color: var(--muted); font-size: 12px; }
-.capture-field textarea { width: 100%; }
-.capture-channels { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.capture-list { display: flex; flex-direction: column; gap: 8px; }
+.capture-field { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.capture-field.on { border-color: var(--accent-line); background: var(--surface); }
+.capture-field-head { display: flex !important; flex-direction: row !important; align-items: flex-start; gap: 10px; cursor: pointer; }
+.capture-field-head input { margin: 2px 0 0; width: 16px; height: 16px; flex: 0 0 auto; }
+.capture-field-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.capture-field-text strong { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.capture-field-text small { color: var(--ink-2); font-size: 12px; font-weight: 400; line-height: 1.45; }
+.capture-channels { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-left: 26px; }
 .capture-channels > small { color: var(--muted); font-size: 12px; margin-right: 4px; }
 .capture-channels .chip-toggle { height: 28px; padding: 0 10px; font-size: 12px; }
-.capture-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.capture-foot select { width: auto; max-width: 320px; min-height: 34px; }
-.capture-new { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border: 1px dashed var(--line); border-radius: 10px; }
-.capture-new-actions { display: flex; justify-content: flex-end; gap: 8px; }
 /* The client's field catalog. */
 .contact-fields { gap: 12px; }
 .contact-fields-builtin { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .contact-fields-builtin .pill { gap: 6px; }
-.contact-field-row { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line-soft); }
-.contact-field-main { display: flex; align-items: center; gap: 10px; }
-.contact-field-main input { flex: 1 1 160px; min-width: 0; min-height: 32px; }
-.contact-field-main select { flex: 0 0 auto; width: auto; min-height: 32px; }
-.contact-field-new { display: flex; flex-direction: column; gap: 12px; padding-top: 14px; border-top: 1px dashed var(--line); }
+.contact-field-row { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.contact-field-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.contact-field-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.contact-field-text strong { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.contact-field-text small { color: var(--ink-2); font-size: 12px; line-height: 1.45; }
+.contact-field-text small.muted { color: var(--muted); }
 /* The values on the portal's contact card. */
 .portal-contact-fields { margin-bottom: 18px; }
 .portal-contact-fields dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px 16px; }

@@ -3,10 +3,12 @@
 A client defines custom contact fields once (``ContactField``); every agent of
 that client can then ask for any of them, and for the built-in name, email and
 phone, on the channels it chooses (``AgentCaptureField``). At reply time the
-prompt lists what is still unknown about the contact with the operator's
-instruction for each field, and the model saves what the customer said through
+prompt lists what is still unknown about the contact with each field's
+description, and the model saves what the customer said through
 the ``save_contact_field`` tool. The handler only validates and records; the
 values are written to the contact after the generation loop, like escalation.
+What a field is and when to ask for it is the field's own description, on the
+client's definition, so every agent asks the same way.
 
 What is saved lands on the contact, so the next conversation with that person
 lists it under "Contact" and the agent does not ask again.
@@ -15,7 +17,7 @@ lists it under "Contact" and the agent does not ask again.
 import re
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from ..models import Agent, AgentCaptureField, Contact, ContactField, Conversation, now_utc
@@ -37,9 +39,27 @@ TOOL_NAME = "save_contact_field"
 
 # Built-in fields live in their own contact columns and exist for every client.
 BUILTIN_FIELDS = {
-    "name": {"kind": "text", "label": {"es": "Nombre", "en": "Name"}},
-    "email": {"kind": "email", "label": {"es": "Correo", "en": "Email"}},
-    "phone": {"kind": "phone", "label": {"es": "Teléfono", "en": "Phone"}},
+    "name": {
+        "kind": "text", "label": {"es": "Nombre", "en": "Name"},
+        "description": {
+            "es": "Cómo se llama el cliente. Pídelo con naturalidad en el saludo si aún no lo sabes.",
+            "en": "What the customer is called. Ask for it naturally in the greeting if you do not know it yet.",
+        },
+    },
+    "email": {
+        "kind": "email", "label": {"es": "Correo", "en": "Email"},
+        "description": {
+            "es": "Correo electrónico del cliente. Pídelo con naturalidad cuando muestre interés.",
+            "en": "The customer's e-mail address. Ask for it naturally once they show interest.",
+        },
+    },
+    "phone": {
+        "kind": "phone", "label": {"es": "Teléfono", "en": "Phone"},
+        "description": {
+            "es": "Número de teléfono del cliente, con indicativo del país. Pídelo cuando haga falta para contactarlo.",
+            "en": "The customer's phone number, with the country code. Ask for it when it is needed to reach them.",
+        },
+    },
 }
 
 _TEXT = {
@@ -47,7 +67,7 @@ _TEXT = {
         "title": "Datos por capturar",
         "rule": (
             "Estos datos del contacto aún no se conocen. Pregúntalos con naturalidad dentro de la conversación, "
-            "de uno en uno y en el momento que indica cada instrucción, nunca como un formulario. Cuando el cliente "
+            "de uno en uno y en el momento que indica cada descripción, nunca como un formulario. Cuando el cliente "
             "dé uno, guárdalo de inmediato con la herramienta save_contact_field, tal como lo dijo, y sigue con la "
             "conversación. Nunca inventes ni deduzcas un valor: solo guarda lo que el cliente dijo explícitamente."
         ),
@@ -56,7 +76,7 @@ _TEXT = {
         "title": "Details to collect",
         "rule": (
             "These contact details are not known yet. Ask for them naturally within the conversation, one at a "
-            "time and when each instruction says, never as a form. When the customer gives one, save it right away "
+            "time and when each description says, never as a form. When the customer gives one, save it right away "
             "with the save_contact_field tool, as they said it, and carry on. Never invent or infer a value: only "
             "save what the customer stated explicitly."
         ),
@@ -71,6 +91,8 @@ class FieldDefinition:
     kind: str
     description: str = ""
     builtin: bool = False
+    # The ContactField row for a custom field; None for a built-in.
+    id: object = None
 
 
 @dataclass
@@ -91,13 +113,30 @@ def field_definitions(db: Session, client_id, lang: str = "es") -> dict[str, Fie
     """Every field a contact of this client can hold, built-ins first."""
     lang = lang if lang in ("es", "en") else "es"
     definitions = {
-        key: FieldDefinition(key=key, label=spec["label"][lang], kind=spec["kind"], builtin=True)
+        key: FieldDefinition(key=key, label=spec["label"][lang], kind=spec["kind"], description=spec["description"][lang], builtin=True)
         for key, spec in BUILTIN_FIELDS.items()
     }
     rows = db.scalars(select(ContactField).where(ContactField.client_id == client_id).order_by(ContactField.position, ContactField.created_at))
     for row in rows:
-        definitions[row.key] = FieldDefinition(key=row.key, label=row.label, kind=row.kind, description=row.description)
+        definitions[row.key] = FieldDefinition(key=row.key, label=row.label, kind=row.kind, description=row.description, id=row.id)
     return definitions
+
+
+def contacts_holding(db: Session, client_id, key: str) -> int:
+    """How many of the client's contacts hold a value for a custom field."""
+    return db.scalar(
+        text("SELECT count(*) FROM contacts WHERE client_id = :client_id AND coalesce(attributes::jsonb ->> :key, '') <> ''"),
+        {"client_id": str(client_id), "key": key},
+    ) or 0
+
+
+def strip_attribute(db: Session, client_id, key: str) -> None:
+    """Remove a custom field's value from every contact of the client, when
+    the field itself is deleted, so no contact keeps a value nothing labels."""
+    db.execute(
+        text("UPDATE contacts SET attributes = (attributes::jsonb - :key)::json WHERE client_id = :client_id AND attributes::jsonb ? :key"),
+        {"client_id": str(client_id), "key": key},
+    )
 
 
 def contact_value(contact: Contact | None, key: str) -> str | None:
@@ -142,19 +181,18 @@ def missing_fields(
 def capture_context(
     agent: Agent, conversation: Conversation, definitions: dict[str, FieldDefinition], lang: str | None = None
 ) -> str:
-    """The prompt section listing what is still unknown, with the operator's
-    instruction per field. Empty when nothing is pending."""
+    """The prompt section listing what is still unknown, each with the field's
+    description (what it is and when to ask). Empty when nothing is pending."""
     pending = missing_fields(agent, conversation, definitions)
     if not pending:
         return ""
     lang = lang if lang in _TEXT else "es"
     text = _TEXT[lang]
     lines = []
-    for row, definition in pending:
+    for _, definition in pending:
         line = f"- **{definition.label}** (`{definition.key}`)"
-        detail = " ".join(part.strip() for part in (definition.description, row.instruction) if part and part.strip())
-        if detail:
-            line += f": {detail}"
+        if definition.description.strip():
+            line += f": {definition.description.strip()}"
         lines.append(line)
     return f"## {text['title']}\n" + "\n".join(lines) + "\n\n" + text["rule"]
 

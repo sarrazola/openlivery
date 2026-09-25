@@ -63,21 +63,23 @@ Un agente puede preguntarle datos al cliente y guardarlos en el contacto, así l
 siguiente conversación con esa persona ya los tiene y el agente no vuelve a
 preguntar. En **Datos del contacto**, dentro de los ajustes del agente, actívalo
 y elige los campos: el nombre, correo y teléfono integrados, o cualquier campo
-personalizado que el cliente haya definido. Cada entrada lleva una instrucción
-en tus palabras (cuándo y cómo preguntarlo, p. ej. "pídelo con naturalidad
-cuando el cliente muestre interés") y, si quieres, los canales en los que aplica
-(WhatsApp, Instagram, Messenger, chat web); sin ninguno elegido aplica en todos.
-**Restaurar predeterminado** vuelve a nombre y correo.
+personalizado que el cliente haya definido, y si quieres los canales en los que
+aplica cada uno (WhatsApp, Instagram, Messenger, chat web); sin ninguno elegido
+aplica en todos. Qué es un campo y cuándo pedirlo es la descripción del propio
+campo, así todos los agentes del cliente lo piden igual; los tres integrados
+traen la suya.
 
 Los campos personalizados pertenecen al cliente y los comparten todos sus agentes
 y el portal del cliente: **Campos del contacto** en la página del cliente
 (`/api/clients/{id}/contact-fields`). Un campo tiene una clave en `snake_case`
 que usan el agente y el API (no se puede cambiar después), una etiqueta que ve la
 gente, un tipo (texto, número, correo, teléfono) contra el que se valida el
-valor, y una descripción que le dice al agente qué es el valor y cuándo aplica.
+valor, y una descripción que le dice al agente qué es el valor y cuándo pedirlo.
+Eliminar un campo lo quita de todos los agentes y borra su valor de todos los
+contactos que lo tenían.
 
 Al responder, solo los campos que aún no se conocen de ese contacto llegan al
-prompt, como una sección "Datos por capturar" con sus instrucciones, y el agente
+prompt, como una sección "Datos por capturar" con sus descripciones, y el agente
 recibe la herramienta `save_contact_field`. La regla que sigue: preguntar con
 naturalidad, de uno en uno, nunca como formulario, y guardar solo lo que el
 cliente dijo explícitamente. Los valores integrados van a las columnas propias

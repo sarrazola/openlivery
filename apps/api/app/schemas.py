@@ -801,12 +801,12 @@ class ContactFieldOut(BaseModel):
     description: str = ""
     # Name, email and phone: always there, stored in their own columns.
     builtin: bool = False
+    # Contacts of the client holding a value (custom fields only).
+    contact_count: int = 0
 
 
 class CaptureFieldIn(BaseModel):
     field_key: str = Field(pattern=FIELD_KEY_PATTERN, max_length=60)
-    # When and how the agent asks for it, in the operator's words.
-    instruction: str = Field(default="", max_length=1000)
     # Channel groups it is asked on; empty means every channel.
     channels: list[str] = Field(default_factory=list, max_length=len(CAPTURE_CHANNELS))
 
@@ -823,10 +823,9 @@ class CaptureFieldOut(BaseModel):
     field_key: str
     label: str
     kind: str
+    description: str = ""
     builtin: bool = False
-    instruction: str = ""
     channels: list[str] = Field(default_factory=list)
-    position: int = 0
 
 
 class CaptureConfigIn(BaseModel):
