@@ -11,8 +11,12 @@ from sqlalchemy.orm import Session, joinedload
 from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import Agent, AgentQA, AgentTool, Client, EscalationRule, KnowledgeChunk, KnowledgeDocument, PortalUser, Team, User, WhatsAppChannel, WhatsAppCloudChannel, WidgetChannel, now_utc
-from ..schemas import AgentCreate, AgentOut, AgentPromptOut, AgentUpdate, DocumentOut, EscalationConfigIn, EscalationConfigOut, QAPairCreate, QAPairOut, check_reply_delay
+from ..models import Agent, AgentCaptureField, AgentQA, AgentTool, Client, EscalationRule, KnowledgeChunk, KnowledgeDocument, PortalUser, Team, User, WhatsAppChannel, WhatsAppCloudChannel, WidgetChannel, now_utc
+from ..schemas import (
+    AgentCreate, AgentOut, AgentPromptOut, AgentUpdate, CaptureConfigIn, CaptureConfigOut, CaptureFieldOut, ContactFieldOut,
+    DocumentOut, EscalationConfigIn, EscalationConfigOut, QAPairCreate, QAPairOut, check_reply_delay,
+)
+from ..services.capture import CAPTURE_CHANNELS, field_definitions
 from ..services.knowledge import build_system_prompt, embed_document_chunks, reindex_agent, reindex_document
 
 
@@ -110,8 +114,9 @@ def delete_agent(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User 
             status_code=409,
             detail="This agent answers a channel of its client. Assign another agent to it before deleting this one.",
         )
-    for model in (AgentTool, AgentQA, KnowledgeChunk, KnowledgeDocument, EscalationRule):
+    for model in (AgentTool, AgentQA, KnowledgeChunk, KnowledgeDocument, EscalationRule, AgentCaptureField):
         db.execute(delete(model).where(model.agent_id == agent.id))
+    agent.capture_enabled = False
     for field in ("instructions", "personality", "brief_summary", "brief_products", "brief_audience", "brief_policies", "brief_dos", "brief_donts"):
         setattr(agent, field, "")
     agent.escalation_team_id = None
@@ -352,3 +357,55 @@ def replace_escalation_config(
         )
     db.commit()
     return _escalation_out(db, agent)
+
+
+# --- Contact capture ---------------------------------------------------------
+
+
+def _capture_out(db: Session, agent: Agent) -> CaptureConfigOut:
+    definitions = field_definitions(db, agent.client_id, agent.prompt_language)
+    fields = []
+    for row in agent.capture_fields:
+        definition = definitions.get(row.field_key)
+        if definition is None:
+            continue
+        fields.append(CaptureFieldOut(
+            field_key=row.field_key, label=definition.label, kind=definition.kind, description=definition.description,
+            builtin=definition.builtin, channels=list(row.channels or []),
+        ))
+    available = [
+        ContactFieldOut(key=d.key, label=d.label, kind=d.kind, description=d.description, builtin=d.builtin)
+        for d in definitions.values()
+    ]
+    return CaptureConfigOut(enabled=agent.capture_enabled, fields=fields, available=available, channels=list(CAPTURE_CHANNELS))
+
+
+@router.get("/{agent_id}/capture", response_model=CaptureConfigOut)
+def get_capture_config(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return _capture_out(db, _agent(db, user, agent_id))
+
+
+@router.put("/{agent_id}/capture", response_model=CaptureConfigOut)
+def replace_capture_config(
+    agent_id: uuid.UUID, config: CaptureConfigIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    """The whole list at once. Every key must be a built-in or one of the
+    client's own fields, each at most once."""
+    agent = _agent(db, user, agent_id)
+    definitions = field_definitions(db, agent.client_id)
+    seen: set[str] = set()
+    for item in config.fields:
+        if item.field_key not in definitions:
+            raise HTTPException(status_code=422, detail=f"Unknown contact field: {item.field_key}")
+        if item.field_key in seen:
+            raise HTTPException(status_code=422, detail=f"Repeated contact field: {item.field_key}")
+        seen.add(item.field_key)
+    agent.capture_enabled = config.enabled
+    for existing in list(agent.capture_fields):
+        db.delete(existing)
+    db.flush()
+    for position, item in enumerate(config.fields):
+        db.add(AgentCaptureField(agent_id=agent.id, field_key=item.field_key, channels=list(item.channels), position=position))
+    db.commit()
+    db.refresh(agent)
+    return _capture_out(db, agent)

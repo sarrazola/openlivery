@@ -29,6 +29,7 @@ from .model_catalog import DEFAULT_AUDIO_MODEL
 from .providers import DEFAULT_PROVIDER, resolve_agent_credentials, resolve_provider_credentials
 from .tools import run_completion
 from .usage import record_usage, schedule_generation_reconcile
+from .capture import apply_captures, build_capture_spec, capture_context, field_definitions
 from .escalation import (
     active_rules as escalation_active_rules,
     apply_escalation,
@@ -407,7 +408,8 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     system_content = build_system_prompt(agent, knowledge.text)
     # Who is on the other end, so forms, e-mails and tools get the phone and
     # e-mail the conversation already knows instead of "not specified".
-    contact_block = contact_context(conversation, agent.prompt_language)
+    definitions = field_definitions(db, agent.client_id, agent.prompt_language)
+    contact_block = contact_context(conversation, agent.prompt_language, definitions)
     if contact_block:
         system_content += "\n\n" + contact_block
     recap = previous_conversation_recap(db, conversation)
@@ -415,6 +417,7 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
         system_content += "\n\n" + recap
     escalation_specs = None
     escalation_holder: list = []
+    capture_holder: list = []
     if conversation.channel in ("whatsapp", "whatsapp_cloud"):
         system_content += "\n\n" + _gesture_rules(burst)
     if conversation.channel in ("whatsapp", "whatsapp_cloud", "instagram", "messenger"):
@@ -424,6 +427,14 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
             escalation_specs = [
                 build_escalation_spec(rules, escalation_holder, builtin_enabled=agent.escalation_builtin_enabled)
             ]
+    # What the agent still has to ask this contact for, and the tool that
+    # saves it. After the escalation spec, so callers that index extra_specs
+    # keep finding escalation first.
+    capture_block = capture_context(agent, conversation, definitions, agent.prompt_language)
+    if capture_block:
+        system_content += "\n\n" + capture_block
+    capture_spec = build_capture_spec(agent, conversation, definitions, capture_holder)
+    extra_specs = [*(escalation_specs or []), *([capture_spec] if capture_spec else [])] or None
     messages = [
         {"role": "system", "content": system_content},
         *llm_turns(history, agent.prompt_language),
@@ -438,7 +449,7 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
             messages,
             temperature=agent.temperature,
             max_tokens=agent.max_tokens,
-            extra_specs=escalation_specs,
+            extra_specs=extra_specs,
         )
     except Exception as exc:
         channel.last_error = ("Message received, but the agent could not reply. A person must continue this conversation."
@@ -519,6 +530,7 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     record_usage(db, agent.agency_id, agent.id, agent.provider, agent.model.strip(), completion, conversation=conversation, message=outbound)
     conversation.updated_at = now_utc()
     channel.last_error = None
+    apply_captures(db, conversation, capture_holder, definitions)
     if escalation_holder and conversation.channel in ("instagram", "messenger"):
         request = escalation_holder[-1]
         conversation.social_pending_escalation = {

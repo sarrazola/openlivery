@@ -369,6 +369,8 @@ export type Contact = {
   phone: string | null;
   email: string | null;
   notes: string;
+  // Values of the client's custom contact fields, by key.
+  attributes?: Record<string, string>;
   tags?: ContactTag[];
   created_at: string;
   updated_at: string;
@@ -501,4 +503,34 @@ export type ReportReply = {
   duration_ms: number | null;
   tools: number;
   tool_errors: number;
+};
+
+/** A detail a contact can hold: the built-in name, email and phone, or a
+ * field the client defined (`snake_case` key, label, kind, description). */
+export type ContactFieldKind = "text" | "number" | "email" | "phone";
+export type ContactField = {
+  id?: string | null;
+  key: string;
+  label: string;
+  kind: ContactFieldKind;
+  description: string;
+  builtin: boolean;
+  // Contacts of the client holding a value (custom fields only).
+  contact_count?: number;
+};
+
+/** What an agent asks the customer for, and on which channel groups. */
+export type CaptureField = {
+  field_key: string;
+  label: string;
+  kind: ContactFieldKind;
+  description: string;
+  builtin: boolean;
+  channels: string[];
+};
+export type CaptureConfig = {
+  enabled: boolean;
+  fields: CaptureField[];
+  available: ContactField[];
+  channels: string[];
 };

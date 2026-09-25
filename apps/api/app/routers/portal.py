@@ -29,6 +29,7 @@ from ..schemas import (
     ContactImportError,
     ContactImportResult,
     ContactTagCreate,
+    ContactFieldOut,
     ContactTagOut,
     ContactTagUpdate,
     ContactTagsSet,
@@ -66,6 +67,7 @@ from ..schemas import (
 )
 from ..security import create_portal_token, decode_portal_token, verify_password
 from ..services import channel_accounts
+from ..services.capture import field_definitions
 from ..services.contacts import display_name, merge_contacts, normalize_phone, rename_conversations
 from ..services.tags import create_tag, delete_tag, get_tag, list_tags, rename_tag, tag_count, tag_out
 from ..services.teams import TEAM_CHANNELS, create_team, delete_team, get_team, list_teams, members_out, team_out, update_team
@@ -696,6 +698,7 @@ def _contact_out(contact: Contact, stats) -> ContactOut:
         phone=contact.phone,
         email=contact.email,
         notes=contact.notes,
+        attributes={key: str(value) for key, value in (contact.attributes or {}).items()},
         created_at=contact.created_at,
         updated_at=contact.updated_at,
         conversation_count=int((stats.total if stats is not None else None) or 0),
@@ -704,6 +707,20 @@ def _contact_out(contact: Contact, stats) -> ContactOut:
         blocked_at=contact.blocked_at,
         tags=[ContactTagOut(id=tag.id, name=tag.name, color=tag.color) for tag in contact.tags],
     )
+
+
+def _clean_attributes(db: Session, client: Client, attributes: dict[str, str]) -> dict[str, str]:
+    """Only the client's custom fields, trimmed; an empty value drops the key."""
+    definitions = field_definitions(db, client.id)
+    cleaned = {}
+    for key, value in attributes.items():
+        definition = definitions.get(key)
+        if definition is None or definition.builtin:
+            raise HTTPException(status_code=422, detail=f"Unknown contact field: {key}")
+        value = " ".join(str(value or "").split())[:500]
+        if value:
+            cleaned[key] = value
+    return cleaned
 
 
 def _portal_contact(db: Session, client: Client, contact_id: uuid.UUID) -> Contact:
@@ -771,6 +788,7 @@ def portal_create_contact(
         phone=phone,
         email=(payload.email or None),
         notes=payload.notes.strip(),
+        attributes=_clean_attributes(db, client, payload.attributes),
     )
     db.add(contact)
     db.commit()
@@ -977,6 +995,16 @@ async def portal_contacts_import(
 
 # --- Tags: a catalog the client keeps by hand -------------------------------
 
+@router.get("/{slug}/contact-fields", response_model=list[ContactFieldOut])
+def portal_contact_fields(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+    """Every field a contact can hold, built-ins first, so the portal can
+    label the values. Definitions are managed from the client's settings."""
+    return [
+        ContactFieldOut(id=getattr(d, "id", None), key=d.key, label=d.label, kind=d.kind, description=d.description, builtin=d.builtin)
+        for d in field_definitions(db, client.id).values()
+    ]
+
+
 @router.get("/{slug}/tags", response_model=list[ContactTagOut])
 def portal_tags(slug: str, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
     return list_tags(db, client)
@@ -1052,6 +1080,8 @@ def portal_update_contact(
         contact.email = payload.email or None
     if payload.notes is not None:
         contact.notes = payload.notes.strip()
+    if payload.attributes is not None:
+        contact.attributes = _clean_attributes(db, client, payload.attributes)
     contact.updated_at = now_utc()
     rename_conversations(db, contact)
     db.commit()

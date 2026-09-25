@@ -18,7 +18,7 @@ import { api, ApiError, apiUrl, apiWithHeaders, messageFrom } from "@/lib/api";
 import { formatTime, formatWhen } from "@/lib/datetime";
 import { useLanguage, useT, type I18nKey } from "@/lib/i18n";
 import { tagStyle } from "@/lib/tags";
-import type { Attachment, Contact, ContactImportResult, ContactTag, Conversation, PortalChannel, TemplateSend } from "@/types";
+import type { Attachment, Contact, ContactImportResult, ContactTag, Conversation, PortalChannel, TemplateSend, ContactField } from "@/types";
 import type { ContactValues } from "@/lib/contact-variables";
 
 const LIMIT = 50;
@@ -106,6 +106,9 @@ export function ContactsView({ slug, channels, openConversation, can, agentName 
     try { setTags(await api<ContactTag[]>(`/portal/${slug}/tags`)); } catch { /* the list still works without the catalog */ }
   }, [slug]);
   useEffect(() => { loadTags(); }, [loadTags]);
+  // The client's custom contact fields, to label and edit the values.
+  const [fields, setFields] = useState<ContactField[]>([]);
+  useEffect(() => { api<ContactField[]>(`/portal/${slug}/contact-fields`).then((rows) => setFields(rows.filter((row) => !row.builtin))).catch(() => {}); }, [slug]);
 
   // Tags are set by hand from the contact card; the whole set is sent so the
   // server never has to reconcile partial changes.
@@ -295,6 +298,7 @@ export function ContactsView({ slug, channels, openConversation, can, agentName 
       phone: String(data.get("phone") || "").trim(),
       email: String(data.get("email") || "").trim() || null,
       notes: String(data.get("notes") || "").trim(),
+      attributes: Object.fromEntries(fields.map((field) => [field.key, String(data.get(`attr:${field.key}`) || "").trim()])),
     };
     setBusy(true); setError("");
     try {
@@ -438,6 +442,12 @@ export function ContactsView({ slug, channels, openConversation, can, agentName 
                 </div>
               </div>
             </section>
+            {fields.length > 0 && <section className="portal-contact-fields">
+              <h3>{t("portal.contacts.fields.heading")}</h3>
+              {fields.some((field) => selected.attributes?.[field.key]) ? <dl>
+                {fields.filter((field) => selected.attributes?.[field.key]).map((field) => <div key={field.key}><dt>{field.label}</dt><dd>{selected.attributes?.[field.key]}</dd></div>)}
+              </dl> : <p className="muted">{t("portal.contacts.fields.empty")}</p>}
+            </section>}
             <section className="portal-contact-notes">
               <h3>{t("portal.contacts.notes")}</h3>
               {selected.notes ? <p>{selected.notes}</p> : <p className="muted">{t("portal.contacts.noNotes")}</p>}
@@ -606,6 +616,9 @@ export function ContactsView({ slug, channels, openConversation, can, agentName 
           <label>{t("portal.contacts.form.phone")}<PhoneInput key={editing === "edit" ? selected?.id : "new"} name="phone" initial={editing === "edit" ? selected?.phone : ""} locale={lang} required placeholder="300 123 4567" searchPlaceholder={t("portal.contacts.form.searchCountry")} /><span className="field-help">{t("portal.contacts.form.phoneHelp")}</span></label>
         </div>
         <label>{t("portal.contacts.form.email")}<input name="email" type="email" defaultValue={editing === "edit" ? selected?.email ?? "" : ""} placeholder="name@company.com" /></label>
+        {fields.length > 0 && <div className="form-grid">
+          {fields.map((field) => <label key={field.key}>{field.label}<input name={`attr:${field.key}`} type={field.kind === "number" ? "number" : field.kind === "email" ? "email" : field.kind === "phone" ? "tel" : "text"} step={field.kind === "number" ? "any" : undefined} maxLength={500} defaultValue={editing === "edit" ? selected?.attributes?.[field.key] ?? "" : ""} placeholder={field.description || undefined} /></label>)}
+        </div>}
         <label>{t("portal.contacts.form.notes")}<textarea name="notes" rows={4} defaultValue={editing === "edit" ? selected?.notes : ""} placeholder={t("portal.contacts.form.notesPlaceholder")} /></label>
         {error && <Alert>{error}</Alert>}
         <div className="modal-actions"><button type="button" className="button" onClick={() => setEditing(null)}>{t("portal.contacts.form.cancel")}</button><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={16} /> : t("portal.contacts.form.save")}</button></div>
