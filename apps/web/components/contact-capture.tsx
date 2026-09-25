@@ -12,9 +12,10 @@ import type { CaptureConfig, CaptureField, ContactField, ContactFieldKind } from
 const KINDS: ContactFieldKind[] = ["text", "number", "email", "phone"];
 const NEW_FIELD = "__new__";
 
-/** The channel groups a field can be limited to, labelled like the inbox. */
-function channelKey(channel: string): "inbox.channelWhatsapp" | "social.instagram.title" | "social.messenger.title" | "inbox.channelWidget" {
-  return channel === "whatsapp" ? "inbox.channelWhatsapp" : channel === "instagram" ? "social.instagram.title" : channel === "messenger" ? "social.messenger.title" : "inbox.channelWidget";
+/** The channel groups a field can be limited to. Both WhatsApp lines are one
+ * choice here, so the label is plain "WhatsApp", not the inbox's per-line one. */
+function channelKey(channel: string): "agents.capture.channelWhatsapp" | "agents.capture.channelInstagram" | "agents.capture.channelMessenger" | "agents.capture.channelWidget" {
+  return channel === "whatsapp" ? "agents.capture.channelWhatsapp" : channel === "instagram" ? "agents.capture.channelInstagram" : channel === "messenger" ? "agents.capture.channelMessenger" : "agents.capture.channelWidget";
 }
 
 /** What the agent asks the customer for and saves on the contact: the
