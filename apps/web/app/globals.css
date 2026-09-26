@@ -755,6 +755,15 @@ textarea { line-height: 1.55; }
 .resolve-action:hover { border-color: var(--green-line); color: var(--green-text); background: var(--green-soft); }
 /* The thread header's "more" menu: shared media and blocking the contact. */
 .thread-more-menu { width: 220px; }
+/* One height, radius and type size across the open thread's actions, so the
+   tray picker, Resolve and the mode toggle line up as a single row. */
+.portal-inbox > section > header .thread-actions .assignee-picker select,
+.portal-inbox > section > header .thread-actions .mode-toggle,
+.portal-inbox > section > header .thread-actions .status-toggle { height: 36px; min-height: 36px; border-radius: 8px; font-size: 13px; }
+.portal-inbox > section > header .thread-actions .mode-toggle { padding: 0 14px; font-weight: 600; }
+.portal-inbox > section > header .thread-more > .icon-button { width: 36px; height: 36px; border-color: transparent; background: transparent; }
+.portal-inbox > section > header .thread-more > .icon-button:hover,
+.portal-inbox > section > header .thread-more > .icon-button[aria-expanded="true"] { border-color: var(--line); background: var(--surface-3); color: var(--ink); }
 .thread-more-menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--line-soft); }
 .thread-more-menu button.danger, .thread-more-menu button.danger svg { color: var(--red); }
 /* The contact's name in the thread header opens their card. */
