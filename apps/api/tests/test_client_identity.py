@@ -98,7 +98,8 @@ def test_prompt_headings_follow_the_agent_language_and_keep_the_operator_text(au
     assert "## Your job\nAgenda citas." in prompt
     assert "## The business\n- **What it does:** Contadores en Bogotá" in prompt
     assert "## Rules\n### Never\n- Never invent or assume facts" in prompt
-    assert "stay calm and offer a person.\nNunca des cifras sin verificar" in prompt
+    # The operator's own "never" lines follow the last base rule.
+    assert "A hyphen inside a compound word is fine.\nNunca des cifras sin verificar" in prompt
     assert "### Always" not in prompt
     assert "## Tone\nCálido" in prompt
     assert "## Knowledge" not in prompt
