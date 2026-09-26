@@ -38,6 +38,7 @@ Docker stack; run `alembic upgrade head` on local setups).
 - The "Details to collect" section sits right after the agent's job in the system prompt and states that collecting the pending details is part of the job: each asked once, when its description says or before closing or confirming anything, without insisting.
 - The name a business gives a contact wins over the profile name the channel reports: renaming a contact renames its conversations everywhere, and later messages and new cases keep the record's name.
 - The portal composer keeps the cursor after a reply is sent.
+- The system prompt's base rules tell the agent not to use em or en dashes as punctuation in its replies.
 - The agent editor's Tools tab is now Integrations; custom HTTP tools and MCP servers live there unchanged.
 - **OpenRouter is the only AI provider.** An agency configures one OpenRouter
   key in Settings and every agent picks any model OpenRouter offers by its
