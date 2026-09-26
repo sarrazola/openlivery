@@ -66,19 +66,23 @@ _TEXT = {
     "es": {
         "title": "Datos por capturar",
         "rule": (
-            "Estos datos del contacto aún no se conocen. Pregúntalos con naturalidad dentro de la conversación, "
-            "de uno en uno y en el momento que indica cada descripción, nunca como un formulario. Cuando el cliente "
-            "dé uno, guárdalo de inmediato con la herramienta save_contact_field, tal como lo dijo, y sigue con la "
-            "conversación. Nunca inventes ni deduzcas un valor: solo guarda lo que el cliente dijo explícitamente."
+            "Recoger estos datos del contacto es parte de tu trabajo en esta conversación; aún no se conocen. "
+            "Pregunta cada uno una sola vez, con naturalidad y en el momento que indica su descripción, de uno en uno "
+            "y nunca como un formulario; si la descripción no fija un momento, hazlo antes de cerrar o confirmar "
+            "cualquier gestión. Cuando el cliente dé uno, guárdalo de inmediato con la herramienta save_contact_field, "
+            "tal como lo dijo, y sigue con la conversación. Si no lo da o dice que no aplica, no insistas. Nunca "
+            "inventes ni deduzcas un valor: solo guarda lo que el cliente dijo explícitamente."
         ),
     },
     "en": {
         "title": "Details to collect",
         "rule": (
-            "These contact details are not known yet. Ask for them naturally within the conversation, one at a "
-            "time and when each description says, never as a form. When the customer gives one, save it right away "
-            "with the save_contact_field tool, as they said it, and carry on. Never invent or infer a value: only "
-            "save what the customer stated explicitly."
+            "Collecting these contact details is part of your job in this conversation; they are not known yet. "
+            "Ask for each one once, naturally and when its description says, one at a time and never as a form; "
+            "when the description sets no moment, do it before closing or confirming anything. When the customer "
+            "gives one, save it right away with the save_contact_field tool, as they said it, and carry on. If they "
+            "do not give it or say it does not apply, do not insist. Never invent or infer a value: only save what "
+            "the customer stated explicitly."
         ),
     },
 }

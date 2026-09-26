@@ -198,7 +198,9 @@ async def process_inbound(
             client_id=channel.client_id,
             agent_id=channel.agent_id,
             external_chat_id=inbound.external_chat_id,
-            contact_name=inbound.sender_name,
+            # The record's name, when the person already has one, over the
+            # profile name the channel reports.
+            contact_name=(contact.name.strip()[:180] if contact and contact.name.strip() else inbound.sender_name),
             contact_id=contact.id if contact else None,
             title=title,
             channel=conversation_channel,
@@ -209,11 +211,14 @@ async def process_inbound(
         # A contact tagged for a team skips the AI from the first message.
         route_new_conversation_by_tags(db, conversation, contact)
     elif inbound.sender_name:
-        conversation.contact_name = inbound.sender_name
         contact = conversation.contact
-        if contact and not contact.name.strip():
-            contact.name = inbound.sender_name.strip()[:180]
-            rename_conversations(db, contact)
+        if contact and contact.name.strip():
+            conversation.contact_name = contact.name.strip()[:180]
+        else:
+            conversation.contact_name = inbound.sender_name
+            if contact:
+                contact.name = inbound.sender_name.strip()[:180]
+                rename_conversations(db, contact)
 
     # The same person can stop sharing their phone number between messages.
     # Preserve the case and its takeover state while updating the reply address.
@@ -405,10 +410,13 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     ).all()
     history = list(reversed(history))
     burst = _trailing_visitor_burst(history)
-    system_content = build_system_prompt(agent, knowledge.text)
+    # What the agent still has to ask this contact for rides inside the
+    # prompt, right after the job; the tool that saves it comes below.
+    definitions = field_definitions(db, agent.client_id, agent.prompt_language)
+    capture_block = capture_context(agent, conversation, definitions, agent.prompt_language)
+    system_content = build_system_prompt(agent, knowledge.text, capture_block)
     # Who is on the other end, so forms, e-mails and tools get the phone and
     # e-mail the conversation already knows instead of "not specified".
-    definitions = field_definitions(db, agent.client_id, agent.prompt_language)
     contact_block = contact_context(conversation, agent.prompt_language, definitions)
     if contact_block:
         system_content += "\n\n" + contact_block
@@ -427,12 +435,8 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
             escalation_specs = [
                 build_escalation_spec(rules, escalation_holder, builtin_enabled=agent.escalation_builtin_enabled)
             ]
-    # What the agent still has to ask this contact for, and the tool that
-    # saves it. After the escalation spec, so callers that index extra_specs
-    # keep finding escalation first.
-    capture_block = capture_context(agent, conversation, definitions, agent.prompt_language)
-    if capture_block:
-        system_content += "\n\n" + capture_block
+    # The tool that saves what the customer gives. After the escalation spec,
+    # so callers that index extra_specs keep finding escalation first.
     capture_spec = build_capture_spec(agent, conversation, definitions, capture_holder)
     extra_specs = [*(escalation_specs or []), *([capture_spec] if capture_spec else [])] or None
     messages = [

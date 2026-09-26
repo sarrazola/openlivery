@@ -71,7 +71,9 @@ def test_future_booking_tool_runs_outside_reception_hours(authenticated_client, 
         {"choices": [{"message": {"role": "assistant", "content": None, "tool_calls": [
             {"id": "b1", "type": "function", "function": {"name": "book_appointment", "arguments": json.dumps({"starts_at": requested_time})}},
         ]}}]},
-        {"choices": [{"message": {"role": "assistant", "content": reply}}]},
+        # A real generation reports usage; without it the transport treats the
+        # answer as synthetic and asks again.
+        {"choices": [{"message": {"role": "assistant", "content": reply}}], "usage": {"prompt_tokens": 20, "completion_tokens": 8}},
     ])
     monkeypatch.setattr(loop, "_post_json", provider)
     conversation = client.post("/api/conversations", json={"agent_id": agent["id"]}).json()

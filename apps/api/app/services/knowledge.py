@@ -414,11 +414,13 @@ def contact_context(conversation, lang: str | None = None, definitions: dict | N
     return _section(text["contact"], "\n".join(lines) + "\n\n" + text["contact_rule"])
 
 
-def build_system_prompt(agent: Agent, knowledge_text: str) -> str:
+def build_system_prompt(agent: Agent, knowledge_text: str, capture_text: str = "") -> str:
     """Compose the system prompt as a markdown document.
 
     Headings and the few fixed sentences follow the agent's prompt language;
     what the operator typed goes in verbatim. Empty sections are left out.
+    ``capture_text`` (from ``services.capture.capture_context``) goes right
+    after the job, where the model still reads instructions as its own tasks.
     """
     client = agent.client
     lang = agent.prompt_language if agent.prompt_language in _PROMPT_TEXT else "es"
@@ -441,6 +443,8 @@ def build_system_prompt(agent: Agent, knowledge_text: str) -> str:
     parts = [head]
     if agent.instructions.strip():
         parts.append(_section(text["job"], agent.instructions.strip()))
+    if capture_text.strip():
+        parts.append(capture_text.strip())
 
     facts = [
         (text["summary"], agent.brief_summary),

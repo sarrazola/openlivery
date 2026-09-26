@@ -314,7 +314,12 @@ def _tool_call_reply(call_id: str, name: str, arguments: str, usage: dict | None
 
 
 def _text_reply(text: str, usage: dict | None = None) -> dict:
-    return {"choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": text}}], "usage": usage or {}}
+    # A generated answer always reports usage; one without it is treated as
+    # synthetic by the transport and asked again.
+    return {
+        "choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": text}}],
+        "usage": usage or {"prompt_tokens": 1, "completion_tokens": 1},
+    }
 
 
 def test_tool_loop_round_trip(monkeypatch):

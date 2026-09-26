@@ -391,3 +391,41 @@ def test_the_agent_is_told_who_it_is_talking_to(authenticated_client: TestClient
 
     # The playground has no contact and no block.
     assert "## Contacto" not in client.get(f"/api/agents/{agent['id']}/prompt").json()["prompt"]
+
+
+def test_renamed_contact_wins_over_the_profile_name(authenticated_client: TestClient, monkeypatch):
+    """The inbox shows the name the business gave the contact, not the profile
+    name WhatsApp keeps reporting, on the current case and on the next one."""
+    client = authenticated_client
+    customer = _portal(client, "Rename Co")
+    slug = customer["portal_slug"]
+    client.put("/api/providers/openrouter", json={"api_key": "secret"})
+    agent = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "provider": "openrouter", "model": "gpt-4.1-mini", "name": "Beto", "instructions": "", "personality": "", "is_active": True},
+    ).json()
+    channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
+    headers = {"X-Bridge-Token": get_settings().whatsapp_bridge_token}
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Hello!", input_tokens=1, output_tokens=1)))
+
+    def inbound(message_id: str, text: str):
+        return client.post(
+            f"/api/internal/whatsapp/channels/{channel['id']}/inbound",
+            json={"external_message_id": message_id, "remote_jid": "573001112233@s.whatsapp.net", "sender_name": "fulanito", "text": text},
+            headers=headers,
+        ).json()
+
+    first = inbound("r1", "hola")["conversation_id"]
+    contact = client.get(f"/api/portal/{slug}/contacts").json()[0]
+    assert client.get(f"/api/conversations/{first}").json()["contact_name"] == "fulanito"
+
+    client.patch(f"/api/portal/{slug}/contacts/{contact['id']}", json={"name": "Víctor Perea"})
+    assert client.get(f"/api/conversations/{first}").json()["contact_name"] == "Víctor Perea"
+    # The profile name keeps arriving with every message and does not undo the rename.
+    inbound("r2", "sigo aquí")
+    assert client.get(f"/api/conversations/{first}").json()["contact_name"] == "Víctor Perea"
+    # A new case with the same person opens under the record's name too.
+    client.patch(f"/api/conversations/{first}/status", json={"status": "resolved"})
+    second = inbound("r3", "hola otra vez")["conversation_id"]
+    assert second != first
+    assert client.get(f"/api/conversations/{second}").json()["contact_name"] == "Víctor Perea"

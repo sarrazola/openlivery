@@ -256,13 +256,11 @@ async def _generate_reply(
     exchanged = [item for item in refreshed.messages if item.kind == "message"]
     recent = exchanged[-agent.memory_limit:] if agent.memory_limit else []
     history = llm_turns(recent, agent.prompt_language)
-    system_content = build_system_prompt(agent, knowledge.text)
     # The playground rehearses the capture fields: the tool answers as it
     # would live, but there is no contact to write to.
     definitions = field_definitions(db, agent.client_id, agent.prompt_language)
     capture_block = capture_context(agent, refreshed, definitions, agent.prompt_language)
-    if capture_block:
-        system_content += "\n\n" + capture_block
+    system_content = build_system_prompt(agent, knowledge.text, capture_block)
     capture_spec = build_capture_spec(agent, refreshed, definitions, [])
     messages = [{"role": "system", "content": system_content}, *history]
     base_url, api_key = credentials

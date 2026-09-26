@@ -278,14 +278,12 @@ async def _widget_ai_reply(db: Session, agent: Agent, conversation: Conversation
         .limit(agent.memory_limit or HISTORY_LIMIT)
     ).all()
     history = list(reversed(history))
-    system_content = build_system_prompt(agent, knowledge.text)
     definitions = field_definitions(db, agent.client_id, agent.prompt_language)
+    capture_block = capture_context(agent, conversation, definitions, agent.prompt_language)
+    system_content = build_system_prompt(agent, knowledge.text, capture_block)
     contact_block = contact_context(conversation, agent.prompt_language, definitions)
     if contact_block:
         system_content += "\n\n" + contact_block
-    capture_block = capture_context(agent, conversation, definitions, agent.prompt_language)
-    if capture_block:
-        system_content += "\n\n" + capture_block
     capture_holder: list = []
     capture_spec = build_capture_spec(agent, conversation, definitions, capture_holder)
     messages = [

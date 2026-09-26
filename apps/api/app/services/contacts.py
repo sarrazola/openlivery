@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ..models import Contact, ContactIdentity, Conversation, Message, now_utc
@@ -72,9 +72,14 @@ def display_name(contact: Contact) -> str:
 
 def rename_conversations(db: Session, contact: Contact) -> None:
     """Conversation titles follow the contact's name, so a rename shows
-    everywhere at once."""
+    everywhere at once. The name the inbox shows (``contact_name``) follows
+    too, so the record's name wins over the profile name the channel
+    reported; a contact with no name keeps whatever the channel said."""
+    name = contact.name.strip()[:180]
     db.execute(
-        update(Conversation).where(Conversation.contact_id == contact.id).values(title=display_name(contact)[:240])
+        update(Conversation)
+        .where(Conversation.contact_id == contact.id)
+        .values(title=display_name(contact)[:240], contact_name=func.coalesce(func.nullif(name, ""), Conversation.contact_name))
     )
 
 
