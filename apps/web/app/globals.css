@@ -751,10 +751,12 @@ textarea { line-height: 1.55; }
 .status-toggle.resolved { border-color: var(--line); color: var(--ink); background: var(--surface); }
 .mini-badge.blocked { color: var(--red); background: var(--red-soft); }
 .status-toggle.danger { border-color: var(--red-line); color: var(--red); background: var(--red-soft); }
-/* Resolve sits last and apart from the frequent actions, so a slip of the
-   hand on Return to AI or the tray does not close the case. */
-.resolve-action { margin-left: 10px; }
+/* Resolve stays neutral until hovered, so it does not read as the default. */
 .resolve-action:hover { border-color: var(--green-line); color: var(--green-text); background: var(--green-soft); }
+/* The thread header's "more" menu: shared media and blocking the contact. */
+.thread-more-menu { width: 220px; }
+.thread-more-menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--line-soft); }
+.thread-more-menu button.danger, .thread-more-menu button.danger svg { color: var(--red); }
 /* The contact's name in the thread header opens their card. */
 .contact-name-button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; text-decoration: underline dotted transparent; text-underline-offset: 3px; }
 .contact-name-button:hover { text-decoration-color: var(--muted); }
@@ -1127,7 +1129,7 @@ textarea { line-height: 1.55; }
 .availability-name { min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
 .availability-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .availability-name small { color: var(--subtle); font-size: 11.5px; }
-.assignee-picker.team-picker select { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.assignee-picker.team-picker select { min-width: 170px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 
 .portal-composer { position: relative; padding: 14px 16px; display: flex; align-items: flex-end; gap: 8px; border-top: 1px solid var(--line); }
 .canned-popup { position: absolute; bottom: calc(100% + 4px); left: 12px; right: 12px; z-index: 30; display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 10px 32px rgba(var(--shadow-rgb), calc(.16 * var(--shadow-k))); }
