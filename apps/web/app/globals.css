@@ -765,7 +765,7 @@ textarea { line-height: 1.55; }
 .portal-inbox > section > header .thread-more > .icon-button:hover,
 .portal-inbox > section > header .thread-more > .icon-button[aria-expanded="true"] { border-color: var(--line); background: var(--surface-3); color: var(--ink); }
 .thread-more-menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--line-soft); }
-.thread-more-menu button.danger, .thread-more-menu button.danger svg { color: var(--red); }
+.thread-more-menu button.danger, .thread-more-menu button.danger svg, .thread-more-menu button.danger strong { color: var(--red); }
 /* The contact's name in the thread header opens their card. */
 .contact-name-button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; text-decoration: underline dotted transparent; text-underline-offset: 3px; }
 .contact-name-button:hover { text-decoration-color: var(--muted); }
