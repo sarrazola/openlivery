@@ -509,6 +509,10 @@ const en = {
     },
     conversation: {
       channel: "Channel: {channel}",
+      viewContact: "View the contact's card",
+      contactCard: "Contact",
+      contactCardClose: "Close",
+      contactNoTags: "No tags.",
       takeControl: "Take control",
       returnToAi: "Return to AI",
       resolve: "Resolve",
@@ -1074,6 +1078,10 @@ const es: typeof en = {
     },
     conversation: {
       channel: "Canal: {channel}",
+      viewContact: "Ver la ficha del contacto",
+      contactCard: "Contacto",
+      contactCardClose: "Cerrar",
+      contactNoTags: "Sin etiquetas.",
       takeControl: "Tomar control",
       returnToAi: "Devolver a IA",
       resolve: "Resolver",

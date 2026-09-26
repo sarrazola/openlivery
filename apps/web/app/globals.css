@@ -751,6 +751,21 @@ textarea { line-height: 1.55; }
 .status-toggle.resolved { border-color: var(--line); color: var(--ink); background: var(--surface); }
 .mini-badge.blocked { color: var(--red); background: var(--red-soft); }
 .status-toggle.danger { border-color: var(--red-line); color: var(--red); background: var(--red-soft); }
+/* Resolve sits last and apart from the frequent actions, so a slip of the
+   hand on Return to AI or the tray does not close the case. */
+.resolve-action { margin-left: 10px; }
+.resolve-action:hover { border-color: var(--green-line); color: var(--green-text); background: var(--green-soft); }
+/* The contact's name in the thread header opens their card. */
+.contact-name-button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; text-decoration: underline dotted transparent; text-underline-offset: 3px; }
+.contact-name-button:hover { text-decoration-color: var(--muted); }
+.contact-card section { display: flex; flex-direction: column; gap: 8px; }
+.contact-card h4 { margin: 0; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.contact-card .muted { margin: 0; color: var(--muted); font-size: 13px; }
+.contact-card-details { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px 16px; }
+.contact-card-details > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.contact-card-details dt { color: var(--muted); font-size: 12px; }
+.contact-card-details dd { margin: 0; font-size: 14px; word-break: break-word; }
+.contact-card-notes { margin: 0; padding: 12px 14px; border-radius: 8px; background: var(--amber-soft); white-space: pre-wrap; }
 .inbox-switch { display: flex; align-items: center; gap: 8px; }
 .inbox-archive-link { margin: 2px 12px 4px; display: flex; justify-content: center; }
 .inbox-archive-link.footer { margin: 0; padding: 14px; }
