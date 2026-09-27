@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowRight, Bot, Building2, Cpu, MessagesSquare, MessageSquareText, Radio, UserRound } from "lucide-react";
+import { ArrowRight, Bot, Building2, Cpu, MessagesSquare, MessageSquareText, Radio, UserRound, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { businessLabel, useIndustries } from "@/lib/industries";
@@ -16,6 +16,8 @@ type TopAgent = { id: string; name: string; conversations: number };
 type ModelUsage = { model: string; input_tokens: number; output_tokens: number };
 type Metrics = { messages: number; human_conversations: number; by_channel: Record<string, number>; daily_conversations: DailyPoint[]; top_agents: TopAgent[]; tokens_in: number; tokens_out: number; usage_by_model: ModelUsage[] };
 
+const STEPS_HIDDEN_KEY = "openlivery.home.nextStepsHidden";
+
 export default function HomePage() {
   const { t, lang } = useLanguage();
   const catalog = useIndustries();
@@ -27,6 +29,16 @@ export default function HomePage() {
   const [modelConnected, setModelConnected] = useState(false);
   const [loadedCore, setLoadedCore] = useState(false);
   const [loadedMetrics, setLoadedMetrics] = useState(false);
+  // The first-steps card can be hidden for good; the choice lives in this
+  // browser. Unknown until read, so the card never flashes before hiding.
+  const [stepsHidden, setStepsHidden] = useState<boolean | null>(null);
+  useEffect(() => {
+    try { setStepsHidden(window.localStorage.getItem(STEPS_HIDDEN_KEY) === "1"); } catch { setStepsHidden(false); }
+  }, []);
+  function hideSteps() {
+    setStepsHidden(true);
+    try { window.localStorage.setItem(STEPS_HIDDEN_KEY, "1"); } catch { /* hidden for this visit only */ }
+  }
   useEffect(() => { Promise.all([api<Dashboard>("/dashboard"), api<Agent[]>("/agents"), api<Conversation[]>("/conversations"), api<Provider[]>("/providers")]).then(([d, a, x, p]) => { setData(d); setAgents(a); setConversations(x); setModelConnected(p.some((item) => item.configured)); }).catch(() => {}).finally(() => setLoadedCore(true)); }, []);
   useEffect(() => { setLoadedMetrics(false); api<Metrics>(`/dashboard/metrics?days=${range}`).then(setMetrics).catch(() => {}).finally(() => setLoadedMetrics(true)); }, [range]);
 
@@ -38,10 +50,10 @@ export default function HomePage() {
   return (
     <div className="page">
       <PageHead eyebrow={t("home.head.eyebrow")} title={t("home.head.title")} description={t("home.head.description")} action={<label className="range-select"><select value={range} onChange={(e) => setRange(Number(e.target.value))}>{[7, 14, 30, 90].map((n) => <option key={n} value={n}>{t("home.range.days", { count: n })}</option>)}</select></label>} />
-      <section className="panel next-steps home-next-steps">
-        <div className="panel-head"><div><h3>{t("home.nextSteps.title")}</h3><p>{t("home.nextSteps.subtitle")}</p></div></div>
+      {stepsHidden === false && <section className="panel next-steps home-next-steps">
+        <div className="panel-head"><div><h3>{t("home.nextSteps.title")}</h3><p>{t("home.nextSteps.subtitle")}</p></div><button type="button" className="icon-button steps-dismiss" onClick={hideSteps} title={t("home.nextSteps.dismiss")} aria-label={t("home.nextSteps.dismiss")}><X size={16} /></button></div>
         <ol><li className={loadedCore && data?.clients ? "done" : ""}>{loadedCore ? <span>{data?.clients ? "✓" : "1"}</span> : <span><Skeleton style={{ width: 18, height: 18, borderRadius: 999 }} /></span>}<div><strong>{t("home.nextSteps.step1Title")}</strong><small>{t("home.nextSteps.step1Desc")}</small></div></li><li className={loadedCore && data?.agents ? "done" : ""}>{loadedCore ? <span>{data?.agents ? "✓" : "2"}</span> : <span><Skeleton style={{ width: 18, height: 18, borderRadius: 999 }} /></span>}<div><strong>{t("home.nextSteps.step2Title")}</strong><small>{t("home.nextSteps.step2Desc")}</small></div></li><li className={loadedCore && modelConnected ? "done" : ""}>{loadedCore ? <span>{modelConnected ? "✓" : "3"}</span> : <span><Skeleton style={{ width: 18, height: 18, borderRadius: 999 }} /></span>}<div><strong>{t("home.nextSteps.step3Title")}</strong><small>{t("home.nextSteps.step3Desc")}</small></div></li></ol>
-      </section>
+      </section>}
       <section className="metrics-grid">
         <article className="metric-card"><span className="metric-icon blue"><Building2 size={20} /></span><div><small>{t("home.metrics.clients")}</small><strong>{loadedCore ? data?.clients ?? "—" : <Skeleton className="sk-line" style={{ width: 52, height: 28 }} />}</strong><p>{t("home.metrics.clientsActive", { count: data?.active_clients ?? 0 })}</p></div></article>
         <article className="metric-card"><span className="metric-icon violet"><Bot size={20} /></span><div><small>{t("home.metrics.agents")}</small><strong>{loadedCore ? agents.length || data?.agents || "—" : <Skeleton className="sk-line" style={{ width: 52, height: 28 }} />}</strong><p>{t("home.metrics.agentsActive", { count: agents.filter((item) => item.is_active).length })}</p></div></article>

@@ -14,6 +14,7 @@ const en = {
     step2Desc: "Define instructions and personality.",
     step3Title: "Connect your model",
     step3Desc: "Use your own API key.",
+    dismiss: "Hide",
   },
   metrics: {
     clients: "Clients",
@@ -70,6 +71,7 @@ const es: typeof en = {
     step2Desc: "Define instrucciones y personalidad.",
     step3Title: "Conecta tu modelo",
     step3Desc: "Usa tu propia clave de API.",
+    dismiss: "Ocultar",
   },
   metrics: {
     clients: "Clientes",
