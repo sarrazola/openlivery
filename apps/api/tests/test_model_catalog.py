@@ -72,6 +72,6 @@ def test_a_failed_refresh_keeps_the_last_list(monkeypatch):
     assert [m.id for m in catalog.list_models()] == ["openai/gpt-5.6-luna"]
     # And before OpenRouter ever answered, the defaults still let an agent be created.
     catalog._current = None
-    assert catalog.get_model("openai/gpt-5.6-luna") is not None
+    assert catalog.get_model("openai/gpt-6-luna") is not None
     assert catalog.DEFAULT_EMBEDDING_MODEL in [m.id for m in catalog.list_embedding_models()]
     assert catalog.DEFAULT_AUDIO_MODEL in catalog.audio_models()
