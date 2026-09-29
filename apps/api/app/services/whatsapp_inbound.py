@@ -55,6 +55,9 @@ class InboundMessage:
     quoted_external_id: str | None = None
     occurred_at: datetime | None = None
     sender_user_id: str | None = None
+    # The ad or post the message was started from, as the channel reports
+    # it (WhatsApp Cloud API click-to-chat). None for every other message.
+    referral: dict | None = None
 
 
 @dataclass
@@ -226,6 +229,11 @@ async def process_inbound(
         conversation.external_chat_id = inbound.external_chat_id
         if contact:
             conversation.contact_id = contact.id
+    # The referral travels on the message that opened the chat from an ad. A
+    # case keeps the first one it sees; a later ad click lands in whichever
+    # case is open, so the value is never overwritten.
+    if inbound.referral and not conversation.acquisition:
+        conversation.acquisition = inbound.referral
 
     # The message exists before its media is resolved, so a transcription or
     # description can be recorded against it.

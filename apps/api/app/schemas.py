@@ -404,6 +404,9 @@ class ConversationOut(ORMModel):
     # When the contact last wrote; the inbox shows this so the row's time
     # means "waiting since", not "our last activity".
     last_inbound_at: datetime | None = None
+    # The ad referral the first message carried, when the case started
+    # from a click-to-chat ad. None otherwise.
+    acquisition: dict | None = None
 
 
 class SourceOut(BaseModel):

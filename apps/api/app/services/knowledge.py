@@ -225,8 +225,9 @@ async def _semantic_search(db: Session, agent: Agent, query: str) -> KnowledgeRe
 _PROMPT_TEXT = {
     "es": {
         "title": "{name}, asistente de IA de {client}",
-        "intro": "Eres {name}, un agente de IA de {client}",
-        "intro_business": ", un negocio de {business}.",
+        "identity_name": "Nombre",
+        "identity_client": "Negocio",
+        "identity_business": "Sector",
         "now": "Fecha y hora actual ({tz}): {now}.",
         "weekdays": ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"),
         "availability": "Horarios y solicitudes",
@@ -269,8 +270,9 @@ _PROMPT_TEXT = {
     },
     "en": {
         "title": "{name}, AI assistant for {client}",
-        "intro": "You are {name}, an AI agent for {client}",
-        "intro_business": ", in the {business} business.",
+        "identity_name": "Name",
+        "identity_client": "Business",
+        "identity_business": "Industry",
         "now": "Current date and time ({tz}): {now}.",
         "weekdays": ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),
         "availability": "Hours and requests",
@@ -435,11 +437,19 @@ def build_system_prompt(agent: Agent, knowledge_text: str, capture_text: str = "
         now = datetime.now(ZoneInfo("UTC"))
 
     business = industries.describe(client.industry, client.business_type, client.business_custom, lang)
-    intro = text["intro"].format(name=agent.name, client=client.name)
-    intro += text["intro_business"].format(business=business[:1].lower() + business[1:]) if business else "."
+    # Who the agent is, as fields rather than a sentence. A sentence here
+    # ("you are X, an AI agent for Y") reads as a script, and the model opens
+    # every first reply by repeating it. Fields give it the same facts with
+    # no phrasing to copy.
+    identity = [
+        f"- **{text['identity_name']}:** {agent.name}",
+        f"- **{text['identity_client']}:** {client.name}",
+    ]
+    if business:
+        identity.append(f"- **{text['identity_business']}:** {business[:1].upper() + business[1:]}")
     head = "\n".join([
         f"# {text['title'].format(name=agent.name, client=client.name)}",
-        intro,
+        *identity,
         text["now"].format(tz=tz_name, now=f"{text['weekdays'][now.weekday()]}, {now:%Y-%m-%d %H:%M}"),
     ])
     parts = [head]

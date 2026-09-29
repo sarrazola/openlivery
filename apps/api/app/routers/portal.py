@@ -85,6 +85,7 @@ from ..services.whatsapp_templates import (
     window_is_open,
     window_open_until,
 )
+from ..services import reply_window
 from ..services.conversation_state import record_activity
 from ..services.conversation_state import ConversationClosed, assign, ensure_open, note_reply, set_archived, set_mode, set_status, set_team
 from ..services.routing import route_conversation
@@ -749,7 +750,8 @@ def portal_contacts(
     client: Client = Depends(_portal_client),
     db: Session = Depends(get_db),
 ):
-    """One page of contacts, newest activity first. The total for the same
+    """One page of contacts, newest first by creation, so editing one or a
+    sweep touching its conversations does not move it. The total for the same
     search travels in X-Total-Count so the list can page without changing
     the body shape that native clients already read."""
     stats = _contact_stats()
@@ -767,7 +769,7 @@ def portal_contacts(
         scope.append(Contact.id.in_(select(ContactTagLink.contact_id).where(ContactTagLink.tag_id == tag)))
     query = select(Contact, stats).outerjoin(stats, stats.c.cid == Contact.id).where(*scope).options(selectinload(Contact.tags))
     rows = db.execute(
-        query.order_by(func.coalesce(stats.c.last_activity_at, Contact.updated_at).desc()).limit(limit).offset(offset)
+        query.order_by(Contact.created_at.desc(), Contact.id).limit(limit).offset(offset)
     ).all()
     total = db.scalar(select(func.count(Contact.id)).where(*scope)) or 0
     response.headers["X-Total-Count"] = str(total)
@@ -1209,7 +1211,7 @@ def portal_contact_conversations(
     ]
 
 
-WINDOW_CLOSED = "The 24-hour reply window is closed. Send an approved template to reach this person."
+WINDOW_CLOSED = reply_window.WINDOW_CLOSED
 
 
 def _require_open_conversation(conversation: Conversation) -> None:
@@ -1219,12 +1221,12 @@ def _require_open_conversation(conversation: Conversation) -> None:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-def _require_open_window(conversation: Conversation) -> None:
+def _require_open_window(db: Session, conversation: Conversation) -> None:
+    # The send service checks the window again; here it fails before anything is stored.
     if conversation.channel in ("instagram", "messenger"):
         from ..services.social_policy import require_reply
         require_reply(conversation, human=True)
-    if conversation.channel == "whatsapp_cloud" and not window_is_open(_last_inbound_at(conversation)):
-        raise HTTPException(status_code=409, detail=WINDOW_CLOSED)
+    reply_window.require_open_window(db, conversation)
 
 
 def _cloud_channel(db: Session, client: Client, channel_id: uuid.UUID | None = None) -> WhatsAppCloudChannel | None:
@@ -2008,7 +2010,7 @@ async def portal_reply_media(
     _require_open_conversation(conversation)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
-    _require_open_window(conversation)
+    _require_open_window(db, conversation)
     await store_operator_media_reply(
         db, conversation, file=file, caption=caption, sender_name=sender_name, portal_user_id=user.id if user else None
     )
@@ -2029,7 +2031,7 @@ async def portal_reply(
     _require_open_conversation(conversation)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
-    _require_open_window(conversation)
+    _require_open_window(db, conversation)
     if conversation.channel in ("instagram", "messenger"):
         from ..services.social_delivery import queue_message
         if payload.quoted_message_id:

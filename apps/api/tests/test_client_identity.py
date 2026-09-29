@@ -49,7 +49,7 @@ def test_prompt_names_the_business_type_and_previews_without_knowledge(authentic
     preview = client.get(f"/api/agents/{agent['id']}/prompt")
     assert preview.status_code == 200
     prompt = preview.json()["prompt"]
-    assert prompt.startswith("# Ramiro, asistente de IA de FinancialCoach\nEres Ramiro, un agente de IA de FinancialCoach, un negocio de contabilidad / impuestos.")
+    assert prompt.startswith("# Ramiro, asistente de IA de FinancialCoach\n- **Nombre:** Ramiro\n- **Negocio:** FinancialCoach\n- **Sector:** Contabilidad / impuestos\nFecha y hora actual")
     assert "## Tu trabajo\nBook tax appointments." in prompt
     assert "## Conocimiento" not in prompt
 
@@ -58,7 +58,7 @@ def test_prompt_names_the_business_type_and_previews_without_knowledge(authentic
     monkeypatch.setattr(conversations_router, "run_completion", fake_completion)
     assert client.post(f"/api/conversations/{conversation['id']}/messages", json={"content": "Hola"}).status_code == 200
     sent = fake_completion.await_args.args[4][0]["content"]
-    assert "un negocio de contabilidad / impuestos" in sent
+    assert "- **Sector:** Contabilidad / impuestos" in sent
 
 
 def test_other_says_nothing_about_the_business(authenticated_client: TestClient):
@@ -66,7 +66,8 @@ def test_other_says_nothing_about_the_business(authenticated_client: TestClient)
     customer = client.post("/api/clients", json={"name": "Acme", "industry": "other", "business_type": "other"}).json()
     agent = client.post("/api/agents", json={"client_id": customer["id"], "name": "Bot", "is_active": True}).json()
     prompt = client.get(f"/api/agents/{agent['id']}/prompt").json()["prompt"]
-    assert "\nEres Bot, un agente de IA de Acme.\n" in prompt
+    assert "\n- **Nombre:** Bot\n- **Negocio:** Acme\nFecha y hora actual" in prompt
+    assert "Sector" not in prompt
 
 
 def test_other_with_own_words_names_them_and_a_known_type_wins(authenticated_client: TestClient):
@@ -75,11 +76,11 @@ def test_other_with_own_words_names_them_and_a_known_type_wins(authenticated_cli
     assert customer["business_custom"] == "Casa de cambio"
     agent = client.post("/api/agents", json={"client_id": customer["id"], "name": "Bot", "is_active": True}).json()
     prompt = client.get(f"/api/agents/{agent['id']}/prompt").json()["prompt"]
-    assert "\nEres Bot, un agente de IA de Acme, un negocio de casa de cambio.\n" in prompt
+    assert "\n- **Negocio:** Acme\n- **Sector:** Casa de cambio\n" in prompt
 
     client.patch(f"/api/clients/{customer['id']}", json={"business_type": "insurance"})
     prompt = client.get(f"/api/agents/{agent['id']}/prompt").json()["prompt"]
-    assert "un negocio de seguros." in prompt
+    assert "- **Sector:** Seguros\n" in prompt
 
 
 def test_prompt_headings_follow_the_agent_language_and_keep_the_operator_text(authenticated_client: TestClient):
@@ -94,7 +95,7 @@ def test_prompt_headings_follow_the_agent_language_and_keep_the_operator_text(au
     ).json()
     assert agent["prompt_language"] == "en"
     prompt = client.get(f"/api/agents/{agent['id']}/prompt").json()["prompt"]
-    assert prompt.startswith("# Ramiro, AI assistant for FinancialCoach\nYou are Ramiro, an AI agent for FinancialCoach, in the accounting / tax business.")
+    assert prompt.startswith("# Ramiro, AI assistant for FinancialCoach\n- **Name:** Ramiro\n- **Business:** FinancialCoach\n- **Industry:** Accounting / tax\n")
     assert "## Your job\nAgenda citas." in prompt
     assert "## The business\n- **What it does:** Contadores en Bogotá" in prompt
     assert "## Rules\n### Never\n- Never invent or assume facts" in prompt

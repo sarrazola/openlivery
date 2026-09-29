@@ -429,3 +429,17 @@ def test_renamed_contact_wins_over_the_profile_name(authenticated_client: TestCl
     second = inbound("r3", "hola otra vez")["conversation_id"]
     assert second != first
     assert client.get(f"/api/conversations/{second}").json()["contact_name"] == "Víctor Perea"
+
+
+def test_contacts_list_newest_first_and_editing_does_not_reorder(authenticated_client: TestClient):
+    client = authenticated_client
+    customer = _portal(client, "Order Co")
+    base = f"/api/portal/{customer['portal_slug']}/contacts"
+    first = client.post(base, json={"name": "First", "phone": "573001110001"}).json()
+    second = client.post(base, json={"name": "Second", "phone": "573001110002"}).json()
+    assert [row["name"] for row in client.get(base).json()] == ["Second", "First"]
+
+    assert client.patch(f"{base}/{first['id']}", json={"notes": "edited later"}).status_code == 200
+    listed = client.get(base).json()
+    assert [row["name"] for row in listed] == ["Second", "First"]
+    assert listed[1]["id"] == first["id"] and listed[0]["id"] == second["id"]

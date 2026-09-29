@@ -57,6 +57,19 @@ def verify_webhook(
     return PlainTextResponse(hub_challenge)
 
 
+# What identifies the ad a click-to-chat message came from. Meta attaches the
+# whole object only to the message that opened the chat; the rest of it
+# (image and video URLs, thumbnails) expires and is not worth keeping.
+REFERRAL_FIELDS = ("source_type", "source_id", "source_url", "headline", "body", "media_type", "ctwa_clid")
+
+
+def parse_referral(referral) -> dict | None:
+    if not isinstance(referral, dict):
+        return None
+    kept = {key: str(referral[key])[:500] for key in REFERRAL_FIELDS if referral.get(key)}
+    return kept or None
+
+
 def parse_message(message: dict, contacts: dict[str, str]) -> InboundMessage | None:
     """Map one Cloud API message to the shared inbound shape; None to skip."""
     kind = message.get("type")
@@ -68,6 +81,7 @@ def parse_message(message: dict, contacts: dict[str, str]) -> InboundMessage | N
         "sender_name": contacts.get(sender),
         "sender_user_id": user_id(message),
         "occurred_at": event_time(message.get("timestamp")),
+        "referral": parse_referral(message.get("referral")),
     }
     if not base["external_message_id"] or not sender:
         return None

@@ -64,9 +64,12 @@ async def send_channel_message(
         if not conversation.whatsapp_cloud_channel_id or not conversation.external_chat_id:
             raise HTTPException(status_code=409, detail="This conversation does not have a valid WhatsApp destination")
         channel = db.get(WhatsAppCloudChannel, conversation.whatsapp_cloud_channel_id)
+        from .reply_window import require_open_window
         from .whatsapp_coexistence import require_reply
         if channel and channel.coexistence:
             require_reply(conversation)
+        else:
+            require_open_window(db, conversation)
         if not channel or not channel.encrypted_access_token or not channel.phone_number_id:
             raise HTTPException(status_code=409, detail="The WhatsApp API channel is not configured")
         return await send_text(
@@ -125,9 +128,12 @@ async def send_channel_media(
         if not conversation.whatsapp_cloud_channel_id or not conversation.external_chat_id:
             raise HTTPException(status_code=409, detail="This conversation does not have a valid WhatsApp destination")
         channel = db.get(WhatsAppCloudChannel, conversation.whatsapp_cloud_channel_id)
+        from .reply_window import require_open_window
         from .whatsapp_coexistence import require_reply
         if channel and channel.coexistence:
             require_reply(conversation)
+        else:
+            require_open_window(db, conversation)
         if not channel or not channel.encrypted_access_token or not channel.phone_number_id:
             raise HTTPException(status_code=409, detail="The WhatsApp API channel is not configured")
         access_token = decrypt_secret(channel.encrypted_access_token)

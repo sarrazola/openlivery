@@ -5,11 +5,13 @@ import base64
 import json
 import shutil
 import subprocess
+import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
+from app.models import now_utc
 from app.services import audio, whatsapp
 
 pytestmark = pytest.mark.skipif(
@@ -76,10 +78,14 @@ def test_both_outbound_channels_receive_valid_voice_media(tmp_path, monkeypatch,
     monkeypatch.setattr(whatsapp, "send_text", caption)
     monkeypatch.setattr(whatsapp, "decrypt_secret", lambda value: "test-token")
     conversation = SimpleNamespace(
-        channel=channel, whatsapp_channel_id="qr-line", whatsapp_cloud_channel_id="api-line",
+        id=uuid.uuid4(), channel=channel, whatsapp_channel_id="qr-line", whatsapp_cloud_channel_id="api-line",
         external_chat_id="573001234567",
     )
-    db = SimpleNamespace(get=lambda model, key: SimpleNamespace(encrypted_access_token="encrypted", phone_number_id="phone-id", coexistence=False))
+    # The Cloud API send checks the reply window from the stored messages: the person wrote just now.
+    db = SimpleNamespace(
+        get=lambda model, key: SimpleNamespace(encrypted_access_token="encrypted", phone_number_id="phone-id", coexistence=False),
+        scalar=lambda query: now_utc(),
+    )
     result = asyncio.run(whatsapp.send_channel_media(
         db, conversation, kind="audio", data=original, mime="audio/mp4", filename="voice-note.m4a", caption="Listen to this",
     ))

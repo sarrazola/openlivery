@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -12,6 +13,7 @@ from conftest import login_legacy_owner
 
 from app.routers import whatsapp_cloud as whatsapp_cloud_router
 from app.routers import whatsapp_cloud_webhook as webhook_router
+from app.models import now_utc
 from app.services import ai as ai_service
 from app.services import whatsapp as whatsapp_service
 from app.services import whatsapp_inbound as whatsapp_inbound_service
@@ -375,9 +377,10 @@ def test_transcoded_voice_note_uploads_with_ogg_filename(monkeypatch):
 
     channel = SimpleNamespace(encrypted_access_token="enc", phone_number_id="111", coexistence=False)
     conversation = SimpleNamespace(
-        channel="whatsapp_cloud", whatsapp_cloud_channel_id="ch-1", external_chat_id="573001"
+        id=uuid.uuid4(), channel="whatsapp_cloud", whatsapp_cloud_channel_id="ch-1", external_chat_id="573001"
     )
-    db = SimpleNamespace(get=lambda model, key: channel)
+    # The send checks the reply window from the stored messages: the person wrote just now.
+    db = SimpleNamespace(get=lambda model, key: channel, scalar=lambda query: now_utc())
 
     wamid = asyncio.run(
         whatsapp_service.send_channel_media(

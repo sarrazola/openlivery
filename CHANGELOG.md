@@ -21,6 +21,8 @@ Docker stack; run `alembic upgrade head` on local setups).
 
 ### Added
 
+- A WhatsApp Cloud API conversation that starts from a click-to-chat ad keeps the referral Meta attaches to that first message (`source_type`, `source_id`, `source_url`, `headline`, `body`, `media_type`, `ctwa_clid`) as `acquisition` on the conversation; the portal marks the thread as coming from an ad or a post. Migration `0050` adds `conversations.acquisition`.
+
 - Agents collect contact details in conversation and save them on the contact: the built-in name, e-mail and phone, or custom fields the client defines once (`snake_case` key, label, type, description) under **Contact fields**, whose description tells the agent what the value is and when to ask. Each agent picks which fields it asks for and the channels it applies to; only what is still unknown reaches the prompt, the agent saves through a `save_contact_field` tool, and the next conversation with that person already has the values. The portal shows and edits them on the contact card. Routes: `/api/clients/{id}/contact-fields`, `GET`/`PUT /api/agents/{id}/capture`, `GET /api/portal/{slug}/contact-fields`, and `attributes` on the contact. Migration `0049` adds `contact_fields`, `agent_capture_fields`, `contacts.attributes` and `agents.capture_enabled`.
 - A client can connect several WhatsApp numbers (QR and API) and several Instagram accounts and Facebook Pages, each answered by the agent you pick; the same agent may answer more than one. Each account takes an optional name, and the Inbox and portal show it (or the number's last digits, or the handle) once a client has more than one on a channel. Lines can be removed, keeping their conversations as history. The channel routes gain per-client collections (`/whatsapp/clients/{id}/channels` and the like) and address an account by its own id; the client-id form keeps working for the first account. Migration `0047` drops the one-per-client constraints and adds `label` to the three channel tables.
 - WhatsApp Cloud API webhook: traffic for another number of the same agency delivered to a channel's callback is handed to the channel that holds that number instead of being dropped, so one Meta app can serve several numbers.
@@ -325,6 +327,9 @@ stack's Postgres).
 
 ### Changed
 
+- The 24-hour reply window of the WhatsApp Cloud API is enforced by the send service itself (`services.reply_window`), so every path that delivers a free-form message meets it, not only the inbox routes.
+- The system prompt states the agent's name, business and industry as fields instead of a sentence, so the model has no phrasing to repeat as an opening line.
+- The portal's contact list is ordered by creation, newest first, and shows when each contact was added; editing a contact no longer moves it.
 - The WhatsApp QR bridge (`apps/whatsapp`) was rewritten in Go on top of
   [whatsmeow](https://github.com/tulir/whatsmeow), replacing the Node.js
   service built on Baileys. The HTTP contract with the API, the port and the

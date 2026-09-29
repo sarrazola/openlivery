@@ -381,7 +381,7 @@ export function ContactsView({ slug, channels, openConversation, can, agentName 
           : items.map((contact) => <button key={contact.id} onClick={() => choose(contact)} className={selected?.id === contact.id ? "active" : ""}>
             <span className="entity-avatar tiny"><UserRound size={15} /></span>
             <span>
-              <span className="portal-inbox-row-top"><strong>{nameOf(contact)}</strong>{contact.last_activity_at && <time>{formatWhen(contact.last_activity_at, lang)}</time>}</span>
+              <span className="portal-inbox-row-top"><strong>{nameOf(contact)}</strong><time title={t("portal.contacts.createdAt")}>{formatWhen(contact.created_at, lang)}</time></span>
               <small className="portal-inbox-preview">{phoneLabel(contact.phone)}{contact.email ? ` · ${contact.email}` : ""}</small>
               {contact.tags && contact.tags.length > 0 && <span className="tag-chips">{contact.tags.slice(0, 3).map((tag) => <span key={tag.id} className="tag-chip" style={tagStyle(tag.color)}>{tag.name}</span>)}{contact.tags.length > 3 && <span className="tag-chip">+{contact.tags.length - 3}</span>}</span>}
               <small className="inbox-row-meta">{t("portal.contacts.conversationCount", { count: contact.conversation_count })}{contact.blocked_at && <span className="mini-badge blocked"><Ban size={10} /> {t("portal.contacts.blockedBadge")}</span>}{contact.open_count > 0 && <span className="mini-badge human">{t("portal.contacts.openCount", { count: contact.open_count })}</span>}</small>

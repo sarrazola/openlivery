@@ -168,6 +168,15 @@ export type Team = {
   open_count: number;
   unassigned_count: number;
 };
+export type ConversationAcquisition = {
+  source_type?: string;
+  source_id?: string;
+  source_url?: string;
+  headline?: string;
+  body?: string;
+  media_type?: string;
+  ctwa_clid?: string;
+};
 export type Conversation = {
   id: string;
   client_id: string;
@@ -190,6 +199,7 @@ export type Conversation = {
   human_reply_window_open?: boolean;
   human_reply_window_until?: string | null;
   reply_block_reason?: string | null;
+  acquisition?: ConversationAcquisition | null;
   social_channel_id?: string | null;
   account_label?: string | null;
   channel_capabilities?: ChannelCapabilities;
