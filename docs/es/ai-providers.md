@@ -25,7 +25,7 @@ Cada respuesta de chat vuelve con el bloque de uso de OpenRouter, incluido lo qu
 
 ## Identificadores de modelo
 
-Los modelos se nombran por su slug de OpenRouter, `proveedor/modelo`: `openai/gpt-5.6-luna`, `anthropic/claude-sonnet-5`, `google/gemini-3.8-flash`. El asistente de creación y la página del agente ofrecen una lista curada de presets, agrupada por lo que una agencia realmente elige (los más rápidos y económicos, equilibrados, los más potentes), y aceptan cualquier otro slug escrito a mano. Los presets salen de `apps/web/lib/providers.ts` y se reflejan, con ventana de contexto, capacidades y precio de lista, en `apps/api/app/services/model_catalog.py` (`GET /api/catalog/models`).
+Los modelos se nombran por su slug de OpenRouter, `proveedor/modelo`: `openai/gpt-6-luna`, `anthropic/claude-sonnet-5`, `google/gemini-3.8-flash`. El asistente de creación y la página del agente ofrecen una lista curada de presets, agrupada por lo que una agencia realmente elige (los más rápidos y económicos, equilibrados, los más potentes), y aceptan cualquier otro slug escrito a mano. Los presets salen de `apps/web/lib/providers.ts` y se reflejan, con ventana de contexto, capacidades y precio de lista, en `apps/api/app/services/model_catalog.py` (`GET /api/catalog/models`).
 
 ### Modelos de visión y audio
 

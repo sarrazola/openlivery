@@ -25,7 +25,7 @@ Every chat reply comes back with OpenRouter's usage block, including what the ca
 
 ## Model ids
 
-Models are named by their OpenRouter slug, `vendor/model`: `openai/gpt-5.6-luna`, `anthropic/claude-sonnet-5`, `google/gemini-3.8-flash`. The agent wizard and the agent page offer a curated preset list, grouped by what an agency actually chooses on (fastest and cheapest, balanced, most capable), and accept any other slug typed by hand. The presets come from `apps/web/lib/providers.ts` and are mirrored, with context windows, capabilities and list prices, in `apps/api/app/services/model_catalog.py` (`GET /api/catalog/models`).
+Models are named by their OpenRouter slug, `vendor/model`: `openai/gpt-6-luna`, `anthropic/claude-sonnet-5`, `google/gemini-3.8-flash`. The agent wizard and the agent page offer a curated preset list, grouped by what an agency actually chooses on (fastest and cheapest, balanced, most capable), and accept any other slug typed by hand. The presets come from `apps/web/lib/providers.ts` and are mirrored, with context windows, capabilities and list prices, in `apps/api/app/services/model_catalog.py` (`GET /api/catalog/models`).
 
 ### Vision and audio models
 

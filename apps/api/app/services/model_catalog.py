@@ -194,7 +194,7 @@ def _audio_entries(priced: dict[str, ModelInfo] | None = None) -> tuple[ModelInf
 def _seed() -> Snapshot:
     """What the catalog offers before OpenRouter has answered once: the
     defaults, so an agent can still be created, and nothing priced."""
-    chat = ModelInfo("openai/gpt-5.6-luna", "openai", "GPT-5.6 Luna", "openai", 0, 0, True, True, 0.0, 0.0)
+    chat = ModelInfo("openai/gpt-6-luna", "openai", "GPT-6 Luna", "openai", 0, 0, True, True, 0.0, 0.0)
     embedding = EmbeddingModelInfo(DEFAULT_EMBEDDING_MODEL, "openai", "text-embedding-3-small", 8_192, 0.0)
     return Snapshot((chat,), (embedding,), _audio_entries(), None)
 

@@ -1,7 +1,7 @@
 // The AI provider (must match backend app/services/model_catalog.py).
 //
 // OpenRouter fronts every vendor behind one key, so an agency configures a
-// single key and picks any model by its OpenRouter slug ("openai/gpt-5.6-luna").
+// single key and picks any model by its OpenRouter slug ("openai/gpt-6-luna").
 // Models are grouped by what an agency actually chooses on: cost and speed
 // versus capability. The first entry is the recommended default, and the
 // wizard preselects it so an agent can never be created without a model.
@@ -25,7 +25,8 @@ export const PROVIDERS = [
     keyPlaceholder: "sk-or-v1-...",
     keyUrl: "https://openrouter.ai/settings/keys",
     models: [
-      { id: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna", group: "fast", recommended: true },
+      { id: "openai/gpt-6-luna", label: "GPT-6 Luna", group: "fast", recommended: true },
+      { id: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna", group: "fast" },
       { id: "openai/gpt-4.1-nano", label: "GPT-4.1 nano", group: "fast" },
       { id: "openai/gpt-5.4-nano", label: "GPT-5.4 nano", group: "fast" },
       { id: "google/gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", group: "fast" },
@@ -41,6 +42,8 @@ export const PROVIDERS = [
       { id: "google/gemini-3.5-flash", label: "Gemini 3.5 Flash", group: "balanced" },
       { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5", group: "balanced" },
       { id: "meta-llama/llama-4-maverick", label: "Llama 4 Maverick", group: "balanced" },
+      { id: "openai/gpt-6-sol", label: "GPT-6 Sol", group: "capable" },
+      { id: "openai/gpt-6-astra", label: "GPT-6 Astra", group: "capable" },
       { id: "openai/gpt-5.6-sol", label: "GPT-5.6 Sol", group: "capable" },
       { id: "openai/gpt-4.1", label: "GPT-4.1", group: "capable" },
       { id: "openai/gpt-5.4", label: "GPT-5.4", group: "capable" },
@@ -79,6 +82,7 @@ export const DEFAULT_EMBEDDING_MODEL = EMBEDDING_MODELS[0];
 // Vision models for the image-recognition capability: any chat model that
 // accepts images. DeepSeek is text-only, so it is left out.
 export const IMAGE_MODELS = [
+  "openai/gpt-6-luna", "openai/gpt-6-sol", "openai/gpt-6-astra",
   "openai/gpt-5.6-luna", "openai/gpt-5.6-terra", "openai/gpt-5.6-sol", "openai/gpt-5.5", "openai/gpt-5.4", "openai/gpt-5.4-mini", "openai/gpt-5.4-nano",
   "openai/gpt-4.1", "openai/gpt-4.1-mini", "openai/gpt-4.1-nano",
   "google/gemini-3.8-flash", "google/gemini-3.7-flash", "google/gemini-3.6-flash", "google/gemini-3.5-flash", "google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite",
@@ -153,7 +157,7 @@ export function modelContextWindow(id: string): number {
   if (name.startsWith("claude-haiku")) return 200_000;
   if (name.startsWith("claude")) return 1_000_000;
   if (name.startsWith("gpt-4.1")) return 1_000_000;
-  if (name.startsWith("gpt-5.6") || name.startsWith("gpt-5.5")) return 1_000_000;
+  if (name.startsWith("gpt-6") || name.startsWith("gpt-5.6") || name.startsWith("gpt-5.5")) return 1_000_000;
   if (name.startsWith("gpt-5")) return 400_000;
   if (name.startsWith("gemini") || name.startsWith("deepseek") || name.startsWith("llama")) return 1_000_000;
   if (name.startsWith("grok")) return 500_000;

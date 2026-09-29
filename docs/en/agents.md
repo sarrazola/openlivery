@@ -22,7 +22,7 @@ The built-in starter templates are Restaurant orders, Real estate leads, Clinic 
 
 ## Choosing a model
 
-Each agent picks one model by its OpenRouter slug (`openai/gpt-5.6-luna`, `anthropic/claude-sonnet-5`, `google/gemini-3.8-flash`). The agency's stored OpenRouter key is used, so add it first. See [AI providers](ai-providers.md) for the available models and how the key is configured. The model field accepts any slug typed by hand if the model you want isn't in the preset list.
+Each agent picks one model by its OpenRouter slug (`openai/gpt-6-luna`, `anthropic/claude-sonnet-5`, `google/gemini-3.8-flash`). The agency's stored OpenRouter key is used, so add it first. See [AI providers](ai-providers.md) for the available models and how the key is configured. The model field accepts any slug typed by hand if the model you want isn't in the preset list.
 
 ## Multimodal capabilities
 

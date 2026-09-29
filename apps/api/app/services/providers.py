@@ -2,7 +2,7 @@
 
 OpenRouter fronts every vendor (OpenAI, Anthropic, Google, ...) behind one
 OpenAI-compatible API, so an agency configures a single key and picks any
-model by its OpenRouter slug (``openai/gpt-5.6-luna``, ``anthropic/claude-sonnet-5``).
+model by its OpenRouter slug (``openai/gpt-6-luna``, ``anthropic/claude-sonnet-5``).
 The registry keeps its dict shape so a deployment can still swap the base URL
 or resolve credentials differently without touching the call sites.
 """

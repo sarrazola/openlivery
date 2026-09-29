@@ -22,7 +22,7 @@ Las plantillas iniciales incluidas son Pedidos de restaurante, Leads inmobiliari
 
 ## Elegir modelo
 
-Cada agente elige un modelo por su slug de OpenRouter (`openai/gpt-5.6-luna`, `anthropic/claude-sonnet-5`, `google/gemini-3.8-flash`). Se utiliza la clave de OpenRouter almacenada de la agencia, así que añádela primero. Consulta [Proveedores de IA](ai-providers.md) para ver los modelos disponibles y cómo se configura la clave. El campo de modelo acepta cualquier slug escrito a mano si el modelo que quieres no está en la lista de presets.
+Cada agente elige un modelo por su slug de OpenRouter (`openai/gpt-6-luna`, `anthropic/claude-sonnet-5`, `google/gemini-3.8-flash`). Se utiliza la clave de OpenRouter almacenada de la agencia, así que añádela primero. Consulta [Proveedores de IA](ai-providers.md) para ver los modelos disponibles y cómo se configura la clave. El campo de modelo acepta cualquier slug escrito a mano si el modelo que quieres no está en la lista de presets.
 
 ## Capacidades multimodales
 
