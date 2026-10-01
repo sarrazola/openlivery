@@ -544,3 +544,35 @@ export type CaptureConfig = {
   available: ContactField[];
   channels: string[];
 };
+
+export type ConversationReportRow = {
+  id: string;
+  created_at: string;
+  status: "open" | "resolved";
+  resolved_at: string | null;
+  archived_at: string | null;
+  mode: string;
+  channel: string;
+  client_id: string | null;
+  client_name: string | null;
+  agent_id: string | null;
+  agent_name: string | null;
+  contact_id: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  assignee_id: string | null;
+  assignee_name: string | null;
+  team_id: string | null;
+  team_name: string | null;
+  first_reply_at: string | null;
+  taken_over_at: string | null;
+  first_reply_s: number | null;
+  resolution_s: number | null;
+  inbound: number;
+  ai_replies: number;
+  human_replies: number;
+  last_message_at: string | null;
+  acquisition: ConversationAcquisition | null;
+};
+export type ConversationReportPage = { items: ConversationReportRow[]; total: number; summary: OpsMetrics };
+export type ConversationFacets = { with_ad: number; without_ad: number; facets: { key: string; values: { value: string; count: number }[] }[] };

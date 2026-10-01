@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Bot, ChevronDown, Clock, Inbox, LoaderCircle, MessageSquareText, MessagesSquare, SlidersHorizontal, Timer, UserRound, Users } from "lucide-react";
 import { Alert } from "@/components/ui";
+import { ConversationExplorer } from "@/components/reports/conversation-explorer";
+import { TimeChart } from "@/components/reports/time-chart";
 import { api, messageFrom } from "@/lib/api";
 import { useLanguage, useT } from "@/lib/i18n";
-import type { PortalReport, Team } from "@/types";
+import type { ConversationReportRow, PortalReport, Team } from "@/types";
 
 const RANGES = [7, 30, 90] as const;
 const CHANNELS = ["whatsapp", "whatsapp_cloud", "instagram", "messenger", "widget", "playground"] as const;
@@ -41,10 +43,11 @@ function formatSeconds(value: number | null, none: string): string {
   return minutes ? `${hours} h ${minutes} min` : `${hours} h`;
 }
 
-export function ReportsView({ slug }: { slug: string }) {
+export function ReportsView({ slug, openConversation }: { slug: string; openConversation?: (row: ConversationReportRow) => void }) {
   const t = useT();
   const { lang } = useLanguage();
   const locale = lang === "es" ? "es" : "en";
+  const [section, setSection] = useState<"summary" | "conversations">("summary");
   const [range, setRange] = useState<number | "custom">(7);
   // Phone only: the filters start folded behind a toggle so the numbers come
   // first. A desktop ignores this and always shows them.
@@ -92,7 +95,20 @@ export function ReportsView({ slug }: { slug: string }) {
     return value;
   };
 
+  const sectionSwitch = <div className="report-ranges report-toggle report-sections">
+    <button type="button" className={section === "summary" ? "active" : ""} onClick={() => setSection("summary")}>{t("reports.tabs.summary")}</button>
+    <button type="button" className={section === "conversations" ? "active" : ""} onClick={() => setSection("conversations")}>{t("reports.tabs.conversations")}</button>
+  </div>;
+  if (section === "conversations") {
+    return <div className="portal-reports">
+      {sectionSwitch}
+      <ConversationExplorer basePath={`/portal/${slug}/reports/conversations`} scope="portal"
+        options={{ channels: [...CHANNELS], members, teams }} onOpen={openConversation} />
+    </div>;
+  }
+
   const filters = <>
+    {sectionSwitch}
     <button type="button" className="portal-filters-toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>
       <SlidersHorizontal size={16} /><span>{t("portal.inbox.filters.label")}</span><ChevronDown size={18} className={`chevron${filtersOpen ? " open" : ""}`} />
     </button>
@@ -139,9 +155,7 @@ export function ReportsView({ slug }: { slug: string }) {
       { key: "ai_replies", color: AI_COLOR, name: t("portal.reports.legendAi") },
       { key: "human_replies", color: HUMAN_COLOR, name: t("portal.reports.legendHuman") },
     ];
-  const maxValue = Math.max(1, ...report.by_day.flatMap((day) => series.map((s) => day[s.key])));
   const hasBars = report.by_day.some((day) => series.some((s) => day[s.key] > 0));
-  const labelStep = Math.max(1, Math.ceil(report.by_day.length / 8));
   const maxChannel = Math.max(1, ...report.by_channel.map((c) => c.started));
   const none = "-";
   const aiResolvedPct = report.started ? Math.round((report.ai_resolved / report.started) * 100) : 0;
@@ -177,18 +191,9 @@ export function ReportsView({ slug }: { slug: string }) {
           {series.map((s) => <span key={s.key}><i style={{ background: s.color }} /> {s.name}</span>)}
         </div>
       </header>
-      {hasBars ? <div className="report-chart" role="img" aria-label={t("portal.reports.perDay")}>
-        {report.by_day.map((day, i) => <div key={day.date} className="report-chart-group">
-          <div className="report-chart-tip">
-            <strong>{dayLabel(day.date)}</strong>
-            {series.map((s) => <span key={s.key}>{s.name}: {day[s.key]}</span>)}
-          </div>
-          <div className="report-chart-bars">
-            {series.map((s) => <i key={s.key} style={{ height: `${(day[s.key] / maxValue) * 100}%`, background: s.color }} />)}
-          </div>
-          <small>{i % labelStep === 0 ? dayLabel(day.date) : " "}</small>
-        </div>)}
-      </div> : <p className="muted">{t("portal.reports.noActivity")}</p>}
+      {hasBars ? <TimeChart ariaLabel={t("portal.reports.perDay")}
+        points={report.by_day.map((day) => ({ key: day.date, label: dayLabel(day.date), values: series.map((s) => day[s.key]) }))}
+        series={series.map((s) => ({ name: s.name, color: s.color }))} /> : <p className="muted">{t("portal.reports.noActivity")}</p>}
     </section>
 
     <div className="report-columns">
