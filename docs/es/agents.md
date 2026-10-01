@@ -38,12 +38,13 @@ Ambas funciones pasan por la misma clave de OpenRouter que el modelo de chat.
 | Ajuste | Campo | Qué hace |
 | --- | --- | --- |
 | Cliente | `client_id` | El cliente propietario del agente. |
-| Qué hace el agente | `instructions` | Su trabajo, tareas y reglas, en prosa. Va dentro del prompt del sistema. |
-| Tono | `personality` | Guía de tono y estilo para las respuestas. |
+| Tareas del agente | `instructions` | Su trabajo, tareas y reglas, en prosa. Va dentro del prompt del sistema. |
+| Tono de comunicación | `personality` | Guía de tono y estilo para las respuestas. |
 | Brief del negocio | `brief_summary`, `brief_products`, `brief_audience`, `brief_policies`, `brief_dos`, `brief_donts` | Qué es y qué ofrece el negocio, más las reglas de siempre/nunca del agente. Se compone en el prompt del sistema. |
 | Identidad del negocio | `industry`, `business_type`, `business_custom` (en el cliente) | Códigos del catálogo (`GET /api/industries`) que nombran el tipo de negocio en la primera línea del prompt; cuando el catálogo solo ofrece "otro", `business_custom` guarda las palabras del propio cliente. |
 | Contacto | de la conversación | Nombre, teléfono, correo, campos personalizados, etiquetas y canal de quien escribe, añadidos al prompt al responder para que un registro, un correo o una herramienta los reciba en vez de "no especificado". Solo se lista lo que la ficha del contacto tiene. No aparece en el playground. |
 | Datos del contacto por recopilar | `capture_enabled`, `GET`/`PUT /api/agents/{id}/capture` | Lo que el agente le pregunta al cliente y guarda en el contacto. Ver [Recopilar datos del contacto](#recopilar-datos-del-contacto). |
+| Seguimiento y cierre | `GET`/`PUT /api/agents/{id}/follow-ups` | Recordatorios y un mensaje de cierre cuando el cliente deja de responder, y si el agente puede resolver una conversación por sí mismo. Ver [Seguimiento y cierre](#seguimiento-y-cierre). |
 | Idioma del prompt | `prompt_language` | `es` o `en`: el idioma de los títulos y frases fijas del prompt. Se toma del idioma de la interfaz al guardar el agente. |
 | Zona horaria | `timezone` (en el cliente) | Zona horaria IANA del negocio (p. ej. `America/Bogota`), inyectada para que todos los agentes del cliente conozcan la fecha y hora locales. Se define en el cliente, por defecto `UTC`. |
 | Proveedor | `provider` | Siempre `openrouter`. |
@@ -87,6 +88,54 @@ del contacto; los personalizados a `attributes` en el contacto, que el portal
 muestra y edita en la ficha (`PATCH /api/portal/{slug}/contacts/{id}` con
 `attributes`). Un teléfono que ya tiene otro contacto no se sobrescribe. El
 playground ensaya los campos sin guardar nada.
+
+## Seguimiento y cierre
+
+Sin estos ajustes, una conversación atendida por la IA termina de una sola
+forma: 24 horas sin mensajes. **Seguimiento y cierre**, en los ajustes del
+agente, agrega dos más.
+
+**Seguimiento por inactividad.** Cuando el cliente deja de responder, el agente
+retoma el contacto. Las reglas se agregan una por una: hasta dos recordatorios
+y un mensaje de cierre, cada uno después de un número de horas contado desde el
+último mensaje del agente. El mensaje de cierre resuelve la conversación, y el
+siguiente mensaje del cliente abre una nueva. La secuencia también puede tener
+solo recordatorios, y entonces la conversación queda para el cierre por
+inactividad descrito abajo, o solo el mensaje de cierre.
+
+Cada mensaje lo redacta la IA según la conversación, en el idioma del cliente,
+o es un mensaje personalizado que se envía exactamente como está escrito, sin
+llamar al modelo. Toda la secuencia cabe en 23 horas, porque WhatsApp Cloud
+API, Instagram y Messenger solo aceptan mensajes libres durante las 24 horas
+siguientes al último mensaje del cliente. Un mensaje que ya no se puede entregar
+se omite, y un mensaje de cierre que no se puede entregar cierra el caso de
+todos modos. Elige los canales donde aplican las reglas, o deja todos sin marcar
+para que apliquen en todos. Las conversaciones del playground nunca reciben
+seguimientos.
+
+La secuencia se detiene en cuanto el cliente escribe, una persona toma la
+conversación, se asigna o se escala, el negocio responde desde el teléfono o la
+conversación se resuelve. La siguiente respuesta del agente la reinicia desde
+la primera regla.
+
+**Permitir que el agente resuelva la conversación.** Con esta opción, el agente
+recibe la herramienta `resolve_conversation` y cierra el caso por sí mismo
+cuando la solicitud quedó atendida y no hay nada pendiente. Primero se despide,
+y la conversación se resuelve dos minutos después, salvo que el cliente vuelva
+a escribir: en ese caso simplemente continúa. Si la misma respuesta también
+escala, gana el escalamiento.
+
+El hilo registra cómo terminó cada caso: resuelto por una persona, por el
+agente (con su motivo), tras seguimientos sin respuesta o por el cierre por
+inactividad. `AUTO_RESOLVE_AFTER_HOURS` (24 por defecto) queda como respaldo
+para las conversaciones que ninguna regla cierra. Una conversación que tiene
+una persona nunca se cierra automáticamente.
+
+`GET`/`PUT /api/agents/{id}/follow-ups` recibe los tiempos en minutos
+(`first_minutes`, `second_minutes`, `close_minutes`), un mensaje personalizado
+por regla o nada para que lo redacte la IA (`first_text`, `second_text`,
+`close_text`), `channels`, `enabled` y `resolve_enabled`. Un temporizador envía
+lo pendiente cada `FOLLOW_UP_SWEEP_SECONDS` (60); con `0` se desactiva.
 
 ## El conocimiento en el prompt del sistema
 

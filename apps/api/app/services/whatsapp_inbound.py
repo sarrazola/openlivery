@@ -37,6 +37,8 @@ from .escalation import (
     escalation_enabled,
     escalation_prompt,
 )
+from .follow_ups import after_agent_reply
+from .resolution import build_resolution_spec, resolution_prompt
 from .whatsapp import deliver_reaction, send_channel_media, send_channel_message, signal_channel_read
 from .whatsapp_format import parse_reply_directives
 from .whatsapp_identity import resolve_peer_contact
@@ -446,7 +448,14 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     # The tool that saves what the customer gives. After the escalation spec,
     # so callers that index extra_specs keep finding escalation first.
     capture_spec = build_capture_spec(agent, conversation, definitions, capture_holder)
-    extra_specs = [*(escalation_specs or []), *([capture_spec] if capture_spec else [])] or None
+    # Last, for the same reason: the agent may settle the case itself.
+    resolution_holder: list = []
+    resolution_spec = build_resolution_spec(resolution_holder) if agent.resolve_enabled else None
+    if resolution_spec:
+        system_content += "\n\n" + resolution_prompt(agent)
+    extra_specs = [
+        *(escalation_specs or []), *([capture_spec] if capture_spec else []), *([resolution_spec] if resolution_spec else []),
+    ] or None
     messages = [
         {"role": "system", "content": system_content},
         *llm_turns(history, agent.prompt_language),
@@ -550,6 +559,11 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
             "reason": request.reason, "trigger": request.trigger,
             "rule_id": str(request.rule.id) if request.rule else None,
         }
+    if not escalation_holder:
+        # A case going to a person is neither settled nor waiting on the agent.
+        after_agent_reply(
+            conversation, agent, resolution_holder[-1] if resolution_holder else None, replied=outbound is not None
+        )
     db.commit()
     if escalation_holder and conversation.channel not in ("instagram", "messenger"):
         # After the farewell is stored, so the thread reads chronologically:

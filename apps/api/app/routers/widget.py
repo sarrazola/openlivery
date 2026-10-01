@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..database import get_db
-from ..services.conversation_state import exchanged_only
+from ..services.conversation_state import cancel_follow_up, exchanged_only
 from ..models import Agency, Agent, Client, Conversation, Message, MessageAttachment, WidgetChannel, now_utc
 from ..ratelimit import public_asset_rate_limit, widget_poll_rate_limit, widget_rate_limit
 from ..schemas import WidgetConfigOut, WidgetMessageIn, WidgetReply
@@ -24,6 +24,8 @@ from ..services.attachments import (
 )
 from ..services.tools import run_completion
 from ..services.capture import apply_captures, build_capture_spec, capture_context, field_definitions
+from ..services.follow_ups import after_agent_reply
+from ..services.resolution import build_resolution_spec, resolution_prompt
 from ..services.knowledge import contact_context, build_system_prompt, llm_turns, retrieve_knowledge
 from ..services.providers import resolve_agent_credentials
 from ..services.usage import record_usage
@@ -286,6 +288,10 @@ async def _widget_ai_reply(db: Session, agent: Agent, conversation: Conversation
         system_content += "\n\n" + contact_block
     capture_holder: list = []
     capture_spec = build_capture_spec(agent, conversation, definitions, capture_holder)
+    resolution_holder: list = []
+    resolution_spec = build_resolution_spec(resolution_holder) if agent.resolve_enabled else None
+    if resolution_spec:
+        system_content += "\n\n" + resolution_prompt(agent)
     messages = [
         {"role": "system", "content": system_content},
         *llm_turns(history, agent.prompt_language),
@@ -295,12 +301,15 @@ async def _widget_ai_reply(db: Session, agent: Agent, conversation: Conversation
         completion = await run_completion(
             db, agent, base_url, api_key, messages,
             temperature=agent.temperature, max_tokens=agent.max_tokens,
-            extra_specs=[capture_spec] if capture_spec else None,
+            extra_specs=[spec for spec in (capture_spec, resolution_spec) if spec] or None,
         )
     except HTTPException:
         return None
 
     apply_captures(db, conversation, capture_holder, definitions)
+    after_agent_reply(
+        conversation, agent, resolution_holder[-1] if resolution_holder else None, replied=bool(completion.text)
+    )
     conversation.updated_at = now_utc()
     reply = Message(conversation_id=conversation.id, role="assistant", content=completion.text, sources=knowledge.sources, tool_calls=completion.tool_calls, sender_type="ai", sender_name=agent.name)
     db.add(reply)
@@ -324,6 +333,7 @@ async def widget_message(public_id: str, payload: WidgetMessageIn, db: Session =
     if conversation.title == "Web chat":
         conversation.title = content[:80]
     conversation.updated_at = now_utc()
+    cancel_follow_up(conversation)
     db.add(Message(conversation_id=conversation.id, role="user", content=content, sender_type="visitor", sender_name="Visitor"))
     db.commit()
 
@@ -381,6 +391,7 @@ async def widget_media(
     if conversation.title == "Web chat" and caption:
         conversation.title = caption[:80]
     conversation.updated_at = now_utc()
+    cancel_follow_up(conversation)
     message.content = display_content
     message.llm_content = llm_content if llm_content != display_content else None
     db.add(message)

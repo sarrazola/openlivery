@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Agent, Conversation, EscalationRule, PortalUser, Team, now_utc
-from .conversation_state import assign, record_activity, set_team
+from .conversation_state import assign, cancel_follow_up, record_activity, set_team
 from .notifications import notify_assigned, notify_needs_human
 from .routing import route_conversation
 from .tools.specs import ToolSpec
@@ -208,6 +208,7 @@ async def apply_escalation(
     if conversation.mode != "human":
         conversation.mode = "human"
         conversation.taken_over_at = now_utc()
+    cancel_follow_up(conversation)
     target = person.name if person else (team.name if team else "a person")
     reason = request.reason or (request.rule.condition[:120] if request.rule else request.trigger or "")
     record_activity(db, conversation, "escalated", actor=agent.name, details={"target": target, "reason": reason})

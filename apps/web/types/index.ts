@@ -545,6 +545,23 @@ export type CaptureConfig = {
   channels: string[];
 };
 
+/** Delays are minutes from the agent's last reply; empty channels means all. */
+export type FollowUpConfig = {
+  resolve_enabled: boolean;
+  enabled: boolean;
+  first_minutes: number | null;
+  second_minutes: number | null;
+  close_minutes: number | null;
+  /** A fixed message for that step; null lets the agent write it. */
+  first_text: string | null;
+  second_text: string | null;
+  close_text: string | null;
+  channels: string[];
+  available_channels: string[];
+  min_minutes: number;
+  max_minutes: number;
+};
+
 export type ConversationReportRow = {
   id: string;
   created_at: string;

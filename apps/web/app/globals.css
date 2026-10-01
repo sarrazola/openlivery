@@ -1053,6 +1053,16 @@ textarea { line-height: 1.55; }
 .capture-channels { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-left: 26px; }
 .capture-channels > small { color: var(--muted); font-size: 12px; margin-right: 4px; }
 .capture-channels .chip-toggle { height: 28px; padding: 0 10px; font-size: 12px; }
+/* Follow-up rules: one compact row each, in the escalation rules' style. */
+.followup-rule-wrap { display: flex; flex-direction: column; gap: 6px; }
+.followup-rule .followup-kind { flex: 0 0 132px; color: var(--ink); font-size: 13px; }
+.followup-rule .followup-after { flex: 0 0 auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.followup-rule input.followup-hours { flex: 0 0 56px; width: 56px; padding-left: 6px; padding-right: 6px; text-align: center; }
+.followup-text { margin-left: 30px; width: calc(100% - 30px); }
+.followup-channels { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 8px; border-top: 1px dashed var(--line); margin-top: 4px; }
+.followup-channels > small { color: var(--muted); font-size: 12px; margin-right: 4px; }
+.followup-channels .chip-toggle { height: 28px; padding: 0 10px; font-size: 12px; }
+@media (max-width: 860px) { .followup-rule .followup-kind { flex-basis: auto; } .followup-rule select { flex-basis: 100%; } }
 /* The client's field catalog. */
 .contact-fields { gap: 12px; }
 .contact-fields-builtin { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

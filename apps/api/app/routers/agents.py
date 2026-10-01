@@ -14,9 +14,11 @@ from ..deps import get_current_user
 from ..models import Agent, AgentCaptureField, AgentQA, AgentTool, Client, EscalationRule, KnowledgeChunk, KnowledgeDocument, PortalUser, Team, User, WhatsAppChannel, WhatsAppCloudChannel, WidgetChannel, now_utc
 from ..schemas import (
     AgentCreate, AgentOut, AgentPromptOut, AgentUpdate, CaptureConfigIn, CaptureConfigOut, CaptureFieldOut, ContactFieldOut,
-    DocumentOut, EscalationConfigIn, EscalationConfigOut, QAPairCreate, QAPairOut, check_reply_delay,
+    DocumentOut, EscalationConfigIn, EscalationConfigOut, FollowUpConfigIn, FollowUpConfigOut, QAPairCreate, QAPairOut,
+    check_reply_delay,
 )
 from ..services.capture import CAPTURE_CHANNELS, field_definitions
+from ..services.follow_ups import FOLLOW_UP_CHANNELS, MAX_MINUTES, MIN_MINUTES, check_schedule
 from ..services.knowledge import build_system_prompt, embed_document_chunks, reindex_agent, reindex_document
 
 
@@ -117,6 +119,8 @@ def delete_agent(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User 
     for model in (AgentTool, AgentQA, KnowledgeChunk, KnowledgeDocument, EscalationRule, AgentCaptureField):
         db.execute(delete(model).where(model.agent_id == agent.id))
     agent.capture_enabled = False
+    agent.resolve_enabled = False
+    agent.follow_up_enabled = False
     for field in ("instructions", "personality", "brief_summary", "brief_products", "brief_audience", "brief_policies", "brief_dos", "brief_donts"):
         setattr(agent, field, "")
     agent.escalation_team_id = None
@@ -409,3 +413,55 @@ def replace_capture_config(
     db.commit()
     db.refresh(agent)
     return _capture_out(db, agent)
+
+
+# --- Follow-ups and closing ---------------------------------------------------
+
+
+def _follow_up_out(agent: Agent) -> FollowUpConfigOut:
+    return FollowUpConfigOut(
+        resolve_enabled=agent.resolve_enabled,
+        enabled=agent.follow_up_enabled,
+        first_minutes=agent.follow_up_first_minutes,
+        second_minutes=agent.follow_up_second_minutes,
+        close_minutes=agent.follow_up_close_minutes,
+        first_text=agent.follow_up_first_text,
+        second_text=agent.follow_up_second_text,
+        close_text=agent.follow_up_close_text,
+        channels=list(agent.follow_up_channels or []),
+        available_channels=list(FOLLOW_UP_CHANNELS),
+        min_minutes=MIN_MINUTES,
+        max_minutes=MAX_MINUTES,
+    )
+
+
+@router.get("/{agent_id}/follow-ups", response_model=FollowUpConfigOut)
+def get_follow_up_config(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return _follow_up_out(_agent(db, user, agent_id))
+
+
+@router.put("/{agent_id}/follow-ups", response_model=FollowUpConfigOut)
+def replace_follow_up_config(
+    agent_id: uuid.UUID, config: FollowUpConfigIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    """The whole schedule at once. Conversations already waiting pick the new
+    delays up on their next step."""
+    agent = _agent(db, user, agent_id)
+    channels = list(dict.fromkeys(config.channels))
+    try:
+        check_schedule(config.enabled, config.first_minutes, config.second_minutes, config.close_minutes, channels)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    agent.resolve_enabled = config.resolve_enabled
+    agent.follow_up_enabled = config.enabled
+    agent.follow_up_first_minutes = config.first_minutes
+    agent.follow_up_second_minutes = config.second_minutes
+    agent.follow_up_close_minutes = config.close_minutes
+    # A text only means something next to its delay.
+    agent.follow_up_first_text = ((config.first_text or "").strip() or None) if config.first_minutes else None
+    agent.follow_up_second_text = ((config.second_text or "").strip() or None) if config.second_minutes else None
+    agent.follow_up_close_text = ((config.close_text or "").strip() or None) if config.close_minutes else None
+    agent.follow_up_channels = channels
+    db.commit()
+    db.refresh(agent)
+    return _follow_up_out(agent)

@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     # hours without a message from either side. Conversations a person took
     # over are never closed automatically: only that person decides. 0 disables.
     auto_resolve_after_hours: float = 24.0
+    # How often due inactivity follow-ups are sent, in seconds. They are an
+    # agent setting; this only paces the timer that sends them. 0 disables it.
+    follow_up_sweep_seconds: float = 60.0
 
     # Push notifications for the mobile app. "none" (the default) sends nothing
     # and needs no account with anyone; "webhook" POSTs each event to
