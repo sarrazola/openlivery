@@ -1053,6 +1053,14 @@ textarea { line-height: 1.55; }
 .capture-channels { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-left: 26px; }
 .capture-channels > small { color: var(--muted); font-size: 12px; margin-right: 4px; }
 .capture-channels .chip-toggle { height: 28px; padding: 0 10px; font-size: 12px; }
+/* Follow-up schedule: three delays side by side, then the channels. */
+.followup-times { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.followup-times .with-unit { display: flex; align-items: center; gap: 6px; color: var(--muted); font-weight: 500; }
+.followup-times .with-unit input { flex: 1; min-width: 0; }
+.followup-channels { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.followup-channels > small { color: var(--muted); font-size: 12px; margin-right: 4px; }
+.followup-channels .chip-toggle { height: 28px; padding: 0 10px; font-size: 12px; }
+@media (max-width: 640px) { .followup-times { grid-template-columns: 1fr; } }
 /* The client's field catalog. */
 .contact-fields { gap: 12px; }
 .contact-fields-builtin { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
