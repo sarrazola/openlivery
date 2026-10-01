@@ -1130,7 +1130,7 @@ const es: typeof en = {
       returned_to_ai: "{actor} devolvió la conversación a la IA",
       auto_resolved: "Resuelta automáticamente tras {hours} h sin actividad",
       resolved_by_agent: "{actor} resolvió la conversación: {reason}",
-      closed_unanswered: "Resuelta tras {hours} h sin respuesta a los seguimientos",
+      closed_unanswered: "Resuelta después de {hours} h sin respuesta a los mensajes de seguimiento",
       self_assigned: "{actor} ahora atiende la conversación",
       assigned: "{actor} asignó la conversación a {assignee}",
       transferred: "{actor} transfirió la conversación a {assignee}",

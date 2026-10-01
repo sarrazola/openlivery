@@ -52,7 +52,7 @@ const es: typeof en = {
     resolved: "{actor} resolvió la conversación", reopened: "{actor} reabrió la conversación", reopened_by_contact: "El contacto volvió a escribir",
     taken_over: "{actor} tomó la conversación", returned_to_ai: "{actor} devolvió la conversación al asistente",
     auto_resolved: "Resuelta automáticamente tras {hours} h sin actividad", self_assigned: "{actor} está atendiendo la conversación",
-    resolved_by_agent: "{actor} resolvió la conversación: {reason}", closed_unanswered: "Resuelta tras {hours} h sin respuesta a los seguimientos",
+    resolved_by_agent: "{actor} resolvió la conversación: {reason}", closed_unanswered: "Resuelta después de {hours} h sin respuesta a los mensajes de seguimiento",
     assigned: "{actor} asignó la conversación a {assignee}", transferred: "{actor} transfirió la conversación a {assignee}", unassigned: "{actor} liberó la conversación",
     started: "{actor} inició la conversación", team_assigned: "{actor} movió la conversación a {team}", team_removed: "{actor} quitó la conversación de {team}", escalated: "{actor} escaló a {target}: {reason}",
   },
