@@ -572,6 +572,7 @@ class Conversation(Base):
         Index("ix_conversations_whatsapp_chat", "whatsapp_channel_id", "external_chat_id"),
         Index("ix_conversations_whatsapp_cloud_chat", "whatsapp_cloud_channel_id", "external_chat_id"),
         Index("ix_conversations_social_chat", "social_channel_id", "external_chat_id"),
+        Index("ix_conversations_created_at", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)

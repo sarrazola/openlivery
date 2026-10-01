@@ -22,8 +22,9 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..deps import get_current_user
 from ..models import Agent, Client, Conversation, Message, UsageRecord, User
-from ..schemas import CostReport, RepliesPage
+from ..schemas import ConversationFacets, ConversationReportPage, CostReport, RepliesPage
 from ..services.model_catalog import get_model
+from ..services.report_conversations import AD_FIELDS, ConversationListFilters, export_csv, facets, list_conversations
 from ..services.report_operations import ConversationFilters, filter_options, operations
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
@@ -299,3 +300,87 @@ def operations_report(
 def report_filters(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """The clients, agents, channels and models for the report dropdowns."""
     return filter_options(db, user.agency_id)
+
+
+def _list_filters(agency_id: uuid.UUID, *, date_from, date_to, client_id, agent_id, channel, tz, status, mode,
+                  assignee_id, team_id, ad, ad_source_type, ad_source_id, ad_source_url, ad_headline, ad_body,
+                  ad_media_type, q) -> ConversationListFilters:
+    values = dict(zip(AD_FIELDS, (ad_source_type, ad_source_id, ad_source_url, ad_headline, ad_body, ad_media_type)))
+    return ConversationListFilters(
+        agency_id, date_from=date_from, date_to=date_to, client_id=client_id, agent_id=agent_id, channel=channel,
+        tz=tz, status=status, mode=mode, assignee_id=assignee_id, team_id=team_id, ad=ad,
+        ad_values={key: value for key, value in values.items() if value}, q=q,
+    )
+
+
+@router.get("/conversations", response_model=ConversationReportPage, responses={200: {"content": {"text/csv": {}}}})
+def conversations_report(
+    date_from: date = Query(alias="from"),
+    date_to: date = Query(alias="to"),
+    client_id: uuid.UUID | None = None,
+    agent_id: uuid.UUID | None = None,
+    channel: str | None = None,
+    tz: str | None = None,
+    status: str | None = None,
+    mode: str | None = None,
+    assignee_id: uuid.UUID | None = None,
+    team_id: uuid.UUID | None = None,
+    ad: str | None = None,
+    ad_source_type: str | None = None,
+    ad_source_id: str | None = None,
+    ad_source_url: str | None = None,
+    ad_headline: str | None = None,
+    ad_body: str | None = None,
+    ad_media_type: str | None = None,
+    q: str | None = None,
+    sort: str | None = None,
+    order: str | None = None,
+    format: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """One row per conversation that started in the range, newest first,
+    with the figures for the filtered set; ``format=csv`` downloads the
+    whole list (up to MAX_EXPORT_ROWS). ``ad`` is ``any`` or ``none``; the
+    ``ad_*`` parameters match one referral key each."""
+    filters = _list_filters(
+        user.agency_id, date_from=date_from, date_to=date_to, client_id=client_id, agent_id=agent_id, channel=channel,
+        tz=tz, status=status, mode=mode, assignee_id=assignee_id, team_id=team_id, ad=ad, ad_source_type=ad_source_type,
+        ad_source_id=ad_source_id, ad_source_url=ad_source_url, ad_headline=ad_headline, ad_body=ad_body,
+        ad_media_type=ad_media_type, q=q,
+    )
+    if format == "csv":
+        return Response(
+            content=export_csv(db, filters, sort=sort, order=order), media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="conversations-{filters.date_from.isoformat()}-{filters.date_to.isoformat()}.csv"'},
+        )
+    return list_conversations(db, filters, sort=sort, order=order, limit=limit, offset=offset)
+
+
+@router.get("/conversations/facets", response_model=ConversationFacets)
+def conversations_facets(
+    date_from: date = Query(alias="from"),
+    date_to: date = Query(alias="to"),
+    client_id: uuid.UUID | None = None,
+    agent_id: uuid.UUID | None = None,
+    channel: str | None = None,
+    tz: str | None = None,
+    status: str | None = None,
+    mode: str | None = None,
+    assignee_id: uuid.UUID | None = None,
+    team_id: uuid.UUID | None = None,
+    ad: str | None = None,
+    q: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The referral keys and values present in the filtered range, with
+    counts, for the ad selectors."""
+    filters = _list_filters(
+        user.agency_id, date_from=date_from, date_to=date_to, client_id=client_id, agent_id=agent_id, channel=channel,
+        tz=tz, status=status, mode=mode, assignee_id=assignee_id, team_id=team_id, ad=ad, ad_source_type=None,
+        ad_source_id=None, ad_source_url=None, ad_headline=None, ad_body=None, ad_media_type=None, q=q,
+    )
+    return facets(db, filters)

@@ -1233,3 +1233,73 @@ class WhatsAppOutgoing(BaseModel):
         if value is not None and value.utcoffset() is None:
             raise ValueError("The message timestamp must include a timezone")
         return value
+
+
+class ConversationReportRow(BaseModel):
+    """One conversation in the reports list: state, who handled it, timing
+    and counts. No message content."""
+
+    id: uuid.UUID
+    created_at: datetime
+    status: str
+    resolved_at: datetime | None = None
+    archived_at: datetime | None = None
+    mode: str
+    channel: str
+    client_id: uuid.UUID | None = None
+    client_name: str | None = None
+    agent_id: uuid.UUID | None = None
+    agent_name: str | None = None
+    contact_id: uuid.UUID | None = None
+    contact_name: str | None = None
+    contact_phone: str | None = None
+    assignee_id: uuid.UUID | None = None
+    assignee_name: str | None = None
+    team_id: uuid.UUID | None = None
+    team_name: str | None = None
+    first_reply_at: datetime | None = None
+    taken_over_at: datetime | None = None
+    first_reply_s: float | None = None
+    resolution_s: float | None = None
+    inbound: int = 0
+    ai_replies: int = 0
+    human_replies: int = 0
+    last_message_at: datetime | None = None
+    # The ad referral the case started from, as stored: one string per key.
+    acquisition: dict[str, str] | None = None
+
+
+class ConversationReportSummary(BaseModel):
+    conversations: int = 0
+    contacts: int = 0
+    new_contacts: int = 0
+    ai_resolved: int = 0
+    ai_resolved_pct: float = 0.0
+    handoffs: int = 0
+    open: int = 0
+    unanswered: int = 0
+    first_reply_s: float | None = None
+    resolution_s: float | None = None
+    human_wait_s: float | None = None
+
+
+class ConversationReportPage(BaseModel):
+    items: list[ConversationReportRow]
+    total: int
+    summary: ConversationReportSummary
+
+
+class ConversationFacetValue(BaseModel):
+    value: str
+    count: int
+
+
+class ConversationFacet(BaseModel):
+    key: str
+    values: list[ConversationFacetValue]
+
+
+class ConversationFacets(BaseModel):
+    with_ad: int
+    without_ad: int
+    facets: list[ConversationFacet]

@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Bot, Clock, Coins, Download, Inbox, LoaderCircle, MessageSquareText, Search, Sparkles, UserRound, Users } from "lucide-react";
 import { EmptyState, PageHead } from "@/components/ui";
+import { ConversationExplorer } from "@/components/reports/conversation-explorer";
+import { ControlsRow, FilterSelect, PeriodControl, ReportControls, Segmented } from "@/components/reports/filter-bar";
+import { TimeChart } from "@/components/reports/time-chart";
 import { useToast } from "@/components/toast";
 import { api, apiUrl, messageFrom } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
@@ -32,7 +35,7 @@ export default function ReportsPage() {
   const { t, lang } = useLanguage();
   const toast = useToast();
   const locale = lang === "es" ? "es" : "en";
-  const [tab, setTab] = useState<"summary" | "costs">("summary");
+  const [tab, setTab] = useState<"summary" | "costs" | "conversations">("summary");
   const [range, setRange] = useState<number | "custom">(30);
   const [customFrom, setCustomFrom] = useState(daysAgoISO(29));
   const [customTo, setCustomTo] = useState(daysAgoISO(0));
@@ -73,6 +76,7 @@ export default function ReportsPage() {
 
   const load = useCallback(async () => {
     if (!from || !to) return;
+    if (tab === "conversations") return;
     if (tab === "summary") {
       const p = new URLSearchParams(scope);
       if (channel) p.set("channel", channel);
@@ -133,8 +137,6 @@ export default function ReportsPage() {
   const totalCost = report?.totals.cost_usd ?? 0;
   const estimatedReplies = rows.filter((r) => r.estimated).length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE));
-  const maxDay = Math.max(0.000001, ...(report?.by_day.map((d) => d.cost_usd) ?? [0]));
-  const maxConv = Math.max(1, ...(ops?.by_period.map((p) => p.conversations) ?? [0]));
 
   const costGroupTable = (items: ReportGroup[], head: string, emptyName: string) => (
     <div className="table-shell"><table className="data-table">
@@ -167,28 +169,39 @@ export default function ReportsPage() {
   return <div className="page">
     <PageHead eyebrow={t("reports.head.eyebrow")} title={t("reports.head.title")} description={t("reports.head.description")} />
 
-    <div className="tabs" style={{ marginBottom: 4 }}>
+    <div className="tabs">
       <button className={tab === "summary" ? "active" : ""} onClick={() => { setLoading(true); setTab("summary"); }}>{t("reports.tabs.summary")}</button>
       <button className={tab === "costs" ? "active" : ""} onClick={() => { setLoading(true); setTab("costs"); }}>{t("reports.tabs.costs")}</button>
+      <button className={tab === "conversations" ? "active" : ""} onClick={() => { setLoading(false); setTab("conversations"); }}>{t("reports.tabs.conversations")}</button>
     </div>
 
-    <div className="toolbar filters">
-      <div className="report-ranges">
-        {RANGES.map((value) => <button key={value} type="button" className={value === range ? "active" : ""} onClick={() => setRange(value)}>
-          {value === 7 ? t("reports.filters.range7") : value === 30 ? t("reports.filters.range30") : t("reports.filters.range90")}
-        </button>)}
-        <button type="button" className={range === "custom" ? "active" : ""} onClick={() => setRange("custom")}>{t("reports.filters.custom")}</button>
-      </div>
-      {range === "custom" && <div className="report-custom-range">
-        <input type="date" value={customFrom} max={customTo || undefined} onChange={(e) => setCustomFrom(e.target.value)} aria-label={t("reports.filters.from")} />
-        <span>{t("reports.filters.to")}</span>
-        <input type="date" value={customTo} min={customFrom || undefined} max={daysAgoISO(0)} onChange={(e) => setCustomTo(e.target.value)} aria-label={t("reports.filters.to")} />
-      </div>}
-      <label className="filter-select">{t("reports.cols.client")}<select value={clientId} onChange={(e) => { setClientId(e.target.value); setAgentId(""); }}><option value="">{t("reports.filters.allClients")}</option>{(filters?.clients ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-      <label className="filter-select">{t("reports.cols.agent")}<select value={agentId} onChange={(e) => setAgentId(e.target.value)}><option value="">{t("reports.filters.allAgents")}</option>{agentsForClient.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-      {tab === "summary" && <label className="filter-select">{t("reports.filters.channel")}<select value={channel} onChange={(e) => setChannel(e.target.value)}><option value="">{t("reports.filters.allChannels")}</option>{(filters?.channels ?? []).map((c) => <option key={c} value={c}>{channelLabel(c)}</option>)}</select></label>}
-      {tab === "costs" && <label className="filter-select">{t("reports.cols.model")}<select value={model} onChange={(e) => setModel(e.target.value)}><option value="">{t("reports.filters.allModels")}</option>{(filters?.models ?? []).map((m) => <option key={m} value={m}>{m}</option>)}</select></label>}
-    </div>
+    {tab === "conversations" ? <ConversationExplorer
+      basePath="/reports/conversations" scope="agency"
+      options={{ clients: filters?.clients ?? [], agents: filters?.agents ?? [], channels: filters?.channels ?? [] }}
+    /> : <>
+    <ReportControls>
+      <ControlsRow>
+        <PeriodControl value={String(range)} onChange={(v) => setRange(v === "custom" ? "custom" : Number(v))} max={daysAgoISO(0)}
+          custom={{ from: customFrom, to: customTo }} onCustom={(from, to) => { setCustomFrom(from); setCustomTo(to); }}
+          presets={RANGES.map((value) => ({ value: String(value), label: value === 7 ? t("reports.filters.range7") : value === 30 ? t("reports.filters.range30") : t("reports.filters.range90") }))} />
+        <FilterSelect label={t("reports.cols.client")} value={clientId} onChange={(v) => { setClientId(v); setAgentId(""); }} wide>
+          <option value="">{t("reports.filters.allClients")}</option>
+          {(filters?.clients ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </FilterSelect>
+        <FilterSelect label={t("reports.cols.agent")} value={agentId} onChange={setAgentId} wide>
+          <option value="">{t("reports.filters.allAgents")}</option>
+          {agentsForClient.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </FilterSelect>
+        {tab === "summary" && <FilterSelect label={t("reports.filters.channel")} value={channel} onChange={setChannel}>
+          <option value="">{t("reports.filters.allChannels")}</option>
+          {(filters?.channels ?? []).map((c) => <option key={c} value={c}>{channelLabel(c)}</option>)}
+        </FilterSelect>}
+        {tab === "costs" && <FilterSelect label={t("reports.cols.model")} value={model} onChange={setModel} wide>
+          <option value="">{t("reports.filters.allModels")}</option>
+          {(filters?.models ?? []).map((m) => <option key={m} value={m}>{m}</option>)}
+        </FilterSelect>}
+      </ControlsRow>
+    </ReportControls>
 
     {loading ? <p className="muted" style={{ padding: "24px 0" }}>{t("reports.loading")}</p> : tab === "summary" ? (
       !ops ? null : <>
@@ -206,16 +219,18 @@ export default function ReportsPage() {
         {ops.totals.conversations === 0 ? <EmptyState icon={<MessageSquareText />} title={t("reports.ops.noData")} description={t("reports.emptyBody")} /> : <>
           <section className="section-block">
             <div className="section-heading"><div><h2>{t("reports.ops.overTime")}</h2></div>
-              <div className="report-ranges">{BUCKETS.map((b) => <button key={b} type="button" className={b === bucket ? "active" : ""} onClick={() => setBucket(b)}>{t(`reports.buckets.${b}`)}</button>)}</div>
-            </div>
-            <div className="panel" style={{ padding: "16px 12px 6px" }}>
-              <div className="report-chart" role="img" aria-label={t("reports.ops.overTime")}>
-                {ops.by_period.map((p, i) => <div key={p.day} className="report-chart-group">
-                  <div className="report-chart-tip"><strong>{dayLabel(p.day)}</strong><span>{fmtInt(p.conversations)} · {fmtInt(p.inbound)}</span></div>
-                  <div className="report-chart-bars"><i style={{ height: `${(p.conversations / maxConv) * 100}%`, background: "var(--purple)" }} /></div>
-                  <small>{i % Math.max(1, Math.ceil(ops.by_period.length / 8)) === 0 ? dayLabel(p.day) : " "}</small>
-                </div>)}
+              <div className="heading-tools">
+                <div className="report-legend">
+                  <span><i style={{ background: "var(--purple)" }} /> {t("reports.ops.cols.conversations")}</span>
+                  <span><i style={{ background: "var(--amber)" }} /> {t("reports.ops.cols.handoffs")}</span>
+                </div>
+                <Segmented<(typeof BUCKETS)[number]> value={bucket} onChange={setBucket} options={BUCKETS.map((b) => ({ value: b, label: t(`reports.buckets.${b}`) }))} />
               </div>
+            </div>
+            <div className="panel" style={{ padding: "18px 16px 12px" }}>
+              <TimeChart ariaLabel={t("reports.ops.overTime")} format={fmtInt}
+                points={ops.by_period.map((p) => ({ key: p.day, label: dayLabel(p.day), values: [p.conversations, p.handoffs] }))}
+                series={[{ name: t("reports.ops.cols.conversations"), color: "var(--purple)" }, { name: t("reports.ops.cols.handoffs"), color: "var(--amber)" }]} />
             </div>
           </section>
 
@@ -241,14 +256,10 @@ export default function ReportsPage() {
         {report.totals.replies === 0 ? <EmptyState icon={<Coins />} title={t("reports.emptyTitle")} description={t("reports.emptyBody")} /> : <>
           <section className="section-block">
             <div className="section-heading"><div><h2>{t("reports.sections.byDay")}</h2></div></div>
-            <div className="panel" style={{ padding: "16px 12px 6px" }}>
-              <div className="report-chart" role="img" aria-label={t("reports.sections.byDay")}>
-                {report.by_day.map((day, i) => <div key={day.date} className="report-chart-group">
-                  <div className="report-chart-tip"><strong>{dayLabel(day.date)}</strong><span>{money(day.cost_usd)} · {fmtInt(day.replies)}</span></div>
-                  <div className="report-chart-bars"><i style={{ height: `${(day.cost_usd / maxDay) * 100}%`, background: "var(--purple)" }} /></div>
-                  <small>{i % Math.max(1, Math.ceil(report.by_day.length / 8)) === 0 ? dayLabel(day.date) : " "}</small>
-                </div>)}
-              </div>
+            <div className="panel" style={{ padding: "18px 16px 12px" }}>
+              <TimeChart ariaLabel={t("reports.sections.byDay")} format={money} axisFormat={(v, d) => `$${v.toFixed(d)}`}
+                points={report.by_day.map((day) => ({ key: day.date, label: dayLabel(day.date), values: [day.cost_usd] }))}
+                series={[{ name: t("reports.cols.cost"), color: "var(--purple)" }]} />
             </div>
           </section>
 
@@ -258,8 +269,8 @@ export default function ReportsPage() {
 
           <section className="section-block">
             <div className="section-heading"><div><h2>{t("reports.sections.replies")}</h2><p>{t("reports.sections.repliesHint")}</p></div></div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 16 }}>
-              <label className="search-box" style={{ height: 38 }}><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("reports.filters.search")} /></label>
+            <div className="report-actions">
+              <label className="search-box report-search"><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("reports.filters.search")} /></label>
               <button type="button" className="button secondary" onClick={exportCsv} disabled={exporting || rows.length === 0} style={{ marginLeft: "auto" }}>
                 {exporting ? <LoaderCircle size={15} className="spin" /> : <Download size={15} />} {t("reports.export")}
               </button>
@@ -283,7 +294,7 @@ export default function ReportsPage() {
                 </tr>
               ))}</tbody>
             </table></div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
+            <div className="report-pager">
               <small className="muted">{t("reports.pageOf", { from: fmtInt(total ? page * PAGE + 1 : 0), to: fmtInt(Math.min(total, (page + 1) * PAGE)), total: fmtInt(total) })}</small>
               <button type="button" className="button secondary" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>{t("reports.prev")}</button>
               <button type="button" className="button secondary" onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} disabled={page >= pageCount - 1}>{t("reports.next")}</button>
@@ -292,5 +303,6 @@ export default function ReportsPage() {
         </>}
       </>
     )}
+    </>}
   </div>;
 }

@@ -16,6 +16,8 @@ from ..database import get_db, new_session
 from ..models import Agency, Agent, CannedResponse, Client, Contact, ContactTag, ContactTagLink, Conversation, Message, PortalUser, Team, WhatsAppChannel, WhatsAppCloudChannel, now_utc
 from ..portal_permissions import CANNED_MANAGE, CONTACTS_MANAGE, INBOX_DELETE, REPORTS_VIEW, TAGS_MANAGE, TEAMS_MANAGE, TEMPLATES_MANAGE, has_permission, permissions_for
 from ..ratelimit import login_rate_limit, public_asset_rate_limit
+from ..services.report_conversations import AD_FIELDS, ConversationListFilters, export_csv, facets, list_conversations
+from ..schemas import ConversationFacets, ConversationReportPage
 from ..schemas import (
     ContactBlockUpdate,
     BulkResult,
@@ -1384,6 +1386,88 @@ def portal_delete_canned_response(
 ):
     db.delete(_canned_response(db, client, canned_id))
     db.commit()
+
+
+def _portal_list_filters(client: Client, *, date_from, date_to, channel, tz, status, mode, assignee_id, team_id, ad,
+                         ad_source_type, ad_source_id, ad_source_url, ad_headline, ad_body, ad_media_type, q) -> ConversationListFilters:
+    if date_to < date_from or (date_to - date_from).days > 366:
+        raise HTTPException(status_code=422, detail="Pick a range of at most a year, oldest day first")
+    values = dict(zip(AD_FIELDS, (ad_source_type, ad_source_id, ad_source_url, ad_headline, ad_body, ad_media_type)))
+    return ConversationListFilters(
+        client.agency_id, date_from=date_from, date_to=date_to, client_id=client.id, channel=channel, tz=tz,
+        status=status, mode=mode, assignee_id=assignee_id, team_id=team_id, ad=ad,
+        ad_values={key: value for key, value in values.items() if value}, q=q, client_scope=True,
+    )
+
+
+@router.get("/{slug}/reports/conversations", dependencies=[Depends(require_permission(REPORTS_VIEW))],
+            response_model=ConversationReportPage, responses={200: {"content": {"text/csv": {}}}})
+def portal_conversations_report(
+    slug: str,
+    from_: date = Query(alias="from"),
+    to: date = Query(),
+    tz: str | None = Query(default=None, max_length=64),
+    channel: str | None = Query(default=None, max_length=40),
+    status_: str | None = Query(default=None, alias="status", max_length=20),
+    mode: str | None = Query(default=None, max_length=10),
+    assignee_id: uuid.UUID | None = Query(default=None),
+    team_id: uuid.UUID | None = Query(default=None),
+    ad: str | None = Query(default=None, max_length=10),
+    ad_source_type: str | None = Query(default=None, max_length=500),
+    ad_source_id: str | None = Query(default=None, max_length=500),
+    ad_source_url: str | None = Query(default=None, max_length=500),
+    ad_headline: str | None = Query(default=None, max_length=500),
+    ad_body: str | None = Query(default=None, max_length=500),
+    ad_media_type: str | None = Query(default=None, max_length=500),
+    q: str | None = Query(default=None, max_length=120),
+    sort: str | None = Query(default=None, max_length=30),
+    order: str | None = Query(default=None, max_length=4),
+    format: str | None = Query(default=None, max_length=10),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    """The client's conversations that started in the range, one row each,
+    with the figures for the filtered set. Same filters as the agency list,
+    scoped to this client; ``format=csv`` downloads the whole list."""
+    filters = _portal_list_filters(
+        client, date_from=from_, date_to=to, channel=channel, tz=tz, status=status_, mode=mode, assignee_id=assignee_id,
+        team_id=team_id, ad=ad, ad_source_type=ad_source_type, ad_source_id=ad_source_id, ad_source_url=ad_source_url,
+        ad_headline=ad_headline, ad_body=ad_body, ad_media_type=ad_media_type, q=q,
+    )
+    if format == "csv":
+        return Response(
+            content=export_csv(db, filters, sort=sort, order=order), media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="conversations-{from_.isoformat()}-{to.isoformat()}.csv"'},
+        )
+    return list_conversations(db, filters, sort=sort, order=order, limit=limit, offset=offset)
+
+
+@router.get("/{slug}/reports/conversations/facets", dependencies=[Depends(require_permission(REPORTS_VIEW))],
+            response_model=ConversationFacets)
+def portal_conversations_facets(
+    slug: str,
+    from_: date = Query(alias="from"),
+    to: date = Query(),
+    tz: str | None = Query(default=None, max_length=64),
+    channel: str | None = Query(default=None, max_length=40),
+    status_: str | None = Query(default=None, alias="status", max_length=20),
+    mode: str | None = Query(default=None, max_length=10),
+    assignee_id: uuid.UUID | None = Query(default=None),
+    team_id: uuid.UUID | None = Query(default=None),
+    ad: str | None = Query(default=None, max_length=10),
+    q: str | None = Query(default=None, max_length=120),
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    """The referral keys and values the client's filtered range carries."""
+    filters = _portal_list_filters(
+        client, date_from=from_, date_to=to, channel=channel, tz=tz, status=status_, mode=mode, assignee_id=assignee_id,
+        team_id=team_id, ad=ad, ad_source_type=None, ad_source_id=None, ad_source_url=None, ad_headline=None,
+        ad_body=None, ad_media_type=None, q=q,
+    )
+    return facets(db, filters)
 
 
 @router.get("/{slug}/reports", dependencies=[Depends(require_permission(REPORTS_VIEW))], response_model=PortalReport)
