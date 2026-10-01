@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Flag, LoaderCircle, MessageCircle, Plus, X } from "lucide-react";
+import { LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { Alert } from "@/components/ui";
 import { AiHint } from "@/components/ai-hint";
 import { api, messageFrom } from "@/lib/api";
@@ -16,27 +16,29 @@ const CHANNEL_GROUPS = [
   { label: "agents.capture.channelWidget", keys: ["widget"] },
 ] as const;
 
-const MAX_FOLLOW_UPS = 2;
+const MAX_REMINDERS = 2;
 
-/** One message of the sequence as the editor holds it: when it goes out (in
- * hours; the server keeps minutes) and who writes it. */
-type Step = { hours: string; custom: boolean; text: string };
+/** One rule as the editor holds it: when it fires (in hours; the server keeps
+ * minutes), who writes the message, and whether it closes the conversation.
+ * Reminders come first; the farewell, when there is one, is always last. */
+type Rule = { hours: string; custom: boolean; text: string; closes: boolean };
 
 const toHours = (minutes: number | null) => (minutes == null ? "" : String(Math.round((minutes / 60) * 100) / 100));
-const toMinutes = (hours: string) => (hours.trim() === "" ? null : Math.round(Number(hours.replace(",", ".")) * 60));
-const stepOf = (minutes: number | null, text: string | null): Step => ({ hours: toHours(minutes), custom: Boolean(text), text: text ?? "" });
+const number = (hours: string) => Number(hours.replace(",", "."));
+const toMinutes = (hours: string) => (hours.trim() === "" ? null : Math.round(number(hours) * 60));
+const ruleOf = (minutes: number, text: string | null, closes: boolean): Rule => ({ hours: toHours(minutes), custom: Boolean(text), text: text ?? "", closes });
+const tidy = (hours: number) => String(Math.round(hours * 10) / 10);
 
 /** How this agent's conversations end: whether it may resolve a settled case
- * itself, and what it sends when the customer stops answering. Follow-ups are
- * added one by one, each written by the agent from the conversation or sent
- * as a fixed text; the closing message always comes last. Saved as a whole
- * with one button, like the escalation rules. */
+ * itself, and what it sends when the customer stops answering. Rules are
+ * added one by one: reminders, and a farewell that closes the conversation.
+ * Each message is written by the agent from the conversation or sent as a
+ * fixed text. Saved as a whole with one button, like the escalation rules. */
 export function FollowUpEditor({ agentId }: { agentId: string }) {
   const t = useT();
   const [resolveEnabled, setResolveEnabled] = useState(false);
   const [enabled, setEnabled] = useState(false);
-  const [followUps, setFollowUps] = useState<Step[]>([]);
-  const [closing, setClosing] = useState<Step>({ hours: "", custom: false, text: "" });
+  const [rules, setRules] = useState<Rule[]>([]);
   const [channels, setChannels] = useState<string[]>([]);
   const [limits, setLimits] = useState({ min: 5, max: 23 * 60 });
   const [loading, setLoading] = useState(true);
@@ -47,11 +49,11 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
   const apply = (config: FollowUpConfig) => {
     setResolveEnabled(config.resolve_enabled);
     setEnabled(config.enabled);
-    setFollowUps([
-      ...(config.first_minutes != null ? [stepOf(config.first_minutes, config.first_text)] : []),
-      ...(config.first_minutes != null && config.second_minutes != null ? [stepOf(config.second_minutes, config.second_text)] : []),
+    setRules([
+      ...(config.first_minutes != null ? [ruleOf(config.first_minutes, config.first_text, false)] : []),
+      ...(config.first_minutes != null && config.second_minutes != null ? [ruleOf(config.second_minutes, config.second_text, false)] : []),
+      ...(config.close_minutes != null ? [ruleOf(config.close_minutes, config.close_text, true)] : []),
     ]);
-    setClosing(stepOf(config.close_minutes, config.close_text));
     setChannels(config.channels);
     setLimits({ min: config.min_minutes, max: config.max_minutes });
   };
@@ -61,78 +63,61 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
     load().catch((err) => setError(messageFrom(err))).finally(() => setLoading(false));
   }, [load]);
 
+  const reminders = rules.filter((rule) => !rule.closes);
+  const farewell = rules.find((rule) => rule.closes);
+  const canAdd = !(reminders.length >= MAX_REMINDERS && farewell);
+  const maxHours = limits.max / 60;
+
   const toggle = (on: boolean) => {
     setEnabled(on);
     // A sequence to start from, so switching it on is one click.
-    if (on && !followUps.length && !closing.hours) {
-      setFollowUps([{ hours: "1", custom: false, text: "" }]);
-      setClosing((current) => ({ ...current, hours: "6" }));
-    }
+    if (on && !rules.length) setRules([{ hours: "1", custom: false, text: "", closes: false }, { hours: "6", custom: false, text: "", closes: true }]);
   };
-  const addFollowUp = () => setFollowUps((current) => {
-    const previous = Number(current[current.length - 1]?.hours.replace(",", ".")) || 0;
-    return [...current, { hours: String(previous ? previous + 2 : 1), custom: false, text: "" }];
+  /** The first rule is a reminder, the next one the farewell; after that a
+   * reminder goes in before the farewell, which stays last. */
+  const add = () => setRules((current) => {
+    const last = current[current.length - 1];
+    if (!last) return [{ hours: "1", custom: false, text: "", closes: false }];
+    const lastHours = number(last.hours) || 0;
+    if (!last.closes) return [...current, { hours: tidy(Math.min(maxHours, lastHours ? lastHours + 5 : 6)), custom: false, text: "", closes: true }];
+    const before = number(current[current.length - 2]?.hours ?? "") || 0;
+    const between = lastHours > before ? (before + lastHours) / 2 : before + 1;
+    return [...current.slice(0, -1), { hours: tidy(between), custom: false, text: "", closes: false }, last];
   });
-  const editFollowUp = (index: number, patch: Partial<Step>) =>
-    setFollowUps((current) => current.map((step, at) => (at === index ? { ...step, ...patch } : step)));
+  const edit = (index: number, patch: Partial<Rule>) => setRules((current) => current.map((rule, at) => (at === index ? { ...rule, ...patch } : rule)));
   const toggleGroup = (keys: readonly string[]) => setChannels((current) =>
     keys.some((key) => current.includes(key)) ? current.filter((key) => !keys.includes(key)) : [...current, ...keys]);
 
-  function problem(steps: Step[]): string {
-    const range = t("agents.followUps.errorRange", { min: String(limits.min), max: String(limits.max / 60) });
-    const minutes = steps.map((step) => toMinutes(step.hours));
-    if (minutes.some((value) => value == null)) return t("agents.followUps.errorRequired");
+  function problem(): string {
+    if (!rules.length) return t("agents.followUps.errorRequired");
+    const minutes = rules.map((rule) => toMinutes(rule.hours));
+    if (minutes.some((value) => value == null)) return t("agents.followUps.errorHours");
     const set = minutes as number[];
-    if (set.some((value) => Number.isNaN(value) || value < limits.min || value > limits.max)) return range;
+    if (set.some((value) => Number.isNaN(value) || value < limits.min || value > limits.max)) return t("agents.followUps.errorRange", { min: String(limits.min), max: String(maxHours) });
     if (set.some((value, index) => index > 0 && value <= set[index - 1])) return t("agents.followUps.errorOrder");
-    if (steps.some((step) => step.custom && !step.text.trim())) return t("agents.followUps.errorText");
+    if (rules.some((rule) => rule.custom && !rule.text.trim())) return t("agents.followUps.errorText");
     return "";
   }
 
   async function save() {
-    const steps = [...followUps, closing];
-    const invalid = enabled ? problem(steps) : "";
+    const invalid = enabled ? problem() : "";
     setSaved(false);
     if (invalid) { setError(invalid); return; }
     setBusy(true); setError("");
-    const [first, second] = followUps;
-    const textOf = (step: Step | undefined) => (step?.custom ? step.text.trim() : null);
-    const minutesOf = (step: Step | undefined) => { const value = step ? toMinutes(step.hours) : null; return value != null && !Number.isNaN(value) ? value : null; };
+    const [first, second] = reminders;
+    const textOf = (rule: Rule | undefined) => (rule?.custom ? rule.text.trim() : null);
+    const minutesOf = (rule: Rule | undefined) => { const value = rule ? toMinutes(rule.hours) : null; return value != null && !Number.isNaN(value) ? value : null; };
     try {
       apply(await api<FollowUpConfig>(`/agents/${agentId}/follow-ups`, { method: "PUT", body: JSON.stringify({
         resolve_enabled: resolveEnabled, enabled, channels,
         first_minutes: minutesOf(first), first_text: textOf(first),
         second_minutes: minutesOf(second), second_text: textOf(second),
-        close_minutes: minutesOf(closing), close_text: textOf(closing),
+        close_minutes: minutesOf(farewell), close_text: textOf(farewell),
       }) }));
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
-
-  const block = (step: Step, onChange: (patch: Partial<Step>) => void, kind: "first" | "second" | "close", onRemove?: () => void) => {
-    const closes = kind === "close";
-    const title = closes ? t("agents.followUps.closeTitle") : t(kind === "first" ? "agents.followUps.firstTitle" : "agents.followUps.secondTitle");
-    return (
-      <div className="followup-step" key={kind}>
-        <div className="followup-step-head">
-          {closes ? <Flag size={16} /> : <MessageCircle size={16} />}
-          <strong>{title}</strong>
-          {onRemove && <button type="button" className="icon-button" aria-label={t("agents.followUps.remove")} title={t("agents.followUps.remove")} onClick={onRemove}><X size={15} /></button>}
-        </div>
-        <div className="followup-when">
-          <span>{t("agents.followUps.whenBefore")}</span>
-          <input type="text" inputMode="decimal" value={step.hours} aria-label={`${title}: ${t("agents.followUps.hoursLabel")}`} onChange={(e) => onChange({ hours: e.target.value })} />
-          <span>{t(closes ? "agents.followUps.whenAfterClose" : "agents.followUps.whenAfterFollowUp")}</span>
-        </div>
-        <div className="followup-mode">
-          <button type="button" className={`chip-toggle${step.custom ? "" : " active"}`} aria-pressed={!step.custom} onClick={() => onChange({ custom: false })}>{t("agents.followUps.modeAi")}</button>
-          <button type="button" className={`chip-toggle${step.custom ? " active" : ""}`} aria-pressed={step.custom} onClick={() => onChange({ custom: true })}>{t("agents.followUps.modeText")}</button>
-        </div>
-        {step.custom && <textarea rows={2} maxLength={1000} value={step.text} aria-label={`${title}: ${t("agents.followUps.modeText")}`} placeholder={t(closes ? "agents.followUps.closePlaceholder" : "agents.followUps.textPlaceholder")} onChange={(e) => onChange({ text: e.target.value })} />}
-      </div>
-    );
-  };
 
   return (
     <section className="settings-section">
@@ -144,21 +129,40 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
         {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div> : <>
           <label className="switch-row"><span><strong>{t("agents.followUps.resolveToggle")}</strong><small>{t("agents.followUps.resolveHint")}</small></span><input type="checkbox" checked={resolveEnabled} onChange={(e) => setResolveEnabled(e.target.checked)} /></label>
           <label className="switch-row"><span><strong>{t("agents.followUps.toggle")}</strong><small>{t("agents.followUps.toggleHint")}</small></span><input type="checkbox" checked={enabled} onChange={(e) => toggle(e.target.checked)} /></label>
-          {enabled && <>
-            {followUps.map((step, index) => block(step, (patch) => editFollowUp(index, patch), index === 0 ? "first" : "second",
-              () => setFollowUps((current) => current.filter((_, at) => at !== index))))}
-            {followUps.length < MAX_FOLLOW_UPS && <button type="button" className="button followup-add" onClick={addFollowUp}><Plus size={15} /> {t("agents.followUps.add")}</button>}
-            {block(closing, (patch) => setClosing((current) => ({ ...current, ...patch })), "close")}
-            <span className="field-help">{t("agents.followUps.timingHelp", { max: String(limits.max / 60) })}</span>
-            <div className="followup-channels">
-              <small>{t("agents.followUps.channelsLabel")}</small>
-              {CHANNEL_GROUPS.map((group) => {
-                const on = group.keys.some((key) => channels.includes(key));
-                return <button type="button" key={group.label} className={`chip-toggle${on ? " active" : ""}`} aria-pressed={on} onClick={() => toggleGroup(group.keys)}>{t(group.label)}</button>;
+          {enabled && <div className="esc-step">
+            <div className="esc-step-head"><div><strong>{t("agents.followUps.rulesHeading")}</strong><small>{t("agents.followUps.rulesHint", { max: String(maxHours) })}</small></div></div>
+            <div className="esc-step-body">
+              {rules.map((rule, index) => {
+                const kind = t(rule.closes ? "agents.followUps.farewell" : "agents.followUps.reminder");
+                return <div className="followup-rule-wrap" key={index}>
+                  <div className="esc-rule followup-rule">
+                    <span className="esc-rule-n">{index + 1}</span>
+                    <strong className="followup-kind">{kind}</strong>
+                    <span className="followup-after">{t("agents.followUps.afterPrefix")}</span>
+                    <input className="followup-hours" type="text" inputMode="decimal" value={rule.hours} aria-label={`${kind}: ${t("agents.followUps.hoursLabel")}`} onChange={(e) => edit(index, { hours: e.target.value })} />
+                    <span className="followup-after">{t("agents.followUps.afterSuffix")}</span>
+                    <span className="esc-arrow" aria-hidden="true">→</span>
+                    <select value={rule.custom ? "text" : "ai"} aria-label={`${kind}: ${t("agents.followUps.writerLabel")}`} onChange={(e) => edit(index, { custom: e.target.value === "text" })}>
+                      <option value="ai">{t("agents.followUps.modeAi")}</option>
+                      <option value="text">{t("agents.followUps.modeText")}</option>
+                    </select>
+                    <span className="escalation-actions"><button type="button" className="icon-button danger" title={t("agents.followUps.remove")} aria-label={t("agents.followUps.remove")} onClick={() => setRules((current) => current.filter((_, at) => at !== index))}><Trash2 size={14} /></button></span>
+                  </div>
+                  {rule.custom && <textarea className="followup-text" rows={2} maxLength={1000} value={rule.text} aria-label={`${kind}: ${t("agents.followUps.modeText")}`} placeholder={t(rule.closes ? "agents.followUps.closePlaceholder" : "agents.followUps.textPlaceholder")} onChange={(e) => edit(index, { text: e.target.value })} />}
+                </div>;
               })}
-              {!channels.length && <small className="muted">{t("agents.followUps.allChannels")}</small>}
+              {!rules.length && <p className="esc-empty">{t("agents.followUps.empty")}</p>}
+              {canAdd && <div className="esc-rules-foot"><button type="button" className="button secondary small" onClick={add}><Plus size={14} /> {t("agents.followUps.add")}</button></div>}
+              <div className="followup-channels">
+                <small>{t("agents.followUps.channelsLabel")}</small>
+                {CHANNEL_GROUPS.map((group) => {
+                  const on = group.keys.some((key) => channels.includes(key));
+                  return <button type="button" key={group.label} className={`chip-toggle${on ? " active" : ""}`} aria-pressed={on} onClick={() => toggleGroup(group.keys)}>{t(group.label)}</button>;
+                })}
+                {!channels.length && <small className="muted">{t("agents.followUps.allChannels")}</small>}
+              </div>
             </div>
-          </>}
+          </div>}
           {error && <Alert>{error}</Alert>}
           <div className="form-footer escalation-footer">
             <span className="escalation-save">{saved && <span className="escalation-saved">{t("agents.escalation.savedNote")}</span>}<button type="button" className="button primary" onClick={save} disabled={busy}>{busy ? <LoaderCircle className="spin" size={16} /> : t("agents.followUps.save")}</button></span>

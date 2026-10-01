@@ -138,8 +138,8 @@ def check_schedule(enabled: bool, first: int | None, second: int | None, close: 
             raise ValueError(f"Each delay must be between {MIN_MINUTES} minutes and {MAX_MINUTES // 60} hours.")
     if second is not None and first is None:
         raise ValueError("Set the first follow-up before adding a second one.")
-    if enabled and close is None:
-        raise ValueError("Set when the conversation closes.")
+    if enabled and first is None and close is None:
+        raise ValueError("Add at least one message: a follow-up or the closing one.")
     ordered = [value for value in (first, second, close) if value is not None]
     if any(later <= earlier for earlier, later in zip(ordered, ordered[1:])):
         raise ValueError("Each delay must be longer than the one before it.")
@@ -148,14 +148,17 @@ def check_schedule(enabled: bool, first: int | None, second: int | None, close: 
 def steps_for(agent: Agent) -> list[Step]:
     """The agent's sequence, or nothing when it is off or incomplete."""
     first, second, close = agent.follow_up_first_minutes, agent.follow_up_second_minutes, agent.follow_up_close_minutes
-    if not agent.follow_up_enabled or not close:
+    if not agent.follow_up_enabled:
         return []
     steps = []
     if first:
         steps.append(Step("first", first, (agent.follow_up_first_text or "").strip()))
         if second:
             steps.append(Step("second", second, (agent.follow_up_second_text or "").strip()))
-    steps.append(Step("close", close, (agent.follow_up_close_text or "").strip()))
+    # Without a closing step the case stays open after the follow-ups and
+    # the idle sweep ends it.
+    if close:
+        steps.append(Step("close", close, (agent.follow_up_close_text or "").strip()))
     return steps
 
 

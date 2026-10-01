@@ -114,8 +114,9 @@ def test_schedule_is_validated(setup):
         return s.client.put(f"/api/agents/{s.agent['id']}/follow-ups", json={**SCHEDULE, **overrides}).status_code == 422
 
     assert rejected(first_minutes=None)                      # a second follow-up needs a first
-    assert rejected(close_minutes=None)                      # enabled needs a closing
-    assert not rejected(first_minutes=None, second_minutes=None)   # which is all it needs
+    assert rejected(first_minutes=None, second_minutes=None, close_minutes=None)   # enabled needs a message
+    assert not rejected(first_minutes=None, second_minutes=None)    # the closing alone will do
+    assert not rejected(second_minutes=None, close_minutes=None)    # and so will one follow-up
     assert rejected(second_minutes=30)                       # out of order
     assert rejected(close_minutes=24 * 60)                   # past the reply window
     assert rejected(first_minutes=1)                         # below the minimum
@@ -197,6 +198,18 @@ def test_a_schedule_with_only_a_closing_just_closes(setup):
     assert "CLOSING FOR INACTIVITY" in s.nudge.await_args.args[4][0]["content"]
     assert s.send.await_count == 1 and state(s)[0] == "resolved"
     assert messages(s)[-1].activity == {"event": "closed_unanswered", "hours": 2}
+
+
+def test_follow_ups_without_a_closing_leave_the_case_open(setup):
+    s = setup
+    configure(s, second_minutes=None, close_minutes=None)
+    incoming(s)
+    rewind(s, 61)
+    sweep()
+    s.send.assert_awaited_once()
+    status, step, due, _ = state(s)
+    assert status == "open" and step == 1 and due is None      # nothing else is scheduled
+    assert sweep() == 0
 
 
 def test_an_answer_stops_the_clock_and_the_next_reply_restarts_it(setup):
