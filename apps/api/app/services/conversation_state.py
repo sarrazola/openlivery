@@ -41,6 +41,8 @@ _ACTIVITY_TEXT = {
     "taken_over": "{actor} took over the conversation",
     "returned_to_ai": "{actor} returned the conversation to the AI",
     "auto_resolved": "Resolved automatically after {hours} h without activity",
+    "resolved_by_agent": "{actor} resolved the conversation: {reason}",
+    "closed_unanswered": "Resolved after {hours} h without an answer to the follow-ups",
     "self_assigned": "{actor} is now handling the conversation",
     "assigned": "{actor} assigned the conversation to {assignee}",
     "transferred": "{actor} transferred the conversation to {assignee}",
@@ -95,6 +97,7 @@ def set_status(db: Session, conversation: Conversation, status: str, *, actor: s
     if status == "resolved":
         from .phone_handover import cancel_phone_pause
         cancel_phone_pause(conversation)
+        cancel_follow_up(conversation)
         conversation.resolved_at = now
         conversation.waiting_since = None
         record_activity(db, conversation, "resolved", actor=actor)
@@ -137,6 +140,7 @@ def set_mode(
         return False
     ensure_open(conversation)
     cancel_phone_pause(conversation)
+    cancel_follow_up(conversation)
     conversation.mode = mode
     now = now_utc()
     if mode == "human":
@@ -180,6 +184,8 @@ def assign(
     if assignee and conversation.mode != "human":
         conversation.mode = "human"
         conversation.taken_over_at = now
+    if assignee:
+        cancel_follow_up(conversation)
     if assignee is None:
         event, details = "unassigned", None
     elif actor_user and assignee.id == actor_user.id:
@@ -230,6 +236,7 @@ def set_team(
 def note_inbound(db: Session, conversation: Conversation) -> None:
     """A contact wrote: they are waiting, and a resolved case is open again."""
     now = now_utc()
+    cancel_follow_up(conversation)
     if conversation.waiting_since is None:
         conversation.waiting_since = now
     if conversation.status == "resolved":
@@ -245,6 +252,45 @@ def note_reply(conversation: Conversation) -> None:
     if conversation.first_reply_at is None:
         conversation.first_reply_at = now
     conversation.waiting_since = None
+
+
+def cancel_follow_up(conversation: Conversation) -> bool:
+    """Stop the inactivity follow-up clock. Whatever makes the contact's
+    silence stop mattering calls this: they wrote, a person took the
+    conversation, or the case ended."""
+    changed = conversation.follow_up_due_at is not None
+    conversation.pending_resolution = None
+    conversation.follow_up_anchor_at = None
+    conversation.follow_up_due_at = None
+    conversation.follow_up_step = 0
+    conversation.follow_up_claimed_until = None
+    return changed
+
+
+def resolve_without_a_person(
+    db: Session, conversation: Conversation, event: str, *, actor: str | None = None, details: dict | None = None
+) -> bool:
+    """Close a case nobody pressed Resolve on: it went idle, the follow-ups
+    went unanswered, or the agent settled it. The activity line says which,
+    so the thread and the reports can tell these endings from a person's."""
+    if conversation.status == "resolved":
+        return False
+    from .phone_handover import cancel_phone_pause
+    cancel_phone_pause(conversation)
+    cancel_follow_up(conversation)
+    stamp = now_utc()
+    conversation.status = "resolved"
+    conversation.status_changed_at = stamp
+    conversation.resolved_at = stamp
+    conversation.waiting_since = None
+    record_activity(db, conversation, event, actor=actor, details=details)
+    return True
+
+
+def hours_shown(minutes: float) -> float | int:
+    """A duration as the activity lines print it: whole hours without a decimal."""
+    hours = round(minutes / 60, 1)
+    return int(hours) if float(hours).is_integer() else hours
 
 
 def resolve_idle_ai_conversations(db: Session, *, hours: float, now: datetime | None = None) -> int:
@@ -273,12 +319,7 @@ def resolve_idle_ai_conversations(db: Session, *, hours: float, now: datetime | 
     ).all()
     shown = int(hours) if float(hours).is_integer() else hours
     for conversation in idle:
-        stamp = now_utc()
-        conversation.status = "resolved"
-        conversation.status_changed_at = stamp
-        conversation.resolved_at = stamp
-        conversation.waiting_since = None
-        record_activity(db, conversation, "auto_resolved", details={"hours": shown})
+        resolve_without_a_person(db, conversation, "auto_resolved", details={"hours": shown})
     if idle:
         db.commit()
     return len(idle)

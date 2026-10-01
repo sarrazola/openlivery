@@ -183,6 +183,18 @@ class Agent(Base):
     phone_handover_minutes: Mapped[int] = mapped_column(Integer, default=10, server_default="10")
     reply_delay_min_seconds: Mapped[int] = mapped_column(Integer, default=6, server_default="6")
     reply_delay_max_seconds: Mapped[int] = mapped_column(Integer, default=9, server_default="9")
+    # Whether the agent may resolve a conversation itself once the contact's
+    # request is settled, instead of leaving it open until it goes idle.
+    resolve_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Inactivity follow-ups: when the contact stops answering, the agent writes
+    # again after ``first`` minutes, optionally after ``second``, and closes the
+    # case with a last message after ``close``. Every delay counts from the
+    # agent's last reply. ``follow_up_channels`` empty means every channel.
+    follow_up_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    follow_up_first_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    follow_up_second_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    follow_up_close_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    follow_up_channels: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     # Set when the agent is deleted. The row stays so the conversations it
     # handled keep its name; everything it owned (knowledge, tools, rules)
     # is purged and it disappears from every list.
@@ -624,6 +636,17 @@ class Conversation(Base):
     # When a person last took the conversation over from the AI.
     phone_pause_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     phone_resume_claimed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The inactivity follow-up clock. ``anchor`` is the agent reply the delays
+    # count from, ``due`` when the next step fires, ``step`` how many already
+    # ran, and ``claimed_until`` the lease of the worker running one now.
+    follow_up_anchor_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    follow_up_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    follow_up_step: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    follow_up_claimed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # A resolution waiting for ``follow_up_due_at``: the agent settled the case
+    # or sent its closing message, and the case ends once that message had
+    # time to go out, unless the contact writes first.
+    pending_resolution: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     taken_over_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # The portal user handling this conversation, when a person is. Cleared
     # when it goes back to the AI or is released for someone else to take.

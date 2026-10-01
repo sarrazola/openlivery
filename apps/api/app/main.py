@@ -52,17 +52,32 @@ async def _auto_resolve_loop() -> None:
             logger.exception("Auto-resolve sweep failed")
 
 
+async def _follow_up_loop() -> None:
+    """Send due follow-ups and apply pending resolutions on a timer."""
+    from .services.follow_ups import run_due
+
+    while True:
+        await asyncio.sleep(max(5.0, get_settings().follow_up_sweep_seconds))
+        try:
+            with new_session() as db:
+                await run_due(db)
+        except Exception:  # noqa: BLE001 - a failed sweep must not stop the next one
+            logger.exception("Follow-up sweep failed")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     from .services.social_worker import start_worker, stop_worker
     start_worker()
     sweeper = asyncio.create_task(_auto_resolve_loop()) if settings.auto_resolve_after_hours > 0 else None
+    follow_ups = asyncio.create_task(_follow_up_loop()) if settings.follow_up_sweep_seconds > 0 else None
     try:
         yield
     finally:
         await stop_worker()
-        if sweeper:
-            sweeper.cancel()
+        for task in (sweeper, follow_ups):
+            if task:
+                task.cancel()
 
 
 app = FastAPI(

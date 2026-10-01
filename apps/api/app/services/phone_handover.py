@@ -6,7 +6,7 @@ from sqlalchemy import or_, select
 
 from ..models import Conversation, Message, now_utc
 from .attachments import llm_text
-from .conversation_state import note_reply, record_activity
+from .conversation_state import cancel_follow_up, note_reply, record_activity
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,7 @@ def pause_from_phone(db, conversation, *, occurred_at=None, actor=None):
     conversation.phone_resume_claimed_until = None
     conversation.mode = "human"
     conversation.taken_over_at = now
+    cancel_follow_up(conversation)
     if first:
         record_activity(db, conversation, "answered_from_phone", actor=actor)
     return True

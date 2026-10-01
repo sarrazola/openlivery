@@ -846,6 +846,26 @@ class CaptureConfigOut(BaseModel):
     channels: list[str] = Field(default_factory=lambda: list(CAPTURE_CHANNELS))
 
 
+class FollowUpConfigIn(BaseModel):
+    """How an agent's conversations end: whether it may resolve a case itself,
+    and what it sends when the contact stops answering. Every delay is in
+    minutes and counts from the agent's last reply."""
+
+    resolve_enabled: bool = False
+    enabled: bool = False
+    first_minutes: int | None = None
+    second_minutes: int | None = None
+    close_minutes: int | None = None
+    # Empty means every channel.
+    channels: list[str] = Field(default_factory=list, max_length=10)
+
+
+class FollowUpConfigOut(FollowUpConfigIn):
+    available_channels: list[str] = Field(default_factory=list)
+    min_minutes: int
+    max_minutes: int
+
+
 class ContactTagOut(BaseModel):
     id: uuid.UUID
     name: str

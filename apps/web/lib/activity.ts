@@ -19,6 +19,8 @@ export function activityText(t: TranslateFn, message: Message): string {
     case "taken_over": return t("portal.inbox.activity.taken_over", { actor });
     case "returned_to_ai": return t("portal.inbox.activity.returned_to_ai", { actor });
     case "auto_resolved": return t("portal.inbox.activity.auto_resolved", { hours: String(details?.hours ?? "") });
+    case "resolved_by_agent": return t("portal.inbox.activity.resolved_by_agent", { actor, reason: String(details?.reason ?? "") });
+    case "closed_unanswered": return t("portal.inbox.activity.closed_unanswered", { hours: String(details?.hours ?? "") });
     case "self_assigned": return t("portal.inbox.activity.self_assigned", { actor });
     case "assigned": return t("portal.inbox.activity.assigned", { actor, assignee: String(details?.assignee ?? "") });
     case "transferred": return t("portal.inbox.activity.transferred", { actor, assignee: String(details?.assignee ?? "") });
