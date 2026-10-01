@@ -44,6 +44,7 @@ Both features go through the same OpenRouter key as the chat model.
 | Business identity | `industry`, `business_type`, `business_custom` (on the client) | Catalog codes (`GET /api/industries`) that name the kind of business in the prompt's first line; when the catalog only offers "other", `business_custom` holds the client's own words. |
 | Contact | from the conversation | Name, phone, e-mail, custom fields, tags and channel of the person writing, added to the prompt at reply time so a form, an e-mail or a tool gets them instead of "not specified". Only what the contact record has is listed. Absent in the playground. |
 | Contact details to collect | `capture_enabled`, `GET`/`PUT /api/agents/{id}/capture` | What the agent asks the customer for and saves on the contact. See [Collecting contact details](#collecting-contact-details). |
+| Follow-up and closing | `GET`/`PUT /api/agents/{id}/follow-ups` | Reminders and a closing message when the customer stops answering, and whether the agent may resolve a conversation itself. See [Follow-up and closing](#follow-up-and-closing). |
 | Prompt language | `prompt_language` | `es` or `en`: the language of the prompt's headings and fixed sentences. Set from the UI language when the agent is saved. |
 | Timezone | `timezone` (on the client) | IANA timezone of the business (e.g. `America/Bogota`), injected so every agent of the client knows the local date and time. Set on the client, defaults to `UTC`. |
 | Provider | `provider` | Always `openrouter`. |
@@ -85,6 +86,49 @@ contact, which the portal shows and edits on the contact card
 (`PATCH /api/portal/{slug}/contacts/{id}` with `attributes`). A phone another
 contact already holds is not overwritten. The playground rehearses the fields
 without saving anything.
+
+## Follow-up and closing
+
+Without these settings an AI-handled conversation ends one way: 24 hours with
+no message. **Follow-up and closing**, in the agent's settings, adds two more.
+
+**Follow up on inactivity.** When the customer stops answering, the agent gets
+back in touch. Rules are added one at a time: up to two reminders and a closing
+message, each firing after a number of hours counted from the agent's last
+message. The closing message resolves the conversation, and the customer's next
+message opens a new one. A schedule can also be reminders only, which leaves
+the conversation to the idle close described below, or the closing message alone.
+
+Each message is either written by the AI from the conversation, in the
+customer's language, or a custom message sent exactly as written, which makes
+no model call. The whole sequence fits in 23 hours, because WhatsApp Cloud API,
+Instagram and Messenger accept free-form messages only for 24 hours after the
+customer's last one. A message that can no longer be delivered is skipped, and
+a closing message that cannot be delivered still closes the case. Pick the
+channels the rules apply to, or leave them all unselected for every channel.
+Playground conversations never get follow-ups.
+
+The sequence stops the moment the customer writes, a person takes the
+conversation, it is assigned or escalated, the business answers from the phone,
+or it is resolved. The agent's next reply starts it again from the first rule.
+
+**Let the agent resolve the conversation.** With this on, the agent gets a
+`resolve_conversation` tool and closes a case itself once the request has been
+handled and nothing is pending. It says goodbye first, and the conversation is
+resolved two minutes later unless the customer writes back, in which case it
+simply continues. When the same reply also escalates, the escalation wins.
+
+The thread records how each case ended: resolved by a person, by the agent
+(with its reason), after unanswered follow-ups, or by the idle close.
+`AUTO_RESOLVE_AFTER_HOURS` (24 by default) stays as the fallback for
+conversations no rule closes. A conversation a person holds is never closed
+automatically.
+
+`GET`/`PUT /api/agents/{id}/follow-ups` takes the delays in minutes
+(`first_minutes`, `second_minutes`, `close_minutes`), a custom message per rule
+or nothing to let the AI write it (`first_text`, `second_text`, `close_text`),
+`channels`, `enabled` and `resolve_enabled`. A timer sends what is due every
+`FOLLOW_UP_SWEEP_SECONDS` (60); `0` switches it off.
 
 ## Business hours and future requests
 
