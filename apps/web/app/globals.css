@@ -1586,6 +1586,8 @@ button.back-link { padding: 0; border: 0; background: transparent; cursor: point
 .brand { color: var(--accent-text); font-size: 16px; font-weight: 700; }
 .sidebar-workspace { min-height: 38px; margin: 12px 4px 14px; padding: 0 9px; display: flex; align-items: center; gap: 8px; color: var(--muted); border: 1px solid var(--line); border-radius: 7px; background: var(--surface-2); font-size: 12px; }
 .sidebar-workspace span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The agency's own logo when it has one; the building icon otherwise. */
+.sidebar-workspace img { width: 20px; height: 20px; flex: 0 0 auto; border-radius: 5px; object-fit: contain; }
 .sidebar nav { margin-top: 0; }
 .sidebar nav a.active { color: var(--accent-text); background: var(--accent-soft); }
 .sidebar nav a.active svg { color: var(--green-text); }

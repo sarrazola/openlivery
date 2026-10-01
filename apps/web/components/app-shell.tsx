@@ -98,7 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link href="/" className="brand"><span className="openlivery-icon"><img src="/brand/openlivery-logo-original.png" alt="" /></span><span>OpenLivery</span></Link>
           <button className="sidebar-close" onClick={() => setMobileOpen(false)} aria-label={t("shell.closeMenu")}><X /></button>
         </div>
-        <div className="sidebar-workspace"><Building2 size={14} /><span>{user.agency.name}</span></div>
+        <div className="sidebar-workspace">{user.agency.logo_url ? <img src={user.agency.logo_url} alt="" /> : <Building2 size={14} />}<span>{user.agency.name}</span></div>
         <nav>
           <span className="nav-label">{t("nav.section")}</span>
           {navigation.map((item) => {
