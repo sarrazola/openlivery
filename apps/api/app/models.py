@@ -186,14 +186,19 @@ class Agent(Base):
     # Whether the agent may resolve a conversation itself once the contact's
     # request is settled, instead of leaving it open until it goes idle.
     resolve_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    # Inactivity follow-ups: when the contact stops answering, the agent writes
-    # again after ``first`` minutes, optionally after ``second``, and closes the
-    # case with a last message after ``close``. Every delay counts from the
-    # agent's last reply. ``follow_up_channels`` empty means every channel.
+    # Inactivity follow-ups: when the contact stops answering, the agent may
+    # write again after ``first`` minutes and once more after ``second``, and
+    # closes the case with a last message after ``close``. Every delay counts
+    # from the agent's last reply. Each message is written by the model from
+    # the thread unless its ``*_text`` holds a fixed one to send as is.
+    # ``follow_up_channels`` empty means every channel.
     follow_up_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     follow_up_first_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     follow_up_second_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     follow_up_close_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    follow_up_first_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    follow_up_second_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    follow_up_close_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     follow_up_channels: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     # Set when the agent is deleted. The row stays so the conversations it
     # handled keep its name; everything it owned (knowledge, tools, rules)

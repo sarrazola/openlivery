@@ -1053,14 +1053,18 @@ textarea { line-height: 1.55; }
 .capture-channels { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-left: 26px; }
 .capture-channels > small { color: var(--muted); font-size: 12px; margin-right: 4px; }
 .capture-channels .chip-toggle { height: 28px; padding: 0 10px; font-size: 12px; }
-/* Follow-up schedule: three delays side by side, then the channels. */
-.followup-times { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: end; }
-.followup-times .with-unit { display: flex; align-items: center; gap: 6px; color: var(--muted); font-weight: 500; }
-.followup-times .with-unit input { flex: 1; min-width: 0; }
+/* Follow-up sequence: one block per message, the closing one last. */
+.followup-step { padding: 14px; display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.followup-step-head { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.followup-step-head strong { flex: 1; color: var(--ink); font-size: 14px; }
+.followup-when { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--ink-2); font-size: 13px; }
+.followup-when input { width: 64px; text-align: center; }
+.followup-mode { display: flex; gap: 6px; flex-wrap: wrap; }
+.followup-mode .chip-toggle { height: 30px; font-size: 12px; }
+.followup-add { align-self: flex-start; }
 .followup-channels { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .followup-channels > small { color: var(--muted); font-size: 12px; margin-right: 4px; }
 .followup-channels .chip-toggle { height: 28px; padding: 0 10px; font-size: 12px; }
-@media (max-width: 640px) { .followup-times { grid-template-columns: 1fr; } }
 /* The client's field catalog. */
 .contact-fields { gap: 12px; }
 .contact-fields-builtin { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

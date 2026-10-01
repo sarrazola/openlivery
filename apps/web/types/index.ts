@@ -552,6 +552,10 @@ export type FollowUpConfig = {
   first_minutes: number | null;
   second_minutes: number | null;
   close_minutes: number | null;
+  /** A fixed message for that step; null lets the agent write it. */
+  first_text: string | null;
+  second_text: string | null;
+  close_text: string | null;
   channels: string[];
   available_channels: string[];
   min_minutes: number;

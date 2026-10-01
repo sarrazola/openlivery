@@ -1,9 +1,10 @@
 """Inactivity follow-ups, and the closing they end in.
 
-When a contact stops answering, the agent that was talking to them writes
-again: once after the first delay, optionally a second time, and a last time
-to close the case. Every delay counts from the agent's last reply, so the
-whole sequence is fixed the moment that reply is stored.
+When a contact stops answering, the agent that was talking to them can write
+again, up to twice, and writes a last time to close the case. Every delay
+counts from the agent's last reply, so the whole sequence is fixed the moment
+that reply is stored. Each message is the model's, written from the thread,
+unless the agent holds a fixed text for that step.
 
 The clock lives on the conversation (``follow_up_*``), so it survives a
 restart. ``run_due`` is the only reader: it claims one conversation at a time
@@ -123,6 +124,8 @@ _TEXT = {
 class Step:
     kind: str  # "first" | "second" | "close"
     minutes: int
+    # A fixed message to send as is; empty leaves the writing to the model.
+    text: str = ""
 
 
 def check_schedule(enabled: bool, first: int | None, second: int | None, close: int | None, channels: list[str]) -> None:
@@ -135,8 +138,8 @@ def check_schedule(enabled: bool, first: int | None, second: int | None, close: 
             raise ValueError(f"Each delay must be between {MIN_MINUTES} minutes and {MAX_MINUTES // 60} hours.")
     if second is not None and first is None:
         raise ValueError("Set the first follow-up before adding a second one.")
-    if enabled and (first is None or close is None):
-        raise ValueError("Set when the first follow-up goes out and when the conversation closes.")
+    if enabled and close is None:
+        raise ValueError("Set when the conversation closes.")
     ordered = [value for value in (first, second, close) if value is not None]
     if any(later <= earlier for earlier, later in zip(ordered, ordered[1:])):
         raise ValueError("Each delay must be longer than the one before it.")
@@ -145,12 +148,14 @@ def check_schedule(enabled: bool, first: int | None, second: int | None, close: 
 def steps_for(agent: Agent) -> list[Step]:
     """The agent's sequence, or nothing when it is off or incomplete."""
     first, second, close = agent.follow_up_first_minutes, agent.follow_up_second_minutes, agent.follow_up_close_minutes
-    if not agent.follow_up_enabled or not first or not close:
+    if not agent.follow_up_enabled or not close:
         return []
-    steps = [Step("first", first)]
-    if second:
-        steps.append(Step("second", second))
-    steps.append(Step("close", close))
+    steps = []
+    if first:
+        steps.append(Step("first", first, (agent.follow_up_first_text or "").strip()))
+        if second:
+            steps.append(Step("second", second, (agent.follow_up_second_text or "").strip()))
+    steps.append(Step("close", close, (agent.follow_up_close_text or "").strip()))
     return steps
 
 
@@ -360,7 +365,8 @@ async def _run_step(db: Session, conversation: Conversation, now: datetime) -> N
     db.commit()
 
     completion = None
-    if _reachable(db, conversation):
+    reachable = _reachable(db, conversation)
+    if reachable and not step.text:
         try:
             completion = await _compose(db, conversation, agent, step)
         except HTTPException:
@@ -384,7 +390,10 @@ async def _run_step(db: Session, conversation: Conversation, now: datetime) -> N
     conversation.follow_up_due_at = anchor + timedelta(minutes=steps[upcoming].minutes) if upcoming < len(steps) else None
     db.commit()
 
-    text = (completion.text or "").strip() if completion else ""
+    if step.text:
+        text = step.text if reachable else ""
+    else:
+        text = (completion.text or "").strip() if completion else ""
     message = await _deliver(db, conversation, agent, text) if text else None
     if completion:
         record_usage(

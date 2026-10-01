@@ -25,11 +25,17 @@ def upgrade():
     op.add_column("agents", sa.Column("follow_up_first_minutes", sa.Integer(), nullable=True))
     op.add_column("agents", sa.Column("follow_up_second_minutes", sa.Integer(), nullable=True))
     op.add_column("agents", sa.Column("follow_up_close_minutes", sa.Integer(), nullable=True))
+    op.add_column("agents", sa.Column("follow_up_first_text", sa.Text(), nullable=True))
+    op.add_column("agents", sa.Column("follow_up_second_text", sa.Text(), nullable=True))
+    op.add_column("agents", sa.Column("follow_up_close_text", sa.Text(), nullable=True))
     op.add_column("agents", sa.Column("follow_up_channels", sa.JSON(), nullable=False, server_default="[]"))
 
 
 def downgrade():
     op.drop_column("agents", "follow_up_channels")
+    op.drop_column("agents", "follow_up_close_text")
+    op.drop_column("agents", "follow_up_second_text")
+    op.drop_column("agents", "follow_up_first_text")
     op.drop_column("agents", "follow_up_close_minutes")
     op.drop_column("agents", "follow_up_second_minutes")
     op.drop_column("agents", "follow_up_first_minutes")

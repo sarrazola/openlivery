@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { LoaderCircle } from "lucide-react";
+import { Flag, LoaderCircle, MessageCircle, Plus, X } from "lucide-react";
 import { Alert } from "@/components/ui";
 import { AiHint } from "@/components/ai-hint";
 import { api, messageFrom } from "@/lib/api";
@@ -16,20 +16,27 @@ const CHANNEL_GROUPS = [
   { label: "agents.capture.channelWidget", keys: ["widget"] },
 ] as const;
 
-/** The server keeps minutes; the editor speaks hours. */
+const MAX_FOLLOW_UPS = 2;
+
+/** One message of the sequence as the editor holds it: when it goes out (in
+ * hours; the server keeps minutes) and who writes it. */
+type Step = { hours: string; custom: boolean; text: string };
+
 const toHours = (minutes: number | null) => (minutes == null ? "" : String(Math.round((minutes / 60) * 100) / 100));
 const toMinutes = (hours: string) => (hours.trim() === "" ? null : Math.round(Number(hours.replace(",", ".")) * 60));
+const stepOf = (minutes: number | null, text: string | null): Step => ({ hours: toHours(minutes), custom: Boolean(text), text: text ?? "" });
 
 /** How this agent's conversations end: whether it may resolve a settled case
- * itself, and what it sends when the customer stops answering. Saved as a
- * whole with one button, like the escalation rules. */
+ * itself, and what it sends when the customer stops answering. Follow-ups are
+ * added one by one, each written by the agent from the conversation or sent
+ * as a fixed text; the closing message always comes last. Saved as a whole
+ * with one button, like the escalation rules. */
 export function FollowUpEditor({ agentId }: { agentId: string }) {
   const t = useT();
   const [resolveEnabled, setResolveEnabled] = useState(false);
   const [enabled, setEnabled] = useState(false);
-  const [first, setFirst] = useState("");
-  const [second, setSecond] = useState("");
-  const [close, setClose] = useState("");
+  const [followUps, setFollowUps] = useState<Step[]>([]);
+  const [closing, setClosing] = useState<Step>({ hours: "", custom: false, text: "" });
   const [channels, setChannels] = useState<string[]>([]);
   const [limits, setLimits] = useState({ min: 5, max: 23 * 60 });
   const [loading, setLoading] = useState(true);
@@ -40,9 +47,11 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
   const apply = (config: FollowUpConfig) => {
     setResolveEnabled(config.resolve_enabled);
     setEnabled(config.enabled);
-    setFirst(toHours(config.first_minutes));
-    setSecond(toHours(config.second_minutes));
-    setClose(toHours(config.close_minutes));
+    setFollowUps([
+      ...(config.first_minutes != null ? [stepOf(config.first_minutes, config.first_text)] : []),
+      ...(config.first_minutes != null && config.second_minutes != null ? [stepOf(config.second_minutes, config.second_text)] : []),
+    ]);
+    setClosing(stepOf(config.close_minutes, config.close_text));
     setChannels(config.channels);
     setLimits({ min: config.min_minutes, max: config.max_minutes });
   };
@@ -54,40 +63,76 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
 
   const toggle = (on: boolean) => {
     setEnabled(on);
-    // A schedule to start from, so switching it on is one click.
-    if (on && !first && !close) { setFirst("1"); setClose("6"); }
+    // A sequence to start from, so switching it on is one click.
+    if (on && !followUps.length && !closing.hours) {
+      setFollowUps([{ hours: "1", custom: false, text: "" }]);
+      setClosing((current) => ({ ...current, hours: "6" }));
+    }
   };
+  const addFollowUp = () => setFollowUps((current) => {
+    const previous = Number(current[current.length - 1]?.hours.replace(",", ".")) || 0;
+    return [...current, { hours: String(previous ? previous + 2 : 1), custom: false, text: "" }];
+  });
+  const editFollowUp = (index: number, patch: Partial<Step>) =>
+    setFollowUps((current) => current.map((step, at) => (at === index ? { ...step, ...patch } : step)));
   const toggleGroup = (keys: readonly string[]) => setChannels((current) =>
     keys.some((key) => current.includes(key)) ? current.filter((key) => !keys.includes(key)) : [...current, ...keys]);
 
-  function problem(values: (number | null)[]): string {
-    const [firstMinutes, , closeMinutes] = values;
-    if (values.some((value) => value != null && Number.isNaN(value))) return t("agents.followUps.errorRange", { min: String(limits.min), max: String(limits.max / 60) });
-    if (enabled && (firstMinutes == null || closeMinutes == null)) return t("agents.followUps.errorRequired");
-    const set = values.filter((value): value is number => value != null);
-    if (set.some((value) => value < limits.min || value > limits.max)) return t("agents.followUps.errorRange", { min: String(limits.min), max: String(limits.max / 60) });
+  function problem(steps: Step[]): string {
+    const range = t("agents.followUps.errorRange", { min: String(limits.min), max: String(limits.max / 60) });
+    const minutes = steps.map((step) => toMinutes(step.hours));
+    if (minutes.some((value) => value == null)) return t("agents.followUps.errorRequired");
+    const set = minutes as number[];
+    if (set.some((value) => Number.isNaN(value) || value < limits.min || value > limits.max)) return range;
     if (set.some((value, index) => index > 0 && value <= set[index - 1])) return t("agents.followUps.errorOrder");
+    if (steps.some((step) => step.custom && !step.text.trim())) return t("agents.followUps.errorText");
     return "";
   }
 
   async function save() {
-    const values = [toMinutes(first), toMinutes(second), toMinutes(close)];
-    const invalid = problem(values);
+    const steps = [...followUps, closing];
+    const invalid = enabled ? problem(steps) : "";
     setSaved(false);
     if (invalid) { setError(invalid); return; }
     setBusy(true); setError("");
+    const [first, second] = followUps;
+    const textOf = (step: Step | undefined) => (step?.custom ? step.text.trim() : null);
+    const minutesOf = (step: Step | undefined) => { const value = step ? toMinutes(step.hours) : null; return value != null && !Number.isNaN(value) ? value : null; };
     try {
       apply(await api<FollowUpConfig>(`/agents/${agentId}/follow-ups`, { method: "PUT", body: JSON.stringify({
-        resolve_enabled: resolveEnabled, enabled, first_minutes: values[0], second_minutes: values[1], close_minutes: values[2], channels,
+        resolve_enabled: resolveEnabled, enabled, channels,
+        first_minutes: minutesOf(first), first_text: textOf(first),
+        second_minutes: minutesOf(second), second_text: textOf(second),
+        close_minutes: minutesOf(closing), close_text: textOf(closing),
       }) }));
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
 
-  const time = (label: string, value: string, onChange: (next: string) => void) => (
-    <label>{label}<span className="with-unit"><input type="text" inputMode="decimal" value={value} onChange={(e) => onChange(e.target.value)} />{t("agents.followUps.hoursUnit")}</span></label>
-  );
+  const block = (step: Step, onChange: (patch: Partial<Step>) => void, kind: "first" | "second" | "close", onRemove?: () => void) => {
+    const closes = kind === "close";
+    const title = closes ? t("agents.followUps.closeTitle") : t(kind === "first" ? "agents.followUps.firstTitle" : "agents.followUps.secondTitle");
+    return (
+      <div className="followup-step" key={kind}>
+        <div className="followup-step-head">
+          {closes ? <Flag size={16} /> : <MessageCircle size={16} />}
+          <strong>{title}</strong>
+          {onRemove && <button type="button" className="icon-button" aria-label={t("agents.followUps.remove")} title={t("agents.followUps.remove")} onClick={onRemove}><X size={15} /></button>}
+        </div>
+        <div className="followup-when">
+          <span>{t("agents.followUps.whenBefore")}</span>
+          <input type="text" inputMode="decimal" value={step.hours} aria-label={`${title}: ${t("agents.followUps.hoursLabel")}`} onChange={(e) => onChange({ hours: e.target.value })} />
+          <span>{t(closes ? "agents.followUps.whenAfterClose" : "agents.followUps.whenAfterFollowUp")}</span>
+        </div>
+        <div className="followup-mode">
+          <button type="button" className={`chip-toggle${step.custom ? "" : " active"}`} aria-pressed={!step.custom} onClick={() => onChange({ custom: false })}>{t("agents.followUps.modeAi")}</button>
+          <button type="button" className={`chip-toggle${step.custom ? " active" : ""}`} aria-pressed={step.custom} onClick={() => onChange({ custom: true })}>{t("agents.followUps.modeText")}</button>
+        </div>
+        {step.custom && <textarea rows={2} maxLength={1000} value={step.text} aria-label={`${title}: ${t("agents.followUps.modeText")}`} placeholder={t(closes ? "agents.followUps.closePlaceholder" : "agents.followUps.textPlaceholder")} onChange={(e) => onChange({ text: e.target.value })} />}
+      </div>
+    );
+  };
 
   return (
     <section className="settings-section">
@@ -100,11 +145,10 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
           <label className="switch-row"><span><strong>{t("agents.followUps.resolveToggle")}</strong><small>{t("agents.followUps.resolveHint")}</small></span><input type="checkbox" checked={resolveEnabled} onChange={(e) => setResolveEnabled(e.target.checked)} /></label>
           <label className="switch-row"><span><strong>{t("agents.followUps.toggle")}</strong><small>{t("agents.followUps.toggleHint")}</small></span><input type="checkbox" checked={enabled} onChange={(e) => toggle(e.target.checked)} /></label>
           {enabled && <>
-            <div className="followup-times">
-              {time(t("agents.followUps.first"), first, setFirst)}
-              {time(t("agents.followUps.second"), second, setSecond)}
-              {time(t("agents.followUps.close"), close, setClose)}
-            </div>
+            {followUps.map((step, index) => block(step, (patch) => editFollowUp(index, patch), index === 0 ? "first" : "second",
+              () => setFollowUps((current) => current.filter((_, at) => at !== index))))}
+            {followUps.length < MAX_FOLLOW_UPS && <button type="button" className="button followup-add" onClick={addFollowUp}><Plus size={15} /> {t("agents.followUps.add")}</button>}
+            {block(closing, (patch) => setClosing((current) => ({ ...current, ...patch })), "close")}
             <span className="field-help">{t("agents.followUps.timingHelp", { max: String(limits.max / 60) })}</span>
             <div className="followup-channels">
               <small>{t("agents.followUps.channelsLabel")}</small>

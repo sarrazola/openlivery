@@ -113,8 +113,9 @@ def test_schedule_is_validated(setup):
     def rejected(**overrides):
         return s.client.put(f"/api/agents/{s.agent['id']}/follow-ups", json={**SCHEDULE, **overrides}).status_code == 422
 
-    assert rejected(first_minutes=None)                      # enabled needs a first follow-up
-    assert rejected(close_minutes=None)                      # and a closing
+    assert rejected(first_minutes=None)                      # a second follow-up needs a first
+    assert rejected(close_minutes=None)                      # enabled needs a closing
+    assert not rejected(first_minutes=None, second_minutes=None)   # which is all it needs
     assert rejected(second_minutes=30)                       # out of order
     assert rejected(close_minutes=24 * 60)                   # past the reply window
     assert rejected(first_minutes=1)                         # below the minimum
@@ -164,6 +165,38 @@ def test_the_sequence_follows_up_twice_and_closes(setup):
     assert thread[-1].kind == "activity" and thread[-1].activity == {"event": "closed_unanswered", "hours": 6}
     assert [m.content for m in thread if m.sender_type == "ai"][-1] == "I'll close this for now. Write whenever you like."
     assert sweep() == 0
+
+
+def test_a_fixed_text_is_sent_as_written_without_asking_the_model(setup):
+    s = setup
+    saved = configure(s, second_minutes=None, first_text="  Hi, we are still here.  ", second_text="orphan",
+                      close_text="We are closing this chat for now. Write whenever you like.")
+    # Trimmed, and a text with no delay next to it is dropped.
+    assert saved["first_text"] == "Hi, we are still here." and saved["second_text"] is None
+    incoming(s)
+    rewind(s, 61)
+    sweep()
+    assert s.send.await_args.args[2] == "Hi, we are still here."
+    rewind(s, 300)
+    sweep()
+    assert s.send.await_args.args[2] == "We are closing this chat for now. Write whenever you like."
+    s.nudge.assert_not_awaited()
+    assert state(s)[0] == "resolved"
+    assert messages(s)[-1].activity == {"event": "closed_unanswered", "hours": 6}
+
+
+def test_a_schedule_with_only_a_closing_just_closes(setup):
+    s = setup
+    configure(s, first_minutes=None, second_minutes=None, close_minutes=120)
+    incoming(s)
+    status, step, due, _ = state(s)
+    assert step == 0 and timedelta(minutes=119) < due - now_utc() < timedelta(minutes=121)
+    rewind(s, 121)
+    s.nudge.return_value = Completion(text="Closing this for now.")
+    sweep()
+    assert "CLOSING FOR INACTIVITY" in s.nudge.await_args.args[4][0]["content"]
+    assert s.send.await_count == 1 and state(s)[0] == "resolved"
+    assert messages(s)[-1].activity == {"event": "closed_unanswered", "hours": 2}
 
 
 def test_an_answer_stops_the_clock_and_the_next_reply_restarts_it(setup):

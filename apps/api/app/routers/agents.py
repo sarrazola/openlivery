@@ -425,6 +425,9 @@ def _follow_up_out(agent: Agent) -> FollowUpConfigOut:
         first_minutes=agent.follow_up_first_minutes,
         second_minutes=agent.follow_up_second_minutes,
         close_minutes=agent.follow_up_close_minutes,
+        first_text=agent.follow_up_first_text,
+        second_text=agent.follow_up_second_text,
+        close_text=agent.follow_up_close_text,
         channels=list(agent.follow_up_channels or []),
         available_channels=list(FOLLOW_UP_CHANNELS),
         min_minutes=MIN_MINUTES,
@@ -454,6 +457,10 @@ def replace_follow_up_config(
     agent.follow_up_first_minutes = config.first_minutes
     agent.follow_up_second_minutes = config.second_minutes
     agent.follow_up_close_minutes = config.close_minutes
+    # A text only means something next to its delay.
+    agent.follow_up_first_text = ((config.first_text or "").strip() or None) if config.first_minutes else None
+    agent.follow_up_second_text = ((config.second_text or "").strip() or None) if config.second_minutes else None
+    agent.follow_up_close_text = ((config.close_text or "").strip() or None) if config.close_minutes else None
     agent.follow_up_channels = channels
     db.commit()
     db.refresh(agent)

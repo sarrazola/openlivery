@@ -856,6 +856,10 @@ class FollowUpConfigIn(BaseModel):
     first_minutes: int | None = None
     second_minutes: int | None = None
     close_minutes: int | None = None
+    # A fixed message for that step; empty lets the agent write it from the thread.
+    first_text: str | None = Field(default=None, max_length=1000)
+    second_text: str | None = Field(default=None, max_length=1000)
+    close_text: str | None = Field(default=None, max_length=1000)
     # Empty means every channel.
     channels: list[str] = Field(default_factory=list, max_length=10)
 
