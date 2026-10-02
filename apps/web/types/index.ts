@@ -311,6 +311,24 @@ export type Template = {
   rejected_reason: string | null;
 };
 
+/** An address another system posts to so an approved template goes out. */
+export type TemplateWebhook = {
+  id: string;
+  name: string;
+  /** The end of the secret, to tell which one is in use. */
+  secret_hint: string;
+  /** The secret itself, only in the answer that created or regenerated it. */
+  secret: string | null;
+  channel_id: string;
+  channel_label: string;
+  agent_name: string;
+  template_name: string;
+  template_language: string;
+  is_enabled: boolean;
+  last_used_at: string | null;
+  created_at: string;
+};
+
 export type TemplateSend = {
   name: string;
   language: string;

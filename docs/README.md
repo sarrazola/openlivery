@@ -31,6 +31,7 @@ Everything you need to build, brand and operate AI agents for your clients.
 
 - [WhatsApp](en/whatsapp.md) — Link one or more numbers per client through the whatsmeow bridge and hand off to a human.
 - [WhatsApp Cloud API](en/whatsapp-cloud-api.md) — Connect a number through Meta's official Cloud API: app, token, webhook and going live.
+- [Template webhooks](en/template-webhooks.md): an address another system calls to send an approved WhatsApp template that the agent then follows up on.
 - [Web chat widget](en/web-widget.md) — Embed an agent on any website with a single snippet.
 
 **Operating**
@@ -70,6 +71,7 @@ Todo lo que necesitas para construir, marcar y operar agentes de IA para tus cli
 
 - [WhatsApp](es/whatsapp.md) — Vincula uno o más números por cliente con el puente de whatsmeow y pasa a control humano.
 - [API de WhatsApp Cloud](es/whatsapp-cloud-api.md) — Conecta un número por la API Cloud oficial de Meta: app, token, webhook y salida a producción.
+- [Webhooks de plantilla](es/template-webhooks.md): una dirección que otro sistema llama para enviar una plantilla aprobada de WhatsApp que el agente luego continúa.
 - [Widget de chat web](es/web-widget.md) — Integra un agente en cualquier sitio web con un único snippet.
 
 **Operación**
