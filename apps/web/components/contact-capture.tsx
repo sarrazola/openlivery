@@ -108,8 +108,9 @@ export function ContactCaptureEditor({ agentId, clientId }: { agentId: string; c
                       <span className="capture-field-text"><strong>{labelOf(field)}</strong><small>{field.description || t("clients.fields.noDescription")}</small></span>
                     </label>
                     {on && <span className="column-picker capture-channel-picker">
-                      <button type="button" className={`chip-toggle capture-channels-toggle${chosen.length ? " active" : ""}`} aria-haspopup="true" aria-expanded={expanded} title={t("agents.capture.channelsLabel")} onClick={() => setOpen(expanded ? null : field.key)}>
-                        {chosen.length ? channels.filter((channel) => chosen.includes(channel)).map((channel) => t(channelKey(channel))).join(", ") : t("agents.capture.allChannels")}
+                      <button type="button" className={`chip-toggle capture-channels-toggle${chosen.length && chosen.length < channels.length ? " active" : ""}`} aria-haspopup="true" aria-expanded={expanded} title={t("agents.capture.channelsLabel")} onClick={() => setOpen(expanded ? null : field.key)}>
+                        {/* A short, steady label: the menu shows which ones. */}
+                        {!chosen.length || chosen.length === channels.length ? t("agents.capture.allChannels") : chosen.length === 1 ? t("agents.capture.oneChannel") : t("agents.capture.someChannels", { count: String(chosen.length) })}
                         <ChevronDown size={14} />
                       </button>
                       {expanded && <div className="column-picker-menu" role="group" aria-label={t("agents.capture.channelsLabel")}>
