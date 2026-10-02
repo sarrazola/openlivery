@@ -7,6 +7,7 @@ import { BarChart3, Bot, Building2, CreditCard, Inbox, LayoutDashboard, LogOut, 
 import { api } from "@/lib/api";
 import { useT, type I18nKey } from "@/lib/i18n";
 import { CommunityLinks } from "@/components/community-links";
+import { appShellExtensions } from "@/lib/extensions/app-shell";
 import type { User } from "@/types";
 
 const navigation: { href: string; labelKey: I18nKey; icon: typeof LayoutDashboard }[] = [
@@ -89,6 +90,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (isBare) return <>{children}</>;
   if (loading || !user) return <div className="app-loader"><span className="openlivery-icon"><img src="/brand/openlivery-logo-original.png" alt="" /></span><span>{t("shell.loading")}</span></div>;
 
+  const workspaceLabel = <div className="sidebar-workspace">{user.agency.logo_url ? <img src={user.agency.logo_url} alt="" /> : <Building2 size={14} />}<span>{user.agency.name}</span></div>;
+  const WorkspaceLabel = appShellExtensions.WorkspaceLabel;
+
   return (
     <div className="app-layout">
       <button className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label={t("shell.openMenu")}><Menu /></button>
@@ -98,7 +102,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link href="/" className="brand"><span className="openlivery-icon"><img src="/brand/openlivery-logo-original.png" alt="" /></span><span>OpenLivery</span></Link>
           <button className="sidebar-close" onClick={() => setMobileOpen(false)} aria-label={t("shell.closeMenu")}><X /></button>
         </div>
-        <div className="sidebar-workspace">{user.agency.logo_url ? <img src={user.agency.logo_url} alt="" /> : <Building2 size={14} />}<span>{user.agency.name}</span></div>
+        {WorkspaceLabel ? <WorkspaceLabel user={user}>{workspaceLabel}</WorkspaceLabel> : workspaceLabel}
         <nav>
           <span className="nav-label">{t("nav.section")}</span>
           {navigation.map((item) => {
