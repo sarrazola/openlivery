@@ -25,6 +25,7 @@ from .routers import (
     reports,
     whatsapp,
     whatsapp_cloud,
+    template_webhooks,
     whatsapp_cloud_webhook,
     widget,
     webchat,
@@ -121,6 +122,8 @@ app.include_router(whatsapp.router, prefix="/api")
 app.include_router(whatsapp.internal_router, prefix="/api")
 app.include_router(whatsapp_cloud.router, prefix="/api")
 app.include_router(whatsapp_cloud_webhook.public_router, prefix="/api")
+app.include_router(template_webhooks.router, prefix="/api")
+app.include_router(template_webhooks.public_router, prefix="/api")
 app.include_router(widget.router, prefix="/api")
 app.include_router(domains.public_router, prefix="/api")
 app.include_router(social.router, prefix="/api")

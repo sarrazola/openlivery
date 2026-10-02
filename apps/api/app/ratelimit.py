@@ -73,3 +73,6 @@ public_asset_rate_limit = RateLimiter(60, 60, name="public-asset")
 # The Meta webhook is authenticated by its HMAC signature; this generous limit
 # only guards against floods of unsigned traffic.
 whatsapp_cloud_webhook_rate_limit = RateLimiter(300, 60, name="whatsapp-cloud-webhook")
+# A template webhook is authenticated by its secret; the limit
+# leaves room for a batch of reminders and stops a loop from draining a number.
+template_webhook_rate_limit = RateLimiter(300, 60, name="template-webhook")

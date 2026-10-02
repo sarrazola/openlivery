@@ -735,6 +735,71 @@ class PortalReport(BaseModel):
     by_agent: list[ReportAgentRow]
 
 
+class TemplateWebhookOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    # Where the caller posts. It identifies the webhook and is not a secret.
+    url: str
+    # The end of the secret, to tell which one is in use.
+    secret_hint: str
+    # The secret itself, only in the answer that created or regenerated it.
+    secret: str | None = None
+    channel_id: uuid.UUID
+    channel_label: str
+    agent_name: str
+    template_name: str
+    template_language: str
+    is_enabled: bool
+    last_used_at: datetime | None = None
+    created_at: datetime
+
+
+class TemplateWebhookCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    channel_id: uuid.UUID
+    template_name: str = Field(min_length=1, max_length=512)
+    template_language: str = Field(min_length=2, max_length=10)
+
+
+class TemplateWebhookUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    channel_id: uuid.UUID | None = None
+    template_name: str | None = Field(default=None, min_length=1, max_length=512)
+    template_language: str | None = Field(default=None, min_length=2, max_length=10)
+    is_enabled: bool | None = None
+
+
+class TemplateWebhookCall(BaseModel):
+    """What a caller posts to a template webhook."""
+
+    phone: str = Field(min_length=7, max_length=40)
+    # The contact's name, used only when the phone is new to the business.
+    name: str = Field(default="", max_length=180)
+    # Body values by variable name ("1", "2"... for a positional template).
+    variables: dict[str, str | int | float] = Field(default_factory=dict)
+    # The header's variable, or the https link of its media.
+    header: str = Field(default="", max_length=2048)
+    location: TemplateLocation | None = None
+    # One slot per button; only the dynamic ones are read.
+    buttons: list[str] = Field(default_factory=list, max_length=10)
+    # Extra facts for the agent that the template's text does not carry. The
+    # contact never sees it.
+    context: str = Field(default="", max_length=2000)
+    # A retry carrying the same key answers with the first send's result.
+    idempotency_key: str = Field(default="", max_length=120)
+
+
+class TemplateWebhookResult(BaseModel):
+    conversation_id: uuid.UUID
+    message_id: uuid.UUID
+    # Who answers when the contact replies: ai | human.
+    mode: str
+    # Whether this send opened the conversation or joined an open one.
+    started: bool
+    duplicate: bool = False
+    text: str = ""
+
+
 class CannedResponseOut(ORMModel):
     id: uuid.UUID
     shortcut: str

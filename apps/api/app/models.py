@@ -358,6 +358,55 @@ class WhatsAppCloudChannel(Base):
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="whatsapp_cloud_channel")
 
 
+class TemplateWebhook(Base):
+    """An address another system posts to so an approved template goes out on
+    one WhatsApp API number. The number and the template are fixed here; the
+    caller sends the phone and the values of the template's variables, and
+    proves itself with a secret in the Authorization header: the address alone
+    sends nothing."""
+
+    __tablename__ = "template_webhooks"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    whatsapp_cloud_channel_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("whatsapp_cloud_channels.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    # The caller presents the secret as a bearer; only its SHA-256 is kept,
+    # with the last characters to tell one secret from the next in the UI.
+    secret_hash: Mapped[str] = mapped_column(String(64))
+    secret_hint: Mapped[str] = mapped_column(String(12))
+    template_name: Mapped[str] = mapped_column(String(512))
+    template_language: Mapped[str] = mapped_column(String(10))
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+    client: Mapped[Client] = relationship()
+    channel: Mapped[WhatsAppCloudChannel] = relationship()
+
+
+class TemplateWebhookDelivery(Base):
+    """A send the caller named with an idempotency key, kept so a retry of the
+    same request answers with the first result instead of sending again."""
+
+    __tablename__ = "template_webhook_deliveries"
+    __table_args__ = (
+        UniqueConstraint("webhook_id", "idempotency_key", name="uq_template_webhook_deliveries_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    webhook_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("template_webhooks.id", ondelete="CASCADE"), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(120))
+    # Plain ids: the row outlives nothing, and a deleted conversation should
+    # not take the record of the send with it.
+    conversation_id: Mapped[uuid.UUID] = mapped_column()
+    message_id: Mapped[uuid.UUID] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
 class WhatsAppCoexistenceEvent(Base):
     """Durable imports and media enrichment, deduplicated before acknowledgement."""
 
