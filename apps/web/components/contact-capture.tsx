@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { LoaderCircle } from "lucide-react";
+import { AtSign, CaseSensitive, ChevronDown, Hash, LoaderCircle, Phone, type LucideIcon } from "lucide-react";
 import { Alert } from "@/components/ui";
 import { AiHint } from "@/components/ai-hint";
 import { api, messageFrom } from "@/lib/api";
@@ -15,6 +15,9 @@ function channelKey(channel: string): "agents.capture.channelWhatsapp" | "agents
   return channel === "whatsapp" ? "agents.capture.channelWhatsapp" : channel === "instagram" ? "agents.capture.channelInstagram" : channel === "messenger" ? "agents.capture.channelMessenger" : "agents.capture.channelWidget";
 }
 
+/** The type of a field, as an icon: it says the same as the word in less room. */
+const KIND_ICONS: Record<string, LucideIcon> = { text: CaseSensitive, number: Hash, email: AtSign, phone: Phone };
+
 /** Which of the client's contact fields this agent asks the customer for,
  * and on which channels. What a field is and when to ask for it lives on the
  * field itself (the client's Fields tab), so every agent asks the same way.
@@ -25,6 +28,8 @@ export function ContactCaptureEditor({ agentId, clientId }: { agentId: string; c
   const [available, setAvailable] = useState<ContactField[]>([]);
   // Channel groups per picked field key; a key absent here is not asked for.
   const [picked, setPicked] = useState<Record<string, string[]>>({});
+  // The field whose channel chips are showing; they stay folded otherwise.
+  const [open, setOpen] = useState<string | null>(null);
   const [channels, setChannels] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -78,15 +83,25 @@ export function ContactCaptureEditor({ agentId, clientId }: { agentId: string; c
             <div className="capture-list">
               {available.map((field) => {
                 const on = field.key in picked;
+                const chosen = on ? picked[field.key] : [];
+                const expanded = on && open === field.key;
+                const KindIcon = KIND_ICONS[field.kind] ?? CaseSensitive;
+                const kind = t(`clients.fields.kind_${field.kind}`);
                 return <div key={field.key} className={`capture-field${on ? " on" : ""}`}>
-                  <label className="capture-field-head">
-                    <input type="checkbox" checked={on} onChange={() => toggleField(field.key)} />
-                    <span className="capture-field-text"><strong>{labelOf(field)} <span className="pill">{t(`clients.fields.kind_${field.kind}`)}</span></strong><small>{field.description || t("clients.fields.noDescription")}</small></span>
-                  </label>
-                  {on && <div className="capture-channels">
+                  <div className="capture-field-row">
+                    <label className="capture-field-head">
+                      <input type="checkbox" checked={on} onChange={() => toggleField(field.key)} />
+                      <span className="capture-kind" title={kind} aria-label={kind} role="img"><KindIcon size={16} /></span>
+                      <span className="capture-field-text"><strong>{labelOf(field)}</strong><small>{field.description || t("clients.fields.noDescription")}</small></span>
+                    </label>
+                    {on && <button type="button" className={`chip-toggle capture-channels-toggle${chosen.length ? " active" : ""}`} aria-expanded={expanded} title={t("agents.capture.channelsLabel")} onClick={() => setOpen(expanded ? null : field.key)}>
+                      {chosen.length ? channels.filter((channel) => chosen.includes(channel)).map((channel) => t(channelKey(channel))).join(", ") : t("agents.capture.allChannels")}
+                      <ChevronDown size={14} />
+                    </button>}
+                  </div>
+                  {expanded && <div className="capture-channels">
                     <small>{t("agents.capture.channelsLabel")}</small>
-                    {channels.map((channel) => <button type="button" key={channel} className={`chip-toggle${picked[field.key].includes(channel) ? " active" : ""}`} aria-pressed={picked[field.key].includes(channel)} onClick={() => toggleChannel(field.key, channel)}>{t(channelKey(channel))}</button>)}
-                    {!picked[field.key].length && <small className="muted">{t("agents.capture.allChannels")}</small>}
+                    {channels.map((channel) => <button type="button" key={channel} className={`chip-toggle${chosen.includes(channel) ? " active" : ""}`} aria-pressed={chosen.includes(channel)} onClick={() => toggleChannel(field.key, channel)}>{t(channelKey(channel))}</button>)}
                   </div>}
                 </div>;
               })}
