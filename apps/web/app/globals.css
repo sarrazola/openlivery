@@ -388,6 +388,13 @@ h1, h2, h3, .brand { font-family: var(--font-display); }
 label { color: var(--ink-2); font-size: 14px; font-weight: 600; }
 input:where(:not([type="checkbox"]):not([type="radio"])), textarea, select { min-height: 43px; padding: 10px 12px; color: var(--ink); border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface); font-size: 14px; }
 input:focus, textarea:focus, select:focus, .phone-input:focus-within { outline: 0; border-color: var(--accent-line); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .13); }
+/* Every dropdown draws the same arrow, with room around it: the native one sits
+   flush against the border. Important on purpose: many selects are restyled
+   further down with a `background` or `padding` shorthand, which would drop it. */
+select:not([multiple]) { appearance: none !important; -webkit-appearance: none !important; padding-right: 36px !important; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238996a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important; background-repeat: no-repeat !important; background-position: right 12px center !important; background-size: 16px !important; }
+/* Compact selects keep their tighter box. */
+.inbox-mini-select select:not([multiple]) { padding-right: 20px !important; background-position: right 2px center !important; }
+.assignee-picker select:not([multiple]) { padding-right: 30px !important; background-position: right 9px center !important; }
 textarea { line-height: 1.55; }
 .field-help { margin-top: 6px; color: var(--subtle); font-size: 12px; font-weight: 400; }
 .status { min-height: 25px; padding: 0 9px; font-size: 12px; }
@@ -1058,8 +1065,6 @@ textarea { line-height: 1.55; }
 .followup-rule .followup-kind { flex: 0 0 132px; color: var(--ink); font-size: 13px; }
 .followup-rule .followup-after { flex: 0 0 auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
 .followup-rule input.followup-amount { flex: 0 0 56px; width: 56px; padding-left: 6px; padding-right: 6px; text-align: center; }
-/* The native arrow sits flush against the border; draw one with room around it. */
-.followup-rule select { appearance: none; -webkit-appearance: none; padding-right: 36px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238996a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 16px; }
 .followup-rule select.followup-unit { flex: 0 0 124px; }
 .followup-text { margin-left: 30px; width: calc(100% - 30px); }
 .followup-channels { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 8px; border-top: 1px dashed var(--line); margin-top: 4px; }
