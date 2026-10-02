@@ -118,6 +118,8 @@ changing their shape is a breaking change and gets a line in the changelog:
 - `apps/web/lib/extensions/agent-tools.tsx`: keeps deployment-managed tools out
   of the agent editor's custom list and renders a section under it. Replaced at
   build time.
+- `apps/web/lib/extensions/app-shell.tsx`: renders in place of the sidebar's
+  workspace label, which it receives as children. Replaced at build time.
 - `NEXT_PUBLIC_EXTRA_NAV`, `NEXT_PUBLIC_PUBLIC_PATHS`, `NEXT_PUBLIC_COMMUNITY_LINKS`:
   build-time hooks of the web shell.
 

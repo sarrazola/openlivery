@@ -111,6 +111,9 @@ changelog:
 - `apps/web/lib/extensions/agent-tools.tsx`: deja fuera de la lista de
   herramientas propias las que gestiona el despliegue y muestra una sección
   debajo. Se reemplaza al construir.
+- `apps/web/lib/extensions/app-shell.tsx`: se muestra en lugar de la etiqueta
+  del espacio de trabajo en la barra lateral, que recibe como hijo. Se
+  reemplaza al construir.
 - `NEXT_PUBLIC_EXTRA_NAV`, `NEXT_PUBLIC_PUBLIC_PATHS`, `NEXT_PUBLIC_COMMUNITY_LINKS`:
   ganchos de build del shell web.
 
