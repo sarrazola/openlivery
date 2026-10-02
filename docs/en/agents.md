@@ -94,8 +94,8 @@ no message. **Follow-up and closing**, in the agent's settings, adds two more.
 
 **Follow up on inactivity.** When the customer stops answering, the agent gets
 back in touch. Rules are added one at a time: up to two reminders and a closing
-message, each firing after a number of hours counted from the agent's last
-message. The closing message resolves the conversation, and the customer's next
+message, each firing after a time in minutes or hours counted from the agent's
+last message. The closing message resolves the conversation, and the customer's next
 message opens a new one. A schedule can also be reminders only, which leaves
 the conversation to the idle close described below, or the closing message alone.
 

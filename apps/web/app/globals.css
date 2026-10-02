@@ -388,6 +388,13 @@ h1, h2, h3, .brand { font-family: var(--font-display); }
 label { color: var(--ink-2); font-size: 14px; font-weight: 600; }
 input:where(:not([type="checkbox"]):not([type="radio"])), textarea, select { min-height: 43px; padding: 10px 12px; color: var(--ink); border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface); font-size: 14px; }
 input:focus, textarea:focus, select:focus, .phone-input:focus-within { outline: 0; border-color: var(--accent-line); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .13); }
+/* Every dropdown draws the same arrow, with room around it: the native one sits
+   flush against the border. Important on purpose: many selects are restyled
+   further down with a `background` or `padding` shorthand, which would drop it. */
+select:not([multiple]) { appearance: none !important; -webkit-appearance: none !important; padding-right: 36px !important; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238996a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important; background-repeat: no-repeat !important; background-position: right 12px center !important; background-size: 16px !important; }
+/* Compact selects keep their tighter box. */
+.inbox-mini-select select:not([multiple]) { padding-right: 20px !important; background-position: right 2px center !important; }
+.assignee-picker select:not([multiple]) { padding-right: 30px !important; background-position: right 9px center !important; }
 textarea { line-height: 1.55; }
 .field-help { margin-top: 6px; color: var(--subtle); font-size: 12px; font-weight: 400; }
 .status { min-height: 25px; padding: 0 9px; font-size: 12px; }
@@ -1042,27 +1049,41 @@ textarea { line-height: 1.55; }
 /* Contact capture on the agent: one card per field the agent asks for, its
    instruction and the channel chips; the adder and the inline creator. */
 .capture-editor { gap: 12px; }
-.capture-list { display: flex; flex-direction: column; gap: 8px; }
-.capture-field { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
-.capture-field.on { border-color: var(--accent-line); background: var(--surface); }
-.capture-field-head { display: flex !important; flex-direction: row !important; align-items: flex-start; gap: 10px; cursor: pointer; }
-.capture-field-head input { margin: 2px 0 0; width: 16px; height: 16px; flex: 0 0 auto; }
+/* One row per field inside a single list; the channels are a menu behind a chip.
+   No overflow clipping here: the menu of the last rows hangs below the list. */
+.capture-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; }
+.capture-field { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border-top: 1px solid var(--line-soft); background: var(--surface-2); }
+.capture-field:first-child { border-top: 0; border-radius: 9px 9px 0 0; }
+.capture-field:last-child { border-radius: 0 0 9px 9px; }
+.capture-field:only-child { border-radius: 9px; }
+.capture-field.on { background: var(--surface); }
+.capture-field-row { display: flex; align-items: center; gap: 16px; }
+.capture-field-head { flex: 1; min-width: 0; display: flex !important; flex-direction: row !important; align-items: center; gap: 12px; cursor: pointer; }
+.capture-field-head input { margin: 0; width: 16px; height: 16px; flex: 0 0 auto; }
+.capture-kind { flex: 0 0 auto; width: 30px; height: 30px; display: inline-grid; place-items: center; color: var(--muted); border-radius: 8px; background: var(--canvas); }
+.capture-field.on .capture-kind { color: var(--accent-text); background: var(--accent-soft); }
 .capture-field-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.capture-field-text strong { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
-.capture-field-text small { color: var(--ink-2); font-size: 12px; font-weight: 400; line-height: 1.45; }
-.capture-channels { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-left: 26px; }
-.capture-channels > small { color: var(--muted); font-size: 12px; margin-right: 4px; }
-.capture-channels .chip-toggle { height: 28px; padding: 0 10px; font-size: 12px; }
+.capture-field-text strong { color: var(--ink); font-size: 13px; }
+.capture-field-text small { color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.45; }
+.capture-field:not(.on) .capture-field-text strong { color: var(--muted); }
+.capture-channels-toggle { flex: 0 0 auto; height: 30px; font-size: 12px; white-space: nowrap; }
+.capture-channel-picker { flex: 0 0 auto; }
+.capture-channel-picker .column-picker-menu { min-width: 190px; }
+.capture-channel-picker .column-picker-menu > small { padding: 4px 8px 6px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.capture-channel-picker .column-picker-menu label { flex-direction: row; font-weight: 500; }
+.capture-channel-picker .column-picker-menu input { margin: 0; width: 16px; height: 16px; flex: 0 0 auto; }
+@media (max-width: 640px) { .capture-field-row { flex-wrap: wrap; } }
 /* Follow-up rules: one compact row each, in the escalation rules' style. */
 .followup-rule-wrap { display: flex; flex-direction: column; gap: 6px; }
 .followup-rule .followup-kind { flex: 0 0 132px; color: var(--ink); font-size: 13px; }
 .followup-rule .followup-after { flex: 0 0 auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
-.followup-rule input.followup-hours { flex: 0 0 56px; width: 56px; padding-left: 6px; padding-right: 6px; text-align: center; }
+.followup-rule input.followup-amount { flex: 0 0 56px; width: 56px; padding-left: 6px; padding-right: 6px; text-align: center; }
+.followup-rule select.followup-unit { flex: 0 0 124px; }
 .followup-text { margin-left: 30px; width: calc(100% - 30px); }
 .followup-channels { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 8px; border-top: 1px dashed var(--line); margin-top: 4px; }
 .followup-channels > small { color: var(--muted); font-size: 12px; margin-right: 4px; }
 .followup-channels .chip-toggle { height: 28px; padding: 0 10px; font-size: 12px; }
-@media (max-width: 860px) { .followup-rule .followup-kind { flex-basis: auto; } .followup-rule select { flex-basis: 100%; } }
+@media (max-width: 860px) { .followup-rule .followup-kind { flex-basis: auto; } .followup-rule select:not(.followup-unit) { flex-basis: 100%; } }
 /* The client's field catalog. */
 .contact-fields { gap: 12px; }
 .contact-fields-builtin { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

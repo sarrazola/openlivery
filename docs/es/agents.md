@@ -97,8 +97,8 @@ agente, agrega dos más.
 
 **Seguimiento por inactividad.** Cuando el cliente deja de responder, el agente
 retoma el contacto. Las reglas se agregan una por una: hasta dos recordatorios
-y un mensaje de cierre, cada uno después de un número de horas contado desde el
-último mensaje del agente. El mensaje de cierre resuelve la conversación, y el
+y un mensaje de cierre, cada uno después de un tiempo en minutos u horas contado
+desde el último mensaje del agente. El mensaje de cierre resuelve la conversación, y el
 siguiente mensaje del cliente abre una nueva. La secuencia también puede tener
 solo recordatorios, y entonces la conversación queda para el cierre por
 inactividad descrito abajo, o solo el mensaje de cierre.

@@ -124,8 +124,9 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
     </optgroup>}
   </>;
 
-  // Three numbered steps, in the order they run: tag routing before the AI,
-  // then the built-in escalation, then the agent's own rules.
+  // Three numbered steps: the built-in escalation first, because it is the one
+  // every agent has; then tag routing, which runs before the AI; then the
+  // agent's own rules.
   return (
     <section className="settings-section">
       <div className="settings-copy">
@@ -135,7 +136,21 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
       <div className="settings-fields esc-steps">
         {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div> : <>
           <div className="esc-step">
-            <div className="esc-step-head"><span className="esc-step-n">1</span><div><strong>{t("agents.escalation.byTagHeading")}</strong><small>{t("agents.escalation.byTagHint")}</small></div></div>
+            <div className="esc-step-head"><span className="esc-step-n">1</span><div><strong>{t("agents.escalation.builtinHeading")}</strong><small>{t("agents.escalation.generalCondition")}</small></div>
+              <label className="switch-row esc-toggle"><input type="checkbox" checked={builtinOn} onChange={(e) => setBuiltinOn(e.target.checked)} aria-label={t("agents.escalation.builtinToggle")} /></label>
+            </div>
+            {builtinOn && <div className="esc-step-body">
+              <label className="esc-inline"><span>{t("agents.escalation.generalLabel")}</span>
+                <select value={defaultDest} onChange={(e) => setDefaultDest(e.target.value)}>
+                  <option value="">{t("agents.escalation.generalFallback")}</option>
+                  {destinationOptions}
+                </select>
+              </label>
+            </div>}
+          </div>
+
+          <div className="esc-step">
+            <div className="esc-step-head"><span className="esc-step-n">2</span><div><strong>{t("agents.escalation.byTagHeading")}</strong><small>{t("agents.escalation.byTagHint")}</small></div></div>
             <div className="esc-step-body">
               {tags.length === 0 && <p className="esc-empty">{t("agents.escalation.byTagNone")}</p>}
               {tags.length > 0 && routedTags.length === 0 && <p className="esc-empty">{t("agents.escalation.byTagEmpty")}</p>}
@@ -160,20 +175,6 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
                 <button type="button" className="button secondary small" disabled={!newTagId || !newDest} onClick={() => { const tag = tags.find((row) => row.id === newTagId); if (tag) { routeTag(tag, newDest); setNewTagId(""); setNewDest(""); } }}><Plus size={14} /> {t("agents.escalation.byTagAdd")}</button>
               </div>}
             </div>
-          </div>
-
-          <div className="esc-step">
-            <div className="esc-step-head"><span className="esc-step-n">2</span><div><strong>{t("agents.escalation.builtinHeading")}</strong><small>{t("agents.escalation.generalCondition")}</small></div>
-              <label className="switch-row esc-toggle"><input type="checkbox" checked={builtinOn} onChange={(e) => setBuiltinOn(e.target.checked)} aria-label={t("agents.escalation.builtinToggle")} /></label>
-            </div>
-            {builtinOn && <div className="esc-step-body">
-              <label className="esc-inline"><span>{t("agents.escalation.generalLabel")}</span>
-                <select value={defaultDest} onChange={(e) => setDefaultDest(e.target.value)}>
-                  <option value="">{t("agents.escalation.generalFallback")}</option>
-                  {destinationOptions}
-                </select>
-              </label>
-            </div>}
           </div>
 
           <div className="esc-step">

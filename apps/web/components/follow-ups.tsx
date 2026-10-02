@@ -18,16 +18,21 @@ const CHANNEL_GROUPS = [
 
 const MAX_REMINDERS = 2;
 
-/** One rule as the editor holds it: when it fires (in hours; the server keeps
- * minutes), who writes the message, and whether it closes the conversation.
- * Reminders come first; the farewell, when there is one, is always last. */
-type Rule = { hours: string; custom: boolean; text: string; closes: boolean };
+type Unit = "minutes" | "hours";
 
-const toHours = (minutes: number | null) => (minutes == null ? "" : String(Math.round((minutes / 60) * 100) / 100));
-const number = (hours: string) => Number(hours.replace(",", "."));
-const toMinutes = (hours: string) => (hours.trim() === "" ? null : Math.round(number(hours) * 60));
-const ruleOf = (minutes: number, text: string | null, closes: boolean): Rule => ({ hours: toHours(minutes), custom: Boolean(text), text: text ?? "", closes });
-const tidy = (hours: number) => String(Math.round(hours * 10) / 10);
+/** One rule as the editor holds it: when it fires (an amount in minutes or
+ * hours; the server keeps minutes), who writes the message, and whether it
+ * closes the conversation. Reminders come first; the farewell, when there is
+ * one, is always last. */
+type Rule = { amount: string; unit: Unit; custom: boolean; text: string; closes: boolean };
+
+/** Whole hours read as hours, anything else as minutes. */
+const timeOf = (minutes: number): Pick<Rule, "amount" | "unit"> =>
+  minutes % 60 === 0 ? { amount: String(minutes / 60), unit: "hours" } : { amount: String(minutes), unit: "minutes" };
+const minutesOf = (rule: Rule | undefined): number | null =>
+  !rule || rule.amount.trim() === "" ? null : Math.round(Number(rule.amount.replace(",", ".")) * (rule.unit === "hours" ? 60 : 1));
+const ruleOf = (minutes: number, text: string | null, closes: boolean): Rule => ({ ...timeOf(minutes), custom: Boolean(text), text: text ?? "", closes });
+const blank = (minutes: number, closes: boolean): Rule => ({ ...timeOf(minutes), custom: false, text: "", closes });
 
 /** How this agent's conversations end: whether it may resolve a settled case
  * itself, and what it sends when the customer stops answering. Rules are
@@ -71,18 +76,19 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
   const toggle = (on: boolean) => {
     setEnabled(on);
     // A sequence to start from, so switching it on is one click.
-    if (on && !rules.length) setRules([{ hours: "1", custom: false, text: "", closes: false }, { hours: "6", custom: false, text: "", closes: true }]);
+    if (on && !rules.length) setRules([blank(60, false), blank(360, true)]);
   };
   /** The first rule is a reminder, the next one the farewell; after that a
-   * reminder goes in before the farewell, which stays last. */
+   * reminder goes in before the farewell, which stays last. The new rule
+   * starts at a time that fits where it lands. */
   const add = () => setRules((current) => {
     const last = current[current.length - 1];
-    if (!last) return [{ hours: "1", custom: false, text: "", closes: false }];
-    const lastHours = number(last.hours) || 0;
-    if (!last.closes) return [...current, { hours: tidy(Math.min(maxHours, lastHours ? lastHours + 5 : 6)), custom: false, text: "", closes: true }];
-    const before = number(current[current.length - 2]?.hours ?? "") || 0;
-    const between = lastHours > before ? (before + lastHours) / 2 : before + 1;
-    return [...current.slice(0, -1), { hours: tidy(between), custom: false, text: "", closes: false }, last];
+    if (!last) return [blank(60, false)];
+    const lastMinutes = minutesOf(last) || 0;
+    if (!last.closes) return [...current, blank(Math.min(limits.max, lastMinutes ? lastMinutes + (lastMinutes < 60 ? 30 : 300) : 360), true)];
+    const before = minutesOf(current[current.length - 2]) || 0;
+    const between = lastMinutes > before + 1 ? Math.round((before + lastMinutes) / 2) : before + 60;
+    return [...current.slice(0, -1), blank(between, false), last];
   });
   const edit = (index: number, patch: Partial<Rule>) => setRules((current) => current.map((rule, at) => (at === index ? { ...rule, ...patch } : rule)));
   const toggleGroup = (keys: readonly string[]) => setChannels((current) =>
@@ -90,7 +96,7 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
 
   function problem(): string {
     if (!rules.length) return t("agents.followUps.errorRequired");
-    const minutes = rules.map((rule) => toMinutes(rule.hours));
+    const minutes = rules.map((rule) => minutesOf(rule));
     if (minutes.some((value) => value == null)) return t("agents.followUps.errorHours");
     const set = minutes as number[];
     if (set.some((value) => Number.isNaN(value) || value < limits.min || value > limits.max)) return t("agents.followUps.errorRange", { min: String(limits.min), max: String(maxHours) });
@@ -106,13 +112,13 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
     setBusy(true); setError("");
     const [first, second] = reminders;
     const textOf = (rule: Rule | undefined) => (rule?.custom ? rule.text.trim() : null);
-    const minutesOf = (rule: Rule | undefined) => { const value = rule ? toMinutes(rule.hours) : null; return value != null && !Number.isNaN(value) ? value : null; };
+    const sent = (rule: Rule | undefined) => { const value = minutesOf(rule); return value != null && !Number.isNaN(value) ? value : null; };
     try {
       apply(await api<FollowUpConfig>(`/agents/${agentId}/follow-ups`, { method: "PUT", body: JSON.stringify({
         resolve_enabled: resolveEnabled, enabled, channels,
-        first_minutes: minutesOf(first), first_text: textOf(first),
-        second_minutes: minutesOf(second), second_text: textOf(second),
-        close_minutes: minutesOf(farewell), close_text: textOf(farewell),
+        first_minutes: sent(first), first_text: textOf(first),
+        second_minutes: sent(second), second_text: textOf(second),
+        close_minutes: sent(farewell), close_text: textOf(farewell),
       }) }));
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -139,7 +145,11 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
                     <span className="esc-rule-n">{index + 1}</span>
                     <strong className="followup-kind">{kind}</strong>
                     <span className="followup-after">{t("agents.followUps.afterPrefix")}</span>
-                    <input className="followup-hours" type="text" inputMode="decimal" value={rule.hours} aria-label={`${kind}: ${t("agents.followUps.hoursLabel")}`} onChange={(e) => edit(index, { hours: e.target.value })} />
+                    <input className="followup-amount" type="text" inputMode="decimal" value={rule.amount} aria-label={`${kind}: ${t("agents.followUps.amountLabel")}`} onChange={(e) => edit(index, { amount: e.target.value })} />
+                    <select className="followup-unit" value={rule.unit} aria-label={`${kind}: ${t("agents.followUps.unitLabel")}`} onChange={(e) => edit(index, { unit: e.target.value as Unit })}>
+                      <option value="minutes">{t("agents.followUps.unitMinutes")}</option>
+                      <option value="hours">{t("agents.followUps.unitHours")}</option>
+                    </select>
                     <span className="followup-after">{t("agents.followUps.afterSuffix")}</span>
                     <span className="esc-arrow" aria-hidden="true">→</span>
                     <select value={rule.custom ? "text" : "ai"} aria-label={`${kind}: ${t("agents.followUps.writerLabel")}`} onChange={(e) => edit(index, { custom: e.target.value === "text" })}>
