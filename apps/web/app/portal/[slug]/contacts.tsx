@@ -36,7 +36,7 @@ const IMPORT_REASONS: Record<string, I18nKey> = {
 
 /** `can` answers whether the signed-in person holds a portal permission; what
  * it hides here the API refuses anyway. */
-export function ContactsView({ slug, channels, openConversation, can, agentName }: { slug: string; channels: PortalChannel[]; openConversation: (conversation: Conversation) => void; can: (key: string) => boolean; agentName: string }) {
+export function ContactsView({ slug, channels, openConversation, can, agentName, contactId, onSelect }: { slug: string; channels: PortalChannel[]; openConversation: (conversation: Conversation) => void; can: (key: string) => boolean; contactId?: string | null; onSelect?: (id: string | null) => void; agentName: string }) {
   const canManageContacts = can("contacts.manage");
   const canManageTags = can("tags.manage");
   const t = useT();
@@ -70,6 +70,8 @@ export function ContactsView({ slug, channels, openConversation, can, agentName 
   const [mergePrimary, setMergePrimary] = useState<Contact | null>(null);
   const [importing, setImporting] = useState(false);
   const [listMenu, setListMenu] = useState(false);
+  // The contact header keeps two actions on show; the rest fold into a menu.
+  const [contactMenu, setContactMenu] = useState(false);
   const [tags, setTags] = useState<ContactTag[]>([]);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [tagPicker, setTagPicker] = useState(false);
@@ -217,6 +219,13 @@ export function ContactsView({ slug, channels, openConversation, can, agentName 
     const { rows, total } = await fetchHistory(contact.id, 0);
     setHistory(rows); setHistoryTotal(total);
   }, [fetchHistory]);
+  // `contactId` names the contact to open first (it rides in the address);
+  // `onSelect` reports the open one.
+  useEffect(() => {
+    if (!contactId) return;
+    api<Contact>(`/portal/${slug}/contacts/${contactId}`).then(choose).catch(() => {});
+  }, []);
+  useEffect(() => { onSelect?.(selected?.id ?? null); }, [selected?.id]);
   const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   function applyRange(since: string, until: string) {
     setHistorySince(since); setHistoryUntil(until); setRangeOpen(false);
@@ -416,10 +425,20 @@ export function ContactsView({ slug, channels, openConversation, can, agentName 
                   </div>
                 </>}
               </div>}
-              {canManageContacts && (selected.blocked_at ? <button className="button small" disabled={busy} onClick={() => setBlocked(false)}><Ban size={15} /> {t("portal.contacts.unblock")}</button> : <button className="button small" onClick={() => setBlocking(true)}><Ban size={15} /> {t("portal.contacts.block")}</button>)}
-              <button className="button small" onClick={() => setEditing("edit")}><Pencil size={15} /> {t("portal.contacts.edit")}</button>
-              {canManageContacts && <button className="button small" onClick={() => { setMergePrimary(null); setMergeQuery(""); setMerging(true); }}><Merge size={15} /> {t("portal.contacts.merge")}</button>}
               {canManageContacts && <button className="icon-button danger" onClick={() => { setTyped(""); setDeleting(true); }} disabled={busy} title={t("portal.contacts.delete")} aria-label={t("portal.contacts.delete")}><Trash2 size={16} /></button>}
+              <div className="start-line-wrap thread-more">
+                <button type="button" className="icon-button" onClick={() => setContactMenu((v) => !v)} aria-haspopup="menu" aria-expanded={contactMenu} title={t("portal.inbox.conversation.moreActions")} aria-label={t("portal.inbox.conversation.moreActions")}><MoreHorizontal size={17} /></button>
+                {contactMenu && <>
+                  <div className="menu-backdrop" onClick={() => setContactMenu(false)} />
+                  <div className="start-line-menu thread-more-menu" role="menu">
+                    <button type="button" role="menuitem" onClick={() => { setContactMenu(false); setEditing("edit"); }}><Pencil size={15} /><span><strong>{t("portal.contacts.edit")}</strong></span></button>
+                    {canManageContacts && <button type="button" role="menuitem" onClick={() => { setContactMenu(false); setMergePrimary(null); setMergeQuery(""); setMerging(true); }}><Merge size={15} /><span><strong>{t("portal.contacts.merge")}</strong></span></button>}
+                    {canManageContacts && <><hr />{selected.blocked_at
+                      ? <button type="button" role="menuitem" disabled={busy} onClick={() => { setContactMenu(false); setBlocked(false); }}><Ban size={15} /><span><strong>{t("portal.contacts.unblock")}</strong></span></button>
+                      : <button type="button" role="menuitem" className="danger" onClick={() => { setContactMenu(false); setBlocking(true); }}><Ban size={15} /><span><strong>{t("portal.contacts.block")}</strong></span></button>}</>}
+                  </div>
+                </>}
+              </div>
             </div>
           </header>
           {error && <Alert>{error}</Alert>}
@@ -512,8 +531,7 @@ export function ContactsView({ slug, channels, openConversation, can, agentName 
     <Modal open={deleting && Boolean(selected)} title={t("portal.contacts.deleteTitle", { name: selected ? nameOf(selected) : "" })} onClose={() => setDeleting(false)}>
       <form className="modal-form" onSubmit={remove}>
         <Alert type="error">{t("portal.contacts.deleteWarning", { count: selected?.conversation_count ?? 0 })}</Alert>
-        <div className="confirm-word"><span>{t("portal.contacts.deleteTypeWord")}</span><code>{confirmWord}</code></div>
-        <input aria-label={confirmWord} value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={confirmWord} autoFocus autoComplete="off" spellCheck={false} />
+        <label>{t("portal.contacts.deleteTypeName", { word: confirmWord })}<input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={confirmWord} autoFocus autoComplete="off" spellCheck={false} /></label>
         {error && <Alert>{error}</Alert>}
         <div className="modal-actions"><button type="button" className="button" onClick={() => setDeleting(false)}>{t("portal.contacts.form.cancel")}</button><button className="button danger" disabled={!confirmed || busy}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Trash2 size={15} /> {t("portal.contacts.deleteConfirm")}</>}</button></div>
       </form>

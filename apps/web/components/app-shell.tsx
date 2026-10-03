@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useEffect, useState } from "react";
-import { BarChart3, Bot, Building2, CreditCard, Inbox, LayoutDashboard, LogOut, Menu, MessageSquareText, Radio, Settings, Sparkles, Wallet, X } from "lucide-react";
+import { ReactNode, useEffect, useLayoutEffect, useState } from "react";
+import { BarChart3, Bot, Building2, CreditCard, Inbox, LayoutDashboard, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Settings, Sparkles, Wallet, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { useT, type I18nKey } from "@/lib/i18n";
+import { useLanguage, type I18nKey } from "@/lib/i18n";
 import { CommunityLinks } from "@/components/community-links";
 import { appShellExtensions } from "@/lib/extensions/app-shell";
 import type { User } from "@/types";
@@ -15,11 +15,13 @@ const navigation: { href: string; labelKey: I18nKey; icon: typeof LayoutDashboar
   { href: "/clients", labelKey: "nav.clients", icon: Building2 },
   { href: "/agents", labelKey: "nav.agents", icon: Bot },
   { href: "/inbox", labelKey: "nav.inbox", icon: Inbox },
-  { href: "/playground", labelKey: "nav.playground", icon: MessageSquareText },
-  { href: "/channels", labelKey: "nav.channels", icon: Radio },
   { href: "/reports", labelKey: "nav.reports", icon: BarChart3 },
-  { href: "/settings", labelKey: "nav.settings", icon: Settings },
 ];
+// Settings closes the list, after whatever a deployment adds.
+const settingsEntry = { href: "/settings", labelKey: "nav.settings" as I18nKey, icon: Settings };
+
+// The sidebar can fold to its icons; the choice is kept per browser.
+const COLLAPSED_KEY = "openlivery.sidebar.collapsed";
 
 // Extra path prefixes served without a session (comma-separated, baked at
 // build). Lets a deployment add public pages without patching the shell.
@@ -50,10 +52,19 @@ const EXTRA_NAV = (process.env.NEXT_PUBLIC_EXTRA_NAV || "")
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const t = useT();
+  const { t, lang } = useLanguage();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(pathname !== "/login");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  useLayoutEffect(() => {
+    try { setCollapsed(localStorage.getItem(COLLAPSED_KEY) === "1"); } catch {}
+  }, []);
+  function toggleCollapsed() {
+    const next = !collapsed;
+    setCollapsed(next);
+    try { localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0"); } catch {}
+  }
   const isLogin = pathname === "/login";
   const isPortal = pathname.startsWith("/portal/");
   const isWidget = pathname.startsWith("/widget/");
@@ -94,10 +105,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const WorkspaceLabel = appShellExtensions.WorkspaceLabel;
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout${collapsed ? " sidebar-collapsed" : ""}`}>
       <button className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label={t("shell.openMenu")}><Menu /></button>
       {mobileOpen && <div className="sidebar-overlay" onClick={() => setMobileOpen(false)} />}
       <aside className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`}>
+        <button type="button" className="sidebar-toggle" onClick={toggleCollapsed} aria-label={collapsed ? t("shell.expandMenu") : t("shell.collapseMenu")} title={collapsed ? t("shell.expandMenu") : t("shell.collapseMenu")}>{collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}</button>
         <div className="brand-row">
           <Link href="/" className="brand"><span className="openlivery-icon"><img src="/brand/openlivery-logo-original.png" alt="" /></span><span>OpenLivery</span></Link>
           <button className="sidebar-close" onClick={() => setMobileOpen(false)} aria-label={t("shell.closeMenu")}><X /></button>
@@ -107,13 +119,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="nav-label">{t("nav.section")}</span>
           {navigation.map((item) => {
             const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-            return <Link key={item.href} href={item.href} className={active ? "active" : ""} onClick={() => setMobileOpen(false)}><item.icon size={18} /><span>{t(item.labelKey)}</span></Link>;
+            return <Link key={item.href} href={item.href} className={active ? "active" : ""} title={t(item.labelKey)} onClick={() => setMobileOpen(false)}><item.icon size={18} /><span>{t(item.labelKey)}</span></Link>;
           })}
-          {EXTRA_NAV.map((item) => {
+          {[...EXTRA_NAV, ...(appShellExtensions.extraNav?.(lang) ?? [])].map((item) => {
             const Icon = item.icon;
             const active = pathname.startsWith(item.href);
-            return <Link key={item.href} href={item.href} className={active ? "active" : ""} onClick={() => setMobileOpen(false)}><Icon size={18} /><span>{item.label}</span></Link>;
+            return <Link key={item.href} href={item.href} className={active ? "active" : ""} title={item.label} onClick={() => setMobileOpen(false)}><Icon size={18} /><span>{item.label}</span></Link>;
           })}
+          <Link href={settingsEntry.href} className={pathname.startsWith(settingsEntry.href) ? "active" : ""} title={t(settingsEntry.labelKey)} onClick={() => setMobileOpen(false)}><settingsEntry.icon size={18} /><span>{t(settingsEntry.labelKey)}</span></Link>
         </nav>
         <div className="sidebar-bottom">
           <CommunityLinks onNavigate={() => setMobileOpen(false)} />

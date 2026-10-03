@@ -21,7 +21,7 @@ export function SectionTabs<T extends string>({ tabs, value, onChange, className
     <>
       <nav className={`tabs section-tabs${className ? ` ${className}` : ""}`}>
         {tabs.map((tab) => (
-          <button key={tab.id} type="button" className={tab.id === value ? "active" : ""} onClick={() => onChange(tab.id)}>
+          <button key={tab.id} type="button" data-tab={tab.id} className={tab.id === value ? "active" : ""} onClick={() => onChange(tab.id)}>
             {tab.icon && <tab.icon size={17} />} {tab.label}{tab.badge !== undefined && <> <span>{tab.badge}</span></>}
           </button>
         ))}

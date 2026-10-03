@@ -1,10 +1,5 @@
 // UI strings for the "playground" area. Fill `en` and mirror it in `es`.
 const en = {
-  page: {
-    eyebrow: "Lab",
-    title: "Playground",
-    description: "Chat with your agents and validate their responses before publishing them.",
-  },
   selectors: {
     client: "Client",
     agent: "Agent",
@@ -57,11 +52,6 @@ const en = {
 };
 
 const es: typeof en = {
-  page: {
-    eyebrow: "Laboratorio",
-    title: "Playground",
-    description: "Conversa con tus agentes y valida sus respuestas antes de publicar los agentes.",
-  },
   selectors: {
     client: "Cliente",
     agent: "Agente",

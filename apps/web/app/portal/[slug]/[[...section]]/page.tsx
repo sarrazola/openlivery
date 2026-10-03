@@ -2,12 +2,13 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import { currentSections, showSections } from "@/lib/section-path";
 import { Archive, ArchiveRestore, ArrowLeft, Ban, BarChart3, Bot, Building2, CheckCircle2, CheckSquare, Clock, Contact as ContactIcon, FileText, Filter, Images, Inbox, LoaderCircle, LogOut, Megaphone, MessageCircle, MoreHorizontal, MessageSquareText, Reply, Search, Send, Settings, ShieldCheck, SmilePlus, Square, Trash2, UserRound, Users, X } from "lucide-react";
-import { useCannedReplies } from "./canned";
-import { ContactsView } from "./contacts";
-import { ReportsView } from "./reports";
-import { TemplatePicker } from "./templates";
-import { SettingsView } from "./settings";
+import { useCannedReplies } from "../canned";
+import { ContactsView } from "../contacts";
+import { ReportsView } from "../reports";
+import { TemplatePicker } from "../templates";
+import { SettingsView } from "../settings";
 import { AttachButton, MessageAttachments, PendingAttachment, RecordButton, useFileDrop, type GalleryImage } from "@/components/attachments";
 import { MediaPanel } from "@/components/media-panel";
 import { PasswordInput } from "@/components/password-input";
@@ -56,6 +57,9 @@ type InboxPayload = { items: Conversation[]; total: number; summary: InboxSummar
 // the unread state come from the next refresh, which runs right behind.
 const ROW_FIELDS = ["status", "mode", "assignee_id", "assignee_name", "team_id", "team_name", "taken_over_at", "resolved_at", "archived_at", "phone_pause_until", "reply_window_until", "reply_window_open", "human_reply_window_open", "human_reply_window_until", "reply_block_reason", "updated_at"] as const;
 type InboxKind = "open" | "resolved" | "archived";
+
+type PortalView = "inbox" | "contacts" | "reports" | "settings";
+const PORTAL_VIEWS: PortalView[] = ["inbox", "contacts", "reports", "settings"];
 
 export default function PortalPage() {
   const t = useT();
@@ -146,7 +150,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   // The contact's card, opened from the conversation header.
   const [contactCardOpen, setContactCardOpen] = useState(false);
   const [summary, setSummary] = useState<InboxSummary | null>(null);
-  const [view, setView] = useState<"inbox" | "contacts" | "reports" | "settings">("inbox");
+  const [view, setView] = useState<PortalView>("inbox");
   useEffect(() => {
     if (view === "inbox") api<Team[]>(`/portal/${slug}/teams`).then(setTeams).catch(() => {});
   }, [slug, view]);
@@ -174,6 +178,34 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [channelFilter, setChannelFilter] = useState("");
+  // What is open rides in the address (`/inbox/<conversation>`, `/reports/
+  // conversations`, `/settings/teams`), under `/portal/<slug>` on the app's
+  // host and at the root on the client's own domain. Read once on entry,
+  // written whenever it changes.
+  const [reportsSection, setReportsSection] = useState<"summary" | "conversations">("summary");
+  const [settingsTab, setSettingsTab] = useState("preferences");
+  const [contactOpen, setContactOpen] = useState<string | null>(null);
+  const [addressReady, setAddressReady] = useState(false);
+  const addressBase = useRef("");
+  useEffect(() => {
+    addressBase.current = window.location.pathname.startsWith(`/portal/${slug}`) ? `/portal/${slug}` : "";
+    const [first, second] = currentSections(addressBase.current);
+    if (first && (PORTAL_VIEWS as string[]).includes(first)) setView(first as PortalView);
+    if (first === "reports" && (second === "summary" || second === "conversations")) setReportsSection(second);
+    if (first === "settings" && second) setSettingsTab(second);
+    if (first === "contacts" && second) setContactOpen(second);
+    // The named thread opens in the folder it belongs to, so the list marks it.
+    if (first === "inbox" && second) api<Conversation>(`/portal/${slug}/conversations/${second}`).then((detail) => {
+      setSelected(detail);
+      setStatus(detail.archived_at ? "archived" : detail.status === "resolved" ? "resolved" : "open");
+      setTab("all"); setChannelFilter("");
+    }).catch(() => {});
+    setAddressReady(true);
+  }, [slug]);
+  useEffect(() => {
+    if (!addressReady) return;
+    showSections(addressBase.current, [view, view === "inbox" ? selected?.id : view === "contacts" ? contactOpen : view === "reports" ? reportsSection : view === "settings" ? settingsTab : null]);
+  }, [addressReady, view, selected?.id, contactOpen, reportsSection, settingsTab]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -425,7 +457,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   // four links only, so the same foot is shown at the top of Settings instead
   // (the stylesheet shows one or the other, never both).
   const navFoot = <div className="portal-nav-foot">{session.user_id && <button className={`availability-toggle ${availability}`} onClick={toggleAvailability} title={availability === "online" ? t("portal.availability.setAway") : t("portal.availability.setOnline")} aria-pressed={availability === "online"}><i /><span className="availability-name"><strong>{session.user_name}</strong><small>{availability === "online" ? t("portal.availability.online") : t("portal.availability.away")}</small></span><span className="availability-switch" aria-hidden="true"><b /></span></button>}<button onClick={logout}><LogOut size={17} /> {t("portal.inbox.nav.logout")}</button></div>;
-  return <main className="portal-app" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><aside className="portal-nav"><div className="portal-brand">{portal.client_logo_url || portal.agency_logo_url ? <img src={`${portal.client_logo_url || portal.agency_logo_url}`} alt="Logo" /> : <span>{portal.client_name.slice(0, 1)}</span>}<strong>{portal.client_name}</strong></div><nav><a className={view === "inbox" ? "active" : ""} onClick={() => setView("inbox")}><Inbox size={18} /> {t("portal.inbox.nav.inbox")}{summary && summary.unread > 0 && view !== "inbox" && <em className="nav-count">{summary.unread}</em>}</a><a className={view === "contacts" ? "active" : ""} onClick={() => setView("contacts")}><ContactIcon size={18} /> {t("portal.inbox.nav.contacts")}</a>{can("reports.view") && <a className={view === "reports" ? "active" : ""} onClick={() => setView("reports")}><BarChart3 size={18} /> {t("portal.inbox.nav.reports")}</a>}<a className={view === "settings" ? "active" : ""} onClick={() => setView("settings")}><Settings size={18} /> {t("portal.inbox.nav.settings")}</a></nav>{navFoot}</aside><section className="portal-main"><header><div><small>{t("portal.inbox.header.eyebrow")}</small><h1>{view === "contacts" ? t("portal.inbox.nav.contacts") : view === "settings" ? t("portal.inbox.nav.settings") : view === "reports" ? t("portal.inbox.nav.reports") : portal.portal_title}</h1></div>{view === "inbox" && <span>{t("portal.inbox.header.conversationsCount", { count: items.length })}</span>}</header>{view === "settings" && <div className="portal-foot-mobile">{navFoot}</div>}{view === "settings" ? <SettingsView slug={slug} templatesSupported={templatesSupported} can={can} /> : view === "reports" && can("reports.view") ? <ReportsView slug={slug} openConversation={(row) => openFromContact({ id: row.id, status: row.status, archived_at: row.archived_at } as Conversation)} /> : view === "contacts" ? <ContactsView slug={slug} channels={channels} openConversation={openFromContact} can={can} agentName={session.user_name || ""} /> : <div className={`portal-inbox${selected ? " has-thread" : ""}`}><aside onScroll={onListScroll}>
+  return <main className="portal-app" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><aside className="portal-nav"><div className="portal-brand">{portal.client_logo_url || portal.agency_logo_url ? <img src={`${portal.client_logo_url || portal.agency_logo_url}`} alt="Logo" /> : <span>{portal.client_name.slice(0, 1)}</span>}<strong>{portal.client_name}</strong></div><nav><a className={view === "inbox" ? "active" : ""} onClick={() => setView("inbox")}><Inbox size={18} /> {t("portal.inbox.nav.inbox")}{summary && summary.unread > 0 && view !== "inbox" && <em className="nav-count">{summary.unread}</em>}</a><a className={view === "contacts" ? "active" : ""} onClick={() => setView("contacts")}><ContactIcon size={18} /> {t("portal.inbox.nav.contacts")}</a>{can("reports.view") && <a className={view === "reports" ? "active" : ""} onClick={() => setView("reports")}><BarChart3 size={18} /> {t("portal.inbox.nav.reports")}</a>}<a className={view === "settings" ? "active" : ""} onClick={() => setView("settings")}><Settings size={18} /> {t("portal.inbox.nav.settings")}</a></nav>{navFoot}</aside><section className="portal-main"><header><div><small>{t("portal.inbox.header.eyebrow")}</small><h1>{view === "contacts" ? t("portal.inbox.nav.contacts") : view === "settings" ? t("portal.inbox.nav.settings") : view === "reports" ? t("portal.inbox.nav.reports") : portal.portal_title}</h1></div>{view === "inbox" && <span>{t("portal.inbox.header.conversationsCount", { count: items.length })}</span>}</header>{view === "settings" && <div className="portal-foot-mobile">{navFoot}</div>}{view === "settings" ? <SettingsView slug={slug} templatesSupported={templatesSupported} can={can} tab={settingsTab} onTab={setSettingsTab} /> : view === "reports" && can("reports.view") ? <ReportsView slug={slug} section={reportsSection} onSection={setReportsSection} openConversation={(row) => openFromContact({ id: row.id, status: row.status, archived_at: row.archived_at } as Conversation)} /> : view === "contacts" ? <ContactsView slug={slug} channels={channels} openConversation={openFromContact} can={can} agentName={session.user_name || ""} contactId={contactOpen} onSelect={setContactOpen} /> : <div className={`portal-inbox${selected ? " has-thread" : ""}`}><aside onScroll={onListScroll}>
       <div className="inbox-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("inbox.searchPlaceholder")} />{status !== "archived" && <button type="button" className={`inbox-filter-toggle${filtersOpen ? " open" : ""}${channelFilter || teamFilter ? " active" : ""}`} onClick={() => setFiltersOpen((v) => !v)} title={t("inbox.filters")} aria-label={t("inbox.filters")} aria-pressed={filtersOpen}><Filter size={16} /></button>}</div>
       {status !== "archived" && filtersOpen && <div className="inbox-filter-row">
         <label className="inbox-mini-select" title={t("inbox.filterChannel")}><MessageCircle size={14} /><select aria-label={t("inbox.filterChannel")} value={channelFilter} onChange={(event) => { setChannelFilter(event.target.value); setSelected(null); }}><option value="">{t("inbox.allChannels")}</option>{INBOX_CHANNELS.filter((value) => value !== "playground").map((value) => <option key={value} value={value}>{channelLabel(value)}</option>)}</select></label>

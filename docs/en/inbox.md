@@ -2,7 +2,7 @@
 
 > Leer en español: [inbox.md](../es/inbox.md)
 
-The Inbox is a single place to watch every conversation your agents are having, search across them, and step in as a human when the AI needs help. It pulls together conversations from every channel — the playground, [WhatsApp](whatsapp.md) and the [web widget](web-widget.md) — into one list.
+The Inbox is a single place to watch every conversation your agents are having and search across them. It is a reading view: taking a conversation over and answering it belongs to the client's team, in the [client portal](client-portal.md). It pulls together conversations from every channel — the playground, [WhatsApp](whatsapp.md) and the [web widget](web-widget.md) — into one list.
 
 ## Unified list
 
@@ -27,10 +27,10 @@ Unread is derived from an `operator_read_at` timestamp: a conversation counts as
 
 ## Human takeover
 
-Each conversation carries a `mode` field. In **AI** mode the agent answers automatically. Use **Take control** to switch the conversation to **human** mode: this pauses the AI so an operator can reply in its place. While a conversation is in human mode the AI will not generate replies — attempts to do so are rejected until you hand it back. When you're done, **Return to AI** flips the mode back and the agent resumes.
+Each conversation carries a `mode` field. In **AI** mode the agent answers automatically. In **human** mode the AI is paused and a person replies in its place; attempts by the AI to answer are rejected until the conversation is handed back. The Inbox shows which mode each conversation is in.
 
-This is the same `mode` concept used for [WhatsApp](whatsapp.md) conversations, so taking over works consistently regardless of channel.
+This is the same `mode` concept used for [WhatsApp](whatsapp.md) conversations, so it works consistently regardless of channel.
 
 ## Who can take over
 
-Both agency operators (from this Inbox) and client users can take over conversations. Client users do it from the [client portal](client-portal.md), which exposes the same take-control and reply-as-human actions scoped to their client.
+Taking a conversation over, answering it and assigning it happen in the [client portal](client-portal.md), by the client's users, scoped to their client. The Inbox does not expose those actions: it is where the agency reads. If you need to answer for a client yourself, create a user for that client's portal and work from there.

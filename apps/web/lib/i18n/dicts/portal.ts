@@ -195,6 +195,10 @@ const en = {
   },
   reports: {
     range7: "Last 7 days",
+
+    period: "Period",
+
+    chartTitle: "By period",
     range30: "Last 30 days",
     range90: "Last 90 days",
     rangeCustom: "Custom",
@@ -339,7 +343,7 @@ const en = {
     delete: "Delete",
     deleteTitle: "Delete {name}",
     deleteWarning: "This deletes the contact and their {count} conversations, with every message in them. It cannot be undone.",
-    deleteTypeWord: "To confirm, type the word",
+    deleteTypeName: "Type \"{word}\" to confirm",
     deleteWord: "DELETE",
     merge: "Merge",
     mergeTitle: "Merge {name}",
@@ -474,7 +478,7 @@ const en = {
       deleteAllCopy: "{count} conversations, with all their messages and attachments, are removed from the database.",
       deleteTitle: "Delete the conversation with {title}?",
       deleteCopy: "The conversation, its messages and attachments are removed from the database.",
-      typeToConfirm: "Type {word} to confirm",
+      typeToConfirm: "Type \"{word}\" to confirm",
       deleteWord: "delete",
       more: "More actions",
       open: "Archived conversations",
@@ -585,7 +589,7 @@ const es: typeof en = {
     intro:
       "Revisa las conversaciones, acompaña al agente y toma el control cuando una persona necesite intervenir.",
     preview: {
-      inbox: "Inbox",
+      inbox: "Bandeja de entrada",
       conversationsCount: "8 conversaciones",
       newInquiry: "Nueva consulta",
       newInquiryMeta: "Agente IA · Ahora",
@@ -770,6 +774,10 @@ const es: typeof en = {
   },
   reports: {
     range7: "Últimos 7 días",
+
+    period: "Período",
+
+    chartTitle: "Por período",
     range30: "Últimos 30 días",
     range90: "Últimos 90 días",
     rangeCustom: "Personalizado",
@@ -914,7 +922,7 @@ const es: typeof en = {
     delete: "Eliminar",
     deleteTitle: "Eliminar a {name}",
     deleteWarning: "Se eliminarán el contacto y sus {count} conversaciones, con todos sus mensajes. No se puede deshacer.",
-    deleteTypeWord: "Para confirmar, escribe la palabra",
+    deleteTypeName: "Escribe \"{word}\" para confirmar",
     deleteWord: "ELIMINAR",
     merge: "Fusionar",
     mergeTitle: "Fusionar a {name}",
@@ -1016,7 +1024,7 @@ const es: typeof en = {
   },
   inbox: {
     nav: {
-      inbox: "Inbox",
+      inbox: "Bandeja de entrada",
       contacts: "Contactos",
       teams: "Equipos",
       templates: "Plantillas de WhatsApp",
@@ -1049,7 +1057,7 @@ const es: typeof en = {
       deleteAllCopy: "{count} conversaciones, con todos sus mensajes y adjuntos, se borran de la base de datos.",
       deleteTitle: "¿Eliminar la conversación con {title}?",
       deleteCopy: "La conversación, sus mensajes y sus adjuntos se borran de la base de datos.",
-      typeToConfirm: "Escribe {word} para confirmar",
+      typeToConfirm: "Escribe \"{word}\" para confirmar",
       deleteWord: "eliminar",
       more: "Más acciones",
       open: "Conversaciones archivadas",

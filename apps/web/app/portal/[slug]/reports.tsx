@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Bot, ChevronDown, Clock, Inbox, LoaderCircle, MessageSquareText, MessagesSquare, SlidersHorizontal, Timer, UserRound, Users } from "lucide-react";
+import { SectionTabs } from "@/components/section-tabs";
+import { PeriodControl } from "@/components/reports/filter-bar";
 import { Alert } from "@/components/ui";
 import { ConversationExplorer } from "@/components/reports/conversation-explorer";
 import { TimeChart } from "@/components/reports/time-chart";
@@ -43,11 +45,12 @@ function formatSeconds(value: number | null, none: string): string {
   return minutes ? `${hours} h ${minutes} min` : `${hours} h`;
 }
 
-export function ReportsView({ slug, openConversation }: { slug: string; openConversation?: (row: ConversationReportRow) => void }) {
+export function ReportsView({ slug, section: initialSection, onSection, openConversation }: { slug: string; section?: "summary" | "conversations"; onSection?: (section: "summary" | "conversations") => void; openConversation?: (row: ConversationReportRow) => void }) {
   const t = useT();
   const { lang } = useLanguage();
   const locale = lang === "es" ? "es" : "en";
-  const [section, setSection] = useState<"summary" | "conversations">("summary");
+  const [section, setSectionState] = useState<"summary" | "conversations">(initialSection ?? "summary");
+  const setSection = (next: "summary" | "conversations") => { setSectionState(next); onSection?.(next); };
   const [range, setRange] = useState<number | "custom">(7);
   // Phone only: the filters start folded behind a toggle so the numbers come
   // first. A desktop ignores this and always shows them.
@@ -95,10 +98,10 @@ export function ReportsView({ slug, openConversation }: { slug: string; openConv
     return value;
   };
 
-  const sectionSwitch = <div className="report-ranges report-toggle report-sections">
-    <button type="button" className={section === "summary" ? "active" : ""} onClick={() => setSection("summary")}>{t("reports.tabs.summary")}</button>
-    <button type="button" className={section === "conversations" ? "active" : ""} onClick={() => setSection("conversations")}>{t("reports.tabs.conversations")}</button>
-  </div>;
+  const sectionSwitch = <SectionTabs<"summary" | "conversations"> className="report-tabs" value={section} onChange={setSection} tabs={[
+    { id: "summary", label: t("reports.tabs.summary") },
+    { id: "conversations", label: t("reports.tabs.conversations") },
+  ]} />;
   if (section === "conversations") {
     return <div className="portal-reports">
       {sectionSwitch}
@@ -113,18 +116,10 @@ export function ReportsView({ slug, openConversation }: { slug: string; openConv
       <SlidersHorizontal size={16} /><span>{t("portal.inbox.filters.label")}</span><ChevronDown size={18} className={`chevron${filtersOpen ? " open" : ""}`} />
     </button>
     <div className={`report-filters${filtersOpen ? "" : " folded"}`}>
-    <div className="report-ranges">
-      {RANGES.map((value) => <button key={value} type="button" className={value === range ? "active" : ""} onClick={() => setRange(value)}>
-        {value === 7 ? t("portal.reports.range7") : value === 30 ? t("portal.reports.range30") : t("portal.reports.range90")}
-      </button>)}
-      <button type="button" className={range === "custom" ? "active" : ""} onClick={() => setRange("custom")}>{t("portal.reports.rangeCustom")}</button>
-    </div>
-    {range === "custom" && <div className="report-custom-range">
-      <input type="date" value={customFrom} max={customTo || undefined} onChange={(e) => setCustomFrom(e.target.value)} aria-label={t("portal.reports.fromDate")} />
-      <span>{t("portal.reports.toDate")}</span>
-      <input type="date" value={customTo} min={customFrom || undefined} max={daysAgoISO(0)} onChange={(e) => setCustomTo(e.target.value)} aria-label={t("portal.reports.toDate")} />
-    </div>}
     <div className="report-selects">
+    <PeriodControl value={range === "custom" ? "custom" : String(range)} onChange={(v) => setRange(v === "custom" ? "custom" : Number(v))} max={daysAgoISO(0)}
+      custom={{ from: customFrom, to: customTo }} onCustom={(from, to) => { setCustomFrom(from); setCustomTo(to); }}
+      presets={RANGES.map((value) => ({ value: String(value), label: value === 7 ? t("portal.reports.range7") : value === 30 ? t("portal.reports.range30") : t("portal.reports.range90") }))} />
       <select value={channel} onChange={(e) => setChannel(e.target.value)} aria-label={t("portal.reports.channels")}>
         <option value="">{t("portal.reports.filterChannelAll")}</option>
         {CHANNELS.map((value) => <option key={value} value={value}>{channelLabel(value)}</option>)}
@@ -183,12 +178,15 @@ export function ReportsView({ slug, openConversation }: { slug: string; openConv
 
     <section className="report-card">
       <header>
-        <div className="report-ranges report-toggle">
-          <button type="button" className={chart === "conversations" ? "active" : ""} onClick={() => setChart("conversations")}>{t("portal.reports.chartConversations")}</button>
-          <button type="button" className={chart === "messages" ? "active" : ""} onClick={() => setChart("messages")}>{t("portal.reports.chartMessages")}</button>
-        </div>
-        <div className="report-legend">
-          {series.map((s) => <span key={s.key}><i style={{ background: s.color }} /> {s.name}</span>)}
+        <h3>{t("portal.reports.chartTitle")}</h3>
+        <div className="report-chart-tools">
+          <div className="report-legend">
+            {series.map((s) => <span key={s.key}><i style={{ background: s.color }} /> {s.name}</span>)}
+          </div>
+          <div className="segmented report-chart-kind" role="tablist">
+            <button type="button" role="tab" aria-selected={chart === "conversations"} className={chart === "conversations" ? "active" : ""} onClick={() => setChart("conversations")}>{t("portal.reports.chartConversations")}</button>
+            <button type="button" role="tab" aria-selected={chart === "messages"} className={chart === "messages" ? "active" : ""} onClick={() => setChart("messages")}>{t("portal.reports.chartMessages")}</button>
+          </div>
         </div>
       </header>
       {hasBars ? <TimeChart ariaLabel={t("portal.reports.perDay")}
