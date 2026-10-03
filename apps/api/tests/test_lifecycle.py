@@ -59,6 +59,9 @@ def test_conversations_are_archived_before_they_can_be_deleted(authenticated_cli
     restored = client.patch(f"{base}/{first}/archive", json={"archived": False}).json()
     assert restored["status"] == "resolved" and restored["archived_at"] is None
     assert [row["id"] for row in client.get(f"{base}?status=resolved").json()] == [first]
+    # The agency's inbox has the same two folders.
+    assert [row["id"] for row in client.get("/api/conversations/inbox?status=resolved").json()] == [first]
+    assert first not in {row["id"] for row in client.get("/api/conversations/inbox?status=open").json()}
 
     # Archive every resolved conversation at once: open ones stay put.
     client.patch(f"{base}/{second}/status", json={"status": "resolved"})

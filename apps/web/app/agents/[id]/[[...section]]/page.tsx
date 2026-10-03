@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, AudioLines, Bot, CheckCircle2, FileText, ImageIcon, LoaderCircle, MessageSquareText, Plug, Plus, Power, PowerOff, RefreshCw, Save, Settings2, Sparkles, Trash2, UploadCloud, XCircle } from "lucide-react";
 import { SectionTabs } from "@/components/section-tabs";
 import { api, messageFrom } from "@/lib/api";
+import { currentSections, showSections } from "@/lib/section-path";
 import { useLanguage } from "@/lib/i18n";
 import { businessLabel, useIndustries } from "@/lib/industries";
 import { Alert, Modal } from "@/components/ui";
@@ -57,6 +58,8 @@ export default function AgentDetailPage() {
   const ManagedSection = agentToolsExtensions.ManagedSection;
   const [tab, setTab] = useState<Tab>("basics");
   const [busy, setBusy] = useState(false);
+  // Deactivating silences the agent everywhere, so it asks first; activating does not.
+  const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
   const [indexing, setIndexing] = useState(false);
   const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModelInfo[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -115,7 +118,18 @@ export default function AgentDetailPage() {
   }
 
   // Let other areas deep-link straight to a tab.
-  useEffect(() => { const q = new URLSearchParams(window.location.search).get("tab"); if (q === "details") setTab("basics"); else if (q === "integrations") setTab("tools"); else if (q && (TABS as string[]).includes(q)) setTab(q as Tab); }, []);
+  // The open tab rides in the address (`/agents/<id>/knowledge`); `?tab=` is
+  // the older spelling and still lands, rewritten to the path.
+  useEffect(() => {
+    const [section] = currentSections(`/agents/${id}`);
+    const q = new URLSearchParams(window.location.search).get("tab");
+    const asked = section || (q === "details" ? "basics" : q === "integrations" ? "tools" : q);
+    const wanted = asked && (TABS as string[]).includes(asked) ? asked as Tab : "basics";
+    setTab(wanted);
+    // The bare agent address names its first tab, like every other one.
+    if (!section) showSections(`/agents/${id}`, [wanted]);
+  }, [id]);
+  const changeTab = (next: Tab) => { setTab(next); showSections(`/agents/${id}`, [next]); };
   // The prompt preview is what the model receives; it changes with every save,
   // so it is fetched fresh each time the tab is opened.
 
@@ -188,7 +202,7 @@ export default function AgentDetailPage() {
   if (!agent) return <div className="page"><FormSkeleton sections={2} /></div>;
   return <div className="page agent-detail-page">
     <Link href="/agents" className="back-link"><ArrowLeft size={16} /> {t("agents.detail.back")}</Link>
-    <header className="agent-detail-head"><div className="agent-title-wrap"><span className="agent-avatar xl"><Bot size={29} /></span><div><div className="title-line"><h1>{agent.name}</h1><span className={agent.is_active ? "pill purple" : "pill"}>{agent.is_active ? t("agents.detail.published") : t("agents.detail.unpublished")}</span></div><p><Link href={`/clients/${agent.client_id}`} className="table-link">{agent.client.name}</Link>{businessLabel(catalog, agent.client, lang) ? ` · ${businessLabel(catalog, agent.client, lang)}` : ""}</p></div></div><div className="header-actions"><button className={agent.is_active ? "button ghost" : "button primary"} onClick={togglePublish} disabled={busy}>{agent.is_active ? <><PowerOff size={16} /> {t("agents.detail.unpublish")}</> : <><Power size={16} /> {t("agents.detail.publish")}</>}</button><Link href={`/playground`} className="button secondary"><MessageSquareText size={17} /> {t("agents.detail.openPlayground")}</Link></div></header>
+    <header className="agent-detail-head"><div className="agent-title-wrap"><span className="agent-avatar xl"><Bot size={29} /></span><div><div className="title-line"><h1>{agent.name}</h1><span className={agent.is_active ? "pill purple" : "pill"}>{agent.is_active ? t("agents.detail.published") : t("agents.detail.unpublished")}</span></div><p><Link href={`/clients/${agent.client_id}`} className="table-link">{agent.client.name}</Link>{businessLabel(catalog, agent.client, lang) ? ` · ${businessLabel(catalog, agent.client, lang)}` : ""}</p></div></div><div className="header-actions"><button className={agent.is_active ? "button ghost" : "button primary"} onClick={() => (agent.is_active ? setConfirmingDeactivate(true) : togglePublish())} disabled={busy}>{agent.is_active ? <><PowerOff size={16} /> {t("agents.detail.unpublish")}</> : <><Power size={16} /> {t("agents.detail.publish")}</>}</button><button type="button" className="button secondary" onClick={() => changeTab("playground")}><MessageSquareText size={17} /> {t("agents.detail.openPlayground")}</button></div></header>
     {docToDelete && <ConfirmModal title={t("agents.detail.confirmDelete", { filename: docToDelete.filename })} confirmLabel={t("agents.detail.delete")} cancelLabel={t("common.cancel")} confirmIcon={<Trash2 size={15} />} onConfirm={() => removeDocument(docToDelete)} onClose={() => setDocToDelete(null)} />}
     <Modal open={deleteOpen} title={t("agents.detail.deleteTitle", { name: agent.name })} onClose={() => setDeleteOpen(false)}>
       <div className="modal-form">
@@ -204,7 +218,8 @@ export default function AgentDetailPage() {
         <div className="modal-actions"><button type="button" className="button" onClick={() => setDeleteOpen(false)}>{t("common.cancel")}</button><button type="button" className="button danger" disabled={busy || deleteName.trim() !== agent.name.trim()} onClick={removeAgent}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Trash2 size={15} /> {t("agents.detail.deleteAgent")}</>}</button></div>
       </div>
     </Modal>
-    <SectionTabs<Tab> value={tab} onChange={setTab} tabs={[
+    {confirmingDeactivate && <ConfirmModal title={t("agents.detail.deactivateTitle")} message={t("agents.detail.deactivateCopy")} confirmLabel={t("agents.detail.unpublish")} cancelLabel={t("common.cancel")} confirmIcon={<PowerOff size={15} />} onConfirm={togglePublish} onClose={() => setConfirmingDeactivate(false)} />}
+    <SectionTabs<Tab> value={tab} onChange={changeTab} tabs={[
       { id: "basics", label: t("agents.detail.tabBasics"), icon: Settings2 },
       { id: "knowledge", label: t("agents.detail.tabKnowledge"), icon: FileText, badge: documents.length },
       { id: "tools", label: t("tools.tab"), icon: Plug, badge: tools.length },

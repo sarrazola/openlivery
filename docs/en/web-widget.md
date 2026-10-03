@@ -12,7 +12,7 @@ The widget only works while the channel is enabled and the client is active: the
 
 ## Set it up and get the snippet
 
-1. Open the client, go to **Channels** and pick **Web chat** (or use the Channels page and pick the client).
+1. Open the client, go to **Channels** and pick **Web chat**.
 2. Choose the agent that answers, set the greeting, color and position (left or right), and keep **Enable web chat** on.
 3. Save, then copy the embed snippet from the **Embed code** section. A **Preview** link opens the widget standalone.
 

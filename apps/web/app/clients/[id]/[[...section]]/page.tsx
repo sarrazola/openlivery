@@ -3,14 +3,12 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Bot, Copy, ExternalLink, FileText, Globe2, ImagePlus, Inbox, ListChecks, LoaderCircle, MessageCircle, Pencil, QrCode, Radio, Save, Settings2, ShieldAlert, ShieldCheck, Tag, Trash2, UserCheck, UserRound, Users, UserX, Webhook } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bot, Copy, ExternalLink, FileText, Globe2, ImagePlus, ListChecks, LoaderCircle, MessageCircle, Pencil, QrCode, Radio, Save, Settings2, ShieldAlert, ShieldCheck, Tag, Trash2, UserCheck, UserRound, Users, UserX, Webhook } from "lucide-react";
 import { Alert, EmptyState, Modal, StatusBadge } from "@/components/ui";
 import { SectionTabs } from "@/components/section-tabs";
 import { IndustryPicker, isBusinessComplete, type IndustryValue } from "@/components/industry-picker";
 import { AiHint } from "@/components/ai-hint";
 import { Combobox } from "@/components/combobox";
-import { GrowingTextarea } from "@/components/growing-textarea";
-import { RichText } from "@/components/rich-text";
 import { TIMEZONES } from "@/lib/timezones";
 import { TeamsView } from "@/app/portal/[slug]/teams";
 import { TagsView } from "@/app/portal/[slug]/tags";
@@ -20,15 +18,23 @@ import { TemplateWebhooksView } from "@/components/template-webhooks";
 import { FormSkeleton, ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { PasswordInput } from "@/components/password-input";
-import { accountName, ChannelIcon, channelLabel } from "@/lib/channels";
-import { SocialReplyNotice, useReplyPolicy } from "@/components/reply-policy";
+import { accountName, ChannelIcon } from "@/lib/channels";
+import { WhatsAppCloudSetup } from "@/components/channels/whatsapp-cloud";
+import { WhatsAppSetup } from "@/components/channels/whatsapp";
+import { WebChatSetup } from "@/components/channels/webchat";
+import { SocialChannelSetup } from "@/components/channels/social";
 import { api, ApiError, messageFrom } from "@/lib/api";
+import { currentSections, showSections } from "@/lib/section-path";
 import { useLanguage, useT } from "@/lib/i18n";
 import { businessLabel, useIndustries } from "@/lib/industries";
-import type { Client, ClientDomain, Conversation, PortalRole, PortalUser, SocialChannel, WhatsAppChannel, WhatsAppCloudChannel, WidgetChannel } from "@/types";
+import type { Client, ClientDomain, PortalRole, PortalUser, SocialChannel, WhatsAppChannel, WhatsAppCloudChannel, WidgetChannel } from "@/types";
 
-type Tab = "details" | "agents" | "channels" | "inbox" | "teams" | "tags" | "fields" | "templates" | "webhooks" | "portal";
+type Tab = "details" | "agents" | "channels" | "teams" | "tags" | "fields" | "templates" | "webhooks" | "portal";
+const TABS: Tab[] = ["details", "agents", "channels", "teams", "tags", "fields", "templates", "webhooks", "portal"];
 type ChannelKey = "whatsapp_cloud" | "whatsapp" | "webchat" | "instagram" | "messenger";
+/** A channel's setup view, named in the address as `/channels/<kind>`. */
+type ChannelKind = "whatsapp-cloud" | "whatsapp" | "webchat" | "instagram" | "messenger";
+const CHANNEL_KINDS: ChannelKind[] = ["whatsapp-cloud", "whatsapp", "webchat", "instagram", "messenger"];
 type ChannelState = "loading" | "off" | "pending" | "connected" | "disconnected";
 type ChannelStatus = { state: ChannelState; detail?: string };
 
@@ -69,11 +75,27 @@ export default function ClientDetailPage() {
   const [business, setBusiness] = useState<IndustryValue>({ industry: "", businessType: "", custom: "" });
   const [timezone, setTimezone] = useState("UTC");
   const [tab, setTab] = useState<Tab>("details");
-  // A channel page sends its "back" here with the tab it came from.
+  // The open tab, and under it the open channel (`/channels/whatsapp-cloud`),
+  // ride in the address, so a reload or a
+  // return from a provider's authorization lands where it left. `?tab=` is
+  // the older spelling and still lands, rewritten to the path.
+  const [channelKind, setChannelKind] = useState<ChannelKind | null>(null);
+  const base = `/clients/${id}`;
   useEffect(() => {
-    const wanted = new URLSearchParams(window.location.search).get("tab");
-    if (wanted && (["details", "agents", "channels", "inbox", "teams", "tags", "fields", "templates", "webhooks", "portal"] as const).some((item) => item === wanted)) setTab(wanted as Tab);
-  }, []);
+    const [first, second] = currentSections(base);
+    const asked = first || new URLSearchParams(window.location.search).get("tab");
+    const wanted = asked && (TABS as string[]).includes(asked) ? asked as Tab : "details";
+    setTab(wanted);
+    if (wanted === "channels" && second && (CHANNEL_KINDS as string[]).includes(second)) setChannelKind(second as ChannelKind);
+    // The bare client address names its first tab, like every other one.
+    if (!first) showSections(base, [wanted]);
+  }, [base]);
+  const changeTab = (next: Tab) => {
+    setTab(next);
+    if (next !== "channels") setChannelKind(null);
+    showSections(base, [next]);
+  };
+  const openChannel = (kind: ChannelKind) => { setChannelKind(kind); showSections(base, ["channels", kind]); };
   const [busy, setBusy] = useState(false);
   const [logoVersion, setLogoVersion] = useState(0);
   const logoRef = useRef<HTMLInputElement>(null);
@@ -82,6 +104,7 @@ export default function ClientDetailPage() {
   // One card per channel kind. A client may have several accounts on a kind:
   // the card is connected when any of them is, and its detail names them.
   const [channelStates, setChannelStates] = useState<Record<ChannelKey, ChannelStatus> | null>(null);
+  const [statesVersion, setStatesVersion] = useState(0);
   useEffect(() => {
     const missing = (err: unknown) => { if (err instanceof ApiError && err.status === 404) return null; throw err; };
     Promise.all([
@@ -97,7 +120,9 @@ export default function ClientDetailPage() {
       instagram: manyState(instagram, (item) => socialState(item).state, (item) => socialState(item).detail || "", (item, n) => accountName(item, t("social.accountFallback", { n })), t("clients.detail.channelAccounts", { count: instagram.length, connected: instagram.filter((item) => socialState(item).state === "connected").length })),
       messenger: manyState(messenger, (item) => socialState(item).state, (item) => socialState(item).detail || "", (item, n) => accountName(item, t("social.accountFallback", { n })), t("clients.detail.channelAccounts", { count: messenger.length, connected: messenger.filter((item) => socialState(item).state === "connected").length })),
     })).catch(() => {});
-  }, [id, t]);
+  }, [id, t, statesVersion]);
+  // Back from a channel's setup, the cards are re-read: it may have connected or removed accounts.
+  const closeChannel = () => { setChannelKind(null); showSections(base, ["channels"]); setChannelStates(null); setStatesVersion((v) => v + 1); };
   const channelState = (key: ChannelKey): ChannelState => channelStates?.[key]?.state ?? "loading";
   const channelDetail = (key: ChannelKey): string => channelStates?.[key]?.detail ?? "";
 
@@ -154,11 +179,10 @@ export default function ClientDetailPage() {
   return <div className="page">
     <Link href="/clients" className="back-link"><ArrowLeft size={17} /> {t("clients.detail.back")}</Link>
     <header className="entity-header"><div className="entity-avatar xl">{client.name.slice(0, 2).toUpperCase()}</div><div><div className="title-line"><h1>{client.name}</h1><StatusBadge active={client.is_active} /></div><p>{businessLabel(catalog, client, lang) || t("clients.detail.industryUndefined")} · {client.agents.length === 1 ? t("clients.detail.agentOne", { count: client.agents.length }) : t("clients.detail.agentMany", { count: client.agents.length })}</p></div><div className="header-actions"><Link href={`/agents/new?client=${client.id}`} className="button primary"><Bot size={17} /> {t("clients.detail.newAgent")}</Link></div></header>
-    <SectionTabs<Tab> className="client-tabs" value={tab} onChange={setTab} tabs={[
+    <SectionTabs<Tab> className="client-tabs" value={tab} onChange={changeTab} tabs={[
       { id: "details", label: t("clients.detail.tabDetails"), icon: Settings2 },
       { id: "agents", label: t("clients.detail.tabAgents"), icon: Bot, badge: client.agents.length },
       { id: "channels", label: t("clients.detail.tabChannels"), icon: Radio },
-      { id: "inbox", label: t("clients.detail.tabInbox"), icon: Inbox },
       { id: "teams", label: t("clients.detail.tabTeams"), icon: Users },
       { id: "tags", label: t("clients.detail.tabTags"), icon: Tag },
       { id: "fields", label: t("clients.detail.tabFields"), icon: ListChecks },
@@ -186,9 +210,12 @@ export default function ClientDetailPage() {
     </Modal>
     {tab === "agents" && (client.agents.length ? <div className="table-shell"><table className="data-table"><thead><tr><th>{t("clients.detail.colAgent")}</th><th>{t("clients.detail.colStatus")}</th><th /></tr></thead><tbody>{client.agents.map((agent) => <tr key={agent.id}><td><Link className="entity-cell" href={`/agents/${agent.id}`}><span className="agent-avatar"><Bot size={18} /></span><strong>{agent.name}</strong></Link></td><td><StatusBadge active={agent.is_active} /></td><td><Link className="row-arrow" href={`/agents/${agent.id}`}><ArrowRight size={17} /></Link></td></tr>)}</tbody></table></div> : <EmptyState icon={<Bot />} title={t("clients.detail.agentsEmptyTitle")} description={t("clients.detail.agentsEmptyDescription")} action={<Link href={`/agents/new?client=${client.id}`} className="button primary">{t("clients.detail.createAgent")}</Link>} />)}
 
-    {tab === "channels" && <section className="compact-channel-grid"><article className={channelState("whatsapp_cloud") === "connected" ? "channel-live" : ""}><span className="whatsapp"><MessageCircle size={20} /></span><div><strong>{t("channels.whatsappCloud.title")} <ChannelStateBadge state={channelState("whatsapp_cloud")} /></strong><small>{channelDetail("whatsapp_cloud") || t("clients.detail.channelWhatsappAvailable", { name: client.name })}</small></div><Link className="button secondary" href={`/clients/${client.id}/channels/whatsapp-cloud`}>{t("clients.detail.configure")}</Link></article><article className={channelState("whatsapp") === "connected" ? "channel-live" : ""}><span className="whatsapp"><QrCode size={20} /></span><div><strong>{t("channels.whatsapp.title")} <ChannelStateBadge state={channelState("whatsapp")} /></strong><small>{channelDetail("whatsapp") || t("clients.detail.channelWhatsappQrAvailable")}</small></div><Link className="button secondary" href={`/clients/${client.id}/channels/whatsapp`}>{t("clients.detail.configure")}</Link></article><article className={channelState("webchat") === "connected" ? "channel-live" : ""}><span className="webchat"><Globe2 size={20} /></span><div><strong>{t("channels.webchat.title")} <ChannelStateBadge state={channelState("webchat")} /></strong><small>{t("clients.detail.channelWebchatAvailable")}</small></div><Link className="button secondary" href={`/clients/${client.id}/channels/webchat`}>{t("clients.detail.configure")}</Link></article>{(["instagram", "messenger"] as const).map((provider) => <article key={provider} className={channelState(provider) === "connected" ? "channel-live" : ""}><span className={provider === "instagram" ? "instagram" : "facebook"}><ChannelIcon channel={provider} size={20} /></span><div><strong>{t(`social.${provider}.title`)} <ChannelStateBadge state={channelState(provider)} /></strong><small>{channelDetail(provider) || t(`social.${provider}.description`)}</small></div><Link className="button secondary" href={`/clients/${client.id}/channels/${provider}`}>{t("social.configure")}</Link></article>)}</section>}
+    {tab === "channels" && channelKind === "whatsapp-cloud" && <WhatsAppCloudSetup client={client} onBack={closeChannel} />}
+    {tab === "channels" && channelKind === "whatsapp" && <WhatsAppSetup client={client} onBack={closeChannel} />}
+    {tab === "channels" && channelKind === "webchat" && <WebChatSetup client={client} onBack={closeChannel} />}
+    {tab === "channels" && (channelKind === "instagram" || channelKind === "messenger") && <SocialChannelSetup provider={channelKind} client={client} onBack={closeChannel} />}
+    {tab === "channels" && !channelKind && <section className="compact-channel-grid"><article data-channel="whatsapp-cloud" className={channelState("whatsapp_cloud") === "connected" ? "channel-live" : ""}><span className="whatsapp"><MessageCircle size={20} /></span><div><strong>{t("channels.whatsappCloud.title")} <ChannelStateBadge state={channelState("whatsapp_cloud")} /></strong><small>{channelDetail("whatsapp_cloud") || t("clients.detail.channelWhatsappAvailable", { name: client.name })}</small></div><button type="button" className="button secondary" onClick={() => openChannel("whatsapp-cloud")}>{t("clients.detail.configure")}</button></article><article data-channel="whatsapp" className={channelState("whatsapp") === "connected" ? "channel-live" : ""}><span className="whatsapp"><QrCode size={20} /></span><div><strong>{t("channels.whatsapp.title")} <ChannelStateBadge state={channelState("whatsapp")} /></strong><small>{channelDetail("whatsapp") || t("clients.detail.channelWhatsappQrAvailable")}</small></div><button type="button" className="button secondary" onClick={() => openChannel("whatsapp")}>{t("clients.detail.configure")}</button></article><article data-channel="webchat" className={channelState("webchat") === "connected" ? "channel-live" : ""}><span className="webchat"><Globe2 size={20} /></span><div><strong>{t("channels.webchat.title")} <ChannelStateBadge state={channelState("webchat")} /></strong><small>{t("clients.detail.channelWebchatAvailable")}</small></div><button type="button" className="button secondary" onClick={() => openChannel("webchat")}>{t("clients.detail.configure")}</button></article>{(["instagram", "messenger"] as const).map((provider) => <article key={provider} data-channel={provider} className={channelState(provider) === "connected" ? "channel-live" : ""}><span className={provider === "instagram" ? "instagram" : "facebook"}><ChannelIcon channel={provider} size={20} /></span><div><strong>{t(`social.${provider}.title`)} <ChannelStateBadge state={channelState(provider)} /></strong><small>{channelDetail(provider) || t(`social.${provider}.description`)}</small></div><button type="button" className="button secondary" onClick={() => openChannel(provider)}>{t("social.configure")}</button></article>)}</section>}
 
-    {tab === "inbox" && <ClientInbox clientId={client.id} />}
 
     {/* Teams and WhatsApp templates are the client's own, managed here or from its portal; the views are the portal's, pointed at the agency routes. */}
     {tab === "teams" && <div className="embedded-portal-view"><TeamsView base={`/clients/${client.id}`} /></div>}
@@ -351,20 +378,4 @@ function PortalDomain({ clientId, domain, onChange }: { clientId: string; domain
   </div></section>;
 }
 
-function ClientInbox({ clientId }: { clientId: string }) {
-  const t = useT();
-  const toast = useToast();
-  const [items, setItems] = useState<Conversation[]>([]);
-  const [selected, setSelected] = useState<Conversation | null>(null);
-  const [busy, setBusy] = useState(false);
-  const policy = useReplyPolicy(selected);
-  const load = async () => { const rows = await api<Conversation[]>(`/conversations?client_id=${clientId}`); setItems(rows); if (rows[0] && !selected) setSelected(await api<Conversation>(`/conversations/${rows[0].id}`)); };
-  const [loadedInbox, setLoadedInbox] = useState(false);
-  useEffect(() => { load().catch(() => {}).finally(() => setLoadedInbox(true)); }, [clientId]);
-  async function choose(item: Conversation) { setSelected(await api<Conversation>(`/conversations/${item.id}`)); }
-  async function mode(next: "ai" | "human") { if (!selected) return; setSelected(await api<Conversation>(`/conversations/${selected.id}/mode`, { method: "PATCH", body: JSON.stringify({ mode: next }) })); await load(); }
-  async function reply(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected || !policy.canReply || busy) return; const form = event.currentTarget; const data = new FormData(form); setBusy(true); try { setSelected(await api<Conversation>(`/conversations/${selected.id}/reply`, { method: "POST", body: JSON.stringify({ content: data.get("content") }) })); form.reset(); await load(); } catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); } }
-  if (!loadedInbox) return <ListRowsSkeleton rows={5} />;
-  if (!items.length) return <EmptyState icon={<Inbox />} title={t("clients.detail.inboxEmptyTitle")} description={t("clients.detail.inboxEmptyDescription")} />;
-  return <div className="inbox-layout"><aside className="inbox-list"><header><strong>{t("clients.detail.conversations")}</strong><span>{items.length}</span></header>{items.map((item) => <button key={item.id} className={selected?.id === item.id ? "active" : ""} onClick={() => choose(item)}><span className="entity-avatar tiny"><UserRound size={15} /></span><span><strong>{item.title}</strong><small>{channelLabel(item.channel, t)} · {item.mode === "human" ? t("clients.detail.modeHuman") : t("clients.detail.modeAi")}</small></span></button>)}</aside><section className="inbox-thread">{selected && <><header><div><strong>{selected.title}</strong><small>{channelLabel(selected.channel, t)}</small></div><button className={`mode-toggle ${selected.mode}`} onClick={() => mode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("clients.detail.takeControl") : t("clients.detail.returnToAi")}</button></header><div className="inbox-messages">{selected.messages?.map((message) => <div key={message.id} className={`inbox-message ${message.role}`}><small>{message.sender_name || (message.role === "assistant" ? t("clients.detail.senderAgent") : t("clients.detail.senderVisitor"))}</small><p><RichText text={message.content} /></p></div>)}</div><SocialReplyNotice conversation={selected} blocked={policy.blocked} humanOnly={policy.humanOnly} /><form className="inbox-composer" onSubmit={reply}><GrowingTextarea name="content" placeholder={selected.mode === "human" ? t("clients.detail.composerHuman") : t("clients.detail.composerLocked")} disabled={!policy.canReply || busy} required /><button disabled={!policy.canReply || busy}>{t("clients.detail.send")}</button></form></>}</section></div>;
-}
+/** The client's conversations. `conversationId` names the one to open first; `onSelect` reports the open one. */

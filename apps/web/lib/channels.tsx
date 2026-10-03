@@ -1,5 +1,11 @@
 import { BadgeCheck, Facebook, FlaskConical, Globe, Instagram, MessageCircle } from "lucide-react";
 import type { I18nKey } from "@/lib/i18n";
+import type { Client } from "@/types";
+
+/** What a channel's setup view receives. It opens inside the client's
+ * Channels tab, which keeps `?channel=<kind>` in the address while it is
+ * open; `onBack` returns to the tab's cards. */
+export type ChannelSetupProps = { client: Client; onBack: () => void };
 
 export const INBOX_CHANNELS = ["whatsapp", "whatsapp_cloud", "instagram", "messenger", "widget", "playground"] as const;
 const labels: Record<string, I18nKey> = {

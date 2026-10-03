@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { DEFAULT_PAGE_SIZE, pageSlice, TablePager } from "@/components/table-pager";
 import { ArrowRight, Building2, Plus, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
@@ -19,10 +20,15 @@ export default function ClientsPage() {
   const catalog = useIndustries();
   const labelOf = (item: Client) => businessLabel(catalog, item, lang);
   const visible = useMemo(() => clients.filter((item) => `${item.name} ${labelOf(item)}`.toLowerCase().includes(search.toLowerCase())), [clients, search, catalog, lang]);
+  // Paged in the browser; a new search starts over from the first page.
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  useEffect(() => { setPage(0); }, [search, pageSize]);
+  const rows = pageSlice(visible, page, pageSize);
 
   return <div className="page">
     <PageHead eyebrow={t("clients.list.eyebrow")} title={t("clients.list.title")} description={t("clients.list.description")} action={<Link href="/clients/new" className="button primary"><Plus size={18} /> {t("clients.list.newClient")}</Link>} />
     <div className="toolbar"><label className="search-box"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("clients.list.searchPlaceholder")} /></label></div>
-    {!loaded ? <TableSkeleton columns={6} /> : visible.length ? <div className="table-shell"><table className="data-table"><thead><tr><th>{t("clients.list.colClient")}</th><th>{t("clients.list.colIndustry")}</th><th>{t("clients.list.colAgents")}</th><th>{t("clients.list.colPortal")}</th><th>{t("clients.list.colStatus")}</th><th /></tr></thead><tbody>{visible.map((client) => <tr key={client.id}><td><Link href={`/clients/${client.id}`} className="entity-cell"><span className="entity-avatar">{client.name.slice(0, 2).toUpperCase()}</span><span><strong>{client.name}</strong><small>{labelOf(client) || t("clients.list.industryUndefined")}</small></span></Link></td><td>{catalog.find((item) => item.code === client.industry)?.label[lang] || t("clients.list.industryUndefined")}</td><td>{client.agents.length}</td><td><span className={client.portal_enabled ? "pill purple" : "pill"}>{client.portal_enabled ? t("clients.list.portalPublished") : t("clients.list.portalUnpublished")}</span></td><td><StatusBadge active={client.is_active} /></td><td><Link href={`/clients/${client.id}`} className="row-arrow" aria-label={t("clients.list.openAria", { name: client.name })}><ArrowRight size={17} /></Link></td></tr>)}</tbody></table></div> : <EmptyState icon={<Building2 />} title={search ? t("clients.list.emptyNoMatchTitle") : t("clients.list.emptyCreateTitle")} description={search ? t("clients.list.emptyNoMatchDescription") : t("clients.list.emptyCreateDescription")} action={!search && <Link href="/clients/new" className="button primary"><Plus size={18} /> {t("clients.list.createClient")}</Link>} />}
+    {!loaded ? <TableSkeleton columns={6} /> : visible.length ? <div className="table-shell"><table className="data-table"><thead><tr><th>{t("clients.list.colClient")}</th><th>{t("clients.list.colIndustry")}</th><th>{t("clients.list.colAgents")}</th><th>{t("clients.list.colPortal")}</th><th>{t("clients.list.colStatus")}</th><th /></tr></thead><tbody>{rows.map((client) => <tr key={client.id} data-client={client.id}><td><Link href={`/clients/${client.id}`} className="entity-cell"><span className="entity-avatar">{client.name.slice(0, 2).toUpperCase()}</span><span><strong>{client.name}</strong><small>{labelOf(client) || t("clients.list.industryUndefined")}</small></span></Link></td><td>{catalog.find((item) => item.code === client.industry)?.label[lang] || t("clients.list.industryUndefined")}</td><td>{client.agents.length}</td><td data-cell="portal"><span className={client.portal_enabled ? "pill green" : "pill red"}>{client.portal_enabled ? t("clients.list.portalPublished") : t("clients.list.portalUnpublished")}</span></td><td><StatusBadge active={client.is_active} /></td><td><Link href={`/clients/${client.id}`} className="row-arrow" aria-label={t("clients.list.openAria", { name: client.name })}><ArrowRight size={17} /></Link></td></tr>)}</tbody></table><TablePager label={t("clients.list.count", { count: visible.length })} total={visible.length} page={page} pageSize={pageSize} onPage={setPage} onPageSize={setPageSize} /></div> : <EmptyState icon={<Building2 />} title={search ? t("clients.list.emptyNoMatchTitle") : t("clients.list.emptyCreateTitle")} description={search ? t("clients.list.emptyNoMatchDescription") : t("clients.list.emptyCreateDescription")} action={!search && <Link href="/clients/new" className="button primary"><Plus size={18} /> {t("clients.list.createClient")}</Link>} />}
   </div>;
 }

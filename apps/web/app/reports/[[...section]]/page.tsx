@@ -7,6 +7,7 @@ import { ConversationExplorer } from "@/components/reports/conversation-explorer
 import { ControlsRow, FilterSelect, PeriodControl, ReportControls, Segmented } from "@/components/reports/filter-bar";
 import { TimeChart } from "@/components/reports/time-chart";
 import { useToast } from "@/components/toast";
+import { currentSections, showSections } from "@/lib/section-path";
 import { api, apiUrl, messageFrom } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import type { CostReport, Operations, OpsGroup, ReportFilters, ReportGroup, ReportReply } from "@/types";
@@ -31,11 +32,14 @@ function money(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
+type ReportTab = "summary" | "costs" | "conversations";
+const REPORT_TABS: ReportTab[] = ["summary", "costs", "conversations"];
+
 export default function ReportsPage() {
   const { t, lang } = useLanguage();
   const toast = useToast();
   const locale = lang === "es" ? "es" : "en";
-  const [tab, setTab] = useState<"summary" | "costs" | "conversations">("summary");
+  const [tab, setTab] = useState<ReportTab>("summary");
   const [range, setRange] = useState<number | "custom">(30);
   const [customFrom, setCustomFrom] = useState(daysAgoISO(29));
   const [customTo, setCustomTo] = useState(daysAgoISO(0));
@@ -52,6 +56,14 @@ export default function ReportsPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
+  // The open tab rides in the address (`/reports/costs`).
+  useEffect(() => {
+    const [section] = currentSections("/reports");
+    const wanted = section && (REPORT_TABS as string[]).includes(section) ? section as ReportTab : "summary";
+    setTab(wanted);
+    showSections("/reports", [wanted]);
+  }, []);
+  const changeTab = (next: ReportTab) => { setLoading(next !== "conversations"); setTab(next); showSections("/reports", [next]); };
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => { api<ReportFilters>("/reports/filters").then(setFilters).catch(() => {}); }, []);
@@ -170,9 +182,9 @@ export default function ReportsPage() {
     <PageHead eyebrow={t("reports.head.eyebrow")} title={t("reports.head.title")} description={t("reports.head.description")} />
 
     <div className="tabs">
-      <button className={tab === "summary" ? "active" : ""} onClick={() => { setLoading(true); setTab("summary"); }}>{t("reports.tabs.summary")}</button>
-      <button className={tab === "costs" ? "active" : ""} onClick={() => { setLoading(true); setTab("costs"); }}>{t("reports.tabs.costs")}</button>
-      <button className={tab === "conversations" ? "active" : ""} onClick={() => { setLoading(false); setTab("conversations"); }}>{t("reports.tabs.conversations")}</button>
+      <button className={tab === "summary" ? "active" : ""} onClick={() => changeTab("summary")}>{t("reports.tabs.summary")}</button>
+      <button className={tab === "costs" ? "active" : ""} onClick={() => changeTab("costs")}>{t("reports.tabs.costs")}</button>
+      <button className={tab === "conversations" ? "active" : ""} onClick={() => changeTab("conversations")}>{t("reports.tabs.conversations")}</button>
     </div>
 
     {tab === "conversations" ? <ConversationExplorer

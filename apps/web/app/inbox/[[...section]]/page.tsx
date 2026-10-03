@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Images, Inbox as InboxIcon, LoaderCircle, Search, UserRound } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Images, Inbox as InboxIcon, LoaderCircle, Search, UserRound } from "lucide-react";
 import { PageHead } from "@/components/ui";
 import { AttachButton, MessageAttachments, PendingAttachment, RecordButton, useFileDrop, type GalleryImage } from "@/components/attachments";
 import { MediaPanel } from "@/components/media-panel";
@@ -13,10 +13,12 @@ import { ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { ChannelIcon, channelLabel as labelForChannel, INBOX_CHANNELS, isSocialChannel } from "@/lib/channels";
 import { PhonePauseNotice, SocialReplyNotice, useReplyPolicy } from "@/components/reply-policy";
+import { inboxExtensions } from "@/lib/extensions/inbox";
 import { api, ApiError, apiUrl, messageFrom } from "@/lib/api";
+import { currentSections, showSections } from "@/lib/section-path";
 import { formatTime, formatWhen, isNearBottom, isSameOpenThread } from "@/lib/datetime";
 import { useLanguage, useT } from "@/lib/i18n";
-import type { Agent, Attachment, Conversation, ConversationInbox } from "@/types";
+import type { Agent, Attachment, Client, Conversation, ConversationInbox } from "@/types";
 
 const LIMIT = 30;
 const POLL_MS = 8000;
@@ -25,24 +27,34 @@ export default function InboxPage() {
   const t = useT();
   const { lang } = useLanguage();
   const toast = useToast();
+  const [clients, setClients] = useState<Client[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [clientId, setClientId] = useState("");
   const [items, setItems] = useState<ConversationInbox[]>([]);
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [agentId, setAgentId] = useState("");
   const [channel, setChannel] = useState("");
   const [tab, setTab] = useState<"all" | "unread" | "human" | "ai">("all");
+  // Open and resolved threads are two folders, as in the client portal; the
+  // chips below refine the open one.
+  const [folder, setFolder] = useState<"open" | "resolved">("open");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [mediaOpen, setMediaOpen] = useState(false);
+  // Read-only unless the deployment says this conversation may be operated from here (lib/extensions/inbox).
+  const operable = inboxExtensions.useCanOperate(selected);
   const [busy, setBusy] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [mediaOpen, setMediaOpen] = useState(false);
   const policy = useReplyPolicy(selected);
 
-  useEffect(() => { api<Agent[]>("/agents").then(setAgents).catch(() => {}); }, []);
+  useEffect(() => { api<Client[]>("/clients").then(setClients).catch(() => {}); api<Agent[]>("/agents").then(setAgents).catch(() => {}); }, []);
+  // The agent list follows the client; a pick outside the client is dropped.
+  const clientAgents = clientId ? agents.filter((a) => a.client_id === clientId) : agents;
+  function chooseClient(next: string) { setClientId(next); if (next && !agents.some((a) => a.id === agentId && a.client_id === next)) setAgentId(""); }
   useEffect(() => { const id = setTimeout(() => setSearch(searchInput), 300); return () => clearTimeout(id); }, [searchInput]);
 
   const channelLabel = (value: string) => labelForChannel(value, t);
@@ -50,17 +62,24 @@ export default function InboxPage() {
 
   const buildParams = useCallback((offsetValue: number) => {
     const params = new URLSearchParams();
+    if (clientId) params.set("client_id", clientId);
     if (agentId) params.set("agent_id", agentId);
     if (channel) params.set("channel", channel);
+    params.set("status", folder);
     if (tab === "human" || tab === "ai") params.set("mode", tab);
     if (tab === "unread") params.set("unread", "1");
     if (search) params.set("search", search);
     params.set("limit", String(LIMIT));
     params.set("offset", String(offsetValue));
     return params.toString();
-  }, [agentId, channel, tab, search]);
+  }, [clientId, agentId, channel, folder, tab, search]);
 
   const selectedIdRef = useRef<string | null>(null);
+  function switchFolder(next: "open" | "resolved") {
+    if (next === folder) return;
+    setFolder(next); setTab("all");
+    selectedIdRef.current = null; setSelected(null);
+  }
   const messagesRef = useRef<HTMLDivElement>(null);
   useEffect(() => { selectedIdRef.current = selected?.id ?? null; }, [selected]);
   const wasNearBottomRef = useRef(true);
@@ -120,6 +139,12 @@ export default function InboxPage() {
   }, [closeGoneThread]);
 
   useEffect(() => { loadFirst(); }, [loadFirst]);
+  // `/inbox/<conversation>` opens that thread; the open thread is kept there.
+  useEffect(() => {
+    const [wanted] = currentSections("/inbox");
+    if (wanted) choose(wanted).catch(() => {});
+    }, []);
+  useEffect(() => { showSections("/inbox", [selected?.id]); }, [selected?.id]);
 
   // Live refresh of the first page and the open thread (skipped once the user scrolls into older pages).
   useEffect(() => {
@@ -160,8 +185,9 @@ export default function InboxPage() {
     api(`/conversations/${id}/read`, { method: "POST" }).catch(() => {});
   }
 
+
   async function toggleMode(next: "ai" | "human") {
-    if (!selected) return;
+    if (!selected || !operable) return;
     setSelected(await api<Conversation>(`/conversations/${selected.id}/mode`, { method: "PATCH", body: JSON.stringify({ mode: next }) }));
     loadFirst({ silent: true });
   }
@@ -169,7 +195,7 @@ export default function InboxPage() {
   const composerRef = useRef<HTMLTextAreaElement>(null);
   async function reply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selected || !policy.canReply || busy) return;
+    if (!selected || !operable || !policy.canReply || busy) return;
     if (pendingFile) {
       const file = pendingFile;
       setPendingFile(null);
@@ -187,7 +213,7 @@ export default function InboxPage() {
   }
 
   async function sendAttachment(file?: File) {
-    if (!file || !selected || !policy.canAttach || busy) return;
+    if (!file || !selected || !operable || !policy.canAttach || busy) return;
     setBusy(true);
     const caption = (composerRef.current?.value || "").trim();
     try {
@@ -199,7 +225,7 @@ export default function InboxPage() {
       loadFirst({ silent: true });
     } catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); composerRef.current?.focus(); }
   }
-  const { dropProps, overlay } = useFileDrop(setPendingFile, { enabled: policy.canAttach && !busy, label: t("chat.dropToSend") });
+  const { dropProps, overlay } = useFileDrop(setPendingFile, { enabled: operable && policy.canAttach && !busy, label: t("chat.dropToSend") });
 
   const selectedId = selected?.id;
   const attachmentUrl = useCallback(
@@ -217,7 +243,8 @@ export default function InboxPage() {
     <PageHead eyebrow={t("inbox.eyebrow")} title={t("inbox.title")} description={t("inbox.description")} />
 
     <div className="toolbar filters">
-      <div className="filter-select"><span>{t("inbox.filterAgent")}</span><select aria-label={t("inbox.filterAgent")} value={agentId} onChange={(e) => setAgentId(e.target.value)}><option value="">{t("inbox.allAgents")}</option>{agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+      <div className="filter-select"><span>{t("inbox.filterClient")}</span><select aria-label={t("inbox.filterClient")} value={clientId} onChange={(e) => chooseClient(e.target.value)}><option value="">{t("inbox.allClients")}</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+      <div className="filter-select"><span>{t("inbox.filterAgent")}</span><select aria-label={t("inbox.filterAgent")} value={agentId} onChange={(e) => setAgentId(e.target.value)}><option value="">{t("inbox.allAgents")}</option>{clientAgents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
       <div className="filter-select"><span>{t("inbox.filterChannel")}</span><select aria-label={t("inbox.filterChannel")} value={channel} onChange={(e) => setChannel(e.target.value)}><option value="">{t("inbox.allChannels")}</option>{INBOX_CHANNELS.map((value) => <option key={value} value={value}>{channelLabel(value)}</option>)}</select></div>
     </div>
 
@@ -226,12 +253,16 @@ export default function InboxPage() {
     <div className={`inbox-layout${selected ? " has-thread" : ""}`}>
       <aside className="inbox-list" onScroll={onScroll}>
         <div className="inbox-search"><Search size={16} /><input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder={t("inbox.searchPlaceholder")} /></div>
-        <div className="inbox-tabs">
+        <div className="segmented inbox-folders" role="tablist" aria-label={`${t("inbox.folderOpen")} / ${t("inbox.folderResolved")}`}>
+          <button role="tab" aria-selected={folder === "open"} className={folder === "open" ? "active" : ""} onClick={() => switchFolder("open")}><InboxIcon size={14} /> {t("inbox.folderOpen")}</button>
+          <button role="tab" aria-selected={folder === "resolved"} className={folder === "resolved" ? "active" : ""} onClick={() => switchFolder("resolved")}><CheckCircle2 size={14} /> {t("inbox.folderResolved")}</button>
+        </div>
+        {folder === "open" && <div className="inbox-tabs">
           <button className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>{t("inbox.tabAll")}</button>
           <button className={tab === "unread" ? "active" : ""} onClick={() => setTab("unread")}>{t("inbox.tabUnread")}</button>
           <button className={tab === "human" ? "active" : ""} onClick={() => setTab("human")}>{t("inbox.statusHuman")}</button>
           <button className={tab === "ai" ? "active" : ""} onClick={() => setTab("ai")}>{t("inbox.statusAi")}</button>
-        </div>
+        </div>}
         {loading ? <ListRowsSkeleton rows={7} />
           : items.length ? <>
             {items.map((item) => (
@@ -252,16 +283,17 @@ export default function InboxPage() {
           </> : <div className="no-conversations">{t("inbox.empty")}</div>}
       </aside>
 
-      <section className="inbox-thread drop-target" {...dropProps}>
-        {overlay}
+      <section className={`inbox-thread${operable ? " drop-target" : ""}`} {...(operable ? dropProps : {})}>
+        {operable && overlay}
         {!selected ? <div className="empty-state"><div className="empty-icon"><InboxIcon /></div><h3>{t("inbox.empty")}</h3><p>{t("inbox.selectPrompt")}</p></div>
           : <>
             <header>
               <button type="button" className="icon-button inbox-back" onClick={() => { selectedIdRef.current = null; setSelected(null); }} aria-label={t("common.back")} title={t("common.back")}><ArrowLeft size={16} /></button>
               <div><strong>{selected.contact_name || selected.title}</strong><small>{channelLabel(selected.channel)}{selected.account_label && <> <span className="account-badge" title={selected.account_label}>{selected.account_label}</span></>}</small></div>
               <div className="thread-actions">
+                {!operable && <span className={`mini-badge ${selected.mode}`}>{selected.mode === "human" ? t("inbox.statusHuman") : t("inbox.statusAi")}</span>}
                 <button className="icon-button" onClick={() => setMediaOpen(true)} title={t("chat.sharedContent")} aria-label={t("chat.sharedContent")}><Images size={16} /></button>
-                <button className={`mode-toggle ${selected.mode}`} onClick={() => toggleMode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("inbox.takeControl") : t("inbox.returnToAi")}</button>
+                {operable && <button className={`mode-toggle ${selected.mode}`} onClick={() => toggleMode(selected.mode === "ai" ? "human" : "ai")}>{selected.mode === "ai" ? t("inbox.takeControl") : t("inbox.returnToAi")}</button>}
               </div>
             </header>
             <div className="inbox-messages" ref={messagesRef}>
@@ -282,14 +314,16 @@ export default function InboxPage() {
                 );
               })}
             </div>
-            <PhonePauseNotice conversation={selected} onKeepManual={() => toggleMode("human")} /><SocialReplyNotice conversation={selected} blocked={policy.blocked} humanOnly={policy.humanOnly} />
-            {pendingFile && <PendingAttachment file={pendingFile} onCancel={() => setPendingFile(null)} />}
-            <form className="inbox-composer" onSubmit={reply}>
-              <AttachButton onFile={setPendingFile} disabled={!policy.canAttach || busy} title={t("chat.attachFile")} />
-              <RecordButton onRecorded={sendAttachment} onError={() => toast.error(t("chat.micDenied"))} disabled={!policy.canRecord || busy} title={t("chat.recordAudio")} titleStop={t("chat.stopRecording")} />
-              <GrowingTextarea ref={composerRef} name="content" placeholder={selected.mode === "human" ? t("inbox.composerHuman") : t("inbox.composerLocked")} disabled={!policy.canReply || busy} required={!pendingFile} />
-              <button disabled={!policy.canReply || busy}>{t("inbox.send")}</button>
-            </form>
+            {operable ? <>
+              <PhonePauseNotice conversation={selected} onKeepManual={() => toggleMode("human")} /><SocialReplyNotice conversation={selected} blocked={policy.blocked} humanOnly={policy.humanOnly} />
+              {pendingFile && <PendingAttachment file={pendingFile} onCancel={() => setPendingFile(null)} />}
+              <form className="inbox-composer" onSubmit={reply}>
+                <AttachButton onFile={setPendingFile} disabled={!policy.canAttach || busy} title={t("chat.attachFile")} />
+                <RecordButton onRecorded={sendAttachment} onError={() => toast.error(t("chat.micDenied"))} disabled={!policy.canRecord || busy} title={t("chat.recordAudio")} titleStop={t("chat.stopRecording")} />
+                <GrowingTextarea ref={composerRef} name="content" placeholder={selected.mode === "human" ? t("inbox.composerHuman") : t("inbox.composerLocked")} disabled={!policy.canReply || busy} required={!pendingFile} />
+                <button disabled={!policy.canReply || busy}>{t("inbox.send")}</button>
+              </form>
+            </> : <p className="inbox-readonly">{t("inbox.readOnly")}</p>}
             <MediaPanel open={mediaOpen} onClose={() => setMediaOpen(false)} messages={selected.messages ?? []} urlFor={attachmentUrl} />
           </>}
       </section>

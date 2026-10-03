@@ -1,6 +1,7 @@
 // UI strings for the "clients" area. Fill `en` and mirror it in `es`.
 const en = {
   list: {
+    count: "{count} clients",
     eyebrow: "Directory",
     title: "Clients",
     description: "Each client brings together its agents, channels, conversations and portal access.",
@@ -130,6 +131,7 @@ const en = {
   },
   detail: {
     back: "Back to clients",
+    channelsBack: "Back to channels",
     industryUndefined: "Undefined industry",
     agentOne: "{count} agent",
     agentMany: "{count} agents",
@@ -137,7 +139,6 @@ const en = {
     tabDetails: "Details",
     tabAgents: "Agents",
     tabChannels: "Channels",
-    tabInbox: "Inbox",
     tabTeams: "Teams",
     tabTags: "Tags",
     tabFields: "Fields",
@@ -155,7 +156,7 @@ const en = {
     deleteCountConversations: "conversations, with all their messages",
     deleteCountContacts: "contacts",
     deleteCountPortalUsers: "people with portal access",
-    deleteTypeName: "Type {name} to confirm",
+    deleteTypeName: "Type \"{name}\" to confirm",
     clientDeleted: "{name} was deleted with everything under it.",
     loading: "Loading client…",
     clientInfo: "Client information",
@@ -289,7 +290,6 @@ const en = {
     statusErrorCopy: "Check the detail and try again.",
     confirmDisconnect: "Disconnect this WhatsApp? You'll have to scan a QR again to connect it.",
     loading: "Loading WhatsApp…",
-    back: "Back to {name}",
     channelOf: "{name}'s channel",
     title: "WhatsApp",
     headerCopy: "Connect one or more numbers and decide which agent handles each one.",
@@ -402,6 +402,7 @@ const en = {
 
 const es: typeof en = {
   list: {
+    count: "{count} clientes",
     eyebrow: "Directorio",
     title: "Clientes",
     description: "Cada cliente reúne sus agentes, canales, conversaciones y acceso al portal.",
@@ -531,6 +532,7 @@ const es: typeof en = {
   },
   detail: {
     back: "Volver a clientes",
+    channelsBack: "Volver a canales",
     industryUndefined: "Industria sin definir",
     agentOne: "{count} agente",
     agentMany: "{count} agentes",
@@ -538,11 +540,10 @@ const es: typeof en = {
     tabDetails: "Detalles",
     tabAgents: "Agentes",
     tabChannels: "Canales",
-    tabInbox: "Inbox",
     tabTeams: "Equipos",
     tabTags: "Etiquetas",
-    tabFields: "Campos",
-    tabTemplates: "Plantillas de WhatsApp",
+    tabFields: "Atributos",
+    tabTemplates: "Plantillas",
     tabWebhooks: "Webhooks",
     tabPortal: "Portal",
     detailsSaved: "Detalles guardados.",
@@ -556,7 +557,7 @@ const es: typeof en = {
     deleteCountConversations: "conversaciones, con todos sus mensajes",
     deleteCountContacts: "contactos",
     deleteCountPortalUsers: "personas con acceso al portal",
-    deleteTypeName: "Escribe {name} para confirmar",
+    deleteTypeName: "Escribe \"{name}\" para confirmar",
     clientDeleted: "{name} se eliminó con todo lo que tenía.",
     loading: "Cargando cliente…",
     clientInfo: "Información del cliente",
@@ -690,7 +691,6 @@ const es: typeof en = {
     statusErrorCopy: "Revisa el detalle y vuelve a intentarlo.",
     confirmDisconnect: "¿Desconectar este WhatsApp? Tendrás que volver a escanear un QR para conectarlo.",
     loading: "Cargando WhatsApp…",
-    back: "Volver a {name}",
     channelOf: "Canal de {name}",
     title: "WhatsApp",
     headerCopy: "Conecta uno o más números y decide qué agente atiende cada uno.",

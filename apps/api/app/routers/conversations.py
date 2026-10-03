@@ -86,9 +86,11 @@ def list_conversations(
 
 @router.get("/inbox", response_model=list[ConversationInboxOut])
 def inbox(
+    client_id: uuid.UUID | None = None,
     agent_id: uuid.UUID | None = None,
     channel: str | None = None,
     mode: str | None = None,
+    status: str | None = None,
     search: str | None = None,
     unread: bool = False,
     limit: int = Query(default=30, ge=1, le=100),
@@ -139,10 +141,14 @@ def inbox(
     )
     if agent_id:
         query = query.where(Conversation.agent_id == agent_id)
+    if client_id:
+        query = query.where(Conversation.client_id == client_id)
     if channel:
         query = query.where(Conversation.channel == channel)
     if mode in ("ai", "human"):
         query = query.where(Conversation.mode == mode)
+    if status in ("open", "resolved"):
+        query = query.where(Conversation.status == status)
     if unread:
         query = query.where(unread_count > 0)
     if search and search.strip():

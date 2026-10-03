@@ -40,8 +40,9 @@ export async function proxy(request: NextRequest) {
   const slug = await resolveSlug(host);
   if (!slug) return NextResponse.next();
 
+  // The section (`/reports`, `/inbox/<conversation>`) follows the slug.
   const url = request.nextUrl.clone();
-  url.pathname = `/portal/${slug}`;
+  url.pathname = `/portal/${slug}${pathname === "/" ? "" : pathname}`;
   return NextResponse.rewrite(url);
 }
 

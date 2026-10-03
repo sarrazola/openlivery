@@ -4,23 +4,21 @@
 // per client, answered by an agent of that client. The public id in the
 // snippet belongs to the channel, so swapping the agent never breaks a site.
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowLeft, Bot, Code, Copy, ExternalLink, Globe2, LoaderCircle, Palette, Save, ShieldCheck } from "lucide-react";
 import { Alert } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { api, ApiError, messageFrom } from "@/lib/api";
+import type { ChannelSetupProps } from "@/lib/channels";
 import { useT } from "@/lib/i18n";
-import type { Client, WidgetChannel } from "@/types";
+import type { WidgetChannel } from "@/types";
 
-export default function WebChatChannelPage() {
+export function WebChatSetup({ client, onBack }: ChannelSetupProps) {
   const t = useT();
   const toast = useToast();
-  const { id } = useParams<{ id: string }>();
-  const [client, setClient] = useState<Client | null>(null);
+  const id = client.id;
   const [channel, setChannel] = useState<WidgetChannel | null>(null);
-  const [agentId, setAgentId] = useState("");
+  const [agentId, setAgentId] = useState(client.agents[0]?.id || "");
   const [enabled, setEnabled] = useState(true);
   const [greeting, setGreeting] = useState("");
   const [color, setColor] = useState("#075985");
@@ -30,7 +28,7 @@ export default function WebChatChannelPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const loadChannel = api<WidgetChannel>(`/webchat/channels/${id}`)
+    api<WidgetChannel>(`/webchat/channels/${id}`)
       .then((current) => {
         setChannel(current);
         setAgentId(current.agent_id);
@@ -40,13 +38,10 @@ export default function WebChatChannelPage() {
         setPosition(current.position);
       })
       .catch((err) => {
-        if (!(err instanceof ApiError && err.status === 404)) throw err;
+        if (!(err instanceof ApiError && err.status === 404)) { setError(messageFrom(err)); return; }
         setChannel(null);
-      });
-    Promise.all([
-      api<Client>(`/clients/${id}`).then((item) => { setClient(item); setAgentId((value) => value || item.agents[0]?.id || ""); }),
-      loadChannel,
-    ]).catch((err) => setError(messageFrom(err))).finally(() => setLoading(false));
+      })
+      .finally(() => setLoading(false));
   }, [id]);
 
   async function save() {
@@ -58,12 +53,12 @@ export default function WebChatChannelPage() {
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
 
-  if (loading || !client) return <div className="page-loading"><LoaderCircle className="spin" /> {t("clients.webchat.loading")}</div>;
+  if (loading) return <div className="page-loading"><LoaderCircle className="spin" /> {t("clients.webchat.loading")}</div>;
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   const snippet = channel ? `<script src="${origin}/widget.js" data-agent="${channel.public_id}" data-color="${color}" data-position="${position}" async></script>` : "";
   const live = Boolean(channel && channel.is_enabled);
-  return <div className="page wa-page">
-    <Link href={`/clients/${client.id}`} className="back-link"><ArrowLeft size={17} /> {t("clients.whatsapp.back", { name: client.name })}</Link>
+  return <div className="wa-page">
+    <button type="button" className="back-link" onClick={onBack}><ArrowLeft size={17} /> {t("clients.detail.channelsBack")}</button>
     <header className="wa-header"><div className="wa-mark"><Globe2 size={26} /></div><div><span>{t("clients.whatsapp.channelOf", { name: client.name })}</span><h1>{t("clients.webchat.title")}</h1><p>{t("clients.webchat.headerCopy")}</p></div>{channel && <span className={live ? "pill purple" : "pill"}>{live ? t("clients.webchat.live") : t("clients.webchat.off")}</span>}</header>
     {error && <Alert>{error}</Alert>}
     <div className="wa-layout"><main>

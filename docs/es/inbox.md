@@ -2,7 +2,7 @@
 
 > Read in English: [inbox.md](../en/inbox.md)
 
-La bandeja de entrada (Inbox) es un único lugar para observar todas las conversaciones que mantienen tus agentes, buscar entre ellas e intervenir como humano cuando la IA necesita ayuda. Reúne las conversaciones de todos los canales — el playground, [WhatsApp](whatsapp.md) y el [widget web](web-widget.md) — en una sola lista.
+La bandeja de entrada (Inbox) es un único lugar para observar todas las conversaciones que mantienen tus agentes y buscar entre ellas. Es una vista de lectura: tomar una conversación y responderla corresponde al equipo del cliente, desde el [portal del cliente](client-portal.md). Reúne las conversaciones de todos los canales — el playground, [WhatsApp](whatsapp.md) y el [widget web](web-widget.md) — en una sola lista.
 
 ## Lista unificada
 
@@ -27,10 +27,10 @@ El estado de no leído se deriva de una marca de tiempo `operator_read_at`: una 
 
 ## Toma de control humana
 
-Cada conversación lleva un campo `mode`. En modo **AI** el agente responde automáticamente. Usa **Tomar el control** para cambiar la conversación a modo **human**: esto pausa la IA para que un operador responda en su lugar. Mientras una conversación está en modo humano, la IA no genera respuestas — los intentos de hacerlo se rechazan hasta que la devuelvas. Cuando termines, **Devolver a la IA** vuelve a cambiar el modo y el agente reanuda.
+Cada conversación lleva un campo `mode`. En modo **AI** el agente responde automáticamente. En modo **human** la IA queda en pausa y una persona responde en su lugar; los intentos de la IA por contestar se rechazan hasta que la conversación se devuelve. La bandeja muestra en qué modo está cada conversación.
 
-Es el mismo concepto de `mode` usado en las conversaciones de [WhatsApp](whatsapp.md), por lo que tomar el control funciona de forma consistente sin importar el canal.
+Es el mismo concepto de `mode` usado en las conversaciones de [WhatsApp](whatsapp.md), por lo que funciona de forma consistente sin importar el canal.
 
 ## Quién puede tomar el control
 
-Tanto los operadores de la agencia (desde esta bandeja de entrada) como los usuarios del cliente pueden tomar el control de las conversaciones. Los usuarios del cliente lo hacen desde el [portal del cliente](client-portal.md), que expone las mismas acciones de tomar el control y responder como humano, acotadas a su cliente.
+Tomar una conversación, responderla y asignarla se hace desde el [portal del cliente](client-portal.md), por los usuarios del cliente y acotado a su cliente. La bandeja de la agencia no expone esas acciones: es donde la agencia lee. Si necesitas responder por un cliente, crea un usuario en el portal de ese cliente y trabaja desde ahí.

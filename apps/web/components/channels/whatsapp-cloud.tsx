@@ -1,16 +1,14 @@
 "use client";
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, BadgeCheck, Bot, CheckCircle2, CircleAlert, ClipboardCopy, KeyRound, LoaderCircle, Plug, Power, RefreshCw, ShieldCheck, Smartphone, Trash2, Webhook } from "lucide-react";
 import { Alert, Modal } from "@/components/ui";
 import { AccountList } from "@/components/account-list";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { api, messageFrom } from "@/lib/api";
-import { accountName, accountTitle, messagingLimitLabel, qualityLabel, qualityTone, rememberLine, requestedLine } from "@/lib/channels";
+import { accountName, accountTitle, messagingLimitLabel, qualityLabel, qualityTone, rememberLine, requestedLine, type ChannelSetupProps } from "@/lib/channels";
 import { useT, type I18nKey } from "@/lib/i18n";
-import type { Client, WhatsAppCloudChannel } from "@/types";
+import type { WhatsAppCloudChannel } from "@/types";
 
 const stateKeys: Record<WhatsAppCloudChannel["status"], { label: I18nKey; copy: I18nKey }> = {
   disconnected: { label: "clients.whatsappCloud.statusDisconnectedLabel", copy: "clients.whatsappCloud.statusDisconnectedCopy" },
@@ -32,12 +30,13 @@ function CopyField({ label, value }: { label: string; value: string }) {
   </div>;
 }
 
-/** A client's WhatsApp API numbers. One is selected at a time and the panels
- * below configure that one; "add another number" starts a new one. */
-export default function WhatsAppCloudChannelPage() {
+/** A client's WhatsApp API numbers, inside the client's Channels tab. The
+ * view opens on the list of them; one is picked from there (or named by
+ * `?line=<id>`) and the panels below then configure that one. `?new`, or an
+ * empty list, starts another. */
+export function WhatsAppCloudSetup({ client, onBack }: ChannelSetupProps) {
   const t = useT();
-  const { id } = useParams<{ id: string }>();
-  const [client, setClient] = useState<Client | null>(null);
+  const id = client.id;
   const [lines, setLines] = useState<WhatsAppCloudChannel[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -60,25 +59,25 @@ export default function WhatsAppCloudChannelPage() {
   }, []);
 
   /** Open one number, or with `null` the list of them. */
-  const show = useCallback((line: WhatsAppCloudChannel | null, owner: Client | null) => {
+  const show = useCallback((line: WhatsAppCloudChannel | null) => {
     setAdding(false);
     setSelectedId(line?.id ?? null);
-    setAgentId(line?.agent_id || owner?.agents[0]?.id || "");
+    setAgentId(line?.agent_id || client.agents[0]?.id || "");
     setLabel(line?.label || "");
     setPhoneNumberId(line?.phone_number_id || "");
     setWabaId(line?.waba_id || "");
     setAccessToken(""); setAppSecret(""); setError("");
     rememberLine(line?.id ?? null);
-  }, []);
-  const startAdding = useCallback((owner: Client | null) => { show(null, owner); setAdding(true); }, [show]);
+  }, [client.agents]);
+  const startAdding = useCallback(() => { show(null); setAdding(true); }, [show]);
 
   useEffect(() => {
-    Promise.all([api<Client>(`/clients/${id}`), api<WhatsAppCloudChannel[]>(`/whatsapp-cloud/clients/${id}/channels`)])
-      .then(([owner, items]) => {
-        setClient(owner); setLines(items);
+    api<WhatsAppCloudChannel[]>(`/whatsapp-cloud/clients/${id}/channels`)
+      .then((items) => {
+        setLines(items);
         const wanted = requestedLine();
         const line = items.find((item) => item.id === wanted.line) ?? null;
-        if (wanted.adding || (!line && !items.length)) startAdding(owner); else show(line, owner);
+        if (wanted.adding || (!line && !items.length)) startAdding(); else show(line);
       })
       .catch((err) => setError(messageFrom(err))).finally(() => setLoading(false));
   }, [id, show, startAdding]);
@@ -132,11 +131,11 @@ export default function WhatsAppCloudChannelPage() {
       await api(`/whatsapp-cloud/channels/${channel.id}`, { method: "DELETE" });
       const rest = lines.filter((line) => line.id !== channel.id);
       setLines(rest); setRemoving(false);
-      if (rest.length) show(null, client); else startAdding(client);
+      if (rest.length) show(null); else startAdding();
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
 
-  if (loading || !client) return <div className="page-loading"><LoaderCircle className="spin" /> {t("clients.whatsappCloud.loading")}</div>;
+  if (loading) return <div className="page-loading"><LoaderCircle className="spin" /> {t("clients.whatsappCloud.loading")}</div>;
   const state = stateKeys[channel?.status || "disconnected"];
   const canConnect = Boolean(agentId && phoneNumberId.trim() && !busy);
   const nameOf = (line: WhatsAppCloudChannel) => accountName(line, t("clients.whatsappCloud.numberFallback", { n: lines.indexOf(line) + 1 }));
@@ -149,13 +148,13 @@ export default function WhatsAppCloudChannelPage() {
     stateLabel: t(stateKeys[line.status].label),
   }));
   const connectedCount = rows.filter((row) => row.state === "connected").length;
-  return <div className="page wa-page">
+  return <div className="wa-page">
     {listView || !lines.length
-      ? <Link href={`/clients/${client.id}?tab=channels`} className="back-link"><ArrowLeft size={17} /> {t("clients.whatsapp.back", { name: client.name })}</Link>
-      : <button type="button" className="back-link" onClick={() => show(null, client)}><ArrowLeft size={17} /> {t("clients.whatsappCloud.title")}</button>}
+      ? <button type="button" className="back-link" onClick={onBack}><ArrowLeft size={17} /> {t("clients.detail.channelsBack")}</button>
+      : <button type="button" className="back-link" onClick={() => show(null)}><ArrowLeft size={17} /> {t("clients.whatsappCloud.title")}</button>}
     <header className="wa-header"><div className="wa-mark"><BadgeCheck size={26} /></div><div><span>{listView ? t("clients.whatsapp.channelOf", { name: client.name }) : `${t("clients.whatsappCloud.title")} · ${client.name}`}</span><h1>{channel ? accountTitle(channel, nameOf(channel)) : adding ? t("clients.whatsappCloud.newNumber") : t("clients.whatsappCloud.title")}</h1><p>{t("clients.whatsappCloud.headerCopy")}</p></div>{channel && <div className={`wa-state ${channel.status}`}>{channel.status === "connected" ? <CheckCircle2 size={17} /> : channel.status === "error" ? <CircleAlert size={17} /> : <RefreshCw size={17} />} {t(state.label)}</div>}</header>
     {error && <Alert>{error}</Alert>}
-    {listView && <AccountList rows={rows} summary={lines.length === 1 ? t("clients.detail.channelNumberOne") : t("clients.detail.channelNumbers", { count: lines.length, connected: connectedCount })} addLabel={t("clients.detail.addNumber")} openLabel={t("clients.detail.configure")} onOpen={(lineId) => show(lines.find((line) => line.id === lineId) ?? null, client)} onAdd={() => startAdding(client)} />}
+    {listView && <AccountList rows={rows} summary={lines.length === 1 ? t("clients.detail.channelNumberOne") : t("clients.detail.channelNumbers", { count: lines.length, connected: connectedCount })} addLabel={t("clients.detail.addNumber")} openLabel={t("clients.detail.configure")} onOpen={(lineId) => show(lines.find((line) => line.id === lineId) ?? null)} onAdd={startAdding} />}
     {!listView && <div className="wa-layout"><main>
       <section className="wa-panel"><div className="wa-panel-head"><span><Bot size={19} /></span><div><h2>{t("clients.whatsapp.assignedAgent")}</h2><p>{t("clients.whatsapp.assignedAgentCopy")}</p></div></div><div className="wa-agent-row"><label>{t("clients.whatsapp.agentToRespond")}<select value={agentId} onChange={(event) => setAgentId(event.target.value)} disabled={busy}><option value="">{t("clients.whatsapp.selectAgent")}</option>{client.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}{agent.is_active ? "" : t("clients.whatsapp.inactiveSuffix")}</option>)}</select></label><label>{t("clients.whatsapp.lineName")}<input value={label} maxLength={80} placeholder={t("clients.whatsapp.lineNamePlaceholder")} onChange={(event) => setLabel(event.target.value)} disabled={busy} /></label></div><p className="social-meta">{t("clients.whatsapp.lineNameHint")}</p>{!client.agents.length && <Alert>{t("clients.whatsapp.needsAgent")}</Alert>}</section>
       <section className="wa-panel"><div className="wa-panel-head"><span><KeyRound size={19} /></span><div><h2>{t("clients.whatsappCloud.credentialsTitle")}</h2><p>{t("clients.whatsappCloud.credentialsCopy")} <a href={t("clients.whatsappCloud.guideUrl")} target="_blank" rel="noreferrer">{t("clients.whatsappCloud.guideLink")}</a>.</p></div></div>

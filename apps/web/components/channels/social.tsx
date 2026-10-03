@@ -1,24 +1,22 @@
 "use client";
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Bot, CheckCircle2, ChevronDown, CircleAlert, Facebook, Instagram, History, KeyRound, LoaderCircle, Plug, Power, ShieldCheck, Webhook } from "lucide-react";
 import { Alert, Modal } from "@/components/ui";
 import { AccountList } from "@/components/account-list";
 import { api, ApiError, messageFrom } from "@/lib/api";
-import { accountName, accountTitle, rememberLine, requestedLine } from "@/lib/channels";
+import { accountName, accountTitle, rememberLine, requestedLine, type ChannelSetupProps } from "@/lib/channels";
 import { useLanguage } from "@/lib/i18n";
 import type { Client, SocialChannel, SocialConfig, SocialHistoryJob, SocialPending, SocialProvider } from "@/types";
 
-/** A client's accounts on one provider. The page opens on the list of them;
- * one is picked from there (or named by `?line=<id>`) and the panels below
- * then configure that one. `?new`, or an empty list, starts another, through
- * the same authorization or manual credentials. */
-export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
+/** A client's accounts on one provider, inside the client's Channels tab.
+ * The view opens on the list of them; one is picked from there (or named by
+ * `?line=<id>`) and the panels below then configure that one. `?new`, or an
+ * empty list, starts another, through the same authorization or manual
+ * credentials. The provider's dialog returns to this same address. */
+export function SocialChannelSetup({ provider, client, onBack }: ChannelSetupProps & { provider: SocialProvider }) {
   const { t, lang } = useLanguage();
-  const { id } = useParams<{ id: string }>();
-  const [client, setClient] = useState<Client | null>(null);
+  const id = client.id;
   const [config, setConfig] = useState<SocialConfig[SocialProvider] | null>(null);
   const [lines, setLines] = useState<SocialChannel[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -72,9 +70,9 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
     setPending(null); setHistoryJob(null); setError(""); setSaved(false);
   }, []);
 
-  const startAdding = useCallback((owner: Client | null) => {
+  const startAdding = useCallback((owner: Client) => {
     setAdding(true); setSelectedId(null); rememberLine(null);
-    setAgentId(owner?.agents[0]?.id || ""); setLabel(""); setAccountId(""); setAppId(""); setHumanAgent(false);
+    setAgentId(owner.agents[0]?.id || ""); setLabel(""); setAccountId(""); setAppId(""); setHumanAgent(false);
     setAccessToken(""); setAppSecret(""); setError(""); setSaved(false);
   }, []);
 
@@ -91,8 +89,7 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const [owner, setup, items, selection] = await Promise.all([
-        api<Client>(`/clients/${id}`),
+      const [setup, items, selection] = await Promise.all([
         api<SocialConfig>("/social/config"),
         api<SocialChannel[]>(`/social/${provider}/clients/${id}/channels`),
         api<SocialPending>(`/social/${provider}/oauth/pending?client_id=${encodeURIComponent(id)}`).catch((err) => {
@@ -100,11 +97,11 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
           throw err;
         }),
       ]);
-      setClient(owner); setConfig(setup[provider]); setLines(items); setPending(selection);
+      setConfig(setup[provider]); setLines(items); setPending(selection);
       const wanted = requestedLine();
       const line = items.find((item) => item.id === wanted.line) ?? null;
       // A pending authorization belongs to the account being added: stay on it.
-      if (wanted.adding || selection || (!line && !items.length)) startAdding(owner);
+      if (wanted.adding || selection || (!line && !items.length)) startAdding(client);
       else if (line) { applyChannel(line); await loadHistory(line.id); }
       else showList();
       setAccountChoice(selection?.accounts.length === 1 ? selection.accounts[0].id : "");
@@ -119,7 +116,7 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
       }
     } catch (err) { setError(messageFrom(err)); }
     finally { setLoading(false); }
-  }, [id, provider, applyChannel, startAdding, showList, loadHistory]);
+  }, [id, client, provider, applyChannel, startAdding, showList, loadHistory]);
   useEffect(() => { void load(); }, [load]);
   const importing = historyJob?.status === "pending" || historyJob?.status === "processing";
   const channelId = channel?.id ?? null;
@@ -209,7 +206,7 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
   }
 
   if (loading) return <div className="page-loading"><LoaderCircle className="spin" /> {t("social.loading")}</div>;
-  if (!client || !config) return <div className="page"><Alert>{error || t("social.loadFailed")}</Alert><button className="button secondary" onClick={load}>{t("social.retry")}</button></div>;
+  if (!config) return <div className="wa-page"><Alert>{error || t("social.loadFailed")}</Alert><button className="button secondary" onClick={load}>{t("social.retry")}</button></div>;
   const connected = channel?.status === "connected" && channel.is_enabled;
   const statusLabel = connected ? "social.connected" : channel?.status === "error" ? "social.error" : channel?.status === "expired" ? "social.expired" : "social.disconnected";
   const manualAvailable = config.source === "operator" && config.manual_available;
@@ -229,9 +226,9 @@ export function SocialChannelSetup({ provider }: { provider: SocialProvider }) {
   });
   const connectedCount = rows.filter((row) => row.state === "connected").length;
 
-  return <div className="page wa-page social-page">
+  return <div className="wa-page social-page">
     {listView || !lines.length
-      ? <Link href={`/clients/${id}?tab=channels`} className="back-link"><ArrowLeft size={17} /> {t("clients.whatsapp.back", { name: client.name })}</Link>
+      ? <button type="button" className="back-link" onClick={onBack}><ArrowLeft size={17} /> {t("clients.detail.channelsBack")}</button>
       : <button type="button" className="back-link" onClick={showList}><ArrowLeft size={17} /> {t(`social.${provider}.title`)}</button>}
     <header className="wa-header"><div className={`wa-mark ${provider}`}><Icon size={26} /></div><div><span>{listView ? t("clients.whatsapp.channelOf", { name: client.name }) : `${t(`social.${provider}.title`)} · ${client.name}`}</span><h1>{channel ? accountTitle(channel, nameOf(channel)) : adding ? t("social.newAccount") : t(`social.${provider}.title`)}</h1><p>{t(`social.${provider}.description`)}</p></div>{channel && <div className={`wa-state ${connected ? "connected" : channel.status === "error" ? "error" : "disconnected"}`}>{connected ? <CheckCircle2 size={17} /> : <CircleAlert size={17} />} {t(statusLabel)}</div>}</header>
     {error && <Alert>{error}</Alert>}

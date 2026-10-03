@@ -11,13 +11,15 @@ import { TeamsView } from "./teams";
 import { TemplatesView } from "./templates";
 
 type Tab = "preferences" | "teams" | "tags" | "canned" | "templates";
+const TABS: Tab[] = ["preferences", "teams", "tags", "canned", "templates"];
 
 /** The portal's settings, in tabs: the person's own preferences first, then
  * what the business configures. A management tab shows only to someone whose
  * role can manage it; an agent sees Preferences and nothing else. */
-export function SettingsView({ slug, templatesSupported, can }: { slug: string; templatesSupported: boolean; can: (key: string) => boolean }) {
+export function SettingsView({ slug, templatesSupported, can, tab: initialTab, onTab }: { slug: string; templatesSupported: boolean; can: (key: string) => boolean; tab?: string; onTab?: (tab: Tab) => void }) {
   const t = useT();
-  const [tab, setTab] = useState<Tab>("preferences");
+  const [tab, setTabState] = useState<Tab>(initialTab && (TABS as string[]).includes(initialTab) ? initialTab as Tab : "preferences");
+  const setTab = (next: Tab) => { setTabState(next); onTab?.(next); };
   const base = `/portal/${slug}`;
   // The same tabs as before; SectionTabs keeps the strip on a desktop and
   // pages through them on a phone. A tab the role cannot manage is left out.

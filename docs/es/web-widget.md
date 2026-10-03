@@ -12,7 +12,7 @@ El widget solo funciona mientras el canal está activado y el cliente está acti
 
 ## Configurarlo y obtener el fragmento
 
-1. Abre el cliente, ve a **Canales** y elige **Chat web** (o usa la página de Canales y elige el cliente).
+1. Abre el cliente, ve a **Canales** y elige **Chat web**.
 2. Elige el agente que responde, define el saludo, el color y la posición (izquierda o derecha), y deja activado **Activar chat web**.
 3. Guarda y copia el fragmento de inserción desde la sección **Código de inserción**. Un enlace de **Previsualizar** abre el widget de forma independiente.
 
