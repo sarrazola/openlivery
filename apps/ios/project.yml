@@ -1,0 +1,77 @@
+# XcodeGen specification for the native iOS inbox.
+#
+# The Xcode project is generated, never committed: `xcodegen generate` from this
+# directory writes Inbox.xcodeproj. Identity (name, bundle identifier, team,
+# version, color, hosted preset) comes from Brand/Brand.xcconfig, so a publisher
+# swaps that one file and the icon set and never edits this spec or the sources.
+#
+# Settings that must come from the brand file are referenced here as $(BRAND_*)
+# variables instead of being written into the project: a value written into the
+# project would take precedence over the xcconfig and silently pin the example
+# identity.
+name: Inbox
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+configs:
+  Debug: debug
+  Release: release
+configFiles:
+  Debug: Brand/Brand.xcconfig
+  Release: Brand/Brand.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    GENERATE_INFOPLIST_FILE: NO
+    TARGETED_DEVICE_FAMILY: "1,2"
+    SUPPORTS_MACCATALYST: NO
+    CODE_SIGN_STYLE: Automatic
+  configs:
+    Debug:
+      APS_ENVIRONMENT: development
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+    Release:
+      APS_ENVIRONMENT: production
+targets:
+  Inbox:
+    type: application
+    platform: iOS
+    sources:
+      - path: Inbox
+        excludes:
+          - "**/.DS_Store"
+    entitlements:
+      path: Inbox/Inbox.entitlements
+      properties:
+        aps-environment: $(APS_ENVIRONMENT)
+    settings:
+      base:
+        INFOPLIST_FILE: Inbox/Info.plist
+        PRODUCT_NAME: $(BRAND_PRODUCT_NAME)
+        # The Swift module keeps one name so the tests import it whatever the brand.
+        PRODUCT_MODULE_NAME: Inbox
+        PRODUCT_BUNDLE_IDENTIFIER: $(BRAND_BUNDLE_IDENTIFIER)
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    scheme:
+      testTargets:
+        - InboxTests
+      gatherCoverageData: false
+  InboxTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: InboxTests
+    dependencies:
+      - target: Inbox
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: $(BRAND_BUNDLE_IDENTIFIER).tests
+        # The host app is named after the brand, not the target.
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/$(BRAND_PRODUCT_NAME).app/$(BRAND_PRODUCT_NAME)
+        BUNDLE_LOADER: $(TEST_HOST)
