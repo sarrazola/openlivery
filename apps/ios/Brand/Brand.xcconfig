@@ -1,0 +1,40 @@
+// The identity this build is compiled with.
+//
+// Copy this file when publishing your own app and replace every value: the
+// example identifiers below belong to nobody and a store rejects them. Nothing in
+// this repository points at a hosted service; a publisher that runs one fills in
+// the BRAND_HOSTED_* values and the sign-in screen offers it as a choice.
+//
+// Addresses are written without a scheme because "//" starts a comment in an
+// xcconfig file. The app prepends https:// to every one of them.
+
+BRAND_PRODUCT_NAME = Inbox
+BRAND_BUNDLE_IDENTIFIER = com.example.inbox
+BRAND_URL_SCHEME = inboxapp
+MARKETING_VERSION = 0.2.0
+CURRENT_PROJECT_VERSION = 1
+DEVELOPMENT_TEAM =
+
+// Six hex digits, no leading "#": only the sign-in screen uses it. Once signed in
+// the workspace's own color arrives with the session.
+BRAND_PRIMARY_COLOR = 2f3a4a
+
+// Pre-fills the server field. Host and optional path, no scheme.
+BRAND_DEFAULT_SERVER =
+
+// A preset for a service the publisher runs. Both values empty means the app
+// only asks for a server address, which is what a self-hosted install wants.
+// The template must contain {workspace}, e.g. {workspace}.example.com
+BRAND_HOSTED_LABEL =
+BRAND_HOSTED_SERVER_TEMPLATE =
+// A directory the service runs so people sign in with an e-mail alone: the
+// app POSTs {email, password} there and receives the accounts it opens, each
+// with its own server. Host and path, no scheme. Empty means the sign-in
+// screen asks for the workspace name instead.
+BRAND_HOSTED_SIGN_IN =
+
+// Shown on the sign-in and privacy screens when present. Host and path, no scheme.
+BRAND_PRIVACY_POLICY_URL_EN =
+BRAND_PRIVACY_POLICY_URL_ES =
+BRAND_SUPPORT_URL_EN =
+BRAND_SUPPORT_URL_ES =

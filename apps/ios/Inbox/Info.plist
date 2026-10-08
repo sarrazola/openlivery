@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>es</string>
+	</array>
+	<key>CFBundleDisplayName</key>
+	<string>$(BRAND_PRODUCT_NAME)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(BRAND_URL_SCHEME)</string>
+			</array>
+		</dict>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+		<key>UIImageName</key>
+		<string>LaunchIcon</string>
+	</dict>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Plain HTTP only to local-network hosts, for a development server on
+		     the same machine or LAN. Any other address must be HTTPS. -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Lets you take a photo to send into a conversation.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Lets you record a voice note to send into a conversation.</string>
+	<key>Brand</key>
+	<dict>
+		<key>PrimaryColor</key>
+		<string>$(BRAND_PRIMARY_COLOR)</string>
+		<key>DefaultServer</key>
+		<string>$(BRAND_DEFAULT_SERVER)</string>
+		<key>HostedLabel</key>
+		<string>$(BRAND_HOSTED_LABEL)</string>
+		<key>HostedServerTemplate</key>
+		<string>$(BRAND_HOSTED_SERVER_TEMPLATE)</string>
+		<key>HostedSignIn</key>
+		<string>$(BRAND_HOSTED_SIGN_IN)</string>
+		<key>PrivacyPolicyURL_en</key>
+		<string>$(BRAND_PRIVACY_POLICY_URL_EN)</string>
+		<key>PrivacyPolicyURL_es</key>
+		<string>$(BRAND_PRIVACY_POLICY_URL_ES)</string>
+		<key>SupportURL_en</key>
+		<string>$(BRAND_SUPPORT_URL_EN)</string>
+		<key>SupportURL_es</key>
+		<string>$(BRAND_SUPPORT_URL_ES)</string>
+	</dict>
+</dict>
+</plist>
