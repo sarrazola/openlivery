@@ -46,6 +46,15 @@ def _portal_with_cloud_line(client: TestClient):
     return customer
 
 
+def test_the_category_meta_moved_a_template_from_is_kept():
+    moved = normalize({
+        "id": "9", "name": "offer", "language": "es", "category": "MARKETING", "previous_category": "UTILITY",
+        "status": "APPROVED", "components": [{"type": "BODY", "text": "Hola"}],
+    })
+    assert moved["category"] == "MARKETING" and moved["previous_category"] == "UTILITY"
+    assert APPROVED["previous_category"] is None
+
+
 def test_a_template_is_deleted_through_the_business_account(authenticated_client: TestClient, monkeypatch):
     client = authenticated_client
     customer = _portal_with_cloud_line(client)

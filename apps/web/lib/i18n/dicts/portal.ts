@@ -39,6 +39,8 @@ const en = {
   templates: {
     intro: "Approved templates are the only way to write to someone first, or after 24 hours without a reply from them. Meta reviews each one.",
     new: "New template",
+    refresh: "Refresh",
+    recategorized: "Meta moved it from {from}",
     newTitle: "New template",
     newDescription: "Meta reviews it before it can be sent. Approval usually takes minutes, sometimes a day.",
     emptyTitle: "No templates yet",
@@ -618,6 +620,8 @@ const es: typeof en = {
   templates: {
     intro: "Las plantillas aprobadas son la única forma de escribirle primero a alguien, o después de 24 horas sin respuesta. Meta revisa cada una.",
     new: "Nueva plantilla",
+    refresh: "Actualizar",
+    recategorized: "Meta la cambió desde {from}",
     newTitle: "Nueva plantilla",
     newDescription: "Meta la revisa antes de que se pueda enviar. Suele tardar minutos, a veces un día.",
     emptyTitle: "Aún no hay plantillas",

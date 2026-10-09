@@ -633,6 +633,7 @@ class TemplateOut(BaseModel):
     name: str
     language: str
     category: str
+    previous_category: str | None = None
     status: str
     parameter_format: str = "POSITIONAL"
     header: TemplateHeaderOut | None = None

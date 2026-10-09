@@ -300,6 +300,7 @@ export type Template = {
   name: string;
   language: string;
   category: string;
+  previous_category?: string | null;
   status: "APPROVED" | "PENDING" | "REJECTED" | string;
   parameter_format: "NAMED" | "POSITIONAL" | string;
   header: TemplateHeader | null;

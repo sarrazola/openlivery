@@ -100,10 +100,21 @@ def client_channel(db: Session, client: Client, channel_id: uuid.UUID) -> WhatsA
     return channel
 
 
+# Webhooks carry notices: reminders, confirmations, updates. Marketing goes
+# out through its own flow, with its own consent rules, never by webhook.
+WEBHOOK_CATEGORY = "UTILITY"
+
+
+def webhook_can_send(template: dict) -> bool:
+    """Approved, and of the one category a webhook sends."""
+    return template["status"] == "APPROVED" and template["category"] == WEBHOOK_CATEGORY
+
+
 async def approved_template(db: Session, client: Client, channel: WhatsAppCloudChannel, name: str, language: str) -> tuple[dict, str]:
     """The template as the business account has it now, with the token to
-    send it, or 409 when it is not approved in that language. Read on every
-    send: a template can be paused or edited after the webhook was created."""
+    send it, or 409 when it is not approved in that language or is not a
+    utility template. Read on every send: a template can be paused, edited
+    or moved to another category by Meta after the webhook was created."""
     token, waba_id = template_credentials(db, client, channel)
     found = next(
         (t for t in await list_templates(token, waba_id)
@@ -112,6 +123,11 @@ async def approved_template(db: Session, client: Client, channel: WhatsAppCloudC
     )
     if not found:
         raise HTTPException(status_code=409, detail="That template is not approved for this language")
+    if not webhook_can_send(found):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Webhooks send utility templates only; Meta has this one as {found['category'].lower()}",
+        )
     return found, token
 
 
