@@ -106,9 +106,20 @@ final class PushSession {
         }
     }
 
+    /// A Debug build is signed for Apple's development (sandbox) push gateway,
+    /// which only honours tokens issued there. The server passes the hint on to
+    /// whatever delivers, so a development install can be reached at all.
+    static var platform: String {
+        #if DEBUG
+        return "ios-sandbox"
+        #else
+        return "ios"
+        #endif
+    }
+
     private func register(_ token: String) async {
         do {
-            _ = try await PortalAPI.registerDevice(server, session, DeviceRegistration(token: token, provider: session.push.provider, platform: "ios"))
+            _ = try await PortalAPI.registerDevice(server, session, DeviceRegistration(token: token, provider: session.push.provider, platform: PushSession.platform))
             if active { registered.insert(token) }
         } catch {
             // A person can revoke permission at any time; not worth an error on screen.
