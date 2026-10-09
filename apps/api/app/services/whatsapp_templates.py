@@ -332,6 +332,8 @@ def normalize(raw: dict) -> dict:
         "name": raw.get("name") or "",
         "language": raw.get("language") or "",
         "category": (raw.get("category") or "").upper(),
+        # Set by Meta when its review moved the template to another category.
+        "previous_category": (raw.get("previous_category") or "").upper() or None,
         "status": (raw.get("status") or "").upper(),
         "parameter_format": (raw.get("parameter_format") or parameter_format(names + (header or {}).get("parameters", []))).upper(),
         "header": header,
@@ -441,7 +443,7 @@ async def list_templates(access_token: str, waba_id: str) -> list[dict]:
         "GET",
         graph_url(
             f"{waba_id}/message_templates"
-            "?fields=id,name,status,category,language,parameter_format,components,rejected_reason&limit=200"
+            "?fields=id,name,status,category,previous_category,language,parameter_format,components,rejected_reason&limit=200"
         ),
         access_token,
     )

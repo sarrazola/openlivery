@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.models import Conversation, Message
 from app.routers import whatsapp_cloud_webhook as inbound_router
+from app.routers import template_webhooks as webhooks_router
 from app.services import ai as ai_service
 from app.services import template_webhooks as service
 from app.services import whatsapp as whatsapp_service
@@ -38,6 +39,10 @@ CONFIRM = normalize({
         ]},
     ],
 })
+PROMO = normalize({
+    "id": "4", "name": "spring_sale", "language": "es", "category": "MARKETING", "status": "APPROVED",
+    "components": [{"type": "BODY", "text": "Hola! Esta semana todo con descuento."}],
+})
 VALUES = {"nombre": "Luna", "fecha": "martes 7", "hora": "3 pm"}
 
 
@@ -56,7 +61,7 @@ def _setup(client: TestClient, monkeypatch) -> tuple[dict, dict, dict, AsyncMock
         json={"agent_id": agent["id"], "phone_number_id": "111", "waba_id": "waba-1",
               "access_token": "meta-access-token", "app_secret": APP_SECRET},
     ).json()
-    monkeypatch.setattr(service, "list_templates", AsyncMock(return_value=[REMINDER, PENDING, CONFIRM]))
+    monkeypatch.setattr(service, "list_templates", AsyncMock(return_value=[REMINDER, PENDING, CONFIRM, PROMO]))
     sent = AsyncMock(side_effect=[f"wamid.t{n}" for n in range(1, 10)])
     monkeypatch.setattr(service, "send_template", sent)
     return customer, agent, channel, sent
@@ -287,3 +292,32 @@ def test_a_templates_buttons_stay_on_the_message_and_a_tap_answers_it(authentica
     with SessionLocal() as db:
         answer = db.query(Message).filter(Message.external_message_id == "wamid.in-1").one()
         assert answer.content == "Necesito cambiarla" and answer.quoted_message_id == uuid.UUID(result["message_id"])
+
+
+def test_webhooks_send_utility_templates_only(authenticated_client: TestClient, monkeypatch):
+    """A webhook carries notices. An approved marketing template is not
+    offered, cannot be bound, and stops sending if Meta moves the bound
+    template to marketing after the fact."""
+    client = authenticated_client
+    customer, _agent, channel, sent = _setup(client, monkeypatch)
+    base = f"/api/clients/{customer['id']}/webhooks"
+
+    # The picker reads the business account through the router's own import.
+    monkeypatch.setattr(webhooks_router, "list_templates", service.list_templates)
+    offered = client.get(f"{base}/templates", params={"channel_id": channel["id"]}).json()
+    assert sorted(t["name"] for t in offered) == ["appointment_reminder", "confirm_visit"]
+
+    refused = client.post(base, json={"name": "Sale", "channel_id": channel["id"], "template_name": "spring_sale", "template_language": "es"})
+    assert refused.status_code == 409 and "utility" in refused.json()["detail"]
+    webhook = _create(client, customer, channel)
+    assert client.patch(f"{base}/{webhook['id']}", json={"template_name": "spring_sale"}).status_code == 409
+
+    # Meta recategorizes the reminder during a later review: the next call
+    # stops with the reason instead of going out as marketing.
+    moved = dict(REMINDER, category="MARKETING", previous_category="UTILITY")
+    monkeypatch.setattr(service, "list_templates", AsyncMock(return_value=[moved, PENDING, CONFIRM, PROMO]))
+    url, auth = _hook(webhook)
+    client.cookies.clear()
+    stopped = client.post(url, headers=auth, json={"phone": "573001112233", "variables": VALUES})
+    assert stopped.status_code == 409 and "marketing" in stopped.json()["detail"]
+    assert sent.await_count == 0

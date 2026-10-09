@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, DragEvent, FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bold, CheckCircle2, CircleHelp, Clock, Code, Copy, ExternalLink, FileText, Image as ImageIcon, Italic, LoaderCircle, MapPin, Phone, Plus, Reply, Search, Strikethrough, Trash2, Type, Upload, Video, X, XCircle } from "lucide-react";
+import { Bold, CheckCircle2, CircleHelp, Clock, Code, Copy, ExternalLink, FileText, Image as ImageIcon, Italic, LoaderCircle, MapPin, Phone, Plus, RefreshCw, Reply, Search, Strikethrough, Trash2, Type, Upload, Video, X, XCircle } from "lucide-react";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { Combobox } from "@/components/combobox";
 import { TEMPLATE_VARIABLE, WhatsAppPreview, templateParameters, type PreviewHeader } from "@/components/whatsapp-preview";
@@ -203,7 +203,10 @@ export function TemplatesView({ base, supported, canManage = true }: { base: str
     <div className="portal-templates">
       <div className="portal-templates-toolbar">
         <p>{t("portal.templates.intro")}</p>
-        {canManage && <button className="button primary small" onClick={() => setCreating(true)}><Plus size={15} /> {t("portal.templates.new")}</button>}
+        <div className="portal-templates-actions">
+          <button className="button secondary small" onClick={() => load()} disabled={loading} title={t("portal.templates.refresh")}><RefreshCw size={15} className={loading ? "spin" : undefined} /> {t("portal.templates.refresh")}</button>
+          {canManage && <button className="button primary small" onClick={() => setCreating(true)}><Plus size={15} /> {t("portal.templates.new")}</button>}
+        </div>
       </div>
       {error && !creating && !removing && <Alert>{error}</Alert>}
       {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div>
@@ -241,7 +244,7 @@ export function TemplatesView({ base, supported, canManage = true }: { base: str
                   {item.status === "REJECTED" && item.rejected_reason && <small className="danger">{item.rejected_reason}</small>}
                 </td>
                 <td title={templateLanguageLabel(item.language)}>{item.language}</td>
-                <td>{item.category.toLowerCase()}</td>
+                <td>{item.category.toLowerCase()}{item.previous_category && <small className="template-moved">{t("portal.templates.recategorized", { from: item.previous_category.toLowerCase() })}</small>}</td>
                 <td>{statusBadge(item.status)}</td>
                 <td className="portal-template-actions">{canManage && <button className="icon-button danger" onClick={() => setRemoving(item)} title={t("portal.templates.delete")} aria-label={t("portal.templates.delete")}><Trash2 size={15} /></button>}</td>
               </tr>)}</tbody>

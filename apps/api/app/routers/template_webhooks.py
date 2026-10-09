@@ -16,7 +16,9 @@ from ..schemas import (
     TemplateWebhookResult,
     TemplateWebhookUpdate,
 )
-from ..services.template_webhooks import approved_template, client_channel, deliver, new_secret, secret_matches, webhook_out
+from ..services.template_webhooks import (
+    approved_template, client_channel, deliver, new_secret, secret_matches, webhook_can_send, webhook_out,
+)
 from ..services.whatsapp_templates import list_templates, template_credentials
 from .clients import _client
 
@@ -47,10 +49,10 @@ def list_webhooks(client_id: uuid.UUID, db: Session = Depends(get_db), user: Use
 async def channel_templates(
     client_id: uuid.UUID, channel_id: uuid.UUID = Query(), db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    """The approved templates of one number's business account: what a webhook on it can send."""
+    """The approved utility templates of one number's business account: what a webhook on it can send."""
     client = _client(db, user, client_id)
     token, waba_id = template_credentials(db, client, client_channel(db, client, channel_id))
-    return [template for template in await list_templates(token, waba_id) if template["status"] == "APPROVED"]
+    return [template for template in await list_templates(token, waba_id) if webhook_can_send(template)]
 
 
 @router.post("", response_model=TemplateWebhookOut, status_code=status.HTTP_201_CREATED)

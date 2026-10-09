@@ -858,6 +858,8 @@ textarea { line-height: 1.55; }
 .portal-templates { padding: 4px 0; }
 .portal-templates-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .portal-templates-toolbar p { margin: 0; max-width: 64ch; color: var(--muted); }
+.portal-templates-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.template-moved { display: block; margin-top: 2px; font-size: 11.5px; color: var(--amber-text); }
 .portal-templates-filters { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .template-search { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 220px; max-width: 380px; height: 38px; padding: 0 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 .template-search svg { flex: 0 0 auto; }
