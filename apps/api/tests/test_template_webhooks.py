@@ -26,6 +26,18 @@ PENDING = normalize({
     "id": "2", "name": "promo", "language": "es", "category": "MARKETING", "status": "PENDING",
     "components": [{"type": "BODY", "text": "Promo!"}],
 })
+CONFIRM = normalize({
+    "id": "3", "name": "confirm_visit", "language": "es", "category": "UTILITY", "status": "APPROVED",
+    "parameter_format": "NAMED",
+    "components": [
+        {"type": "BODY", "text": "Hola {{nombre}}, te esperamos el {{fecha}}."},
+        {"type": "BUTTONS", "buttons": [
+            {"type": "QUICK_REPLY", "text": "Sí, ahí estaré"},
+            {"type": "QUICK_REPLY", "text": "Necesito cambiarla"},
+            {"type": "URL", "text": "Ver detalles", "url": "https://example.com/visit"},
+        ]},
+    ],
+})
 VALUES = {"nombre": "Luna", "fecha": "martes 7", "hora": "3 pm"}
 
 
@@ -44,7 +56,7 @@ def _setup(client: TestClient, monkeypatch) -> tuple[dict, dict, dict, AsyncMock
         json={"agent_id": agent["id"], "phone_number_id": "111", "waba_id": "waba-1",
               "access_token": "meta-access-token", "app_secret": APP_SECRET},
     ).json()
-    monkeypatch.setattr(service, "list_templates", AsyncMock(return_value=[REMINDER, PENDING]))
+    monkeypatch.setattr(service, "list_templates", AsyncMock(return_value=[REMINDER, PENDING, CONFIRM]))
     sent = AsyncMock(side_effect=[f"wamid.t{n}" for n in range(1, 10)])
     monkeypatch.setattr(service, "send_template", sent)
     return customer, agent, channel, sent
@@ -64,12 +76,16 @@ def _create(client: TestClient, customer: dict, channel: dict, **overrides) -> d
 
 
 def _contact_writes(client: TestClient, channel: dict, text: str, wamid: str, phone: str = "573001112233"):
+    return _contact_sends(client, channel, {"from": phone, "id": wamid, "type": "text", "text": {"body": text}}, phone)
+
+
+def _contact_sends(client: TestClient, channel: dict, message: dict, phone: str = "573001112233"):
     payload = {
         "object": "whatsapp_business_account",
         "entry": [{"id": "waba-1", "changes": [{"field": "messages", "value": {
             "messaging_product": "whatsapp", "metadata": {"phone_number_id": "111"},
             "contacts": [{"wa_id": phone, "profile": {"name": "Luna's owner"}}],
-            "messages": [{"from": phone, "id": wamid, "type": "text", "text": {"body": text}}],
+            "messages": [message],
         }}]}],
     }
     raw = json.dumps(payload).encode()
@@ -228,3 +244,46 @@ def test_a_send_meta_refuses_leaves_nothing_behind(authenticated_client: TestCli
     assert client.post(url, headers=auth, json={"phone": "573001112233", "variables": VALUES}).status_code == 502
     with SessionLocal() as db:
         assert db.query(Conversation).count() == 0 and db.query(Message).count() == 0
+
+
+def test_a_templates_buttons_stay_on_the_message_and_a_tap_answers_it(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    customer, _agent, channel, sent = _setup(client, monkeypatch)
+    url, auth = _hook(_create(client, customer, channel, name="Visit confirmation", template_name="confirm_visit"))
+    client.cookies.clear()
+
+    called = client.post(url, headers=auth, json={"phone": "573001112233", "variables": {"nombre": "Luna", "fecha": "jueves 8"}})
+    assert called.status_code == 200, called.text
+    result = called.json()
+    assert result["text"] == "Hola Luna, te esperamos el jueves 8."
+    # Quick replies and a fixed link add nothing to the send: they are the template's.
+    assert [component["type"] for component in sent.call_args.kwargs["components"]] == ["body"]
+    with SessionLocal() as db:
+        message = db.get(Message, uuid.UUID(result["message_id"]))
+        assert message.buttons == [
+            {"type": "QUICK_REPLY", "text": "Sí, ahí estaré"},
+            {"type": "QUICK_REPLY", "text": "Necesito cambiarla"},
+            {"type": "URL", "text": "Ver detalles"},
+        ]
+        assert message.content == result["text"]
+        # The model reads which answers the contact could tap; a link is not one.
+        assert message.llm_content.startswith(result["text"])
+        assert '"Sí, ahí estaré", "Necesito cambiarla"' in message.llm_content and "Ver detalles" not in message.llm_content
+
+    # The contact taps a button: the answer arrives in its words, quoting the
+    # template, and the agent reads it next to the buttons it had offered.
+    completion = AsyncMock(return_value=ai_service.Completion(text="Claro, qué día te queda mejor?"))
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", completion)
+    monkeypatch.setattr(inbound_router, "send_text", AsyncMock(return_value="wamid.out-1"))
+    monkeypatch.setattr(whatsapp_service, "mark_read_with_typing", AsyncMock())
+    tap = {
+        "from": "573001112233", "id": "wamid.in-1", "type": "button",
+        "button": {"payload": "Necesito cambiarla", "text": "Necesito cambiarla"},
+        "context": {"from": "111", "id": "wamid.t1"},
+    }
+    assert _contact_sends(client, channel, tap).status_code == 200
+    turns = completion.call_args.args[4]
+    assert "Reply buttons under this message" in turns[1]["content"] and turns[2]["content"] == "Necesito cambiarla"
+    with SessionLocal() as db:
+        answer = db.query(Message).filter(Message.external_message_id == "wamid.in-1").one()
+        assert answer.content == "Necesito cambiarla" and answer.quoted_message_id == uuid.UUID(result["message_id"])

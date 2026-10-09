@@ -38,10 +38,12 @@ from .routing import route_new_conversation_by_tags
 from .whatsapp_coexistence import lock_chats
 from .whatsapp_templates import (
     list_templates,
+    message_buttons,
     rendered_text,
     send_components,
     send_template,
     template_credentials,
+    with_reply_buttons,
 )
 
 
@@ -189,6 +191,7 @@ async def deliver(db: Session, webhook: TemplateWebhook, payload: TemplateWebhoo
         button_values=payload.buttons,
     )
     text = rendered_text(template, body_values=body_values, header_value=payload.header)
+    buttons = message_buttons(template)
 
     # Two calls for the same phone wait for each other here, so they end up in
     # one conversation instead of opening two.
@@ -232,12 +235,16 @@ async def deliver(db: Session, webhook: TemplateWebhook, payload: TemplateWebhoo
         name=webhook.template_name, language=webhook.template_language, components=components,
     )
     context = payload.context.strip()
+    # The agent reads the caller's notes next to what the contact read.
+    llm_text = with_reply_buttons(text, buttons)
+    if context:
+        llm_text = _with_context(llm_text, context)
     message = Message(
         conversation_id=conversation.id,
         role="assistant",
         content=text,
-        # The agent reads the caller's notes next to what the contact read.
-        llm_content=_with_context(text, context) if context else None,
+        llm_content=llm_text if llm_text != text else None,
+        buttons=buttons,
         sender_type="ai",
         sender_name=channel.agent.name,
         external_message_id=external_id,

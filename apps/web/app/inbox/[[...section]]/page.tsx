@@ -8,6 +8,7 @@ import { MediaPanel } from "@/components/media-panel";
 import { DeliveryTicks } from "@/components/delivery-ticks";
 import { RichText } from "@/components/rich-text";
 import { GrowingTextarea } from "@/components/growing-textarea";
+import { MessageButtons } from "@/components/message-buttons";
 import { QuotedSnippet, ReactionBadge } from "@/components/message-gestures";
 import { ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
@@ -307,6 +308,7 @@ export default function InboxPage() {
                     {!grouped && <small>{message.sender_name || (message.role === "assistant" ? t("inbox.senderAgent") : t("inbox.senderVisitor"))}</small>}
                     <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={stamp} />
                     {message.content && <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}{message.role === "assistant" && isSocialChannel(selected.channel) && <DeliveryTicks status={message.delivery_status} error={message.delivery_error} />}</time></p>}
+                    <MessageButtons buttons={message.buttons} />
                     <ReactionBadge emoji={message.reaction} />
                     <ReactionBadge emoji={message.incoming_reaction} incoming />
                     {!message.content && !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}

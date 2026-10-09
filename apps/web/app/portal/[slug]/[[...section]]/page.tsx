@@ -14,6 +14,7 @@ import { MediaPanel } from "@/components/media-panel";
 import { PasswordInput } from "@/components/password-input";
 import { RichText } from "@/components/rich-text";
 import { GrowingTextarea } from "@/components/growing-textarea";
+import { MessageButtons } from "@/components/message-buttons";
 import { QuotedSnippet, ReactionBadge, ReactionPicker } from "@/components/message-gestures";
 import { DeliveryTicks } from "@/components/delivery-ticks";
 import { useToast } from "@/components/toast";
@@ -508,6 +509,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
                 </span>}
                 <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={stamp} />
                 {message.content && <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}{mine && (selected.channel === "whatsapp_cloud" || isSocialChannel(selected.channel)) && <DeliveryTicks status={message.delivery_status} error={message.delivery_error} />}</time>{mine && message.delivery_status === "failed" && message.delivery_error && <span className="msg-error">{message.delivery_error}</span>}</p>}
+                <MessageButtons buttons={message.buttons} />
                 <ReactionBadge emoji={message.reaction} />
                 <ReactionBadge emoji={message.incoming_reaction} incoming />
                 {!message.content && !hasAudio && message.attachments?.length ? <time className="msg-time bare">{stamp}</time> : null}

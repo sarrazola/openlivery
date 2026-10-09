@@ -77,12 +77,14 @@ from ..services.whatsapp_templates import (
     create_template,
     delete_template,
     list_templates,
+    message_buttons,
     read_sample,
     rendered_text,
     send_components,
     send_template,
     template_credentials,
     upload_sample,
+    with_reply_buttons,
     validate_template_name,
     window_is_open,
     window_open_until,
@@ -1672,8 +1674,8 @@ def portal_report(
     )
 
 
-async def _send_template_to(db: Session, client: Client, to: str, payload: TemplateSend, channel: WhatsAppCloudChannel | None) -> tuple[str | None, str]:
-    """Send the template from ``channel`` and return (external id, text as the person reads it)."""
+async def _send_template_to(db: Session, client: Client, to: str, payload: TemplateSend, channel: WhatsAppCloudChannel | None) -> tuple[str | None, str, list[dict] | None]:
+    """Send the template from ``channel`` and return (external id, text as the person reads it, its buttons)."""
     if channel is None:
         raise HTTPException(status_code=409, detail="This conversation's WhatsApp API number no longer exists")
     token, waba_id = template_credentials(db, client, channel)
@@ -1694,7 +1696,7 @@ async def _send_template_to(db: Session, client: Client, to: str, payload: Templ
     external_id = await send_template(
         token, channel.phone_number_id, to, name=payload.name, language=payload.language, components=components
     )
-    return external_id, rendered_text(approved, body_values=payload.variables, header_value=payload.header_value)
+    return external_id, rendered_text(approved, body_values=payload.variables, header_value=payload.header_value), message_buttons(approved)
 
 
 @router.post("/{slug}/contacts/{contact_id}/conversations", response_model=ConversationDetail, status_code=status.HTTP_201_CREATED)
@@ -1754,8 +1756,9 @@ async def portal_start_conversation(
     db.add(conversation)
     db.flush()
 
+    buttons = None
     if channel_name == "whatsapp_cloud":
-        external_message_id, text = await _send_template_to(db, client, contact.phone, payload.template, channel_row)
+        external_message_id, text, buttons = await _send_template_to(db, client, contact.phone, payload.template, channel_row)
     else:
         text = payload.text.strip()
         external_message_id = await send_channel_message(db, conversation, text)
@@ -1765,6 +1768,8 @@ async def portal_start_conversation(
             conversation_id=conversation.id,
             role="assistant",
             content=text,
+            llm_content=with_reply_buttons(text, buttons) if buttons else None,
+            buttons=buttons,
             sender_type="human",
             sender_name=sender_name,
             portal_user_id=user.id if user else None,
@@ -1799,7 +1804,7 @@ async def portal_reply_template(
     if conversation.phone_pause_until is not None:
         set_mode(db, conversation, "human")
         db.commit()
-    external_message_id, text = await _send_template_to(
+    external_message_id, text, buttons = await _send_template_to(
         db, client, conversation.external_chat_id, payload, _cloud_channel(db, client, conversation.whatsapp_cloud_channel_id)
     )
     db.add(
@@ -1807,6 +1812,8 @@ async def portal_reply_template(
             conversation_id=conversation.id,
             role="assistant",
             content=text,
+            llm_content=with_reply_buttons(text, buttons) if buttons else None,
+            buttons=buttons,
             sender_type="human",
             sender_name=sender_name,
             portal_user_id=user.id if user else None,

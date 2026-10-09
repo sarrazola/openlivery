@@ -440,6 +440,7 @@ class MessageOut(ORMModel):
     reaction: str | None = None
     incoming_reaction: str | None = None
     quoted_message_id: uuid.UUID | None = None
+    buttons: list[dict] | None = None
     created_at: datetime
     attachments: list[AttachmentOut] = []
 
