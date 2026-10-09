@@ -570,3 +570,46 @@ def test_operator_quoted_reply_on_the_cloud_channel(authenticated_client: TestCl
     outbound = reply.json()["messages"][-1]
     assert outbound["quoted_message_id"] == visitor["id"]
     assert operator_send.await_args.kwargs.get("context_message_id") == "wamid.in-1"
+
+
+def test_webhook_button_taps_arrive_as_the_customers_answer(authenticated_client: TestClient, monkeypatch):
+    """A tap on a template's quick reply, or on an interactive button or list
+    row, is the customer's message in the button's words, quoting the message
+    tapped, and the agent answers it like any text."""
+    client = authenticated_client
+    _customer, _agent, channel = _setup_channel(client)
+    completion = AsyncMock(return_value=ai_service.Completion(text="Claro, qué día te queda mejor?"))
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", completion)
+    monkeypatch.setattr(webhook_router, "send_text", AsyncMock(side_effect=["wamid.out-1", "wamid.out-2", "wamid.out-3"]))
+    monkeypatch.setattr(whatsapp_service, "mark_read_with_typing", AsyncMock())
+
+    _post_signed(client, channel["id"], _webhook_payload([{"from": "5730011", "id": "wamid.in-1", "type": "text", "text": {"body": "Hola"}}]))
+    conversation_id = client.get("/api/conversations").json()[0]["id"]
+    reminder = client.get(f"/api/conversations/{conversation_id}").json()["messages"][-1]
+
+    tap = {
+        "from": "5730011", "id": "wamid.in-2", "type": "button",
+        "button": {"payload": "Necesito cambiarla", "text": "Necesito cambiarla"},
+        "context": {"from": "111", "id": "wamid.out-1"},
+    }
+    assert _post_signed(client, channel["id"], _webhook_payload([tap])).status_code == 200
+    messages = client.get(f"/api/conversations/{conversation_id}").json()["messages"]
+    answer = next(item for item in messages if item["external_message_id"] == "wamid.in-2")
+    assert answer["sender_type"] == "visitor" and answer["content"] == "Necesito cambiarla"
+    assert answer["quoted_message_id"] == reminder["id"]
+    assert completion.await_count == 2
+    assert completion.call_args.args[4][-1]["content"] == "Necesito cambiarla"
+
+    pick = {
+        "from": "5730011", "id": "wamid.in-3", "type": "interactive",
+        "interactive": {"type": "list_reply", "list_reply": {"id": "slot-2", "title": "Jueves 4:30 pm", "description": ""}},
+    }
+    assert _post_signed(client, channel["id"], _webhook_payload([pick])).status_code == 200
+    messages = client.get(f"/api/conversations/{conversation_id}").json()["messages"]
+    assert next(item for item in messages if item["external_message_id"] == "wamid.in-3")["content"] == "Jueves 4:30 pm"
+    assert completion.await_count == 3
+
+    # A tap without a label carries nothing to answer.
+    blank = {"from": "5730011", "id": "wamid.in-4", "type": "button", "button": {"payload": "x", "text": ""}}
+    assert _post_signed(client, channel["id"], _webhook_payload([blank])).status_code == 200
+    assert completion.await_count == 3

@@ -99,7 +99,19 @@ def parse_message(message: dict, contacts: dict[str, str]) -> InboundMessage | N
             media_mime=(media.get("mime_type") or "").split(";")[0] or None,
             quoted_external_id=quoted_external_id,
         )
-    return None
+    # A tap on a button is the customer's answer, in the button's words. A
+    # template's quick reply arrives as ``button``; a button or list of an
+    # interactive message as ``interactive``. Both quote the message tapped.
+    if kind == "button":
+        label = (message.get("button") or {}).get("text") or ""
+    elif kind == "interactive":
+        interactive = message.get("interactive") or {}
+        label = (interactive.get("button_reply") or interactive.get("list_reply") or {}).get("title") or ""
+    else:
+        return None
+    if not label.strip():
+        return None
+    return InboundMessage(**base, text=label, quoted_external_id=quoted_external_id)
 
 
 def apply_incoming_reaction(db: Session, channel: WhatsAppCloudChannel, message: dict) -> None:

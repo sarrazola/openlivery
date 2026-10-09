@@ -822,6 +822,9 @@ class Message(Base):
     reaction: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # The customer's emoji reaction to this message, as reported by WhatsApp.
     incoming_reaction: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # The buttons a template message carried, as ``[{"type", "text"}]``, so the
+    # portal shows the message the way the customer saw it.
+    buttons: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Set when this reply quotes a specific earlier message (swipe-to-reply).
     quoted_message_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
