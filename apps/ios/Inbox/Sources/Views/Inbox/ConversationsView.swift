@@ -53,6 +53,9 @@ struct ConversationsView: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { Task { await store.load(server, session, reset: true) } }
             }
+            .onChange(of: Connectivity.shared.online) { _, online in
+                if online { Task { await store.load(server, session, reset: true) } }
+            }
             .onChange(of: model.inboxPath.count) { old, new in
                 if new < old { Task { await store.load(server, session, reset: true) } }
             }
@@ -475,6 +478,7 @@ final class ConversationsStore {
             if isDefaultView, !append, id == requestId {
                 let rows = items, counts = summary
                 Task.detached(priority: .utility) { SnapshotStore.save(server: server, session: session, conversations: rows, summary: counts) }
+                Task(priority: .utility) { await self.prefetchThreads(server, session) }
             }
         } catch is CancellationError {
         } catch let failure as APIError {
@@ -483,6 +487,21 @@ final class ConversationsStore {
         } catch {
             guard id == requestId else { return }
             self.error = Strings.current.list.loadFailed
+        }
+    }
+
+    private var prefetching = false
+
+    /// Fetch the newest open threads that moved since they were cached, so they
+    /// open at once and read offline even before anyone taps them.
+    private func prefetchThreads(_ server: String, _ session: Session) async {
+        guard !prefetching else { return }
+        prefetching = true
+        defer { prefetching = false }
+        let wanted = items.prefix(ThreadCache.prefetchLimit).filter { ThreadCache.updatedAt($0.id) != $0.updatedAt }
+        for item in wanted {
+            guard !Task.isCancelled, let detail = try? await PortalAPI.conversation(server, session, id: item.id) else { continue }
+            ThreadCache.save(detail)
         }
     }
 

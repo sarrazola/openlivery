@@ -28,6 +28,8 @@ final class AppModel {
     var alert: AlertContent?
 
     private var authGeneration = 0
+    /// False while a launch runs on the snapshot alone, before the server has answered.
+    private var sessionConfirmed = false
     private var pushSession: PushSession?
     private var pushKey: String?
     private var signingOut = false
@@ -75,6 +77,7 @@ final class AppModel {
             privacyApproved = approved
             privacyChecking = false
             screen = approved ? .main : .privacy
+            sessionConfirmed = true
             syncPush()
             processPendingNotification()
         } catch let error as APIError where error.isUnauthorized {
@@ -82,6 +85,7 @@ final class AppModel {
             if let shown = session { client.setSessionAccess(shown, false) }
             try? SessionStore.clear()
             SnapshotStore.clear()
+            ThreadCache.clear()
             session = nil
             server = ""
             privacyApproved = false
@@ -107,6 +111,7 @@ final class AppModel {
         inboxPath = []
         contactsPath = []
         screen = approved ? .main : .privacy
+        sessionConfirmed = true
         syncPush()
     }
 
@@ -145,6 +150,7 @@ final class AppModel {
             await stopPush()
             try SessionStore.clear()
             SnapshotStore.clear()
+            ThreadCache.clear()
             ComposerDrafts.shared.clear()
             LocalAlerts.shared.reset()
             authGeneration += 1
@@ -194,6 +200,18 @@ final class AppModel {
             client.setSessionAccess(current, true)
             privacyChecking = false
         }
+        verifySession(current, keepShowing: keepShowing)
+    }
+
+    /// The network is back: a launch that ran on the snapshot alone now confirms
+    /// its session with the server, without taking the inbox off the screen.
+    func connectivityChanged(_ online: Bool) {
+        guard online, let current = session, !sessionConfirmed, screen == .main, !signingOut else { return }
+        authGeneration += 1
+        verifySession(current, keepShowing: true)
+    }
+
+    private func verifySession(_ current: Session, keepShowing: Bool) {
         let generation = authGeneration
         Task {
             do {
@@ -205,6 +223,7 @@ final class AppModel {
                 session = next
                 privacyApproved = approved
                 privacyChecking = false
+                sessionConfirmed = true
                 if !approved { screen = .privacy }
                 else if screen == .reconnect { screen = .main }
                 syncPush()

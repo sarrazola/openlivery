@@ -55,8 +55,11 @@ xcodebuild -project Inbox.xcodeproj -scheme Inbox \
   returns; the acceptance is stored as a fingerprint of that disclosure, so a
   new destination or version asks again.
 - Drafts live in memory for the session and are cleared on sign-out.
-- The first page of the open inbox and the session's identity are kept on
-  disk (device-only, excluded from backups, without the credential) so a
-  launch draws the last inbox at once and refreshes behind it. Screens with
-  nothing yet draw placeholders in the shape of their rows. Sign-out and a
-  rejected session remove the file.
+- The first page of the open inbox, the session's identity and the threads
+  opened most recently (30 at most, each cut to its latest 60 messages, text
+  only) are kept on disk, device-only, excluded from backups and without the
+  credential. A launch draws the last inbox at once, a thread opens from its
+  cached copy, both read offline, and everything refreshes the moment the
+  network is back. The inbox fetches its ten newest open threads ahead.
+  Screens with nothing yet draw placeholders in the shape of their rows.
+  Sign-out and a rejected session remove the files.

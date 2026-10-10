@@ -81,6 +81,9 @@ struct ChatView: View {
                 store.foreground = phase == .active
                 if phase == .active { now = Date(); Task { await store.load(server, session) } }
             }
+            .onChange(of: Connectivity.shared.online) { _, online in
+                if online { Task { await store.load(server, session, manual: true) } }
+            }
             .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in now = Date() }
             .confirmationDialog(c.resolveTitle, isPresented: $confirmResolve, titleVisibility: .visible) {
                 Button(c.resolveConfirm) { Task { await store.mutate(server, session) { try await PortalAPI.resolve(server, session, id: detail.id) } } }
@@ -642,9 +645,17 @@ final class ChatStore {
         if let lastMessageId, nextId != lastMessageId, !nearBottom { hasNewMessages = true }
         lastMessageId = nextId
         detail = next
+        let snapshot = next
+        Task.detached(priority: .utility) { ThreadCache.save(snapshot) }
     }
 
     func start(_ server: String, _ session: Session) async {
+        // The cached copy opens the thread at once; the server's answer replaces it.
+        if !loaded, let cached = ThreadCache.load(detail.id) {
+            detail = cached
+            lastMessageId = cached.messages.last?.id
+            loaded = true
+        }
         await load(server, session)
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(5))
