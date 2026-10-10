@@ -29,8 +29,6 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -172,6 +170,7 @@ fun ChatScreen(model: AppModel, conversation: Conversation, foreground: Boolean)
     val resolved = detail.status == ConversationStatus.RESOLVED
     val replyAllowed = store.loaded && InboxRules.canReply(detail, now)
     val windowClosed = InboxRules.isReplyWindowClosed(detail, now)
+    val capabilities = InboxRules.capabilities(detail)
 
     BackHandler { model.back() }
     LaunchedEffect(conversation.id) { store.onExpired = { model.expireSession() }; store.start(server, session) }
@@ -229,7 +228,7 @@ fun ChatScreen(model: AppModel, conversation: Conversation, foreground: Boolean)
                                     modifier = Modifier.clip(RoundedCornerShape(9.dp)).background(palette.surface).padding(horizontal = 12.dp, vertical = 5.dp))
                             }
                         }
-                        MessageBubble(message, who)
+                        MessageBubble(message, who, detail, server, session)
                         Spacer(Modifier.height(6.dp))
                     }
                 }
@@ -266,31 +265,22 @@ fun ChatScreen(model: AppModel, conversation: Conversation, foreground: Boolean)
                     Text(c.windowClosed, color = palette.ink, fontWeight = FontWeight.SemiBold)
                     Text(c.windowHint, color = palette.muted, fontSize = 13.sp)
                 }
-                else -> Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom) {
-                    OutlinedTextField(
-                        value = draft, onValueChange = { draft = it }, modifier = Modifier.weight(1f), maxLines = 6,
-                        placeholder = { Text(s.composer.placeholder, color = palette.subtle) }, enabled = replyAllowed && !store.busy,
-                        shape = RoundedCornerShape(20.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = palette.canvas, unfocusedContainerColor = palette.canvas,
-                            focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent,
-                            focusedTextColor = palette.ink, unfocusedTextColor = palette.ink, cursorColor = accent.color,
-                        ),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    val canSend = replyAllowed && draft.isNotBlank() && !store.busy
-                    Box(Modifier.size(44.dp).clip(RoundedCornerShape(22.dp)).background(if (canSend) accent.color else accent.color.copy(alpha = 0.35f)).clickable(enabled = canSend) {
-                        val text = draft.trim()
+                else -> ComposerView(
+                    channel = detail.channel, capabilities = capabilities, textAllowed = replyAllowed, busy = store.busy,
+                    draft = draft, onDraft = { draft = it }, onSavedReplies = null,
+                    onSendText = { text ->
+                        draft = ""
+                        scope.launch { store.nearBottom = true; if (!store.mutate { PortalApi.reply(server, session, detail.id, text, null) }) draft = text }
+                    },
+                    onSendFile = { file, caption ->
                         draft = ""
                         scope.launch {
                             store.nearBottom = true
-                            val sent = store.mutate { PortalApi.reply(server, session, detail.id, text, null) }
-                            if (!sent) draft = text
+                            val sent = store.mutate { PortalApi.replyWithFile(server, session, detail.id, file, caption) }
+                            if (sent) file.file.delete() else draft = caption
                         }
-                    }, contentAlignment = Alignment.Center) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = s.composer.send, tint = accent.onColor, modifier = Modifier.size(20.dp))
-                    }
-                }
+                    },
+                )
             }
         }
     }
@@ -306,30 +296,51 @@ fun ChatScreen(model: AppModel, conversation: Conversation, foreground: Boolean)
 }
 
 @Composable
-private fun MessageBubble(message: Message, who: String) {
+private fun MessageBubble(message: Message, who: String, detail: ConversationDetail, server: String, session: Session) {
     val accent = LocalAccent.current
     val palette = accent.palette
+    val c = ChatStrings.current
     val s = Strings.current
     if (message.isActivity) {
-        Box(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
-            Text(message.content, color = palette.muted, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Box(Modifier.fillMaxWidth().padding(vertical = 6.dp, horizontal = 16.dp), contentAlignment = Alignment.Center) {
+            Text("${c.activityLabel(message)} · ${When.time(message.createdAt)}", color = palette.muted, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
         return
     }
     val outgoing = message.isOutgoing
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (outgoing) Arrangement.End else Arrangement.Start) {
-        Column(
-            Modifier.widthIn(max = 300.dp).clip(RoundedCornerShape(16.dp)).background(if (outgoing) accent.color else palette.bubbleIn).padding(horizontal = 12.dp, vertical = 9.dp),
-        ) {
-            Text(
-                if (outgoing) (if (message.isAI) ChatStrings.current.ai else message.senderName ?: s.list.youReply) else who,
-                color = if (outgoing) accent.onColor.copy(alpha = 0.8f) else palette.muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-            )
-            if (message.content.isNotEmpty()) Text(message.content, color = if (outgoing) accent.onColor else palette.ink, fontSize = 16.sp, modifier = Modifier.padding(top = 2.dp))
-            message.attachments.forEach { attachment ->
-                Text("📎 " + (attachment.filename ?: s.attachment.generic), color = if (outgoing) accent.onColor else palette.ink, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
+    val ai = message.isAI
+    val bubble = if (outgoing && !ai) accent.color else if (ai) accent.tint(if (accent.dark) 0.23f else 0.12f) else palette.bubbleIn
+    val text = if (outgoing && !ai) accent.onColor else palette.ink
+    val quoted = message.quotedMessageId?.let { id -> detail.messages.firstOrNull { it.id == id } }
+    val delivery = InboxRules.delivery(message.deliveryStatus)
+    val shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = if (outgoing) 18.dp else 5.dp, bottomEnd = if (outgoing) 5.dp else 18.dp)
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = if (outgoing) Arrangement.End else Arrangement.Start) {
+        Column(Modifier.widthIn(min = 94.dp, max = 320.dp).clip(shape).background(bubble).padding(start = 12.dp, end = 12.dp, top = 9.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text((message.senderName ?: if (outgoing) c.agent else who) + (if (ai) " · ${c.ai}" else ""), color = text.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            if (message.quotedMessageId != null) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(5.dp)).background(Color.Gray.copy(alpha = 0.12f)).padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(quoted?.senderName ?: if (quoted?.isOutgoing == true) c.agent else who, color = text, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text(quoted?.let { if (it.content.isEmpty()) (if (it.attachments.isEmpty()) c.unavailableQuote else s.attachment.generic) else it.content } ?: c.unavailableQuote, color = text, fontSize = 12.sp, maxLines = 3)
+                }
             }
-            Text(When.time(message.createdAt), color = if (outgoing) accent.onColor.copy(alpha = 0.7f) else palette.subtle, fontSize = 10.sp, modifier = Modifier.align(Alignment.End).padding(top = 3.dp))
+            message.attachments.forEach { attachment ->
+                Box(Modifier.padding(vertical = 4.dp)) { AttachmentView(attachment, server, session, detail.id, outgoing && !ai) }
+            }
+            if (message.content.isNotEmpty()) Text(message.content, color = text, fontSize = 15.sp)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                Text(When.time(message.createdAt), color = text.copy(alpha = 0.7f), fontSize = 10.sp)
+                if (outgoing && (detail.channel == "whatsapp_cloud" || InboxRules.isSocialChannel(detail.channel)) && delivery != null) {
+                    Spacer(Modifier.width(5.dp))
+                    Icon(delivery.second, null, tint = text, modifier = Modifier.size(12.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text(c.delivery(delivery.first), color = text.copy(alpha = 0.8f), fontSize = 10.sp)
+                }
+            }
+            message.deliveryError?.takeIf { it.isNotEmpty() }?.let { Text(it, color = text, fontSize = 11.sp) }
+            val reactions = listOfNotNull(message.reaction, message.incomingReaction).filter { it.isNotEmpty() }
+            if (reactions.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                reactions.forEach { Text(it, fontSize = 15.sp, modifier = Modifier.clip(RoundedCornerShape(50)).background(palette.surface).padding(horizontal = 7.dp, vertical = 2.dp)) }
+            }
         }
     }
 }

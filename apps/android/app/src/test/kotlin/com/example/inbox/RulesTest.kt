@@ -5,6 +5,10 @@ import com.example.inbox.api.Conversation
 import com.example.inbox.api.ConversationDetail
 import com.example.inbox.api.ConversationMode
 import com.example.inbox.api.ConversationStatus
+import com.example.inbox.api.Message
+import com.example.inbox.localization.ChatStrings
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import com.example.inbox.rules.Conversations
 import com.example.inbox.rules.InboxRules
 import com.example.inbox.rules.IsoDate
@@ -85,5 +89,15 @@ class RulesTest {
         val merged = InboxRules.mergePages(listOf(a, b), listOf(Conversation(id = "a", preview = "new"), Conversation(id = "c")))
         assertEquals(listOf("a", "b", "c"), merged.map { it.id })
         assertEquals("new", merged[0].preview)
+    }
+
+    @Test
+    fun activityLabelFillsTheActorAndVariables() {
+        val resolved = Message(id = "m1", kind = "activity", senderName = "Ana", activity = JsonObject(mapOf("event" to JsonPrimitive("resolved"))))
+        assertEquals("Ana resolved the conversation", ChatStrings.en.activityLabel(resolved))
+        val auto = Message(id = "m2", kind = "activity", content = "fallback", activity = JsonObject(mapOf("event" to JsonPrimitive("auto_resolved"), "hours" to JsonPrimitive(24))))
+        assertEquals("Resolved automatically after 24 h without activity", ChatStrings.en.activityLabel(auto))
+        val unknown = Message(id = "m3", kind = "activity", content = "fallback", activity = JsonObject(mapOf("event" to JsonPrimitive("something_else"))))
+        assertEquals("fallback", ChatStrings.en.activityLabel(unknown))
     }
 }

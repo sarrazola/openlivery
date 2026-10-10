@@ -152,6 +152,63 @@ object ApiClient {
     suspend fun <T> request(url: URL, serializer: KSerializer<T>, method: String = "GET", body: String? = null): T =
         perform(url, method, body, null, serializer)!!
 
+    /** A multipart upload: the file under `file`, its caption under `caption`. */
+    suspend fun <T> upload(server: String, path: String, token: String, file: com.example.inbox.api.OutgoingFile, caption: String, serializer: KSerializer<T>): T {
+        requireSessionAccess(token)
+        val fallback = Strings.current.errors.sendFile
+        val boundary = "Boundary-" + java.util.UUID.randomUUID().toString()
+        val (status, text) = try {
+            withContext(Dispatchers.IO) {
+                val connection = url(server, path).openConnection() as HttpURLConnection
+                try {
+                    connection.requestMethod = "POST"
+                    connection.connectTimeout = TIMEOUT_MS
+                    connection.readTimeout = 120_000
+                    connection.doOutput = true
+                    connection.setRequestProperty("Accept", "application/json")
+                    connection.setRequestProperty("Authorization", "Bearer $token")
+                    connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                    val safeName = file.name.replace("\"", "_")
+                    connection.outputStream.buffered().use { out ->
+                        fun write(s: String) = out.write(s.toByteArray(Charsets.UTF_8))
+                        write("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"$safeName\"\r\nContent-Type: ${file.mime}\r\n\r\n")
+                        file.file.inputStream().use { it.copyTo(out) }
+                        write("\r\n--$boundary\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n$caption\r\n--$boundary--\r\n")
+                    }
+                    val code = connection.responseCode
+                    val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                    code to (stream?.bufferedReader()?.use { it.readText() } ?: "")
+                } finally {
+                    connection.disconnect()
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: ApiException) {
+            throw error
+        } catch (error: Exception) {
+            throw ApiException("$fallback: ${error.message ?: ""}".trimEnd(':', ' '), 0)
+        }
+        if (status !in 200..299) throw failure(status, text, fallback)
+        return try { json.decodeFromString(serializer, text) } catch (error: Exception) { throw ApiException(fallback, status) }
+    }
+
+    /** Attachments are behind the session, so they cannot be plain image URLs. */
+    suspend fun bytes(url: String, token: String?): ByteArray = withContext(Dispatchers.IO) {
+        if (token != null) requireSessionAccess(token)
+        val connection = URL(url).openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = TIMEOUT_MS
+            connection.readTimeout = 120_000
+            if (token != null) connection.setRequestProperty("Authorization", "Bearer $token")
+            val code = connection.responseCode
+            if (code !in 200..299) throw ApiException(Strings.current.errors.generic, code)
+            connection.inputStream.use { it.readBytes() }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     inline fun <reified T> encode(value: T): String = json.encodeToString(kotlinx.serialization.serializer<T>(), value)
 
     @Suppress("unused")

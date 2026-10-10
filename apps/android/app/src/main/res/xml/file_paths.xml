@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cached attachments and staged recordings, shared with the app that opens them. -->
+<paths>
+    <cache-path name="attachments" path="attachments/" />
+    <cache-path name="outgoing" path="outgoing/" />
+</paths>

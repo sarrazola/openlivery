@@ -2,6 +2,9 @@ package com.example.inbox.api
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
 
 /// What the portal API returns. Keys arrive in snake_case and the shared Json
 /// maps them to these camelCase names, so nothing here spells a wire key.
@@ -91,6 +94,8 @@ data class Message(
     val id: String,
     val role: String = "",
     val kind: String = "message",
+    /** The event name and its variables on an activity row. */
+    val activity: JsonObject? = null,
     val content: String = "",
     val senderType: String = "",
     val senderName: String? = null,
@@ -106,6 +111,19 @@ data class Message(
     val isActivity: Boolean get() = kind == "activity"
     val isOutgoing: Boolean get() = role == "assistant"
     val isAI: Boolean get() = isOutgoing && senderType == "ai"
+
+    /** How a variable reads inside an activity sentence. */
+    fun activityValue(key: String): String? {
+        val value = activity?.get(key) ?: return null
+        val primitive = value as? JsonPrimitive ?: return null
+        val raw = primitive.content
+        return if (!primitive.isString) raw.toDoubleOrNull()?.let { if (it == Math.floor(it)) it.toLong().toString() else raw } ?: raw else raw
+    }
+}
+
+/** A file staged for sending: where it is, what to call it and its type. */
+data class OutgoingFile(val file: java.io.File, val name: String, val mime: String) {
+    val isAudio: Boolean get() = mime.startsWith("audio/")
 }
 
 /** The list row: everything a conversation is, except its messages. */

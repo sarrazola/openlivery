@@ -205,7 +205,10 @@ fun InboxScreen(model: AppModel, store: ConversationsStore, foreground: Boolean,
     Column(Modifier.fillMaxSize().background(palette.surface).statusBarsPadding()) {
         // Header
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Avatar(session.branding.clientName, 43.dp, 13.dp)
+            val logo = PortalApi.assetUrl(server, session.branding.clientLogoUrl ?: session.branding.agencyLogoUrl)
+            if (logo != null) Box(Modifier.size(43.dp).clip(RoundedCornerShape(13.dp)), contentAlignment = Alignment.Center) {
+                RemoteImage(logo, null, session.branding.clientName, Modifier.size(43.dp), androidx.compose.ui.layout.ContentScale.Fit) { Avatar(session.branding.clientName, 43.dp, 13.dp) }
+            } else Avatar(session.branding.clientName, 43.dp, 13.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(session.branding.clientName, color = palette.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

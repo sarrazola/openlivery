@@ -6,6 +6,13 @@ import com.example.inbox.api.ConversationDetail
 import com.example.inbox.api.ConversationMode
 import com.example.inbox.api.ConversationStatus
 import com.example.inbox.api.Message
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Help
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.ui.graphics.vector.ImageVector
 import java.time.Instant
 
 /**
@@ -58,6 +65,18 @@ object InboxRules {
     /** The approved human window is open but the automated one is not. */
     fun humanWindowOnly(c: ConversationDetail, now: Instant = Instant.now()): Boolean =
         isSocialChannel(c.channel) && !isReplyWindowClosed(c, now) && !windowIsOpen(c.replyWindowOpen, c.replyWindowUntil, now)
+
+    /** The label key and icon for a delivery state the channel reported. */
+    fun delivery(status: String?): Pair<String, ImageVector>? {
+        if (status.isNullOrEmpty()) return null
+        return when (status) {
+            "read", "delivered" -> status to Icons.Default.CheckCircle
+            "sent" -> "sent" to Icons.Default.Check
+            "failed" -> "failed" to Icons.Default.Error
+            "pending" -> "pending" to Icons.Default.Schedule
+            else -> "unknown" to Icons.Default.Help
+        }
+    }
 
     fun canQuote(c: ConversationDetail, message: Message, now: Instant = Instant.now()): Boolean =
         canReply(c, now) && c.channelCapabilities?.quotes != false && isWhatsApp(c.channel) && !message.isActivity && message.role != "system"

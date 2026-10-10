@@ -94,6 +94,9 @@ object PortalApi {
     suspend fun reply(server: String, session: Session, id: String, content: String, quotedMessageId: String?) =
         change(server, session, id, "reply", "POST", explicit.encodeToString(ReplyBody.serializer(), ReplyBody(content, quotedMessageId)))
 
+    suspend fun replyWithFile(server: String, session: Session, id: String, file: OutgoingFile, caption: String): ConversationDetail =
+        ApiClient.upload(server, portal(session, "/conversations/${enc(id)}/reply-media"), session.token, file, caption, ConversationDetail.serializer())
+
     suspend fun react(server: String, session: Session, id: String, messageId: String, emoji: String) =
         change(server, session, id, "messages/${enc(messageId)}/reaction", "POST", ApiClient.encode(ReactionBody(emoji)))
 
