@@ -2,6 +2,8 @@ package com.example.inbox.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -222,7 +224,8 @@ fun InboxScreen(model: AppModel, store: ConversationsStore, foreground: Boolean,
             if (store.status == ConversationStatus.OPEN) {
                 val folders = if (session.userId == null) listOf(ConversationsStore.Folder.ALL, ConversationsStore.Folder.UNREAD, ConversationsStore.Folder.AI)
                 else ConversationsStore.Folder.entries
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Pills take the width their label needs and the row scrolls, so no language overflows.
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     folders.forEach { folder ->
                         val count = store.summary?.let { summary ->
                             when (folder) {
@@ -234,7 +237,7 @@ fun InboxScreen(model: AppModel, store: ConversationsStore, foreground: Boolean,
                             ConversationsStore.Folder.ALL -> s.inbox.all; ConversationsStore.Folder.UNREAD -> s.inbox.unread
                             ConversationsStore.Folder.MINE -> s.inbox.mine; ConversationsStore.Folder.AI -> s.inbox.ai
                         }
-                        Pill(label, count?.let { if (it > 99) "99+" else it.toString() }, store.folder == folder, Modifier.weight(1f)) { store.folder = folder }
+                        Pill(label, count?.let { if (it > 99) "99+" else it.toString() }, store.folder == folder) { store.folder = folder }
                     }
                 }
             }

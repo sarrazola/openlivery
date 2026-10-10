@@ -29,6 +29,9 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -256,4 +259,86 @@ fun CircleDot(color: Color, size: Dp = 10.dp) {
 fun Outlined(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val palette = LocalAccent.current.palette
     Box(modifier.border(1.dp, palette.line, RoundedCornerShape(10.dp))) { content() }
+}
+
+// MARK: Forms
+
+@Composable
+fun FieldLabel(text: String, modifier: Modifier = Modifier) {
+    Text(text, color = LocalAccent.current.palette.ink, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = modifier.padding(top = 12.dp, bottom = 6.dp))
+}
+
+@Composable
+fun FormTextField(value: String, onChange: (String) -> Unit, placeholder: String = "", multiline: Boolean = false, enabled: Boolean = true, keyboard: KeyboardType = KeyboardType.Text) {
+    val accent = LocalAccent.current
+    val palette = accent.palette
+    OutlinedTextField(
+        value = value, onValueChange = onChange, modifier = Modifier.fillMaxWidth(), enabled = enabled,
+        singleLine = !multiline, minLines = if (multiline) 3 else 1, maxLines = if (multiline) 8 else 1,
+        placeholder = { Text(placeholder, color = palette.subtle) },
+        keyboardOptions = KeyboardOptions(keyboardType = keyboard, autoCorrectEnabled = multiline),
+        shape = RoundedCornerShape(14.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = palette.canvas, unfocusedContainerColor = palette.canvas,
+            focusedBorderColor = accent.color, unfocusedBorderColor = Color.Transparent,
+            focusedTextColor = palette.ink, unfocusedTextColor = palette.ink, cursorColor = accent.color,
+        ),
+    )
+}
+
+/** A tappable row with a label, optional subtitle and a selected state, as a radio or a checkbox. */
+@Composable
+fun ChoiceRow(label: String, subtitle: String? = null, selected: Boolean, checkbox: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
+    val accent = LocalAccent.current
+    val palette = accent.palette
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (selected) accent.tint(0.1f) else palette.canvas)
+            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, color = palette.ink, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            if (!subtitle.isNullOrEmpty()) Text(subtitle, color = palette.muted, fontSize = 12.sp, maxLines = 2)
+        }
+        Box(
+            Modifier.size(22.dp).clip(if (checkbox) RoundedCornerShape(6.dp) else CircleShape)
+                .background(if (selected) accent.color else Color.Transparent)
+                .border(1.5.dp, if (selected) accent.color else palette.subtle, if (checkbox) RoundedCornerShape(6.dp) else CircleShape),
+            contentAlignment = Alignment.Center,
+        ) { if (selected) Icon(androidx.compose.material.icons.Icons.Default.Check, null, tint = accent.onColor, modifier = Modifier.size(14.dp)) }
+    }
+}
+
+@Composable
+fun Card(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    val palette = LocalAccent.current.palette
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(palette.raised).border(0.5.dp, palette.line, RoundedCornerShape(16.dp)).padding(15.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp), content = content,
+    )
+}
+
+@Composable
+fun SectionTitle(text: String, modifier: Modifier = Modifier) {
+    Text(text, color = LocalAccent.current.palette.ink, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, modifier = modifier)
+}
+
+@Composable
+fun TopBar(title: String, backLabel: String, onBack: () -> Unit, trailing: (@Composable () -> Unit)? = null) {
+    val accent = LocalAccent.current
+    val palette = accent.palette
+    Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack, contentDescription = backLabel, tint = accent.color, modifier = Modifier.size(44.dp).clickable(onClick = onBack).padding(10.dp))
+        Text(title, color = palette.ink, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+        Box(Modifier.width(44.dp), contentAlignment = Alignment.Center) { trailing?.invoke() }
+    }
+}
+
+@Composable
+fun Chip(label: String, dot: Color? = null) {
+    val palette = LocalAccent.current.palette
+    Row(Modifier.clip(RoundedCornerShape(8.dp)).background(palette.canvas).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (dot != null) CircleDot(dot, 7.dp)
+        Text(label, color = palette.ink, fontSize = 12.sp)
+    }
 }

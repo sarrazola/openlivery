@@ -110,6 +110,71 @@ object PortalApi {
     suspend fun setAvailability(server: String, session: Session, availability: Availability): PortalMember =
         ApiClient.request(server, portal(session, "/me"), PortalMember.serializer(), "PATCH", ApiClient.encode(AvailabilityBody(availability)), session.token)
 
+    suspend fun createTeam(server: String, session: Session, team: TeamUpdate): Team =
+        ApiClient.request(server, portal(session, "/teams"), Team.serializer(), "POST", ApiClient.encode(team), session.token)
+
+    suspend fun updateTeam(server: String, session: Session, id: String, team: TeamUpdate): Team =
+        ApiClient.request(server, portal(session, "/teams/${enc(id)}"), Team.serializer(), "PATCH", ApiClient.encode(team), session.token)
+
+    data class ReportFilters(val from: String, val to: String, val tzOffset: Int, val channel: String? = null, val teamId: String? = null)
+
+    suspend fun report(server: String, session: Session, f: ReportFilters): PortalReport {
+        val items = arrayListOf("from=${q(f.from)}", "to=${q(f.to)}", "tz_offset=${f.tzOffset}")
+        f.channel?.takeIf { it.isNotEmpty() }?.let { items.add("channel=${q(it)}") }
+        f.teamId?.takeIf { it.isNotEmpty() }?.let { items.add("team_id=${q(it)}") }
+        return ApiClient.request(server, portal(session, "/reports?" + items.joinToString("&")), PortalReport.serializer(), token = session.token)
+    }
+
+    suspend fun channels(server: String, session: Session): List<PortalChannel> =
+        ApiClient.request(server, portal(session, "/channels"), ListSerializer(PortalChannel.serializer()), token = session.token)
+
+    suspend fun templates(server: String, session: Session): List<Template> =
+        ApiClient.request(server, portal(session, "/templates"), ListSerializer(Template.serializer()), token = session.token)
+
+    suspend fun deleteTemplate(server: String, session: Session, name: String) =
+        ApiClient.requestVoid(server, portal(session, "/templates/${enc(name)}"), "DELETE", token = session.token)
+
+    suspend fun cannedReplies(server: String, session: Session): List<CannedReply> =
+        ApiClient.request(server, portal(session, "/canned-responses"), ListSerializer(CannedReply.serializer()), token = session.token)
+
+    suspend fun createCannedReply(server: String, session: Session, reply: CannedReplyCreate): CannedReply =
+        ApiClient.request(server, portal(session, "/canned-responses"), CannedReply.serializer(), "POST", ApiClient.encode(reply), session.token)
+
+    suspend fun updateCannedReply(server: String, session: Session, id: String, reply: CannedReplyUpdate): CannedReply =
+        ApiClient.request(server, portal(session, "/canned-responses/${enc(id)}"), CannedReply.serializer(), "PATCH", ApiClient.encode(reply), session.token)
+
+    suspend fun deleteCannedReply(server: String, session: Session, id: String) =
+        ApiClient.requestVoid(server, portal(session, "/canned-responses/${enc(id)}"), "DELETE", token = session.token)
+
+    suspend fun tags(server: String, session: Session): List<ContactTag> =
+        ApiClient.request(server, portal(session, "/tags"), ListSerializer(ContactTag.serializer()), token = session.token)
+
+    suspend fun createTag(server: String, session: Session, tag: ContactTagCreate): ContactTag =
+        ApiClient.request(server, portal(session, "/tags"), ContactTag.serializer(), "POST", ApiClient.encode(tag), session.token)
+
+    suspend fun updateTag(server: String, session: Session, id: String, tag: ContactTagUpdate): ContactTag =
+        ApiClient.request(server, portal(session, "/tags/${enc(id)}"), ContactTag.serializer(), "PATCH", ApiClient.encode(tag), session.token)
+
+    suspend fun deleteTag(server: String, session: Session, id: String) =
+        ApiClient.requestVoid(server, portal(session, "/tags/${enc(id)}"), "DELETE", token = session.token)
+
+    /** Replace the contact's tags with the given set. */
+    suspend fun setContactTags(server: String, session: Session, id: String, tagIds: List<String>): Contact =
+        ApiClient.request(server, portal(session, "/contacts/${enc(id)}/tags"), Contact.serializer(), "PUT", ApiClient.encode(ContactTagsSet(tagIds)), session.token)
+
+    suspend fun createContact(server: String, session: Session, contact: ContactCreate): Contact =
+        ApiClient.request(server, portal(session, "/contacts"), Contact.serializer(), "POST", ApiClient.encode(contact), session.token)
+
+    suspend fun updateContact(server: String, session: Session, id: String, contact: ContactUpdate): Contact =
+        ApiClient.request(server, portal(session, "/contacts/${enc(id)}"), Contact.serializer(), "PATCH", contact.toJson(), session.token)
+
+    /** Reaching out first on the bridge: a free text message that opens a case assigned to the sender. */
+    suspend fun startWhatsAppConversation(server: String, session: Session, contactId: String, text: String): ConversationDetail =
+        ApiClient.request(server, portal(session, "/contacts/${enc(contactId)}/conversations"), ConversationDetail.serializer(), "POST",
+            ApiClient.json.encodeToString(StartText.serializer(), StartText("whatsapp", text)), session.token)
+
+    @Serializable private data class StartText(val channel: String, val text: String)
+
     suspend fun contacts(server: String, session: Session, search: String?, limit: Int, offset: Int): List<Contact> =
         ApiClient.request(server, portal(session, "/contacts${conversationQuery(ConversationFilters(search = search, limit = limit, offset = offset))}"), ListSerializer(Contact.serializer()), token = session.token)
 

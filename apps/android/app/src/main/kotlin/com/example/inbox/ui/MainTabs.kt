@@ -88,13 +88,13 @@ fun MainTabs(model: AppModel, foreground: Boolean) {
             when (model.tab) {
                 AppModel.Tab.INBOX -> InboxScreen(model, inboxStore, foreground) { accountSheet = true }
                 AppModel.Tab.CONTACTS -> ContactsScreen(model)
-                AppModel.Tab.REPORTS -> PlaceholderScreen(WorkspaceStrings.current.reports, WorkspaceStrings.current.noData)
-                AppModel.Tab.SETTINGS -> SettingsScreen(model) { confirmSignOut = true }
+                AppModel.Tab.REPORTS -> ReportsScreen(model)
+                AppModel.Tab.SETTINGS -> SettingsHost(model) { confirmSignOut = true }
             }
         }
         Line()
         Row(Modifier.fillMaxWidth().background(palette.surface).navigationBarsPadding().height(58.dp)) {
-            TabItem(Icons.Default.Chat, s.inbox.title, model.tab == AppModel.Tab.INBOX, Modifier.weight(1f)) { model.tab = AppModel.Tab.INBOX }
+            TabItem(Icons.Default.Chat, s.inbox.tabTitle, model.tab == AppModel.Tab.INBOX, Modifier.weight(1f)) { model.tab = AppModel.Tab.INBOX }
             TabItem(Icons.Default.People, s.inbox.contacts, model.tab == AppModel.Tab.CONTACTS, Modifier.weight(1f)) { model.tab = AppModel.Tab.CONTACTS }
             TabItem(Icons.Default.BarChart, WorkspaceStrings.current.reports, model.tab == AppModel.Tab.REPORTS, Modifier.weight(1f)) { model.tab = AppModel.Tab.REPORTS }
             TabItem(Icons.Default.Settings, WorkspaceStrings.current.settings, model.tab == AppModel.Tab.SETTINGS, Modifier.weight(1f)) { model.tab = AppModel.Tab.SETTINGS }
@@ -159,118 +159,5 @@ fun PlaceholderScreen(title: String, body: String) {
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(18.dp)) {
         Text(title, color = palette.ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Centered(body)
-    }
-}
-
-@Composable
-fun SettingsScreen(model: AppModel, onSignOut: () -> Unit) {
-    val s = Strings.current
-    val p = PrivacyStrings.current
-    val accent = LocalAccent.current
-    val palette = accent.palette
-    val uriHandler = LocalUriHandler.current
-    val session = model.session ?: return
-    Column(Modifier.fillMaxSize().statusBarsPadding().padding(18.dp)) {
-        Text(WorkspaceStrings.current.settings, color = palette.ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(16.dp))
-        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(palette.canvas).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Avatar(session.branding.clientName, 44.dp, 14.dp, 18)
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text(session.userName.ifEmpty { session.branding.agencyName }, color = palette.ink, fontWeight = FontWeight.SemiBold)
-                Text(session.branding.clientName, color = palette.muted, fontSize = 13.sp)
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        SheetRow(Icons.Default.VerifiedUser, p.title) { model.showPrivacy() }
-        Brand.privacyPolicyUrl?.let { url -> SheetRow(Icons.Default.OpenInNew, p.policy) { uriHandler.openUri(url.toString()) } }
-        Brand.supportUrl?.let { url -> SheetRow(Icons.Default.OpenInNew, p.support) { uriHandler.openUri(url.toString()) } }
-        Spacer(Modifier.height(12.dp))
-        SheetRow(Icons.AutoMirrored.Filled.Logout, s.inbox.signOut, danger = true, onClick = onSignOut)
-    }
-}
-
-/** A native contact directory sharing the portal's contact and case records. */
-@Composable
-fun ContactsScreen(model: AppModel) {
-    val cs = ContactsStrings.current
-    val s = Strings.current
-    val accent = LocalAccent.current
-    val palette = accent.palette
-    val session = model.session ?: return
-    val server = model.server
-    var search by remember { mutableStateOf("") }
-    var items by remember { mutableStateOf<List<Contact>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var opened by remember { mutableStateOf<Contact?>(null) }
-    var history by remember { mutableStateOf<List<com.example.inbox.api.Conversation>>(emptyList()) }
-    val scope = rememberCoroutineScope()
-
-    LaunchedEffect(search.trim()) {
-        if (search.isNotBlank()) delay(300)
-        loading = true
-        try {
-            items = PortalApi.contacts(server, session, search.trim().ifEmpty { null }, 50, 0)
-            error = null
-        } catch (failure: ApiException) {
-            if (failure.isUnauthorized) model.expireSession() else error = failure.message
-        } catch (failure: Exception) {
-            error = cs.loadFailed
-        } finally {
-            loading = false
-        }
-    }
-
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        Column(Modifier.padding(18.dp)) {
-            Text(cs.title, color = palette.ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Text(cs.subtitle, color = palette.muted, fontSize = 13.sp)
-        }
-        Box(Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp)) { SearchField(search, cs.search, { search = it }) }
-        error?.let { Box(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)) { ErrorNotice(it, cs.retry) { search = search + "" } } }
-        if (loading && items.isEmpty()) {
-            ContactsSkeleton(s.inbox.loading)
-        } else {
-            LazyColumn(Modifier.fillMaxSize()) {
-                if (items.isEmpty()) item { Centered(if (search.isBlank()) cs.empty else cs.noMatches) }
-                items(items, key = { it.id }) { contact ->
-                    val name = contact.name?.takeIf { it.isNotBlank() } ?: contact.phone ?: contact.email ?: cs.unnamed
-                    Row(Modifier.fillMaxWidth().clickable {
-                        opened = contact; history = emptyList()
-                        scope.launch { history = runCatching { PortalApi.contactConversations(server, session, contact.id) }.getOrDefault(emptyList()) }
-                    }.padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Avatar(name, fontSize = 20)
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(name, color = palette.ink, fontWeight = FontWeight.SemiBold)
-                            val line = listOfNotNull(contact.phone, contact.email).filter { it.isNotEmpty() }.joinToString(" · ")
-                            if (line.isNotEmpty()) Text(line, color = palette.muted, fontSize = 12.sp)
-                            Text("${contact.conversationCount} ${if (contact.conversationCount == 1) cs.conversation else cs.conversations}" + (if (contact.openCount > 0) " · ${contact.openCount} ${if (contact.openCount == 1) cs.openCase else cs.openCases}" else ""), color = palette.muted, fontSize = 12.sp)
-                        }
-                    }
-                    Box(Modifier.padding(start = 20.dp)) { Line() }
-                }
-            }
-        }
-    }
-
-    opened?.let { contact ->
-        @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-        ModalBottomSheet(onDismissRequest = { opened = null }, containerColor = palette.surface) {
-            val name = contact.name?.takeIf { it.isNotBlank() } ?: contact.phone ?: contact.email ?: cs.unnamed
-            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 30.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(name, color = palette.ink, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                contact.phone?.let { Text(it, color = palette.muted) }
-                contact.email?.let { Text(it, color = palette.muted) }
-                contact.notes?.takeIf { it.isNotBlank() }?.let { Text(it, color = palette.ink, fontSize = 14.sp) }
-                Spacer(Modifier.height(8.dp))
-                Text(cs.history, color = palette.ink, fontWeight = FontWeight.Bold)
-                if (history.isEmpty()) Text(cs.noHistory, color = palette.muted, fontSize = 13.sp)
-                history.forEach { conversation ->
-                    Box(Modifier.fillMaxWidth().clickable { opened = null; model.openConversation(conversation) }) { ConversationRow(conversation) }
-                }
-            }
-        }
     }
 }

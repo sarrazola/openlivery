@@ -225,17 +225,99 @@ data class Team(
 )
 
 @Serializable
+data class ContactTag(
+    val id: String,
+    val name: String = "",
+    val color: String = "#6b7280",
+    val contactCount: Int = 0,
+    val routeTeamId: String? = null,
+    val routeTeamName: String? = null,
+    val routeAssigneeId: String? = null,
+    val routeAssigneeName: String? = null,
+)
+
+@Serializable data class ContactTagCreate(val name: String, val color: String? = null)
+@Serializable data class ContactTagUpdate(val name: String? = null, val color: String? = null)
+@Serializable data class ContactTagsSet(val tagIds: List<String>)
+
+@Serializable
+data class CannedReply(val id: String, val shortcut: String = "", val content: String = "", val updatedAt: String = "")
+
+@Serializable data class CannedReplyCreate(val shortcut: String, val content: String)
+@Serializable data class CannedReplyUpdate(val shortcut: String? = null, val content: String? = null)
+
+@Serializable
 data class Contact(
     val id: String,
-    val name: String? = null,
+    val name: String = "",
     val phone: String? = null,
     val email: String? = null,
-    val notes: String? = null,
-    val conversationCount: Int = 0,
-    val openCount: Int = 0,
+    val notes: String = "",
+    val tags: List<ContactTag>? = null,
     val createdAt: String = "",
     val updatedAt: String = "",
+    val conversationCount: Int = 0,
+    val openCount: Int = 0,
+    val lastActivityAt: String? = null,
 )
+
+@Serializable data class ContactCreate(val name: String? = null, val phone: String, val email: String? = null, val notes: String? = null)
+
+/** A PATCH body: an absent field keeps its value; `clearEmail` sends `email: null`. */
+data class ContactUpdate(val name: String? = null, val phone: String? = null, val email: String? = null, val clearEmail: Boolean = false, val notes: String? = null) {
+    fun toJson(): String {
+        val parts = ArrayList<String>()
+        fun quote(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""
+        name?.let { parts.add("\"name\":${quote(it)}") }
+        phone?.let { parts.add("\"phone\":${quote(it)}") }
+        if (email != null) parts.add("\"email\":${quote(email)}") else if (clearEmail) parts.add("\"email\":null")
+        notes?.let { parts.add("\"notes\":${quote(it)}") }
+        return "{" + parts.joinToString(",") + "}"
+    }
+}
+
+@Serializable
+data class TeamUpdate(
+    val name: String, val description: String = "", val strategy: String = "round_robin", val channels: List<String> = emptyList(),
+    val isDefault: Boolean = false, val memberIds: List<String> = emptyList(),
+)
+
+@Serializable data class ReportDay(val date: String = "", val started: Int = 0, val resolved: Int = 0)
+@Serializable data class ReportChannel(val channel: String = "", val started: Int = 0)
+@Serializable data class ReportAgent(val name: String = "", val availability: String = "", val replies: Int = 0, val assigned: Int = 0, val openNow: Int = 0)
+
+@Serializable
+data class PortalReport(
+    val started: Int = 0, val resolved: Int = 0, val openNow: Int = 0, val inboundMessages: Int = 0, val humanReplies: Int = 0,
+    val aiReplies: Int = 0, val activeContacts: Int = 0, val agentsOnline: Int = 0, val avgFirstReplySeconds: Double? = null,
+    val avgResolutionSeconds: Double? = null, val byDay: List<ReportDay> = emptyList(), val byChannel: List<ReportChannel> = emptyList(),
+    val byAgent: List<ReportAgent> = emptyList(),
+)
+
+@Serializable
+data class PortalChannel(
+    val channel: String = "", val status: String = "", val phoneNumber: String? = null, val displayName: String? = null,
+    val supportsTemplates: Boolean = false, val id: String? = null, val provider: String? = null, val externalAccountId: String? = null,
+    val username: String? = null, val capabilities: ChannelCapabilities? = null,
+) {
+    val listId: String get() = id ?: channel
+}
+
+@Serializable data class TemplateHeader(val format: String = "", val text: String = "", val parameters: List<String> = emptyList())
+
+@Serializable
+data class TemplateButton(
+    val type: String = "", val text: String = "", val url: String = "", val phoneNumber: String = "", val example: String = "", val dynamic: Boolean = false,
+)
+
+@Serializable
+data class Template(
+    val id: String? = null, val name: String = "", val language: String = "", val category: String = "", val status: String = "",
+    val parameterFormat: String = "POSITIONAL", val header: TemplateHeader? = null, val body: String = "", val footer: String = "",
+    val buttons: List<TemplateButton> = emptyList(), val parameters: List<String> = emptyList(), val variables: Int = 0, val rejectedReason: String? = null,
+) {
+    val listId: String get() = "$name:$language"
+}
 
 @Serializable
 data class DeviceRegistration(val token: String, val provider: String, val platform: String)

@@ -27,7 +27,7 @@ class Strings(
         val clearFilters: String, val account: String, val online: String, val away: String, val availabilityHint: String,
         val aiHandling: String, val assignedTo: String, val legacyHuman: String, val signOutTitle: String, val cancel: String,
         val signOut: String, val reconnectTitle: String, val reconnectBody: String, val sessionExpired: String,
-        val notificationUnavailable: String, val contacts: String, val connectionError: String, val loading: String,
+        val notificationUnavailable: String, val contacts: String, val connectionError: String, val loading: String, val tabTitle: String,
     )
     class ListCopy(
         val signOut: String, val emptyTitle: String, val emptyBody: String, val loadFailed: String, val noMessages: String,
@@ -78,7 +78,7 @@ class Strings(
                 signOutTitle = "Sign out of this inbox?", cancel = "Cancel", signOut = "Sign out",
                 reconnectTitle = "Could not connect", reconnectBody = "Your session is saved. Check your connection and try again.",
                 sessionExpired = "Your session expired. Sign in again.", notificationUnavailable = "This conversation is no longer available.",
-                contacts = "Contacts", connectionError = "Could not refresh. Showing the last loaded conversations.", loading = "Loading",
+                contacts = "Contacts", connectionError = "Could not refresh. Showing the last loaded conversations.", loading = "Loading", tabTitle = "Inbox",
             ),
             list = ListCopy(
                 signOut = "Sign out", emptyTitle = "No conversations yet",
@@ -127,7 +127,7 @@ class Strings(
                 serverTitle = "Conéctate a tu servidor", connect = "Continuar",
             ),
             inbox = Inbox(
-                title = "Bandeja de entrada", all = "Todos", unread = "No leídos", mine = "Míos", ai = "IA", open = "Abiertos", resolved = "Resueltos",
+                title = "Bandeja de entrada", all = "Todas", unread = "No leídas", mine = "Asignadas a mí", ai = "IA", open = "Abiertas", resolved = "Resueltas",
                 search = "Busca un nombre, teléfono o mensaje", filters = "Filtros", teams = "Equipos", allTeams = "Todos los equipos", allChannels = "Todos los canales",
                 done = "Listo", retry = "Reintentar", loadingMore = "Cargando más…", loadMore = "Cargar más",
                 noResults = "No hay conversaciones que coincidan", noResultsBody = "Prueba otra búsqueda o filtro.", clearFilters = "Quitar filtros",
@@ -137,7 +137,7 @@ class Strings(
                 signOutTitle = "¿Salir de esta bandeja?", cancel = "Cancelar", signOut = "Salir",
                 reconnectTitle = "No pudimos conectar", reconnectBody = "Tu sesión está guardada. Revisa la conexión e inténtalo de nuevo.",
                 sessionExpired = "Tu sesión venció. Vuelve a entrar.", notificationUnavailable = "Esta conversación ya no está disponible.",
-                contacts = "Contactos", connectionError = "No pudimos actualizar. Mostramos las últimas conversaciones cargadas.", loading = "Cargando",
+                contacts = "Contactos", connectionError = "No pudimos actualizar. Mostramos las últimas conversaciones cargadas.", loading = "Cargando", tabTitle = "Bandeja",
             ),
             list = ListCopy(
                 signOut = "Salir", emptyTitle = "Todavía no hay conversaciones",
