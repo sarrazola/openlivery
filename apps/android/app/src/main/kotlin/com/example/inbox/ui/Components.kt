@@ -29,6 +29,10 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.layout.ColumnScope
@@ -67,20 +71,22 @@ fun Avatar(name: String, size: Dp = 48.dp, radius: Dp = 18.dp, fontSize: Int = 1
 fun SearchField(text: String, placeholder: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
     val accent = LocalAccent.current
     val palette = accent.palette
-    OutlinedTextField(
-        value = text,
-        onValueChange = onChange,
-        modifier = modifier.fillMaxWidth(),
-        singleLine = true,
-        placeholder = { Text(placeholder, color = palette.subtle) },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.subtle) },
-        shape = RoundedCornerShape(14.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = palette.canvas, unfocusedContainerColor = palette.canvas,
-            focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent,
-            focusedTextColor = palette.ink, unfocusedTextColor = palette.ink, cursorColor = accent.color,
-        ),
-    )
+    Row(
+        modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(12.dp)).background(palette.canvas).padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(Icons.Default.Search, contentDescription = null, tint = palette.subtle, modifier = Modifier.size(18.dp))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            if (text.isEmpty()) Text(placeholder, color = palette.subtle, fontSize = 15.sp, maxLines = 1)
+            BasicTextField(
+                value = text, onValueChange = onChange, singleLine = true,
+                textStyle = TextStyle(color = palette.ink, fontSize = 15.sp),
+                cursorBrush = SolidColor(accent.color),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (text.isNotEmpty()) Icon(Icons.Default.Close, contentDescription = null, tint = palette.subtle, modifier = Modifier.size(18.dp).clickable { onChange("") })
+    }
 }
 
 @Composable

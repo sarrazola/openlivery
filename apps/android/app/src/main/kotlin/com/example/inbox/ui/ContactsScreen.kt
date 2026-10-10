@@ -313,7 +313,7 @@ private fun ContactEditor(contact: Contact?, busy: Boolean, serverError: String?
     val cs = ContactsStrings.current
     val palette = LocalAccent.current.palette
     var name by remember { mutableStateOf(contact?.name ?: "") }
-    var phone by remember { mutableStateOf(contact?.phone ?: "") }
+    var phone by remember { mutableStateOf((contact?.phone ?: "").filter { it.isDigit() }) }
     var email by remember { mutableStateOf(contact?.email ?: "") }
     var notes by remember { mutableStateOf(contact?.notes ?: "") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -321,8 +321,7 @@ private fun ContactEditor(contact: Contact?, busy: Boolean, serverError: String?
         FieldLabel(cs.name)
         FormTextField(name, { name = it }, enabled = !busy)
         FieldLabel(cs.phone)
-        FormTextField(phone, { phone = it }, placeholder = "+57 300 123 4567", enabled = !busy, keyboard = KeyboardType.Phone)
-        Text(cs.phoneHint, color = palette.muted, fontSize = 12.sp)
+        PhoneField(phone, enabled = !busy, searchPlaceholder = cs.search) { phone = it }
         FieldLabel(cs.email)
         FormTextField(email, { email = it }, enabled = !busy, keyboard = KeyboardType.Email)
         FieldLabel(cs.notes)

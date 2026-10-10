@@ -51,17 +51,3 @@ object Reports {
 
     fun dayLabel(isoDayValue: String): String = date(isoDayValue)?.format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault())) ?: isoDayValue
 }
-
-/** Phone numbers as people read them: the international form with a space after the country code. */
-object DialCodes {
-    private val codes = listOf("1", "7", "20", "27", "30", "31", "32", "33", "34", "36", "39", "40", "41", "43", "44", "45", "46", "47", "48", "49",
-        "51", "52", "53", "54", "55", "56", "57", "58", "60", "61", "62", "63", "64", "65", "66", "81", "82", "84", "86", "90", "91", "92", "93", "94", "95", "98")
-
-    fun format(phone: String?): String {
-        val digits = (phone ?: "").filter { it.isDigit() }
-        if (digits.isEmpty()) return ""
-        val code = (3 downTo 1).map { digits.take(it) }.firstOrNull { it in codes || it.length == 3 && it !in codes && false } ?: digits.take(2)
-        val rest = digits.drop(code.length)
-        return "+$code ${rest.chunked(3).joinToString(" ")}".trim()
-    }
-}

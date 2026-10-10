@@ -127,7 +127,7 @@ class Strings(
                 serverTitle = "Conéctate a tu servidor", connect = "Continuar",
             ),
             inbox = Inbox(
-                title = "Bandeja de entrada", all = "Todas", unread = "No leídas", mine = "Asignadas a mí", ai = "IA", open = "Abiertas", resolved = "Resueltas",
+                title = "Bandeja de entrada", all = "Todas", unread = "No leídas", mine = "Asignadas", ai = "IA", open = "Abiertas", resolved = "Resueltas",
                 search = "Busca un nombre, teléfono o mensaje", filters = "Filtros", teams = "Equipos", allTeams = "Todos los equipos", allChannels = "Todos los canales",
                 done = "Listo", retry = "Reintentar", loadingMore = "Cargando más…", loadMore = "Cargar más",
                 noResults = "No hay conversaciones que coincidan", noResultsBody = "Prueba otra búsqueda o filtro.", clearFilters = "Quitar filtros",

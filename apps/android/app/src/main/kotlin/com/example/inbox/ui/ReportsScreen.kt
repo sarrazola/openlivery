@@ -98,10 +98,10 @@ fun ReportsScreen(model: AppModel) {
             }
         }
         Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            FilterMenu(if (channel.isEmpty()) s.allChannels else Conversations.channelName(channel), channel.isNotEmpty(), Modifier.weight(1f),
+            FilterMenu(if (channel.isEmpty()) s.channels else Conversations.channelName(channel), channel.isNotEmpty(), Modifier.weight(1f),
                 options = listOf("" to s.allChannels) + teamChannels.map { it to Conversations.channelName(it) }) { channel = it }
             if (teams.isNotEmpty()) {
-                FilterMenu(if (team.isEmpty()) s.allTeams else teams.firstOrNull { it.id == team }?.name ?: s.allTeams, team.isNotEmpty(), Modifier.weight(1f),
+                FilterMenu(if (team.isEmpty()) s.teams else teams.firstOrNull { it.id == team }?.name ?: s.teams, team.isNotEmpty(), Modifier.weight(1f),
                     options = listOf("" to s.allTeams) + teams.map { it.id to it.name }) { team = it }
             }
         }

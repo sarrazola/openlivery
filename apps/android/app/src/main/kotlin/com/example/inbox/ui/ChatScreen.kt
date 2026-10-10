@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -249,12 +250,17 @@ fun ChatScreen(model: AppModel, conversation: Conversation, foreground: Boolean)
         Column(Modifier.fillMaxWidth().background(palette.surface)) {
             Line()
             when {
-                resolved -> Centered(c.resolvedHint)
-                detail.mode == ConversationMode.AI -> Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(s.chat.assistantIsReplying, color = palette.muted, modifier = Modifier.weight(1f))
-                    Text(s.chat.takeOverWide, color = accent.color, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable(enabled = store.loaded) {
-                        scope.launch { store.mutate { PortalApi.setMode(server, session, detail.id, ConversationMode.HUMAN) } }
-                    })
+                resolved -> Text(c.resolvedHint, color = palette.muted, fontSize = 13.sp, modifier = Modifier.fillMaxWidth().padding(14.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                detail.mode == ConversationMode.AI -> Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AutoAwesome, null, tint = palette.muted, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(s.inbox.aiHandling, color = palette.muted, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Text(
+                        s.chat.takeOver, color = accent.onColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                        modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(accent.color).clickable(enabled = store.loaded && !store.busy) {
+                            scope.launch { store.mutate { PortalApi.setMode(server, session, detail.id, ConversationMode.HUMAN) } }
+                        }.padding(horizontal = 14.dp, vertical = 9.dp),
+                    )
                 }
                 windowClosed -> Column(Modifier.padding(14.dp)) {
                     Text(c.windowClosed, color = palette.ink, fontWeight = FontWeight.SemiBold)
