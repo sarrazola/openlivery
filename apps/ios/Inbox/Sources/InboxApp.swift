@@ -12,6 +12,7 @@ struct InboxApp: App {
                 .environment(model)
                 .task { await model.restore() }
                 .onChange(of: scenePhase) { _, phase in model.scenePhaseChanged(phase) }
+                .onChange(of: Connectivity.shared.online) { _, online in model.connectivityChanged(online) }
         }
     }
 }

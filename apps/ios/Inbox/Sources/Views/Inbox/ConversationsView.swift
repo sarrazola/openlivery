@@ -36,10 +36,8 @@ struct ConversationsView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
                 }
-                if !store.loaded {
-                    Spacer()
-                    ProgressView().tint(accent.color)
-                    Spacer()
+                if !store.loaded, store.items.isEmpty {
+                    InboxSkeleton(label: s.inbox.loading)
                 } else {
                     list(server: server, session: session)
                 }
@@ -54,6 +52,9 @@ struct ConversationsView: View {
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { Task { await store.load(server, session, reset: true) } }
+            }
+            .onChange(of: Connectivity.shared.online) { _, online in
+                if online { Task { await store.load(server, session, reset: true) } }
             }
             .onChange(of: model.inboxPath.count) { old, new in
                 if new < old { Task { await store.load(server, session, reset: true) } }
@@ -368,6 +369,8 @@ final class ConversationsStore {
 
     var query: String { search.trimmingCharacters(in: .whitespaces) }
     var filterActive: Bool { !team.isEmpty || !channel.isEmpty }
+    /// The unfiltered open list: the one view the launch snapshot keeps.
+    private var isDefaultView: Bool { status == .open && folder == .all && query.isEmpty && team.isEmpty && channel.isEmpty }
     /// Changing any of these restarts the list from the first page.
     var filterKey: String { "\(status.rawValue)|\(folder)|\(team)|\(channel)|\(query)" }
 
@@ -394,7 +397,13 @@ final class ConversationsStore {
         error = nil
         nextOffset = 0
         requestId += 1
-        if !contextLoaded { await loadContext(server, session) }
+        // The last launch's first page fills the screen while this one loads.
+        if isDefaultView, let snapshot = SnapshotStore.load(server: server, token: session.token) {
+            items = snapshot.conversations
+            summary = snapshot.summary
+        }
+        // Teams and availability are not needed to draw the list, so they load beside it.
+        if !contextLoaded { Task { await self.loadContext(server, session) } }
         // Debounce typing: a search key change waits before hitting the server.
         if !query.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
         guard !Task.isCancelled else { return }
@@ -466,6 +475,11 @@ final class ConversationsStore {
                 LocalAlerts.shared.observe(items, session: session, openConversationId: openConversation())
             }
             if let next = try? await PortalAPI.inboxSummary(server, session), id == requestId { summary = next }
+            if isDefaultView, !append, id == requestId {
+                let rows = items, counts = summary
+                Task.detached(priority: .utility) { SnapshotStore.save(server: server, session: session, conversations: rows, summary: counts) }
+                Task(priority: .utility) { await self.prefetchThreads(server, session) }
+            }
         } catch is CancellationError {
         } catch let failure as APIError {
             guard id == requestId else { return }
@@ -473,6 +487,21 @@ final class ConversationsStore {
         } catch {
             guard id == requestId else { return }
             self.error = Strings.current.list.loadFailed
+        }
+    }
+
+    private var prefetching = false
+
+    /// Fetch the newest open threads that moved since they were cached, so they
+    /// open at once and read offline even before anyone taps them.
+    private func prefetchThreads(_ server: String, _ session: Session) async {
+        guard !prefetching else { return }
+        prefetching = true
+        defer { prefetching = false }
+        let wanted = items.prefix(ThreadCache.prefetchLimit).filter { ThreadCache.updatedAt($0.id) != $0.updatedAt }
+        for item in wanted {
+            guard !Task.isCancelled, let detail = try? await PortalAPI.conversation(server, session, id: item.id) else { continue }
+            ThreadCache.save(detail)
         }
     }
 

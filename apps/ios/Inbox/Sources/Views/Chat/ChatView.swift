@@ -38,7 +38,11 @@ struct ChatView: View {
                 header(who: who, resolved: resolved, server: server, session: session)
                 ZStack(alignment: .bottom) {
                     if !store.loaded {
-                        VStack { Spacer(); if store.error != nil { Image(systemName: "icloud.slash").font(.system(size: 36)).foregroundStyle(accent.palette.muted) } else { ProgressView().tint(accent.color) }; Spacer() }
+                        if store.error != nil {
+                            VStack { Spacer(); Image(systemName: "icloud.slash").font(.system(size: 36)).foregroundStyle(accent.palette.muted); Spacer() }
+                        } else {
+                            ChatSkeleton(label: Strings.current.inbox.loading)
+                        }
                     } else {
                         messages(who: who, server: server, session: session)
                     }
@@ -76,6 +80,9 @@ struct ChatView: View {
             .onChange(of: scenePhase) { _, phase in
                 store.foreground = phase == .active
                 if phase == .active { now = Date(); Task { await store.load(server, session) } }
+            }
+            .onChange(of: Connectivity.shared.online) { _, online in
+                if online { Task { await store.load(server, session, manual: true) } }
             }
             .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in now = Date() }
             .confirmationDialog(c.resolveTitle, isPresented: $confirmResolve, titleVisibility: .visible) {
@@ -638,9 +645,17 @@ final class ChatStore {
         if let lastMessageId, nextId != lastMessageId, !nearBottom { hasNewMessages = true }
         lastMessageId = nextId
         detail = next
+        let snapshot = next
+        Task.detached(priority: .utility) { ThreadCache.save(snapshot) }
     }
 
     func start(_ server: String, _ session: Session) async {
+        // The cached copy opens the thread at once; the server's answer replaces it.
+        if !loaded, let cached = ThreadCache.load(detail.id) {
+            detail = cached
+            lastMessageId = cached.messages.last?.id
+            loaded = true
+        }
         await load(server, session)
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(5))

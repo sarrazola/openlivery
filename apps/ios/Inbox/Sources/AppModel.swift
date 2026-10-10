@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import os
 
 /// The root state machine: which screen is up, which session it runs on, and
 /// the privacy gate that sits between them.
@@ -28,6 +29,8 @@ final class AppModel {
     var alert: AlertContent?
 
     private var authGeneration = 0
+    /// False while a launch runs on the snapshot alone, before the server has answered.
+    private var sessionConfirmed = false
     private var pushSession: PushSession?
     private var pushKey: String?
     private var signingOut = false
@@ -35,6 +38,7 @@ final class AppModel {
     private var handledNotification = ""
 
     private let client = APIClient.shared
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "inbox", category: "launch")
 
     init() {
         NotificationRouter.shared.handler = { [weak self] _ in self?.processPendingNotification() }
@@ -51,6 +55,21 @@ final class AppModel {
             screen = .signIn
             return
         }
+        // The last launch's inbox is on screen while the server confirms the
+        // session, as long as the disclosure it carries is the one accepted.
+        var onSnapshot = false
+        let snapshot = SnapshotStore.load(server: stored.server, token: stored.token)
+        let consented = snapshot.map { ConsentStore.hasConsent(server: stored.server, session: $0.session) } ?? false
+        Self.log.info("launch: snapshot \(snapshot == nil ? "absent" : consented ? "drawn" : "present, consent differs", privacy: .public)")
+        if let snapshot, consented {
+            client.setSessionAccess(snapshot.session, true)
+            server = stored.server
+            session = snapshot.session
+            privacyApproved = true
+            privacyChecking = false
+            screen = .main
+            onSnapshot = true
+        }
         do {
             let next = try await PortalAPI.resumeSession(stored.server, token: stored.token)
             guard generation == authGeneration else { return }
@@ -62,16 +81,24 @@ final class AppModel {
             privacyApproved = approved
             privacyChecking = false
             screen = approved ? .main : .privacy
+            sessionConfirmed = true
             syncPush()
             processPendingNotification()
         } catch let error as APIError where error.isUnauthorized {
             guard generation == authGeneration else { return }
+            if let shown = session { client.setSessionAccess(shown, false) }
             try? SessionStore.clear()
+            SnapshotStore.clear()
+            ThreadCache.clear()
+            session = nil
+            server = ""
+            privacyApproved = false
             screen = .signIn
         } catch {
             guard generation == authGeneration else { return }
-            // An offline launch must not erase a valid login.
-            screen = .reconnect
+            // An offline launch must not erase a valid login, nor hide an inbox already drawn.
+            Self.log.info("launch: server unreachable, \(onSnapshot ? "staying on the snapshot" : "reconnect screen", privacy: .public)")
+            if !onSnapshot { screen = .reconnect }
         }
     }
 
@@ -89,6 +116,7 @@ final class AppModel {
         inboxPath = []
         contactsPath = []
         screen = approved ? .main : .privacy
+        sessionConfirmed = true
         syncPush()
     }
 
@@ -126,6 +154,8 @@ final class AppModel {
             // registration requests and their cleanup have finished.
             await stopPush()
             try SessionStore.clear()
+            SnapshotStore.clear()
+            ThreadCache.clear()
             ComposerDrafts.shared.clear()
             LocalAlerts.shared.reset()
             authGeneration += 1
@@ -168,17 +198,37 @@ final class AppModel {
         privacyChecking = true
         authGeneration += 1
         guard phase == .active else { return }
+        // A consented session comes straight back on screen; the server's answer
+        // only matters if it withdraws it or changes the disclosure.
+        let keepShowing = privacyApproved && screen == .main
+        if keepShowing {
+            client.setSessionAccess(current, true)
+            privacyChecking = false
+        }
+        verifySession(current, keepShowing: keepShowing)
+    }
+
+    /// The network is back: a launch that ran on the snapshot alone now confirms
+    /// its session with the server, without taking the inbox off the screen.
+    func connectivityChanged(_ online: Bool) {
+        guard online, let current = session, !sessionConfirmed, screen == .main, !signingOut else { return }
+        authGeneration += 1
+        verifySession(current, keepShowing: true)
+    }
+
+    private func verifySession(_ current: Session, keepShowing: Bool) {
         let generation = authGeneration
         Task {
             do {
                 let next = try await PortalAPI.resumeSession(server, token: current.token)
                 guard generation == authGeneration, !signingOut else { return }
-                client.setSessionAccess(next, false)
                 let approved = ConsentStore.hasConsent(server: server, session: next)
                 client.setSessionAccess(next, approved)
+                if !approved { client.setSessionAccess(current, false) }
                 session = next
                 privacyApproved = approved
                 privacyChecking = false
+                sessionConfirmed = true
                 if !approved { screen = .privacy }
                 else if screen == .reconnect { screen = .main }
                 syncPush()
@@ -189,7 +239,7 @@ final class AppModel {
             } catch {
                 guard generation == authGeneration else { return }
                 privacyChecking = false
-                screen = .reconnect
+                if !keepShowing { screen = .reconnect }
             }
         }
     }
