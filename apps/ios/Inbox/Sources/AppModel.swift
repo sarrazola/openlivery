@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import os
 
 /// The root state machine: which screen is up, which session it runs on, and
 /// the privacy gate that sits between them.
@@ -37,6 +38,7 @@ final class AppModel {
     private var handledNotification = ""
 
     private let client = APIClient.shared
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "inbox", category: "launch")
 
     init() {
         NotificationRouter.shared.handler = { [weak self] _ in self?.processPendingNotification() }
@@ -56,8 +58,10 @@ final class AppModel {
         // The last launch's inbox is on screen while the server confirms the
         // session, as long as the disclosure it carries is the one accepted.
         var onSnapshot = false
-        if let snapshot = SnapshotStore.load(server: stored.server, token: stored.token),
-           ConsentStore.hasConsent(server: stored.server, session: snapshot.session) {
+        let snapshot = SnapshotStore.load(server: stored.server, token: stored.token)
+        let consented = snapshot.map { ConsentStore.hasConsent(server: stored.server, session: $0.session) } ?? false
+        Self.log.info("launch: snapshot \(snapshot == nil ? "absent" : consented ? "drawn" : "present, consent differs", privacy: .public)")
+        if let snapshot, consented {
             client.setSessionAccess(snapshot.session, true)
             server = stored.server
             session = snapshot.session
@@ -93,6 +97,7 @@ final class AppModel {
         } catch {
             guard generation == authGeneration else { return }
             // An offline launch must not erase a valid login, nor hide an inbox already drawn.
+            Self.log.info("launch: server unreachable, \(onSnapshot ? "staying on the snapshot" : "reconnect screen", privacy: .public)")
             if !onSnapshot { screen = .reconnect }
         }
     }
