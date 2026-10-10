@@ -36,10 +36,8 @@ struct ConversationsView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
                 }
-                if !store.loaded {
-                    Spacer()
-                    ProgressView().tint(accent.color)
-                    Spacer()
+                if !store.loaded, store.items.isEmpty {
+                    InboxSkeleton(label: s.inbox.loading)
                 } else {
                     list(server: server, session: session)
                 }
@@ -368,6 +366,8 @@ final class ConversationsStore {
 
     var query: String { search.trimmingCharacters(in: .whitespaces) }
     var filterActive: Bool { !team.isEmpty || !channel.isEmpty }
+    /// The unfiltered open list: the one view the launch snapshot keeps.
+    private var isDefaultView: Bool { status == .open && folder == .all && query.isEmpty && team.isEmpty && channel.isEmpty }
     /// Changing any of these restarts the list from the first page.
     var filterKey: String { "\(status.rawValue)|\(folder)|\(team)|\(channel)|\(query)" }
 
@@ -394,7 +394,13 @@ final class ConversationsStore {
         error = nil
         nextOffset = 0
         requestId += 1
-        if !contextLoaded { await loadContext(server, session) }
+        // The last launch's first page fills the screen while this one loads.
+        if isDefaultView, let snapshot = SnapshotStore.load(server: server, token: session.token) {
+            items = snapshot.conversations
+            summary = snapshot.summary
+        }
+        // Teams and availability are not needed to draw the list, so they load beside it.
+        if !contextLoaded { Task { await self.loadContext(server, session) } }
         // Debounce typing: a search key change waits before hitting the server.
         if !query.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
         guard !Task.isCancelled else { return }
@@ -466,6 +472,10 @@ final class ConversationsStore {
                 LocalAlerts.shared.observe(items, session: session, openConversationId: openConversation())
             }
             if let next = try? await PortalAPI.inboxSummary(server, session), id == requestId { summary = next }
+            if isDefaultView, !append, id == requestId {
+                let rows = items, counts = summary
+                Task.detached(priority: .utility) { SnapshotStore.save(server: server, session: session, conversations: rows, summary: counts) }
+            }
         } catch is CancellationError {
         } catch let failure as APIError {
             guard id == requestId else { return }

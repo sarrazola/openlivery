@@ -18,7 +18,7 @@ struct Strings {
         let title, all, unread, mine, ai, open, resolved, search, filters, teams, allTeams, allChannels: String
         let done, retry, loadingMore, loadMore, noResults, noResultsBody, clearFilters, account, online, away: String
         let availabilityHint, aiHandling, assignedTo, legacyHuman, signOutTitle, cancel, signOut: String
-        let reconnectTitle, reconnectBody, sessionExpired, notificationUnavailable, contacts, connectionError: String
+        let reconnectTitle, reconnectBody, sessionExpired, notificationUnavailable, contacts, connectionError, loading: String
     }
     struct List {
         let signOut, emptyTitle, emptyBody, loadFailed, noMessages, youReply, untitled, webVisitor: String
@@ -99,7 +99,7 @@ struct Strings {
             sessionExpired: "Your session expired. Sign in again.",
             notificationUnavailable: "This conversation is no longer available.",
             contacts: "Contacts",
-            connectionError: "Could not refresh. Showing the last loaded conversations."
+            connectionError: "Could not refresh. Showing the last loaded conversations.", loading: "Loading"
         ),
         list: List(
             signOut: "Sign out", emptyTitle: "No conversations yet",
@@ -176,7 +176,7 @@ struct Strings {
             sessionExpired: "Tu sesión venció. Vuelve a entrar.",
             notificationUnavailable: "Esta conversación ya no está disponible.",
             contacts: "Contactos",
-            connectionError: "No pudimos actualizar. Mostramos las últimas conversaciones cargadas."
+            connectionError: "No pudimos actualizar. Mostramos las últimas conversaciones cargadas.", loading: "Cargando"
         ),
         list: List(
             signOut: "Salir", emptyTitle: "Todavía no hay conversaciones",

@@ -38,7 +38,11 @@ struct ChatView: View {
                 header(who: who, resolved: resolved, server: server, session: session)
                 ZStack(alignment: .bottom) {
                     if !store.loaded {
-                        VStack { Spacer(); if store.error != nil { Image(systemName: "icloud.slash").font(.system(size: 36)).foregroundStyle(accent.palette.muted) } else { ProgressView().tint(accent.color) }; Spacer() }
+                        if store.error != nil {
+                            VStack { Spacer(); Image(systemName: "icloud.slash").font(.system(size: 36)).foregroundStyle(accent.palette.muted); Spacer() }
+                        } else {
+                            ChatSkeleton(label: Strings.current.inbox.loading)
+                        }
                     } else {
                         messages(who: who, server: server, session: session)
                     }

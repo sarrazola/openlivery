@@ -51,6 +51,19 @@ final class AppModel {
             screen = .signIn
             return
         }
+        // The last launch's inbox is on screen while the server confirms the
+        // session, as long as the disclosure it carries is the one accepted.
+        var onSnapshot = false
+        if let snapshot = SnapshotStore.load(server: stored.server, token: stored.token),
+           ConsentStore.hasConsent(server: stored.server, session: snapshot.session) {
+            client.setSessionAccess(snapshot.session, true)
+            server = stored.server
+            session = snapshot.session
+            privacyApproved = true
+            privacyChecking = false
+            screen = .main
+            onSnapshot = true
+        }
         do {
             let next = try await PortalAPI.resumeSession(stored.server, token: stored.token)
             guard generation == authGeneration else { return }
@@ -66,12 +79,17 @@ final class AppModel {
             processPendingNotification()
         } catch let error as APIError where error.isUnauthorized {
             guard generation == authGeneration else { return }
+            if let shown = session { client.setSessionAccess(shown, false) }
             try? SessionStore.clear()
+            SnapshotStore.clear()
+            session = nil
+            server = ""
+            privacyApproved = false
             screen = .signIn
         } catch {
             guard generation == authGeneration else { return }
-            // An offline launch must not erase a valid login.
-            screen = .reconnect
+            // An offline launch must not erase a valid login, nor hide an inbox already drawn.
+            if !onSnapshot { screen = .reconnect }
         }
     }
 
@@ -126,6 +144,7 @@ final class AppModel {
             // registration requests and their cleanup have finished.
             await stopPush()
             try SessionStore.clear()
+            SnapshotStore.clear()
             ComposerDrafts.shared.clear()
             LocalAlerts.shared.reset()
             authGeneration += 1
@@ -168,14 +187,21 @@ final class AppModel {
         privacyChecking = true
         authGeneration += 1
         guard phase == .active else { return }
+        // A consented session comes straight back on screen; the server's answer
+        // only matters if it withdraws it or changes the disclosure.
+        let keepShowing = privacyApproved && screen == .main
+        if keepShowing {
+            client.setSessionAccess(current, true)
+            privacyChecking = false
+        }
         let generation = authGeneration
         Task {
             do {
                 let next = try await PortalAPI.resumeSession(server, token: current.token)
                 guard generation == authGeneration, !signingOut else { return }
-                client.setSessionAccess(next, false)
                 let approved = ConsentStore.hasConsent(server: server, session: next)
                 client.setSessionAccess(next, approved)
+                if !approved { client.setSessionAccess(current, false) }
                 session = next
                 privacyApproved = approved
                 privacyChecking = false
@@ -189,7 +215,7 @@ final class AppModel {
             } catch {
                 guard generation == authGeneration else { return }
                 privacyChecking = false
-                screen = .reconnect
+                if !keepShowing { screen = .reconnect }
             }
         }
     }

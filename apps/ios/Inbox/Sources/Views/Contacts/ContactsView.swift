@@ -36,13 +36,15 @@ struct ContactsView: View {
                     ErrorNotice(message: error, retryLabel: s.retry, retry: { Task { await store.load(server, session) } }).padding(.horizontal, 16).padding(.bottom, 8)
                 }
                 List {
-                    if store.items.isEmpty {
+                    if store.items.isEmpty, store.loading {
+                        ContactsSkeleton(label: Strings.current.inbox.loading)
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden).listRowBackground(accent.palette.surface)
+                    } else if store.items.isEmpty {
                         VStack(spacing: 14) {
-                            if store.loading { ProgressView().tint(accent.color) } else {
-                                Image(systemName: "person.2").font(.system(size: 46)).foregroundStyle(accent.palette.subtle)
-                                Text(store.query.isEmpty ? s.empty : s.noMatches).font(.title3.weight(.semibold)).foregroundStyle(accent.palette.ink).multilineTextAlignment(.center)
-                                if store.query.isEmpty { Text(s.emptyHint).font(.subheadline).foregroundStyle(accent.palette.muted).multilineTextAlignment(.center) }
-                            }
+                            Image(systemName: "person.2").font(.system(size: 46)).foregroundStyle(accent.palette.subtle)
+                            Text(store.query.isEmpty ? s.empty : s.noMatches).font(.title3.weight(.semibold)).foregroundStyle(accent.palette.ink).multilineTextAlignment(.center)
+                            if store.query.isEmpty { Text(s.emptyHint).font(.subheadline).foregroundStyle(accent.palette.muted).multilineTextAlignment(.center) }
                         }
                         .frame(maxWidth: .infinity).padding(30)
                         .listRowSeparator(.hidden).listRowBackground(accent.palette.surface)
