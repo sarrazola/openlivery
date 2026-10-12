@@ -40,8 +40,8 @@ android {
     }
 
     // The upload key lives outside the repository. It is read from Gradle properties
-    // or the environment (OPENLIVERY_UPLOAD_* is the example prefix a publisher renames
-    // in their own build); without it a release build is left unsigned.
+    // (uploadKey.*) or the environment (UPLOAD_KEY_*); without it a release build is
+    // left unsigned.
     val signing = listOf("STORE_FILE", "STORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD").associateWith { key ->
         (project.findProperty("uploadKey.$key") as String?) ?: System.getenv("UPLOAD_KEY_$key") ?: ""
     }
