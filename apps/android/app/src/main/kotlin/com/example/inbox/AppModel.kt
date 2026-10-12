@@ -12,6 +12,9 @@ import com.example.inbox.api.Conversation
 import com.example.inbox.api.PortalApi
 import com.example.inbox.api.Session
 import com.example.inbox.localization.Strings
+import com.example.inbox.push.NotificationRouter
+import com.example.inbox.push.PushSession
+import com.example.inbox.rules.NotificationTarget
 import com.example.inbox.storage.ConsentStore
 import com.example.inbox.storage.SessionStore
 import com.example.inbox.storage.StoredSession
@@ -41,7 +44,14 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     private var authGeneration = 0
     private var signingOut = false
     private var wasBackgrounded = false
+    private var pushSession: PushSession? = null
+    private var pushKey: String? = null
+    private var handledNotification = ""
     private val context get() = getApplication<Application>()
+
+    init {
+        NotificationRouter.handler = { processPendingNotification() }
+    }
 
     // MARK: Session lifecycle
 
@@ -67,6 +77,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
                 privacyApproved = approved
                 privacyChecking = false
                 screen = if (approved) Screen.MAIN else Screen.PRIVACY
+                syncPush()
+                processPendingNotification()
             } catch (error: ApiException) {
                 if (generation != authGeneration) return@launch
                 if (error.isUnauthorized) {
@@ -97,6 +109,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         inboxPath = emptyList()
         contactsPath = emptyList()
         screen = if (approved) Screen.MAIN else Screen.PRIVACY
+        syncPush()
     }
 
     fun acceptPrivacy() {
@@ -107,6 +120,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         ApiClient.setSessionAccess(current, true)
         privacyApproved = true
         screen = Screen.MAIN
+        syncPush()
+        processPendingNotification()
     }
 
     fun withdrawPrivacy() {
@@ -126,7 +141,10 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         val previous = session
         previous?.let { ApiClient.setSessionAccess(it, false) }
         signOutBusy = true
+        viewModelScope.launch {
         try {
+            // A new account must not register the same native token before the old registration is released.
+            stopPush()
             SessionStore.clear(context)
             authGeneration += 1
             session = null
@@ -147,6 +165,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         }
         signingOut = false
         signOutBusy = false
+        }
     }
 
     fun expireSession() { signOut() }
@@ -181,6 +200,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
                 privacyChecking = false
                 if (!approved) screen = Screen.PRIVACY
                 else if (screen == Screen.RECONNECT) screen = Screen.MAIN
+                syncPush()
+                processPendingNotification()
             } catch (error: ApiException) {
                 if (generation != authGeneration) return@launch
                 if (error.isUnauthorized) expireSession() else { privacyChecking = false; if (!keepShowing) screen = Screen.RECONNECT }
@@ -208,4 +229,59 @@ class AppModel(application: Application) : AndroidViewModel(application) {
             else -> if (inboxPath.isNotEmpty()) inboxPath = inboxPath.dropLast(1)
         }
     }
+
+    // MARK: Notifications
+
+    private fun processPendingNotification() {
+        val tap = NotificationRouter.pending ?: return
+        val current = session ?: return
+        if (!privacyApproved || privacyChecking || signOutBusy || screen != Screen.MAIN) return
+        if (handledNotification == tap.identifier) return
+        handledNotification = tap.identifier
+        val id = NotificationTarget.conversationId(tap.data, current.clientId)
+        if (id == null) { NotificationRouter.clear(); return }
+        val generation = authGeneration
+        viewModelScope.launch {
+            try {
+                val detail = PortalApi.conversation(server, current, id)
+                if (generation != authGeneration) return@launch
+                tab = Tab.INBOX
+                inboxPath = listOf(detail.summary)
+            } catch (error: ApiException) {
+                if (error.isUnauthorized) expireSession() else alert = AlertContent(Strings.current.inbox.notificationUnavailable, error.message)
+            } catch (error: Exception) {
+                alert = AlertContent(Strings.current.inbox.notificationUnavailable, error.message)
+            } finally {
+                NotificationRouter.clear()
+            }
+        }
+    }
+
+    // MARK: Push
+
+    private fun syncPush() {
+        val current = session
+        if (current == null || !privacyApproved) { viewModelScope.launch { stopPush() }; return }
+        val key = "$server|${current.token}|${current.push.enabled}|${current.push.provider}"
+        if (key == pushKey) return
+        val base = server
+        viewModelScope.launch {
+            stopPush()
+            if (session?.token != current.token || !privacyApproved) return@launch
+            pushKey = key
+            val next = PushSession(base, current, viewModelScope)
+            pushSession = next
+            next.start()
+        }
+    }
+
+    private suspend fun stopPush() {
+        val current = pushSession ?: return
+        pushSession = null
+        pushKey = null
+        current.stop()
+    }
+
+    /** Whether a consented session wants the notification permission asked for. */
+    val wantsNotifications: Boolean get() = session?.push?.enabled == true && privacyApproved && screen == Screen.MAIN
 }

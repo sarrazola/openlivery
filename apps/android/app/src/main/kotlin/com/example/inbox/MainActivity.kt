@@ -35,7 +35,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import android.content.Intent
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.example.inbox.localization.Strings
+import com.example.inbox.push.NotificationRouter
+import com.example.inbox.push.PushRegistrar
 import com.example.inbox.ui.Accent
 import com.example.inbox.ui.LocalAccent
 import com.example.inbox.ui.MainTabs
@@ -50,7 +56,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        PushRegistrar.initialize(applicationContext)
+        NotificationRouter.accept(intent)
         setContent { RootView(model) }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        NotificationRouter.accept(intent)
     }
 }
 
@@ -63,6 +76,11 @@ fun RootView(model: AppModel) {
     val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(Unit) { model.restore() }
+    // The permission is asked only once the server has said it can notify, so a prompt never leads to nothing.
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    LaunchedEffect(model.wantsNotifications) {
+        if (model.wantsNotifications && PushRegistrar.configured && Build.VERSION.SDK_INT >= 33) notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+    }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {

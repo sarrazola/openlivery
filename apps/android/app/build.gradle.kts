@@ -31,6 +31,7 @@ android {
             "BRAND_PRODUCT_NAME", "BRAND_PRIMARY_COLOR", "BRAND_DEFAULT_SERVER", "BRAND_HOSTED_LABEL",
             "BRAND_HOSTED_SERVER_TEMPLATE", "BRAND_HOSTED_SIGN_IN", "BRAND_PRIVACY_POLICY_URL_EN",
             "BRAND_PRIVACY_POLICY_URL_ES", "BRAND_SUPPORT_URL_EN", "BRAND_SUPPORT_URL_ES",
+            "BRAND_FCM_PROJECT_ID", "BRAND_FCM_APP_ID", "BRAND_FCM_API_KEY", "BRAND_FCM_SENDER_ID",
         ).forEach { key -> buildConfigField("String", key, brandField(key)) }
     }
 
@@ -80,6 +81,9 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha07")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    // The platform's push channel, initialised at runtime from the brand file; no config plugin.
+    implementation("com.google.firebase:firebase-messaging:24.1.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
 }
