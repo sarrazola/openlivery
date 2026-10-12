@@ -28,6 +28,8 @@ object PushRegistrar {
     val configured: Boolean = listOf(BuildConfig.BRAND_FCM_PROJECT_ID, BuildConfig.BRAND_FCM_APP_ID, BuildConfig.BRAND_FCM_API_KEY, BuildConfig.BRAND_FCM_SENDER_ID).all { it.isNotBlank() }
 
     @Volatile private var initialised = false
+    /** What the last attempt found, for the settings screen. */
+    @Volatile var status: String = if (configured) "channel not initialised" else "channel not configured"
     /** Called whenever the channel hands over a new token while a session is active. */
     @Volatile var onToken: ((String) -> Unit)? = null
 
@@ -44,7 +46,9 @@ object PushRegistrar {
                 FirebaseApp.initializeApp(context, options)
             }
             initialised = true
+            status = "channel ready"
         } catch (error: Exception) {
+            status = "channel failed: ${error.message}"
             Log.w(TAG, "notification channel not initialised: ${error.message}")
         }
     }
@@ -52,6 +56,6 @@ object PushRegistrar {
     /** The native token, or nothing when the channel is off or unreachable. */
     suspend fun nativeToken(): String? {
         if (!configured || !initialised) return null
-        return try { FirebaseMessaging.getInstance().token.await() } catch (error: Exception) { Log.w(TAG, "no token: ${error.message}"); null }
+        return try { FirebaseMessaging.getInstance().token.await().also { status = "token obtained" } } catch (error: Exception) { status = "no token: ${error.message}"; Log.w(TAG, "no token: ${error.message}"); null }
     }
 }

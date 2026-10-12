@@ -142,6 +142,10 @@ private fun SettingsMenu(model: AppModel, onSignOut: () -> Unit, open: (String) 
             Line()
             SheetRow(Icons.AutoMirrored.Filled.Logout, s.signOut, danger = true, onClick = onSignOut)
         }
+        Text(
+            "${com.example.inbox.Brand.name} ${com.example.inbox.BuildConfig.VERSION_NAME} (${com.example.inbox.BuildConfig.VERSION_CODE}) · ${com.example.inbox.BuildConfig.BUILD_STAMP}",
+            color = palette.subtle, fontSize = 11.sp, modifier = Modifier.padding(top = 18.dp),
+        )
         Spacer(Modifier.height(30.dp))
     }
 }

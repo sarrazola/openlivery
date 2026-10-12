@@ -1,3 +1,6 @@
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Properties
 
 plugins {
@@ -33,6 +36,7 @@ android {
             "BRAND_PRIVACY_POLICY_URL_ES", "BRAND_SUPPORT_URL_EN", "BRAND_SUPPORT_URL_ES",
             "BRAND_FCM_PROJECT_ID", "BRAND_FCM_APP_ID", "BRAND_FCM_API_KEY", "BRAND_FCM_SENDER_ID",
         ).forEach { key -> buildConfigField("String", key, brandField(key)) }
+        buildConfigField("String", "BUILD_STAMP", "\"" + ZonedDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) + " UTC\"")
     }
 
     buildTypes {

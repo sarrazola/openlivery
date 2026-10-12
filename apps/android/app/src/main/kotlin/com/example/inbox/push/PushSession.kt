@@ -17,7 +17,8 @@ class PushSession(private val server: String, private val session: Session, priv
     @Volatile private var active = true
 
     fun start() {
-        if (!session.push.enabled || !PushRegistrar.configured) return
+        if (!session.push.enabled) { PushRegistrar.status = "server does not notify (provider ${session.push.provider})"; return }
+        if (!PushRegistrar.configured) return
         PushRegistrar.onToken = { token -> if (active) scope.launch { register(token) } }
         job = scope.launch {
             val token = PushRegistrar.nativeToken() ?: return@launch
@@ -29,9 +30,11 @@ class PushSession(private val server: String, private val session: Session, priv
         try {
             val result = PortalApi.registerDevice(server, session, DeviceRegistration(token, session.push.provider, PLATFORM))
             if (active) synchronized(registered) { registered.add(token) }
+            PushRegistrar.status = "registered with the server (${result.provider}, enabled=${result.registered})"
             android.util.Log.i("push", "registered with the server: provider=${result.provider} registered=${result.registered}")
         } catch (error: Exception) {
             // A person can revoke permission at any time; not worth an error on screen.
+            PushRegistrar.status = "registration failed: ${error.message}"
             android.util.Log.w("push", "registration failed: ${error.message}")
         }
     }
