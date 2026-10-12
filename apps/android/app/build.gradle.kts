@@ -39,11 +39,29 @@ android {
         buildConfigField("String", "BUILD_STAMP", "\"" + ZonedDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) + " UTC\"")
     }
 
+    // The upload key lives outside the repository. It is read from Gradle properties
+    // or the environment (OPENLIVERY_UPLOAD_* is the example prefix a publisher renames
+    // in their own build); without it a release build is left unsigned.
+    val signing = listOf("STORE_FILE", "STORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD").associateWith { key ->
+        (project.findProperty("uploadKey.$key") as String?) ?: System.getenv("UPLOAD_KEY_$key") ?: ""
+    }
+    if (signing.values.all { it.isNotBlank() }) {
+        signingConfigs {
+            create("upload") {
+                storeFile = file(signing.getValue("STORE_FILE"))
+                storePassword = signing.getValue("STORE_PASSWORD")
+                keyAlias = signing.getValue("KEY_ALIAS")
+                keyPassword = signing.getValue("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (signing.values.all { it.isNotBlank() }) signingConfig = signingConfigs.getByName("upload")
         }
     }
 

@@ -57,5 +57,9 @@ Store builds are App Bundles signed with your upload key:
 ./gradlew :app:bundleRelease   # app/build/outputs/bundle/release/app-release.aab
 ```
 
-Provide the keystore through Gradle properties outside the repository
-(`~/.gradle/gradle.properties` or the environment), never in the source tree.
+Provide the upload keystore outside the repository, as Gradle properties
+(`uploadKey.STORE_FILE`, `uploadKey.STORE_PASSWORD`, `uploadKey.KEY_ALIAS`,
+`uploadKey.KEY_PASSWORD` in `~/.gradle/gradle.properties`) or as the
+environment variables `UPLOAD_KEY_STORE_FILE`, `UPLOAD_KEY_STORE_PASSWORD`,
+`UPLOAD_KEY_KEY_ALIAS` and `UPLOAD_KEY_KEY_PASSWORD`. With them absent the
+release bundle is built unsigned. Never put the keystore in the source tree.
