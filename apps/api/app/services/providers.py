@@ -18,8 +18,8 @@ from ..security import decrypt_secret
 
 # A deployment may lend credentials to an agency that has not stored its own
 # (a shared key, a trial pool). It registers one function at startup; the
-# function is asked only when the agency holds no key of its own, so a stored
-# key always wins. It returns (base_url, api_key) or None.
+# function is asked only when the agency holds no key of its own or paused the
+# one it holds, so a key in use always wins. It returns (base_url, api_key) or None.
 CredentialFallback = Callable[[Session, Any, str], "tuple[str, str] | None"]
 CredentialProbe = Callable[[Session, Any, str], bool]
 _credential_fallback: CredentialFallback | None = None
@@ -62,11 +62,18 @@ def _stored(db: Session, agency_id, provider: str) -> ProviderCredential | None:
     )
 
 
+def _in_use(db: Session, agency_id, provider: str) -> ProviderCredential | None:
+    """The agency's own key when it answers: stored and not paused. A paused
+    key is kept but counts as absent, so the deployment's fallback is asked."""
+    credential = _stored(db, agency_id, provider)
+    return credential if credential is not None and credential.enabled else None
+
+
 def credential_source(db: Session, agency_id, provider: str) -> CredentialSource:
     """Where a reply on this provider would get its key from right now."""
     if provider not in PROVIDERS:
         return "none"
-    if _stored(db, agency_id, provider) is not None:
+    if _in_use(db, agency_id, provider) is not None:
         return "agency"
     if _credential_fallback is None:
         return "none"
@@ -80,7 +87,7 @@ def resolve_provider_credentials(db: Session, agency_id, provider: str) -> tuple
     deployment's fallback lends, else None."""
     if provider not in PROVIDERS:
         return None
-    credential = _stored(db, agency_id, provider)
+    credential = _in_use(db, agency_id, provider)
     if credential is not None:
         return base_url_for(provider), decrypt_secret(credential.encrypted_api_key)
     if _credential_fallback is not None:

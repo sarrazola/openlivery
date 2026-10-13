@@ -188,6 +188,11 @@ class ProviderKeyUpdate(BaseModel):
     api_key: str = Field(min_length=1)
 
 
+class ProviderKeyToggle(BaseModel):
+    # False pauses the stored key: it stays, but replies no longer use it.
+    enabled: bool
+
+
 class ProviderOut(BaseModel):
     provider: str
     label: str
@@ -195,6 +200,11 @@ class ProviderOut(BaseModel):
     # "agency": the agency's own key; "deployment": a key the deployment lends
     # (see services.providers.register_credential_fallback); "none": no key.
     source: Literal["agency", "deployment", "none"] = "none"
+    # Whether the agency holds a key of its own, and whether that key is in
+    # use. A stored key that is paused reads stored and not enabled, and
+    # ``source`` says what answers in its place.
+    stored: bool = False
+    enabled: bool = True
     api_key_masked: str = ""
 
 
@@ -206,6 +216,22 @@ REPLY_DELAY_ORDER_ERROR = "The maximum reply delay must be greater than or equal
 def check_reply_delay(minimum: int, maximum: int) -> None:
     if maximum < minimum:
         raise ValueError(REPLY_DELAY_ORDER_ERROR)
+
+
+class ScheduleSlot(BaseModel):
+    """One stretch of an agent's week: a weekday (0 Monday to 6 Sunday) and
+    the local times, "HH:MM", it starts and ends; "24:00" ends the day."""
+
+    day: int = Field(ge=0, le=6)
+    start: str = Field(pattern=r"^\d{2}:\d{2}$")
+    end: str = Field(pattern=r"^\d{2}:\d{2}$")
+
+    @model_validator(mode="after")
+    def _ordered(self) -> "ScheduleSlot":
+        from .services.availability import check_slots
+
+        check_slots([self.model_dump()])
+        return self
 
 
 class AgentBase(BaseModel):
@@ -234,6 +260,9 @@ class AgentBase(BaseModel):
     audio_model: str = Field(default=DEFAULT_AUDIO_MODEL, max_length=180)
     embedding_model: str = Field(default=DEFAULT_EMBEDDING_MODEL, max_length=180, pattern=MODEL_SLUG_PATTERN)
     is_active: bool = True
+    # On duty only inside these slots when enabled (see services.availability).
+    schedule_enabled: bool = False
+    schedule_slots: list[ScheduleSlot] = []
 
     @model_validator(mode="after")
     def _reply_delay_bounds(self) -> "AgentBase":
@@ -271,6 +300,8 @@ class AgentUpdate(BaseModel):
     audio_model: str | None = Field(default=None, max_length=180)
     embedding_model: str | None = Field(default=None, max_length=180, pattern=MODEL_SLUG_PATTERN)
     is_active: bool | None = None
+    schedule_enabled: bool | None = None
+    schedule_slots: list[ScheduleSlot] | None = None
 
 
 class AgentOut(ORMModel):
@@ -300,6 +331,8 @@ class AgentOut(ORMModel):
     audio_model: str
     embedding_model: str
     is_active: bool
+    schedule_enabled: bool
+    schedule_slots: list[ScheduleSlot]
     created_at: datetime
     updated_at: datetime
     client: ClientOut

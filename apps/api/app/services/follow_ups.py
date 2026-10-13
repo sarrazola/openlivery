@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Agent, Conversation, Message, now_utc
 from .ai import Completion, chat_completion
+from .availability import agent_available
 from .capture import capture_context, field_definitions
 from .conversation_state import cancel_follow_up, exchanged_only, hours_shown, resolve_without_a_person
 from .knowledge import build_system_prompt, contact_context, llm_turns
@@ -353,7 +354,7 @@ async def _run_step(db: Session, conversation: Conversation, now: datetime) -> N
     anchor = conversation.follow_up_anchor_at
     blocked = conversation.contact is not None and conversation.contact.blocked_at is not None
     if (not _silent(conversation, last) or anchor is None or index >= len(steps) or blocked
-            or not applies_to(agent, conversation) or not agent.is_active or not agent.client.is_active):
+            or not applies_to(agent, conversation) or not agent_available(agent) or not agent.client.is_active):
         cancel_follow_up(conversation)
         db.commit()
         return

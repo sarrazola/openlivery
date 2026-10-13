@@ -6,6 +6,7 @@ from sqlalchemy import or_, select
 
 from ..models import Conversation, Message, now_utc
 from .attachments import llm_text
+from .availability import agent_available
 from .conversation_state import cancel_follow_up, note_reply, record_activity
 
 logger = logging.getLogger(__name__)
@@ -111,7 +112,7 @@ async def resume_due(db, *, limit=10):
         channel = conversation.whatsapp_channel or conversation.whatsapp_cloud_channel
         blocked = conversation.contact and conversation.contact.blocked_at is not None
         if (conversation.status == "resolved" or blocked or not channel or not channel.is_enabled
-                or channel.status != "connected" or not channel.client.is_active or not conversation.agent.is_active):
+                or channel.status != "connected" or not channel.client.is_active or not agent_available(conversation.agent)):
             cancel_phone_pause(conversation)
             db.commit()
             continue

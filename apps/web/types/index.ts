@@ -78,10 +78,16 @@ export type Agent = {
   audio_model: string;
   embedding_model: string;
   is_active: boolean;
+  // On duty only inside these slots when enabled; times are "HH:MM" in the
+  // client's timezone and the day is 0 (Monday) to 6 (Sunday).
+  schedule_enabled: boolean;
+  schedule_slots: ScheduleSlot[];
   client: Client;
   created_at: string;
   updated_at: string;
 };
+
+export type ScheduleSlot = { day: number; start: string; end: string };
 
 export type Provider = {
   provider: string;
@@ -89,6 +95,10 @@ export type Provider = {
   configured: boolean;
   // "agency": a key of the agency's own; "deployment": one the deployment lends; "none": no key.
   source?: "agency" | "deployment" | "none";
+  // Whether the agency holds a key of its own, and whether it is in use; a
+  // paused key is stored and not enabled, and `source` says what answers.
+  stored?: boolean;
+  enabled?: boolean;
   api_key_masked: string;
 };
 

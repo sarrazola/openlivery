@@ -66,6 +66,40 @@ def test_the_listing_reports_a_lent_key_as_configured_and_says_where_it_comes_fr
         providers.register_credential_fallback(None)
 
 
+def test_a_paused_key_is_kept_but_the_fallback_answers_in_its_place(authenticated_client: TestClient):
+    """Pausing keeps the key stored (nothing to re-enter) while replies fall
+    through to what the deployment lends, exactly as if no key were held."""
+    agency_id = _agency_id(authenticated_client)
+    client = authenticated_client
+    client.put("/api/providers/openrouter", json={"api_key": "sk-own-key"})
+    assert client.patch("/api/providers/nope", json={"enabled": False}).status_code == 400
+
+    providers.register_credential_fallback(lambda db, agency, provider: ("https://lender.example/v1", "lent-key"))
+    try:
+        row = client.patch("/api/providers/openrouter", json={"enabled": False}).json()
+        assert row["stored"] is True and row["enabled"] is False
+        assert row["configured"] is True and row["source"] == "deployment" and row["api_key_masked"]
+        with TestingSession() as db:
+            assert providers.credential_source(db, agency_id, "openrouter") == "deployment"
+            assert providers.resolve_provider_credentials(db, agency_id, "openrouter") == ("https://lender.example/v1", "lent-key")
+
+        row = client.patch("/api/providers/openrouter", json={"enabled": True}).json()
+        assert row["enabled"] is True and row["source"] == "agency"
+        with TestingSession() as db:
+            assert providers.resolve_provider_credentials(db, agency_id, "openrouter")[1] == "sk-own-key"
+    finally:
+        providers.register_credential_fallback(None)
+
+    # Paused with nothing lent, the agency holds a key that answers nothing.
+    row = client.patch("/api/providers/openrouter", json={"enabled": False}).json()
+    assert row["stored"] is True and row["configured"] is False and row["source"] == "none"
+    with TestingSession() as db:
+        assert providers.resolve_provider_credentials(db, agency_id, "openrouter") is None
+
+    client.delete("/api/providers/openrouter")
+    assert client.patch("/api/providers/openrouter", json={"enabled": True}).status_code == 404
+
+
 def test_the_listing_asks_the_probe_when_the_lender_gives_one(authenticated_client: TestClient):
     """A lender may stop lending (an allowance ran out) while still able to produce the key;
     the listing must say so instead of letting the UI promise a reply that would be refused."""

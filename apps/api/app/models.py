@@ -123,6 +123,9 @@ class ProviderCredential(Base):
     agency_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agencies.id", ondelete="CASCADE"), index=True)
     provider: Mapped[str] = mapped_column(String(30))
     encrypted_api_key: Mapped[str] = mapped_column(Text)
+    # A paused key stays stored but answers nothing: replies fall through to
+    # what the deployment lends, if anything, exactly as if no key were held.
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
@@ -200,6 +203,13 @@ class Agent(Base):
     follow_up_second_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     follow_up_close_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     follow_up_channels: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    # When the agent is on duty. Off, it answers whenever it is active; on, it
+    # answers only inside ``schedule_slots``, each ``{"day", "start", "end"}``
+    # with the weekday as 0 (Monday) to 6 (Sunday) and the bounds as "HH:MM"
+    # in the client's timezone. Outside them messages are kept and nobody
+    # answers, like an inactive agent, but it switches back on by itself.
+    schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    schedule_slots: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     # Set when the agent is deleted. The row stays so the conversations it
     # handled keep its name; everything it owned (knowledge, tools, rules)
     # is purged and it disappears from every list.

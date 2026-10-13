@@ -20,10 +20,11 @@ import { agentToolsExtensions } from "@/lib/extensions/agent-tools";
 import { EscalationRulesEditor } from "@/components/escalation-rules";
 import { ContactCaptureEditor } from "@/components/contact-capture";
 import { FollowUpEditor } from "@/components/follow-ups";
+import { AgentScheduleEditor, onDutyNow } from "@/components/agent-schedule";
 import { Combobox } from "@/components/combobox";
 import { DEFAULT_PROVIDER, DEFAULT_AUDIO_MODEL, DEFAULT_EMBEDDING_MODEL, DEFAULT_IMAGE_MODEL, modelsFor, modelOptionsFor, estimateTokens, modelContextWindow, AUDIO_MODELS, EMBEDDING_MODELS, IMAGE_MODELS } from "@/lib/providers";
 import { narrowModels, useAvailableModels } from "@/lib/use-available-models";
-import type { Agent, AgentTool, KnowledgeDocument, QAPair, EmbeddingModelInfo } from "@/types";
+import type { Agent, AgentTool, KnowledgeDocument, QAPair, EmbeddingModelInfo, ScheduleSlot } from "@/types";
 
 type Tab = "basics" | "knowledge" | "tools" | "playground";
 const TABS: Tab[] = ["basics", "knowledge", "tools", "playground"];
@@ -46,6 +47,7 @@ export default function AgentDetailPage() {
   const [replyDelayMin, setReplyDelayMin] = useState(6);
   const [replyDelayMax, setReplyDelayMax] = useState(9);
   const [imageEnabled, setImageEnabled] = useState(false);
+  const [schedule, setSchedule] = useState<{ enabled: boolean; slots: ScheduleSlot[] }>({ enabled: false, slots: [] });
   const [imageModel, setImageModel] = useState<string>(DEFAULT_IMAGE_MODEL);
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [audioModel, setAudioModel] = useState<string>(DEFAULT_AUDIO_MODEL);
@@ -72,6 +74,7 @@ export default function AgentDetailPage() {
     setProvider(a.provider); setModel(a.model);
     setTemperature(a.temperature); setMaxTokens(a.max_tokens); setMemoryLimit(a.memory_limit); setPhoneHandoverMinutes(a.phone_handover_minutes); setReplyDelayMin(a.reply_delay_min_seconds); setReplyDelayMax(a.reply_delay_max_seconds);
     setImageEnabled(a.image_enabled); setImageModel(a.image_model || DEFAULT_IMAGE_MODEL);
+    setSchedule({ enabled: a.schedule_enabled, slots: a.schedule_slots });
     setAudioEnabled(a.audio_enabled); setAudioModel(a.audio_model || DEFAULT_AUDIO_MODEL);
   };
 
@@ -136,7 +139,7 @@ export default function AgentDetailPage() {
   async function saveConfig(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true);
     const form = new FormData(event.currentTarget);
-    const payload = { name, instructions: form.get("instructions"), personality: form.get("personality"), brief_summary: form.get("brief_summary"), brief_products: form.get("brief_products"), brief_audience: form.get("brief_audience"), brief_policies: form.get("brief_policies"), brief_dos: form.get("brief_dos"), brief_donts: form.get("brief_donts"), provider, model, prompt_language: lang, temperature, max_tokens: maxTokens, memory_limit: memoryLimit, phone_handover_minutes: phoneHandoverMinutes, reply_delay_min_seconds: replyDelayMin, reply_delay_max_seconds: replyDelayMax, image_enabled: imageEnabled, image_model: imageModel, audio_enabled: audioEnabled, audio_model: audioModel };
+    const payload = { name, instructions: form.get("instructions"), personality: form.get("personality"), brief_summary: form.get("brief_summary"), brief_products: form.get("brief_products"), brief_audience: form.get("brief_audience"), brief_policies: form.get("brief_policies"), brief_dos: form.get("brief_dos"), brief_donts: form.get("brief_donts"), provider, model, prompt_language: lang, temperature, max_tokens: maxTokens, memory_limit: memoryLimit, phone_handover_minutes: phoneHandoverMinutes, reply_delay_min_seconds: replyDelayMin, reply_delay_max_seconds: replyDelayMax, image_enabled: imageEnabled, image_model: imageModel, audio_enabled: audioEnabled, audio_model: audioModel, schedule_enabled: schedule.enabled, schedule_slots: schedule.slots };
     try {
       setAgent(await api<Agent>(`/agents/${id}`, { method: "PATCH", body: JSON.stringify(payload) }));
       api<{ prompt: string }>(`/agents/${id}/prompt`).then((r) => setPromptTokens(estimateTokens(r.prompt))).catch(() => {});
@@ -202,7 +205,7 @@ export default function AgentDetailPage() {
   if (!agent) return <div className="page"><FormSkeleton sections={2} /></div>;
   return <div className="page agent-detail-page">
     <Link href="/agents" className="back-link"><ArrowLeft size={16} /> {t("agents.detail.back")}</Link>
-    <header className="agent-detail-head"><div className="agent-title-wrap"><span className="agent-avatar xl"><Bot size={29} /></span><div><div className="title-line"><h1>{agent.name}</h1><span className={agent.is_active ? "pill purple" : "pill"}>{agent.is_active ? t("agents.detail.published") : t("agents.detail.unpublished")}</span></div><p><Link href={`/clients/${agent.client_id}`} className="table-link">{agent.client.name}</Link>{businessLabel(catalog, agent.client, lang) ? ` · ${businessLabel(catalog, agent.client, lang)}` : ""}</p></div></div><div className="header-actions"><button className={agent.is_active ? "button ghost" : "button primary"} onClick={() => (agent.is_active ? setConfirmingDeactivate(true) : togglePublish())} disabled={busy}>{agent.is_active ? <><PowerOff size={16} /> {t("agents.detail.unpublish")}</> : <><Power size={16} /> {t("agents.detail.publish")}</>}</button><button type="button" className="button secondary" onClick={() => changeTab("playground")}><MessageSquareText size={17} /> {t("agents.detail.openPlayground")}</button></div></header>
+    <header className="agent-detail-head"><div className="agent-title-wrap"><span className="agent-avatar xl"><Bot size={29} /></span><div><div className="title-line"><h1>{agent.name}</h1><span className={agent.is_active ? "pill purple" : "pill"}>{agent.is_active ? t("agents.detail.published") : t("agents.detail.unpublished")}</span>{agent.is_active && !onDutyNow(agent) && <span className="pill">{t("agents.detail.offDuty")}</span>}</div><p><Link href={`/clients/${agent.client_id}`} className="table-link">{agent.client.name}</Link>{businessLabel(catalog, agent.client, lang) ? ` · ${businessLabel(catalog, agent.client, lang)}` : ""}</p></div></div><div className="header-actions"><button className={agent.is_active ? "button ghost" : "button primary"} onClick={() => (agent.is_active ? setConfirmingDeactivate(true) : togglePublish())} disabled={busy}>{agent.is_active ? <><PowerOff size={16} /> {t("agents.detail.unpublish")}</> : <><Power size={16} /> {t("agents.detail.publish")}</>}</button><button type="button" className="button secondary" onClick={() => changeTab("playground")}><MessageSquareText size={17} /> {t("agents.detail.openPlayground")}</button></div></header>
     {docToDelete && <ConfirmModal title={t("agents.detail.confirmDelete", { filename: docToDelete.filename })} confirmLabel={t("agents.detail.delete")} cancelLabel={t("common.cancel")} confirmIcon={<Trash2 size={15} />} onConfirm={() => removeDocument(docToDelete)} onClose={() => setDocToDelete(null)} />}
     <Modal open={deleteOpen} title={t("agents.detail.deleteTitle", { name: agent.name })} onClose={() => setDeleteOpen(false)}>
       <div className="modal-form">
@@ -248,6 +251,7 @@ export default function AgentDetailPage() {
       <ContactCaptureEditor agentId={agent.id} clientId={agent.client_id} />
       <EscalationRulesEditor agentId={agent.id} clientId={agent.client_id} />
       <FollowUpEditor agentId={agent.id} />
+      <AgentScheduleEditor enabled={schedule.enabled} slots={schedule.slots} timezone={agent.client.timezone} locale={lang} onChange={setSchedule} />
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.aiModelHeading")}</h3><p>{t("agents.detail.aiModelCopy")}</p></div><div className="settings-fields">
         <label>{t("agents.detail.modelLabel")}{(() => { const allowed = narrowModels(modelsFor(provider), available?.chat?.[provider]); const known = modelOptionsFor(provider).filter((item) => allowed.includes(item.id)); const ordered = [...known.filter((item) => item.recommended), ...known.filter((item) => !item.recommended)].map((item) => item.id); const options = [...ordered, ...allowed.filter((id) => !ordered.includes(id))]; const labels = Object.fromEntries(known.map((item) => [item.id, item.label])); const tierOf = (g: string) => g === "fast" ? t("agents.wizard.modelGroupFast") : g === "balanced" ? t("agents.wizard.modelGroupBalanced") : t("agents.wizard.modelGroupCapable"); const tags = Object.fromEntries(known.map((item) => [item.id, item.recommended ? t("agents.wizard.modelBadgeRecommended") : tierOf(item.group)])); return <Combobox value={model} onChange={setModel} options={options} labels={labels} tags={tags} placeholder={t("agents.detail.modelPlaceholder")} allowCustom />; })()}</label>
         <div className="context-bar"><div style={{ width: `${contextPct}%` }} /><small><Sparkles size={12} /> {t("agents.detail.promptTokens", { count: (promptTokens ?? 0).toLocaleString(lang) })} · {t("agents.detail.contextUsage", { count: (promptTokens ?? 0).toLocaleString(lang), total: contextWindow.toLocaleString(lang) })}</small></div>

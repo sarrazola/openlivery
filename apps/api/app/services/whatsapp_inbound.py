@@ -26,6 +26,7 @@ from .media import audio_filename, describe_image, transcribe_audio
 from .notifications import notify_needs_human
 from .routing import route_new_conversation_by_tags
 from .model_catalog import DEFAULT_AUDIO_MODEL
+from .availability import on_duty
 from .providers import DEFAULT_PROVIDER, resolve_agent_credentials, resolve_provider_credentials
 from .tools import run_completion
 from .usage import record_usage, schedule_generation_reconcile
@@ -401,6 +402,10 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
         channel.updated_at = now_utc()
         db.commit()
         return InboundResult(accepted=True, conversation_id=conversation.id, mode="ai")
+    if not on_duty(agent):
+        # Outside the agent's schedule: the message is kept, nobody answers
+        # and no tokens are spent. Not an error; the agent comes back by itself.
+        return InboundResult(accepted=True, conversation_id=conversation.id, mode=conversation.mode)
     credentials = resolve_agent_credentials(db, agent)
     if not agent.is_active or not credentials or not agent.model.strip():
         channel.last_error = "A message was received, but the assigned agent is not ready (model or provider key missing)."

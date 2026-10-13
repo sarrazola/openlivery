@@ -1,8 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { CheckCircle2, Eye, EyeOff, ImagePlus, LoaderCircle, Save, ShieldCheck, Trash2 } from "lucide-react";
-import { PageHead } from "@/components/ui";
+import { CheckCircle2, Eye, EyeOff, ImagePlus, LoaderCircle, PauseCircle, Save, ShieldCheck, Trash2 } from "lucide-react";
+import { Alert, PageHead } from "@/components/ui";
 import { FormSkeleton } from "@/components/skeleton";
 import { PreferencesSection } from "@/components/preferences-section";
 import { useToast } from "@/components/toast";
@@ -56,6 +56,12 @@ export default function SettingsPage() {
     finally { setBusy(false); }
   }
   async function removeKey(provider: string) { await api(`/providers/${provider}`, { method: "DELETE" }); await load(); }
+  // Pausing keeps the key stored; replies no longer use it.
+  async function toggleKey(provider: string, enabled: boolean) {
+    setBusy(true);
+    try { await api(`/providers/${provider}`, { method: "PATCH", body: JSON.stringify({ enabled }) }); await load(); }
+    catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); }
+  }
 
   if (!agency) return <div className="page"><PageHead eyebrow={t("settings.index.eyebrow")} title={t("settings.index.title")} description={t("settings.index.description")} /><FormSkeleton sections={2} /></div>;
   return <div className="page"><PageHead eyebrow={t("settings.index.eyebrow")} title={t("settings.index.title")} description={t("settings.index.description")} />
@@ -65,7 +71,7 @@ export default function SettingsPage() {
     <section className="section-block"><div className="section-heading"><div><h2>{t("settings.providers.heading")}</h2><p>{t("settings.providers.copy")}</p></div></div>
       <div className="security-note"><ShieldCheck size={20} /><span><strong>{t("settings.index.privateCredentials")}</strong> {t("settings.index.privateCredentialsCopy")}</span></div>
       {PROVIDERS.map((preset) => (
-        <ProviderKeyCard key={preset.id} preset={preset} state={providers.find((x) => x.provider === preset.id)} busy={busy} onSave={saveKey} onRemove={removeKey} t={t} />
+        <ProviderKeyCard key={preset.id} preset={preset} state={providers.find((x) => x.provider === preset.id)} busy={busy} onSave={saveKey} onRemove={removeKey} onToggle={toggleKey} t={t} />
       ))}
     </section>
 
@@ -73,11 +79,15 @@ export default function SettingsPage() {
   </div>;
 }
 
-function ProviderKeyCard({ preset, state, busy, onSave, onRemove, t }: { preset: (typeof PROVIDERS)[number]; state?: Provider; busy: boolean; onSave: (p: string, k: string) => Promise<boolean>; onRemove: (p: string) => Promise<void>; t: TranslateFn }) {
+function ProviderKeyCard({ preset, state, busy, onSave, onRemove, onToggle, t }: { preset: (typeof PROVIDERS)[number]; state?: Provider; busy: boolean; onSave: (p: string, k: string) => Promise<boolean>; onRemove: (p: string) => Promise<void>; onToggle: (p: string, enabled: boolean) => Promise<void>; t: TranslateFn }) {
   const [key, setKey] = useState("");
   const [reveal, setReveal] = useState(false);
   const [replacing, setReplacing] = useState(false);
-  const configured = Boolean(state?.configured) && !replacing;
+  // A stored key is shown whether it is in use or paused; "configured" alone
+  // is also true while the deployment lends one.
+  const stored = Boolean(state?.stored ?? state?.api_key_masked);
+  const enabled = state?.enabled ?? true;
+  const configured = stored && !replacing;
 
   async function save() {
     if (await onSave(preset.id, key)) { setKey(""); setReplacing(false); }
@@ -88,7 +98,9 @@ function ProviderKeyCard({ preset, state, busy, onSave, onRemove, t }: { preset:
       <div className="form-fields">
         {configured ? (
           <div className="key-configured">
-            <span className="key-configured-status"><CheckCircle2 size={18} /> {t("settings.providers.configured", { label: preset.label })}</span>
+            <span className="key-configured-status">{enabled ? <CheckCircle2 size={18} /> : <PauseCircle size={18} />} {t(enabled ? "settings.providers.configured" : "settings.providers.paused", { label: preset.label })}</span>
+            <label className="switch-row"><span><strong>{t("settings.providers.useKey")}</strong><small>{t("settings.providers.useKeyHint")}</small></span><input type="checkbox" checked={enabled} disabled={busy} onChange={(e) => onToggle(preset.id, e.target.checked)} /></label>
+            {!enabled && !state?.configured && <Alert type="error">{t("settings.providers.pausedNothingAnswers")}</Alert>}
             <div className="key-configured-actions">
               <button type="button" className="button ghost" disabled={busy} onClick={() => { setKey(""); setReplacing(true); }}>{t("settings.providers.replace")}</button>
               <button type="button" className="button danger" disabled={busy} onClick={() => onRemove(preset.id)}><Trash2 size={15} /> {t("settings.providers.remove")}</button>
@@ -103,7 +115,7 @@ function ProviderKeyCard({ preset, state, busy, onSave, onRemove, t }: { preset:
               </div>
             </label>
             <div className="form-footer split">
-              {state?.configured ? <button type="button" className="button ghost" disabled={busy} onClick={() => { setKey(""); setReplacing(false); }}>{t("common.cancel")}</button> : <span />}
+              {stored ? <button type="button" className="button ghost" disabled={busy} onClick={() => { setKey(""); setReplacing(false); }}>{t("common.cancel")}</button> : <span />}
               <button type="button" className="button primary" disabled={busy || !key.trim()} onClick={save}>{busy ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />} {t("settings.providers.save")}</button>
             </div>
           </>

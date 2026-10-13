@@ -1796,6 +1796,16 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .capability-head span { display: flex; flex-direction: column; gap: 1px; }
 .capability-head strong { font-size: 14px; }
 .capability-head small { color: var(--muted); font-size: 12px; }
+/* The agent's hours of service: one row per weekday. */
+.schedule-week { display: flex; flex-direction: column; gap: 8px; }
+.schedule-day { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; min-height: 44px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.schedule-day.on { background: var(--surface); }
+.schedule-day-name { display: flex; flex-direction: row !important; align-items: center; gap: 10px; min-width: 150px; font-size: 14px; cursor: pointer; }
+.schedule-day-name input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; flex: 0 0 auto; }
+.schedule-day-name span { text-transform: capitalize; }
+.schedule-hours { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.schedule-hours input[type="time"] { width: auto; min-height: 34px; padding: 0 10px; }
+.schedule-warning { color: var(--red-text); }
 .capability-model { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); padding-left: 28px; }
 .capabilities-intro, .group-intro { display: flex; flex-direction: column; gap: 3px; padding-top: 16px; border-top: 1px solid var(--line); }
 .capabilities-intro strong, .group-intro strong { font-size: 13px; color: var(--ink-2); }
