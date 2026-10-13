@@ -12,6 +12,9 @@ branch_labels = None
 depends_on = None
 
 
+# contract: reviewed. The column only widens (varchar(400) to text); every value
+# the previous release wrote fits and reads back unchanged, and that release
+# keeps working against the widened column since it never relied on the bound.
 def upgrade():
     op.alter_column("push_devices", "token", type_=sa.Text(), existing_type=sa.String(400), existing_nullable=False)
 
