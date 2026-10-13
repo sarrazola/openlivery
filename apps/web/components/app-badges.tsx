@@ -13,8 +13,8 @@ export function AppBadges({ ios, android, className }: { ios?: string | null; an
   const google = `https://play.google.com/intl/${lang === "es" ? "es-419" : "en_us"}/badges/static/images/badges/${lang === "es" ? "es-419" : "en"}_badge_web_generic.png`;
   return (
     <div className={`app-badges${className ? ` ${className}` : ""}`}>
-      {ios && <a href={ios} target="_blank" rel="noopener noreferrer"><img src={apple} alt="App Store" /></a>}
-      {android && <a href={android} target="_blank" rel="noopener noreferrer"><img src={google} alt="Google Play" /></a>}
+      {ios && <a href={ios} target="_blank" rel="noopener noreferrer"><img className="badge-apple" src={apple} alt="App Store" /></a>}
+      {android && <a href={android} target="_blank" rel="noopener noreferrer"><img className="badge-google" src={google} alt="Google Play" /></a>}
     </div>
   );
 }
