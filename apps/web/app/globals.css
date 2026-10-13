@@ -762,7 +762,10 @@ textarea { line-height: 1.55; }
    sidebar has). Labels hide, each item keeps its title for a tooltip, and the
    unread count sits on the icon. */
 .portal-nav nav a > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.portal-nav .sidebar-toggle { top: 24px; }
+/* The generic `.portal-nav > button` rule strips borders and backgrounds; the
+   toggle needs the same solid disc the agency sidebar has. */
+.portal-nav > button.sidebar-toggle { position: absolute; top: 24px; right: -14px; width: 28px; height: 28px; margin: 0; padding: 0; display: grid; place-items: center; gap: 0; color: var(--muted); border: 1px solid var(--line); border-radius: 50%; background: var(--surface); box-shadow: var(--shadow); font-size: 0; }
+.portal-nav > button.sidebar-toggle:hover { color: var(--ink); border-color: var(--line-strong); }
 .portal-app.nav-collapsed { grid-template-columns: 72px minmax(0,1fr); }
 .nav-collapsed .portal-nav { padding-left: 10px; padding-right: 10px; }
 .nav-collapsed .portal-nav .portal-brand { justify-content: center; padding-left: 0; padding-right: 0; }
@@ -2582,7 +2585,7 @@ html[data-theme-transition], html[data-theme-transition] *, html[data-theme-tran
 @media (max-width: 850px) {
   .portal-app { grid-template-columns: 1fr; }
   .portal-nav { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); flex-direction: row; border-right: 0; border-top: 1px solid var(--line); background: var(--surface); box-shadow: 0 -4px 16px rgba(var(--shadow-rgb), calc(.06 * var(--shadow-k))); }
-  .portal-nav .portal-brand, .portal-nav > .portal-nav-foot, .portal-nav .sidebar-toggle { display: none; }
+  .portal-nav .portal-brand, .portal-nav > .portal-nav-foot, .portal-nav > button.sidebar-toggle { display: none; }
   .portal-app.nav-collapsed { grid-template-columns: 1fr; }
   .nav-collapsed .portal-nav nav a > span { display: block; }
   .nav-collapsed .portal-nav nav a { padding: 0 4px; gap: 3px; }
