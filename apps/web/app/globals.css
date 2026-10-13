@@ -715,7 +715,7 @@ textarea { line-height: 1.55; }
 .portal-login-form h2 { margin: 2px 0 -12px; font-size: 24px; }
 .portal-login-form p { color: var(--muted); }
 .portal-app { min-height: 100vh; display: grid; grid-template-columns: 230px minmax(0,1fr); background: var(--canvas); }
-.portal-nav { padding: 20px 14px; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--surface); }
+.portal-nav { position: relative; padding: 20px 14px; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--surface); }
 .portal-nav .portal-brand { padding: 0 8px 22px; border-bottom: 1px solid var(--line-soft); }
 .portal-nav nav { padding-top: 18px; display: flex; flex-direction: column; gap: 4px; }
 .portal-nav nav a { height: 42px; padding: 0 10px; display: flex; align-items: center; gap: 10px; color: var(--muted); border-radius: 7px; }
@@ -758,6 +758,22 @@ textarea { line-height: 1.55; }
 .confirm-word code { align-self: flex-start; padding: 8px 14px; border: 1px dashed var(--red); border-radius: 7px; color: var(--red-text); background: var(--red-soft); font-size: 15px; font-weight: 700; letter-spacing: .12em; }
 .confirm-word + input { margin-top: -8px; }
 .portal-nav nav a.disabled { opacity: .45; }
+/* The panel folded to its icons (the toggle on its edge, as the agency's
+   sidebar has). Labels hide, each item keeps its title for a tooltip, and the
+   unread count sits on the icon. */
+.portal-nav nav a > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.portal-nav .sidebar-toggle { top: 24px; }
+.portal-app.nav-collapsed { grid-template-columns: 72px minmax(0,1fr); }
+.nav-collapsed .portal-nav { padding-left: 10px; padding-right: 10px; }
+.nav-collapsed .portal-nav .portal-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+.nav-collapsed .portal-nav .portal-brand strong { display: none; }
+.nav-collapsed .portal-nav nav a { position: relative; padding: 0; justify-content: center; gap: 0; }
+.nav-collapsed .portal-nav nav a > span { display: none; }
+.nav-collapsed .portal-nav nav a .nav-count { position: absolute; top: 4px; right: 4px; margin: 0; }
+.nav-collapsed .portal-nav-foot > button { justify-content: center; padding-left: 0; padding-right: 0; }
+.nav-collapsed .portal-nav-foot > button > span:not(.availability-switch) { display: none; }
+.nav-collapsed .portal-nav .availability-toggle { gap: 0; }
+.nav-collapsed .portal-nav .availability-switch { display: none; }
 .portal-nav > button { margin-top: auto; height: 40px; display: flex; align-items: center; gap: 9px; color: var(--muted); border: 0; background: transparent; }
 .portal-main { min-width: 0; padding: 32px; }
 .portal-main > header { margin-bottom: 22px; display: flex; align-items: flex-end; justify-content: space-between; }
@@ -2566,7 +2582,10 @@ html[data-theme-transition], html[data-theme-transition] *, html[data-theme-tran
 @media (max-width: 850px) {
   .portal-app { grid-template-columns: 1fr; }
   .portal-nav { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); flex-direction: row; border-right: 0; border-top: 1px solid var(--line); background: var(--surface); box-shadow: 0 -4px 16px rgba(var(--shadow-rgb), calc(.06 * var(--shadow-k))); }
-  .portal-nav .portal-brand, .portal-nav > .portal-nav-foot { display: none; }
+  .portal-nav .portal-brand, .portal-nav > .portal-nav-foot, .portal-nav .sidebar-toggle { display: none; }
+  .portal-app.nav-collapsed { grid-template-columns: 1fr; }
+  .nav-collapsed .portal-nav nav a > span { display: block; }
+  .nav-collapsed .portal-nav nav a { padding: 0 4px; gap: 3px; }
   .portal-nav nav { width: 100%; padding: 0; flex-direction: row; gap: 4px; }
   .portal-nav nav a { position: relative; flex: 1 1 0; height: 50px; padding: 0 4px; flex-direction: column; justify-content: center; gap: 3px; font-size: 11px; font-weight: 600; }
   .portal-nav nav a .nav-count { position: absolute; top: 4px; right: calc(50% - 24px); margin: 0; }
