@@ -82,6 +82,12 @@ class Settings(BaseSettings):
     push_webpush_private_key: str = ""
     push_webpush_subject: str = ""
 
+    # Where the portal's people can get a mobile app for it, if the deployment
+    # publishes one: the store pages, shown as the stores' own badges on the
+    # portal's sign-in page and under Preferences. Empty shows nothing.
+    portal_ios_app_url: str = ""
+    portal_android_app_url: str = ""
+
     model_config = SettingsConfigDict(
         env_file=(REPO_ROOT / ".env", APP_DIR / ".env"),
         env_file_encoding="utf-8",

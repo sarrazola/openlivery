@@ -30,6 +30,10 @@ Para una instalación local sin Docker, las mismas variables van en un `.env` en
 | `FRONTEND_URL` | Origen permitido por CORS | `http://localhost:3000` |
 | `WHATSAPP_BRIDGE_TOKEN` | Secreto compartido que autentica las llamadas entre backend ↔ puente de WhatsApp. Usa el mismo valor en ambos | aleatorio |
 | `NEXT_PUBLIC_API_URL` | Origen público de la API incrustado en el frontend en tiempo de compilación. Déjalo vacío para usar el mismo origen a través del gateway | vacío |
+| `PUSH_PROVIDER` | Quién entrega las notificaciones a las apps móviles (`none`, `webhook`, o uno que registre el despliegue). Ver [notificaciones push](push-notifications.md) | `none` |
+| `PUSH_WEBPUSH_PRIVATE_KEY` | Clave privada VAPID con la que el portal notifica a los navegadores directamente, sin proveedor. `python -m app.webpush_keys` imprime una; consérvala, rotarla desuscribe a todos los navegadores | vacío (apagado) |
+| `PUSH_WEBPUSH_SUBJECT` | A quién pueden contactar los fabricantes de navegadores sobre el remitente, como `mailto:` o una URL | `mailto:admin@localhost` |
+| `PORTAL_IOS_APP_URL`, `PORTAL_ANDROID_APP_URL` | Páginas en las tiendas de la app móvil que publica este despliegue. El portal muestra los badges de las tiendas en su pantalla de entrada y en Preferencias; vacío no muestra nada | vacío |
 | `BACKEND_INTERNAL_URL` | Cómo alcanza el contenedor web a la API desde el servidor (usado por `proxy.ts` para dominios de portal personalizados) | `http://api:8000` |
 
 ### La advertencia sobre ENCRYPTION_KEY

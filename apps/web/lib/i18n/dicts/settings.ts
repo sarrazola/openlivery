@@ -34,6 +34,8 @@ const en = {
     notificationsDenied: "Blocked by the browser. Allow notifications for this site to turn them on.",
     notificationsFailed: "Notifications could not be turned on.",
     notificationsOn: "Notifications are on for this browser.",
+    mobileApp: "Mobile app",
+    mobileAppHint: "The same inbox on your phone, with notifications.",
   },
   providers: {
     heading: "AI provider key",
@@ -85,6 +87,8 @@ const es: typeof en = {
     notificationsDenied: "Bloqueadas por el navegador. Permite las notificaciones de este sitio para activarlas.",
     notificationsFailed: "No se pudieron activar las notificaciones.",
     notificationsOn: "Las notificaciones están activas en este navegador.",
+    mobileApp: "App móvil",
+    mobileAppHint: "La misma bandeja en tu celular, con notificaciones.",
   },
   providers: {
     heading: "Clave del proveedor de IA",

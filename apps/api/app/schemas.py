@@ -1053,6 +1053,9 @@ class PortalPublicOut(BaseModel):
     agency_brand_color: str
     agency_logo_url: str | None
     client_logo_url: str | None = None
+    # Store pages of the deployment's mobile app, when it publishes one.
+    ios_app_url: str | None = None
+    android_app_url: str | None = None
 
 
 class PortalSessionOut(BaseModel):

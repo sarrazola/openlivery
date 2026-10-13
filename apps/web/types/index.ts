@@ -433,6 +433,8 @@ export type PortalPublic = {
   agency_brand_color: string;
   agency_logo_url: string | null;
   client_logo_url: string | null;
+  ios_app_url?: string | null;
+  android_app_url?: string | null;
 };
 
 export type SocialProvider = "instagram" | "messenger";
