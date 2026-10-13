@@ -11,12 +11,15 @@ from fastapi import APIRouter, Cookie, Depends, Header, File, Form, HTTPExceptio
 from sqlalchemy import Interval, and_, case, exists, func, literal, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from pydantic import BaseModel, Field
+
 from ..config import get_settings
 from ..database import get_db, new_session
-from ..models import Agency, Agent, CannedResponse, Client, Contact, ContactTag, ContactTagLink, Conversation, Message, PortalUser, Team, WhatsAppChannel, WhatsAppCloudChannel, now_utc
+from ..models import Agency, Agent, CannedResponse, Client, Contact, ContactTag, ContactTagLink, Conversation, Message, PortalUser, PushDevice, Team, WhatsAppChannel, WhatsAppCloudChannel, now_utc
 from ..portal_permissions import CANNED_MANAGE, CONTACTS_MANAGE, INBOX_DELETE, REPORTS_VIEW, TAGS_MANAGE, TEAMS_MANAGE, TEMPLATES_MANAGE, has_permission, permissions_for
 from ..ratelimit import login_rate_limit, public_asset_rate_limit
 from ..services.report_conversations import AD_FIELDS, ConversationListFilters, export_csv, facets, list_conversations
+from ..services import webpush
 from ..schemas import ConversationFacets, ConversationReportPage
 from ..schemas import (
     ContactBlockUpdate,
@@ -408,6 +411,93 @@ def portal_update_availability(
         "email": user.email,
         "availability": user.availability,
     }
+
+
+# --- Web push: the browser subscribes, the server remembers where to reach it. ---
+
+
+class WebPushConfigOut(BaseModel):
+    enabled: bool
+    # The VAPID public key the browser subscribes with; empty when off.
+    public_key: str = ""
+
+
+class WebPushSubscriptionIn(BaseModel):
+    # PushSubscription.toJSON(), as the browser gives it.
+    endpoint: str = Field(min_length=12, max_length=2000)
+    keys: dict[str, str]
+
+
+class WebPushSubscriptionOut(BaseModel):
+    registered: bool
+
+
+class WebPushForget(BaseModel):
+    endpoint: str = Field(min_length=12, max_length=2000)
+
+
+@router.get("/{slug}/push", response_model=WebPushConfigOut)
+def portal_push_config(slug: str, client: Client = Depends(_portal_client)):
+    """Whether this server notifies browsers, and the key to subscribe with."""
+    return WebPushConfigOut(enabled=webpush.enabled(), public_key=webpush.public_key())
+
+
+@router.post("/{slug}/push/subscriptions", response_model=WebPushSubscriptionOut)
+def portal_push_subscribe(
+    slug: str,
+    payload: WebPushSubscriptionIn,
+    client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
+    db: Session = Depends(get_db),
+):
+    """Register this browser for the person signed in.
+
+    Keyed on the subscription, so the same browser registering again (every
+    portal load does, cheaply) moves the row to whoever is signed in now rather
+    than leaving a subscription that rings for the previous person.
+    """
+    if not user or user.client_id != client.id:
+        raise HTTPException(status_code=401, detail="Sign in with your own user to receive notifications")
+    try:
+        subscription = webpush.Subscription.parse({"endpoint": payload.endpoint, "keys": payload.keys})
+    except webpush.WebPushError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    token = subscription.token()
+    device = db.scalar(select(PushDevice).where(PushDevice.token == token))
+    if device:
+        device.client_id = client.id
+        device.portal_user_id = user.id
+        device.provider = webpush.PROVIDER
+        device.platform = webpush.PLATFORM
+        device.last_seen_at = now_utc()
+    else:
+        db.add(PushDevice(client_id=client.id, portal_user_id=user.id, token=token, provider=webpush.PROVIDER, platform=webpush.PLATFORM))
+    db.commit()
+    return WebPushSubscriptionOut(registered=webpush.enabled())
+
+
+@router.delete("/{slug}/push/subscriptions", status_code=status.HTTP_204_NO_CONTENT)
+def portal_push_unsubscribe(
+    slug: str,
+    payload: WebPushForget,
+    client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
+    db: Session = Depends(get_db),
+):
+    """Stop notifying this browser: the person switched it off or signed out."""
+    if not user or user.client_id != client.id:
+        raise HTTPException(status_code=401, detail="Sign in with your own user to change notifications")
+    rows = db.scalars(
+        select(PushDevice).where(PushDevice.client_id == client.id, PushDevice.provider == webpush.PROVIDER)
+    ).all()
+    for row in rows:
+        try:
+            if webpush.Subscription.parse(row.token).endpoint == payload.endpoint:
+                db.delete(row)
+        except webpush.WebPushError:
+            db.delete(row)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{slug}/agents", response_model=list[AgentSummary])

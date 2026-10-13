@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { currentSections, showSections } from "@/lib/section-path";
+import { onWorkerMessage, syncPush } from "@/lib/web-push";
 import { Archive, ArchiveRestore, ArrowLeft, Ban, BarChart3, Bot, Building2, CheckCircle2, CheckSquare, Clock, Contact as ContactIcon, FileText, Filter, Images, Inbox, LoaderCircle, LogOut, Megaphone, MessageCircle, MoreHorizontal, MessageSquareText, Reply, Search, Send, Settings, ShieldCheck, SmilePlus, Square, Trash2, UserRound, Users, X } from "lucide-react";
 import { useCannedReplies } from "../canned";
 import { ContactsView } from "../contacts";
@@ -115,6 +116,9 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   // Conversations handed to me: the first poll only learns what is mine,
   // every later one announces what is new, so a transfer is felt at once.
   const mineKnownRef = useRef<Set<string> | null>(null);
+  // Whether this browser is subscribed to push: then the server rings it and
+  // the page must not raise a second notification of its own.
+  const pushSubscribedRef = useRef(false);
   const announceAssignments = useCallback((mine: { id: string; title: string }[]) => {
     if (!session.user_id) return;
     const known = mineKnownRef.current;
@@ -126,7 +130,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
         for (const row of fresh) {
           const text = t("portal.inbox.assignment.received", { title: row.title });
           toast.info(text);
-          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          if (!pushSubscribedRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
             try { new Notification(portal.portal_title, { body: text }); } catch { /* blocked */ }
           }
         }
@@ -134,11 +138,12 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
     }
     mineKnownRef.current = next;
   }, [session.user_id, t, toast, portal.portal_title]);
+  // A subscribed browser registers again on every load, so the subscription
+  // belongs to whoever is signed in now. Switching it on lives in Settings.
   useEffect(() => {
-    if (typeof Notification !== "undefined" && Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, []);
+    if (!session.user_id) return;
+    syncPush(slug).then((subscribed) => { pushSubscribedRef.current = subscribed; });
+  }, [slug, session.user_id]);
   const [status, setStatus] = useState<InboxKind>("open");
   // Archive and delete confirmations. "all" acts on every conversation the current inbox holds.
   const [archivingAll, setArchivingAll] = useState(false);
@@ -203,6 +208,24 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
     }).catch(() => {});
     setAddressReady(true);
   }, [slug]);
+  // The service worker speaks when a push arrives while this window is
+  // visible (shown here instead of over the page) and when a notification is
+  // clicked (open that conversation without reloading).
+  useEffect(() => onWorkerMessage((message) => {
+    if (message.type === "push") {
+      chime();
+      toast.info(message.payload.body ? `${message.payload.title}: ${message.payload.body}` : message.payload.title);
+      return;
+    }
+    const id = message.data.conversation_id;
+    if (!id) return;
+    setView("inbox");
+    api<Conversation>(`/portal/${slug}/conversations/${id}`).then((detail) => {
+      setSelected(detail);
+      setStatus(detail.archived_at ? "archived" : detail.status === "resolved" ? "resolved" : "open");
+      setTab("all"); setChannelFilter("");
+    }).catch(() => {});
+  }), [slug, toast]);
   useEffect(() => {
     if (!addressReady) return;
     showSections(addressBase.current, [view, view === "inbox" ? selected?.id : view === "contacts" ? contactOpen : view === "reports" ? reportsSection : view === "settings" ? settingsTab : null]);

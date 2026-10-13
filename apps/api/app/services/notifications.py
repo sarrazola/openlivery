@@ -17,6 +17,14 @@ Two providers ship here because neither ties you to a company:
               Gotify, a queue, Home Assistant, or a five-line script that calls
               whatever service you already pay for.
 
+Browsers are a third channel that needs no provider at all: the portal
+subscribes with the Web Push protocol and the server delivers to the browser's
+own push service, signed with a key pair the deployment owns
+(``PUSH_WEBPUSH_PRIVATE_KEY``; see :mod:`app.services.webpush`). Those rows
+sit in the same registry under the provider ``webpush`` and are delivered
+alongside whatever ``PUSH_PROVIDER`` selects, so a deployment can notify phones
+through one and browsers through the other.
+
 Anything else is ~20 lines: write the function, call :func:`register_provider`
 at startup. A deployment that adds one does it from outside this repository,
 which is why no vendor is named in here.
@@ -45,7 +53,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..models import Conversation, PortalUser, PushDevice
+from ..models import Client, Conversation, PortalUser, PushDevice
+from . import webpush
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +119,17 @@ def configured_provider() -> str:
 
 
 def push_enabled() -> bool:
+    """A provider for the mobile apps is selected."""
     return configured_provider() != "none"
+
+
+def webpush_enabled() -> bool:
+    """Browsers can be notified: a VAPID key is configured."""
+    return webpush.enabled()
+
+
+def any_push_enabled() -> bool:
+    return push_enabled() or webpush_enabled()
 
 
 async def _send_none(_notification: Notification) -> int:
@@ -174,12 +193,19 @@ def devices_for_client(db: Session, client_id) -> list[Device]:
     apps register again rather than being sent somewhere they cannot arrive.
     """
     active = configured_provider()
+    web = webpush_enabled()
     rows = db.scalars(select(PushDevice).where(PushDevice.client_id == client_id)).all()
     return [
         Device(token=row.token, provider=row.provider, platform=row.platform, portal_user_id=row.portal_user_id)
         for row in rows
-        if row.token and (not row.provider or row.provider == active)
+        if row.token
+        and ((row.provider == webpush.PROVIDER and web) or (row.provider != webpush.PROVIDER and (not row.provider or row.provider == active)))
     ]
+
+
+def _portal_slug(db: Session, client_id) -> str:
+    client = db.get(Client, client_id)
+    return client.portal_slug if client else ""
 
 
 def summarize(body: str) -> str:
@@ -189,16 +215,32 @@ def summarize(body: str) -> str:
     return text
 
 
-async def notify_devices(notification: Notification) -> int:
-    """Hand a notification to the configured provider. Never raises."""
+async def notify_devices(notification: Notification, db: Session | None = None) -> int:
+    """Hand a notification to whoever reaches each device. Never raises.
+
+    Browser subscriptions go straight to their push service; everything else
+    goes to the configured provider. ``db`` lets a subscription the push
+    service declared gone be dropped from the registry on the spot.
+    """
     if not notification.devices:
         return 0
-    provider = _PROVIDERS[configured_provider()]
-    try:
-        return await provider(notification)
-    except Exception as exc:  # noqa: BLE001 - delivery must never break the caller
-        logger.warning("push delivery failed: %s", exc)
-        return 0
+    browsers = [d for d in notification.devices if d.provider == webpush.PROVIDER]
+    others = [d for d in notification.devices if d.provider != webpush.PROVIDER]
+    sent = 0
+    if browsers and webpush_enabled():
+        payload = {"title": notification.title, "body": notification.body, "data": notification.data}
+        try:
+            accepted, _gone = await webpush.deliver(payload, [d.token for d in browsers], db)
+            sent += accepted
+        except Exception as exc:  # noqa: BLE001 - delivery must never break the caller
+            logger.warning("web push delivery failed: %s", exc)
+    if others:
+        provider = _PROVIDERS[configured_provider()]
+        try:
+            sent += await provider(Notification(notification.title, notification.body, others, notification.data))
+        except Exception as exc:  # noqa: BLE001 - delivery must never break the caller
+            logger.warning("push delivery failed: %s", exc)
+    return sent
 
 
 async def notify_conversation(
@@ -216,7 +258,7 @@ async def notify_conversation(
     a tray with nobody assigned, so that tray's people ring, not everyone.
     Falls back to everyone when none of them has a device.
     """
-    if not push_enabled():
+    if not any_push_enabled():
         return 0
     devices = devices_for_client(db, conversation.client_id)
     if conversation.assignee_id:
@@ -238,14 +280,16 @@ async def notify_conversation(
             data={
                 "conversation_id": str(conversation.id),
                 "client_id": str(conversation.client_id),
+                "portal_slug": _portal_slug(db, conversation.client_id),
             },
-        )
+        ),
+        db,
     )
 
 
 async def notify_assigned(db: Session, conversation: Conversation, assignee: PortalUser, by: str) -> int:
     """Tell the person a conversation was just handed to them."""
-    if not push_enabled():
+    if not any_push_enabled():
         return 0
     devices = [d for d in devices_for_client(db, conversation.client_id) if d.portal_user_id == assignee.id]
     if not devices:
@@ -255,8 +299,13 @@ async def notify_assigned(db: Session, conversation: Conversation, assignee: Por
             title=conversation.title,
             body=f"{by} assigned you this conversation",
             devices=devices,
-            data={"conversation_id": str(conversation.id), "client_id": str(conversation.client_id)},
-        )
+            data={
+                "conversation_id": str(conversation.id),
+                "client_id": str(conversation.client_id),
+                "portal_slug": _portal_slug(db, conversation.client_id),
+            },
+        ),
+        db,
     )
 
 

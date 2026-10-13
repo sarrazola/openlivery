@@ -32,7 +32,7 @@ export function SettingsView({ slug, templatesSupported, can, tab: initialTab, o
   ];
   return <div className="portal-settings">
     <SectionTabs<Tab> tabs={tabs} value={tab} onChange={setTab} />
-    {tab === "preferences" && <PreferencesSection />}
+    {tab === "preferences" && <PreferencesSection pushSlug={slug} />}
     {tab === "teams" && can("teams.manage") && <TeamsView base={base} canManage />}
     {tab === "tags" && can("tags.manage") && <TagsView base={`${base}/tags`} canManage />}
     {tab === "canned" && can("canned.manage") && <CannedRepliesView slug={slug} canManage />}

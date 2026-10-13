@@ -1012,7 +1012,9 @@ class PushDevice(Base):
     portal_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("portal_users.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    token: Mapped[str] = mapped_column(String(400), unique=True, index=True)
+    # Text, not a bounded string: a browser subscription (endpoint plus two
+    # keys) is longer than any native token.
+    token: Mapped[str] = mapped_column(Text, unique=True, index=True)
     provider: Mapped[str] = mapped_column(String(40), default="")
     platform: Mapped[str] = mapped_column(String(20), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)

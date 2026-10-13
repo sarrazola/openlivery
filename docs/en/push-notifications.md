@@ -98,6 +98,40 @@ Device rows remember which provider issued their token, and tokens from a
 provider you are no longer using are skipped rather than sent somewhere they
 cannot arrive. After switching providers, apps re-register on their next launch.
 
+## Browsers: the portal, no provider needed
+
+Phones need a provider because their push credentials belong to whoever built
+the app. Browsers do not: the Web Push protocol lets any server deliver to any
+browser as long as the server signs with a key pair it owns (VAPID). So the
+portal can ring with the portal closed and the browser open, on a self-hosted
+install, with no account anywhere.
+
+Turn it on by generating a key pair once and keeping it:
+
+```bash
+python -m app.webpush_keys
+# PUSH_WEBPUSH_PRIVATE_KEY=...
+```
+
+Put the private key in `PUSH_WEBPUSH_PRIVATE_KEY` and, optionally, who the
+browser vendors may contact about this sender in `PUSH_WEBPUSH_SUBJECT`
+(`mailto:ops@example.com`). The public half is derived at runtime and handed to
+the page. Do not rotate the key casually: every browser subscribed against the
+old one has to subscribe again.
+
+From then on each person has a **Browser notifications** switch under their
+portal's Settings, Preferences. Turning it on asks the browser's permission,
+registers the subscription for that person, and the server delivers directly
+to the browser's push service (`apps/api/app/services/webpush.py`, RFC 8030,
+8291 and 8292). Subscriptions sit in the same device registry as phones, under
+the provider `webpush`, and go to the same people the phones do. A subscription
+the push service reports gone (permission revoked, browser reset) is dropped on
+the spot. While a portal window is visible, the page shows the message in place
+instead of raising a system notification over it.
+
+Web push is independent of `PUSH_PROVIDER`: a deployment can notify phones
+through a provider and browsers directly, or browsers alone.
+
 ## Who gets notified
 
 Notifications go to every device registered for the **client** the conversation

@@ -1,8 +1,10 @@
 "use client";
 
-import { Languages, Monitor, Moon, Sun, SunMoon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { BellRing, Languages, Monitor, Moon, Sun, SunMoon } from "lucide-react";
 import { useLanguage, type I18nKey } from "@/lib/i18n";
 import { useTheme, type ThemePreference } from "@/lib/theme";
+import { disablePush, enablePush, pushConfig, pushState, type PushState, type WebPushConfig } from "@/lib/web-push";
 
 const THEMES: { value: ThemePreference; labelKey: I18nKey; icon: typeof Sun }[] = [
   { value: "system", labelKey: "shell.themeSystem", icon: Monitor },
@@ -12,7 +14,9 @@ const THEMES: { value: ThemePreference; labelKey: I18nKey; icon: typeof Sun }[] 
 
 // Settings section for the per-person, per-browser preferences: interface
 // language and appearance. Both are stored locally, never on the agency.
-export function PreferencesSection() {
+// In a portal it also offers browser notifications for the person signed in,
+// when the server can send them (see lib/web-push.ts).
+export function PreferencesSection({ pushSlug }: { pushSlug?: string } = {}) {
   const { lang, setLang, t } = useLanguage();
   const { preference, setTheme } = useTheme();
   return (
@@ -36,7 +40,51 @@ export function PreferencesSection() {
             ))}
           </div>
         </div>
+        {pushSlug && <PushRow slug={pushSlug} />}
       </div>
     </section>
+  );
+}
+
+// The notifications switch. Hidden while the server cannot send to browsers,
+// disabled when this browser cannot receive, and otherwise the person's own
+// on/off for this browser.
+function PushRow({ slug }: { slug: string }) {
+  const { t } = useLanguage();
+  const [config, setConfig] = useState<WebPushConfig | null>(null);
+  const [state, setState] = useState<PushState>("off");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    pushConfig(slug).then(async (loaded) => {
+      const current = await pushState(slug, loaded);
+      if (!alive) return;
+      setConfig(loaded); setState(current);
+    });
+    return () => { alive = false; };
+  }, [slug]);
+  if (!config || state === "unavailable") return null;
+  const blocked = state === "unsupported" || state === "denied";
+  async function toggle(on: boolean) {
+    setBusy(true); setFailed(false);
+    try {
+      setState(on ? await enablePush(slug, config ?? undefined) : await disablePush(slug));
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const hint = state === "unsupported" ? t("settings.preferences.notificationsUnsupported")
+    : state === "denied" ? t("settings.preferences.notificationsDenied")
+    : failed ? t("settings.preferences.notificationsFailed")
+    : state === "on" ? t("settings.preferences.notificationsOn")
+    : t("settings.preferences.notificationsHint");
+  return (
+    <label className="switch-row compact">
+      <span><strong><BellRing size={14} /> {t("settings.preferences.notifications")}</strong><small>{hint}</small></span>
+      <input type="checkbox" checked={state === "on"} disabled={blocked || busy} onChange={(event) => toggle(event.target.checked)} />
+    </label>
   );
 }
