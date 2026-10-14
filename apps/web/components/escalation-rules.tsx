@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { tagStyle } from "@/lib/tags";
-import { ArrowDown, ArrowUp, LoaderCircle, Plus, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, LoaderCircle, Plus, Trash2, X } from "lucide-react";
 import { Alert } from "@/components/ui";
 import { api, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
@@ -40,6 +40,9 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  // Each step folds to one line with a summary; one is open at a time.
+  const [openStep, setOpenStep] = useState<1 | 2 | 3 | null>(null);
+  const toggleStep = (step: 1 | 2 | 3) => setOpenStep((current) => (current === step ? null : step));
 
   const load = useCallback(async () => {
     const [config, teamRows, peopleRows, tagRows] = await Promise.all([
@@ -80,6 +83,7 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
         .filter((rule) => rule.condition.trim())
         .map((rule) => ({ condition: rule.condition.trim(), team_id: rule.team_id, assignee_id: rule.assignee_id, is_active: rule.is_active }));
       if (ruleRows.some((rule) => !rule.team_id && !rule.assignee_id)) {
+        setOpenStep(3);
         setError(t("agents.escalation.missingDestination"));
         return;
       }
@@ -114,6 +118,27 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
 
   const routedTags = tags.filter((tag) => tag.route_team_id || tag.route_assignee_id);
   const unroutedTags = tags.filter((tag) => !tag.route_team_id && !tag.route_assignee_id);
+  const destinationName = (value: string) => {
+    const [kind, id] = value.split(":");
+    return (kind === "team" ? teams : people).find((item) => item.id === id)?.name;
+  };
+  const activeRules = rules.filter((rule) => rule.condition.trim() && rule.is_active).length;
+  const summaries = {
+    1: builtinOn ? (destinationName(defaultDest) ?? t("agents.escalation.generalFallback")) : t("agents.escalation.summaryOff"),
+    2: routedTags.length ? t("agents.escalation.summaryTags", { count: routedTags.length }) : t("agents.escalation.summaryNone"),
+    3: rules.length ? t("agents.escalation.summaryRules", { count: rules.length, active: activeRules }) : t("agents.escalation.summaryNone"),
+  };
+  // The step's header: number, title and summary, a click away from its body.
+  const head = (step: 1 | 2 | 3, title: string, hint: string, extra?: ReactNode) => (
+    <div className="esc-step-head">
+      <button type="button" className="esc-step-toggle" onClick={() => toggleStep(step)} aria-expanded={openStep === step}>
+        <span className="esc-step-n">{step}</span>
+        <span className="esc-step-title"><strong>{title}</strong>{openStep === step ? <small>{hint}</small> : <small className="esc-step-summary">{summaries[step]}</small>}</span>
+        <ChevronDown size={16} className="esc-step-chevron" />
+      </button>
+      {extra}
+    </div>
+  );
   const hasDestinations = teams.length > 0 || people.length > 0;
   const destinationOptions = <>
     {teams.length > 0 && <optgroup label={t("agents.escalation.groupTeams")}>
@@ -135,11 +160,10 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
       </div>
       <div className="settings-fields esc-steps">
         {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div> : <>
-          <div className="esc-step">
-            <div className="esc-step-head"><span className="esc-step-n">1</span><div><strong>{t("agents.escalation.builtinHeading")}</strong><small>{t("agents.escalation.generalCondition")}</small></div>
-              <label className="switch-row esc-toggle"><input type="checkbox" checked={builtinOn} onChange={(e) => setBuiltinOn(e.target.checked)} aria-label={t("agents.escalation.builtinToggle")} /></label>
-            </div>
-            {builtinOn && <div className="esc-step-body">
+          <div className={openStep === 1 ? "esc-step open" : "esc-step"}>
+            {head(1, t("agents.escalation.builtinHeading"), t("agents.escalation.generalCondition"),
+              <label className="switch-row esc-toggle"><input type="checkbox" checked={builtinOn} onChange={(e) => setBuiltinOn(e.target.checked)} aria-label={t("agents.escalation.builtinToggle")} /></label>)}
+            {openStep === 1 && builtinOn && <div className="esc-step-body">
               <label className="esc-inline"><span>{t("agents.escalation.generalLabel")}</span>
                 <select value={defaultDest} onChange={(e) => setDefaultDest(e.target.value)}>
                   <option value="">{t("agents.escalation.generalFallback")}</option>
@@ -149,9 +173,9 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
             </div>}
           </div>
 
-          <div className="esc-step">
-            <div className="esc-step-head"><span className="esc-step-n">2</span><div><strong>{t("agents.escalation.byTagHeading")}</strong><small>{t("agents.escalation.byTagHint")}</small></div></div>
-            <div className="esc-step-body">
+          <div className={openStep === 2 ? "esc-step open" : "esc-step"}>
+            {head(2, t("agents.escalation.byTagHeading"), t("agents.escalation.byTagHint"))}
+            {openStep === 2 && <div className="esc-step-body">
               {tags.length === 0 && <p className="esc-empty">{t("agents.escalation.byTagNone")}</p>}
               {tags.length > 0 && routedTags.length === 0 && <p className="esc-empty">{t("agents.escalation.byTagEmpty")}</p>}
               {routedTags.map((tag) => <div key={tag.id} className="esc-row">
@@ -174,12 +198,12 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
                 </select>
                 <button type="button" className="button secondary small" disabled={!newTagId || !newDest} onClick={() => { const tag = tags.find((row) => row.id === newTagId); if (tag) { routeTag(tag, newDest); setNewTagId(""); setNewDest(""); } }}><Plus size={14} /> {t("agents.escalation.byTagAdd")}</button>
               </div>}
-            </div>
+            </div>}
           </div>
 
-          <div className="esc-step">
-            <div className="esc-step-head"><span className="esc-step-n">3</span><div><strong>{t("agents.escalation.rulesHeading")}</strong><small>{t("agents.escalation.rulesHint")}</small></div></div>
-            <div className="esc-step-body">
+          <div className={openStep === 3 ? "esc-step open" : "esc-step"}>
+            {head(3, t("agents.escalation.rulesHeading"), t("agents.escalation.rulesHint"))}
+            {openStep === 3 && <div className="esc-step-body">
               {rules.map((rule, index) => (
                 <div key={index} className={`esc-rule${rule.is_active ? "" : " inactive"}`}>
                   <span className="esc-rule-n">{index + 1}</span>
@@ -209,7 +233,7 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
               <div className="esc-rules-foot">
                 <button type="button" className="button secondary small" onClick={() => setRules((list) => [...list, { condition: "", team_id: null, assignee_id: null, is_active: true }])}><Plus size={14} /> {t("agents.escalation.add")}</button>
               </div>
-            </div>
+            </div>}
           </div>
 
           {error && <Alert>{error}</Alert>}

@@ -49,6 +49,10 @@ const en = {
   },
   escalation: {
     heading: "Escalation to humans",
+    summaryOff: "Off",
+    summaryNone: "None yet",
+    summaryTags: "{count} tags with a destination",
+    summaryRules: "{count} rules, {active} active",
     copy: "When the AI hands a conversation to your people, and to whom.",
     empty: "No rules of your own yet.",
     when: "When",
@@ -355,6 +359,10 @@ const es: typeof en = {
   },
   escalation: {
     heading: "Escalamiento a personas",
+    summaryOff: "Apagado",
+    summaryNone: "Ninguna todavía",
+    summaryTags: "{count} etiquetas con destino",
+    summaryRules: "{count} reglas, {active} activas",
     copy: "Define cuándo el agente transfiere una conversación a tu equipo y quién la recibe.",
     empty: "Todavía no hay reglas personalizadas.",
     when: "Cuando",

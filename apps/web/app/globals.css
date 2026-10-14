@@ -2339,6 +2339,15 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .esc-step-n { flex: 0 0 auto; width: 24px; height: 24px; display: inline-grid; place-items: center; color: var(--accent-text); border-radius: 50%; background: var(--accent-soft); font-size: 12px; font-weight: 700; }
 .esc-step-head .esc-toggle.switch-row { flex: 0 0 auto !important; width: auto !important; min-height: 0; margin: 2px 0 0; padding: 0; border: 0; border-radius: 0; background: transparent; gap: 0; }
 .esc-step-head > div { flex: 1 1 auto; }
+.esc-step-head { align-items: center; padding: 10px 16px; }
+.esc-step-toggle { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 2px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.esc-step-title { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; }
+.esc-step-title strong { font-size: 14px; color: var(--ink); }
+.esc-step-title small { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.esc-step-summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.esc-step-chevron { flex: 0 0 auto; color: var(--muted); transition: transform .18s; }
+.esc-step.open .esc-step-chevron { transform: rotate(180deg); }
+.esc-step-head .esc-toggle.switch-row { margin: 0; }
 .esc-step-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 14px; border-top: 1px solid var(--line-soft); background: var(--surface-2); }
 .esc-empty { margin: 0; color: var(--muted); font-size: 13px; }
 .esc-row { display: flex; align-items: center; gap: 10px; min-height: 36px; }
