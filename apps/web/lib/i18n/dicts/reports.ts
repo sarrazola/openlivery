@@ -59,6 +59,7 @@ const en = {
     repliesHint: "One line per reply with what it cost. Search a contact or conversation, or export the period.",
   },
   cols: {
+    purposeSummary: "Summary",
     client: "Client",
     agent: "Agent",
     model: "Model",
@@ -188,6 +189,7 @@ const es: typeof en = {
     repliesHint: "Una línea por respuesta con lo que costó. Busca un contacto o conversación, o exporta el periodo.",
   },
   cols: {
+    purposeSummary: "Resumen",
     client: "Cliente",
     agent: "Agente",
     model: "Modelo",

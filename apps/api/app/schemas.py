@@ -478,6 +478,21 @@ class MessageOut(ORMModel):
     attachments: list[AttachmentOut] = []
 
 
+class ConversationSummaryOut(BaseModel):
+    """A conversation's summary for the team; ``stale`` when messages arrived after it."""
+
+    summary: str | None = None
+    summary_at: datetime | None = None
+    message_count: int = 0
+    current_message_count: int = 0
+    stale: bool = False
+
+
+class ConversationSummaryRequest(BaseModel):
+    # The language the summary is written in: the reader's interface language.
+    language: Literal["es", "en"] = "es"
+
+
 class ConversationDetail(ConversationOut):
     messages: list[MessageOut] = []
 
@@ -1188,6 +1203,8 @@ class ReportReply(BaseModel):
     duration_ms: int | None
     tools: int
     tool_errors: int
+    # "reply" or "summary"; see UsageRecord.purpose.
+    purpose: str = "reply"
 
 
 class RepliesPage(BaseModel):

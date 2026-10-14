@@ -233,6 +233,7 @@ def _reply(row) -> dict:
         "duration_ms": record.duration_ms,
         "tools": len(calls),
         "tool_errors": sum(1 for call in calls if isinstance(call, dict) and call.get("is_error")),
+        "purpose": record.purpose,
     }
 
 

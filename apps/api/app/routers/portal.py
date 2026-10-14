@@ -52,6 +52,8 @@ from ..schemas import (
     TemplateSampleOut,
     TemplateSend,
     ConversationDetail,
+    ConversationSummaryOut,
+    ConversationSummaryRequest,
     ConversationAssignmentUpdate,
     ConversationModeUpdate,
     ConversationStatusUpdate,
@@ -96,6 +98,7 @@ from ..services import reply_window
 from ..services.conversation_state import record_activity
 from ..services.conversation_state import ConversationClosed, assign, ensure_open, note_reply, set_archived, set_mode, set_status, set_team
 from ..services.routing import route_conversation
+from ..services.summary import SummaryUnavailable, summarize, summary_out
 from ..services.notifications import notify_assigned
 from ..services.attachments import attachment_response, conversation_attachment, logo_response
 from ..services.operator_media import store_operator_media_reply
@@ -2049,6 +2052,32 @@ def portal_delete_conversation(
 @router.get("/{slug}/conversations/{conversation_id}", response_model=ConversationDetail)
 def portal_conversation(slug: str, conversation_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
     return _present(_detail(db, client, conversation_id))
+
+
+@router.get("/{slug}/conversations/{conversation_id}/summary", response_model=ConversationSummaryOut)
+def portal_conversation_summary(slug: str, conversation_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)):
+    """The stored summary, if anyone asked for one. Reading it costs nothing."""
+    return summary_out(db, _detail(db, client, conversation_id))
+
+
+@router.post("/{slug}/conversations/{conversation_id}/summary", response_model=ConversationSummaryOut)
+async def portal_summarize_conversation(
+    slug: str,
+    conversation_id: uuid.UUID,
+    payload: ConversationSummaryRequest,
+    client: Client = Depends(_portal_client),
+    db: Session = Depends(get_db),
+):
+    """Write the summary with the conversation agent's model, billed like a reply.
+    Returns the stored one without calling the model when nothing new arrived."""
+    conversation = _detail(db, client, conversation_id)
+    try:
+        return await summarize(db, conversation, payload.language)
+    except SummaryUnavailable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - a provider error reads as a message, not a 500
+        logger.warning("Summary failed for conversation %s: %s", conversation_id, exc)
+        raise HTTPException(status_code=502, detail="The summary could not be written. Try again in a moment.") from exc
 
 
 @router.patch("/{slug}/conversations/{conversation_id}/mode", response_model=ConversationDetail)

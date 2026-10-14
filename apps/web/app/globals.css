@@ -1009,6 +1009,21 @@ textarea { line-height: 1.55; }
 .portal-inbox > section > header .mode-toggle, .portal-inbox > section > header .status-toggle { flex: 0 0 auto; }
 .portal-inbox > section > header div { display: flex; flex-direction: column; }
 .portal-inbox > section > header small { color: var(--subtle); }
+/* The summary a person asked for, pinned between the header and the thread. */
+.conversation-summary { margin: 10px 24px 0; border: 1px solid var(--accent-line); border-radius: 10px; background: var(--accent-soft); }
+.conversation-summary-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; }
+.conversation-summary-toggle { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 2px 0; border: 0; background: none; color: var(--accent-text); font: inherit; text-align: left; cursor: pointer; }
+.conversation-summary-toggle strong { font-size: 13px; white-space: nowrap; }
+.conversation-summary-toggle small { min-width: 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conversation-summary-chevron { flex: 0 0 auto; margin-left: auto; color: var(--muted); transition: transform .18s; }
+.conversation-summary.open .conversation-summary-chevron { transform: rotate(180deg); }
+.conversation-summary-head .icon-button { width: 28px; height: 28px; }
+.conversation-summary-body { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow: auto; padding: 0 14px 10px 35px; }
+.conversation-summary-body ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; color: var(--ink-2); font-size: 13.5px; line-height: 1.45; }
+.conversation-summary-body p { margin: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.conversation-summary-body small { font-size: 11.5px; }
+.conversation-summary-error { color: var(--red-text); }
+@media (max-width: 760px) { .conversation-summary { margin: 8px 12px 0; } }
 .portal-messages { padding: 24px 24px 12px; display: flex; flex: 1; overflow: auto; overflow-anchor: none; flex-direction: column; gap: 15px; }
 .portal-messages::after { content: ""; flex: 0 0 8px; }
 .portal-messages article { max-width: 76%; }

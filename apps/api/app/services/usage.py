@@ -40,6 +40,7 @@ def record_usage(
     *,
     conversation: Conversation | None = None,
     message: Message | None = None,
+    purpose: str = "reply",
 ) -> UsageRecord | None:
     """Store what a completion used and cost, linked to the reply it produced.
 
@@ -67,6 +68,7 @@ def record_usage(
         duration_ms=completion.duration_ms,
         conversation_id=conversation.id if conversation is not None else None,
         message_id=message.id if message is not None else None,
+        purpose=purpose,
     )
     db.add(record)
     for hook in _usage_hooks:

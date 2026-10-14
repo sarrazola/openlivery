@@ -545,6 +545,8 @@ export type ReportReply = {
   duration_ms: number | null;
   tools: number;
   tool_errors: number;
+  // "reply", or "summary" for a conversation summary a person asked for.
+  purpose?: "reply" | "summary";
 };
 
 /** A detail a contact can hold: the built-in name, email and phone, or a

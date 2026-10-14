@@ -508,6 +508,9 @@ class UsageRecord(Base):
     served_by: Mapped[str] = mapped_column(String(60), default="", server_default="")
     cached_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     reasoning_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # What the call was for: "reply" (an answer to the contact, follow-ups
+    # included) or "summary" (a conversation summary a person asked for).
+    purpose: Mapped[str] = mapped_column(String(20), default="reply", server_default="reply")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
 
 
@@ -711,6 +714,12 @@ class Conversation(Base):
     # or sent its closing message, and the case ends once that message had
     # time to go out, unless the contact writes first.
     pending_resolution: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+    # A summary a person asked for (services.summary), for the team only and
+    # never sent to the contact. ``summary_message_count`` is how many
+    # exchanged messages it covered, so it is regenerated only once more arrive.
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    summary_message_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     taken_over_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # The portal user handling this conversation, when a person is. Cleared
     # when it goes back to the AI or is released for someone else to take.
