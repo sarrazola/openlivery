@@ -2348,6 +2348,7 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .esc-step-chevron { flex: 0 0 auto; color: var(--muted); transition: transform .18s; }
 .esc-step.open .esc-step-chevron { transform: rotate(180deg); }
 .esc-step-head .esc-toggle.switch-row { margin: 0; }
+.esc-step-toggle:disabled { cursor: default; opacity: 1; }
 .esc-step-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 14px; border-top: 1px solid var(--line-soft); background: var(--surface-2); }
 .esc-empty { margin: 0; color: var(--muted); font-size: 13px; }
 .esc-row { display: flex; align-items: center; gap: 10px; min-height: 36px; }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { LoaderCircle, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { Alert } from "@/components/ui";
 import { AiHint } from "@/components/ai-hint";
 import { api, messageFrom } from "@/lib/api";
@@ -72,9 +72,18 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
   const farewell = rules.find((rule) => rule.closes);
   const canAdd = !(reminders.length >= MAX_REMINDERS && farewell);
   const maxHours = limits.max / 60;
+  const summary = [
+    ...rules.map((rule) => `${t(rule.closes ? "agents.followUps.farewell" : "agents.followUps.reminder")} ${rule.amount || "?"} ${t(rule.unit === "hours" ? "agents.followUps.unitShortHours" : "agents.followUps.unitShortMinutes")}`),
+    channels.length
+      ? CHANNEL_GROUPS.filter((group) => group.keys.some((key) => channels.includes(key))).map((group) => t(group.label)).join(", ")
+      : t("agents.followUps.allChannels"),
+  ].join(" · ");
 
+  // The rules fold under their switch, with a one-line summary when closed.
+  const [open, setOpen] = useState(false);
   const toggle = (on: boolean) => {
     setEnabled(on);
+    setOpen(on);
     // A sequence to start from, so switching it on is one click.
     if (on && !rules.length) setRules([blank(60, false), blank(360, true)]);
   };
@@ -108,7 +117,7 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
   async function save() {
     const invalid = enabled ? problem() : "";
     setSaved(false);
-    if (invalid) { setError(invalid); return; }
+    if (invalid) { setOpen(true); setError(invalid); return; }
     setBusy(true); setError("");
     const [first, second] = reminders;
     const textOf = (rule: Rule | undefined) => (rule?.custom ? rule.text.trim() : null);
@@ -134,10 +143,17 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
       <div className="settings-fields capture-editor">
         {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div> : <>
           <label className="switch-row"><span><strong>{t("agents.followUps.resolveToggle")}</strong><small>{t("agents.followUps.resolveHint")}</small></span><input type="checkbox" checked={resolveEnabled} onChange={(e) => setResolveEnabled(e.target.checked)} /></label>
-          <label className="switch-row"><span><strong>{t("agents.followUps.toggle")}</strong><small>{t("agents.followUps.toggleHint")}</small></span><input type="checkbox" checked={enabled} onChange={(e) => toggle(e.target.checked)} /></label>
-          {enabled && <div className="esc-step">
-            <div className="esc-step-head"><div><strong>{t("agents.followUps.rulesHeading")}</strong><small>{t("agents.followUps.rulesHint", { max: String(maxHours) })}</small></div></div>
-            <div className="esc-step-body">
+          <div className={enabled && open ? "esc-step open" : "esc-step"}>
+            <div className="esc-step-head">
+              <button type="button" className="esc-step-toggle" onClick={() => enabled && setOpen((v) => !v)} aria-expanded={enabled && open} disabled={!enabled}>
+                <span className="esc-step-title"><strong>{t("agents.followUps.toggle")}</strong>
+                  {!enabled ? <small>{t("agents.followUps.toggleHint")}</small> : open ? <small>{t("agents.followUps.rulesHint", { max: String(maxHours) })}</small> : <small className="esc-step-summary">{summary}</small>}
+                </span>
+                {enabled && <ChevronDown size={16} className="esc-step-chevron" />}
+              </button>
+              <label className="switch-row esc-toggle"><input type="checkbox" checked={enabled} onChange={(e) => toggle(e.target.checked)} aria-label={t("agents.followUps.toggle")} /></label>
+            </div>
+            {enabled && open && <div className="esc-step-body">
               {rules.map((rule, index) => {
                 const kind = t(rule.closes ? "agents.followUps.farewell" : "agents.followUps.reminder");
                 return <div className="followup-rule-wrap" key={index}>
@@ -171,8 +187,8 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
                 })}
                 {!channels.length && <small className="muted">{t("agents.followUps.allChannels")}</small>}
               </div>
-            </div>
-          </div>}
+            </div>}
+          </div>
           {error && <Alert>{error}</Alert>}
           <div className="form-footer escalation-footer">
             <span className="escalation-save">{saved && <span className="escalation-saved">{t("agents.escalation.savedNote")}</span>}<button type="button" className="button primary" onClick={save} disabled={busy}>{busy ? <LoaderCircle className="spin" size={16} /> : t("agents.followUps.save")}</button></span>
