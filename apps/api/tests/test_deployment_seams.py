@@ -148,4 +148,4 @@ def test_the_shapes_a_deployment_relies_on():
     assert _params(providers.resolve_provider_credentials) == ["db", "agency_id", "provider"]
     assert _params(providers.credential_source) == ["db", "agency_id", "provider"]
     assert _params(usage.register_usage_hook) == ["hook"]
-    assert _params(usage.record_usage) == ["db", "agency_id", "agent_id", "provider", "model", "completion", "conversation", "message"]
+    assert _params(usage.record_usage) == ["db", "agency_id", "agent_id", "provider", "model", "completion", "conversation", "message", "purpose"]
