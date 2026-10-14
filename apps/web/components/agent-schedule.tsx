@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import type { ScheduleSlot } from "@/types";
 
@@ -43,9 +45,25 @@ export function AgentScheduleEditor({ enabled, slots, timezone, locale, onChange
   onChange: (next: { enabled: boolean; slots: ScheduleSlot[] }) => void;
 }) {
   const t = useT();
+  const [open, setOpen] = useState(false);
   const names = weekdayNames(locale);
+  const short = DAYS.map((i) => new Date(2024, 0, 1 + i).toLocaleDateString(locale, { weekday: "short" }).replace(".", ""));
   const byDay = new Map<number, ScheduleSlot>();
   for (const slot of slots) if (!byDay.has(slot.day)) byDay.set(slot.day, slot);
+
+  // Days that share hours read as one group: "Thu, Fri, Sat 09:00 to 22:00".
+  const summary = (() => {
+    if (!slots.length) return t("agents.detail.scheduleNoDays");
+    const groups = new Map<string, number[]>();
+    for (const slot of [...slots].sort((a, b) => a.day - b.day)) {
+      const key = `${slot.start}-${slot.end}`;
+      groups.set(key, [...(groups.get(key) ?? []), slot.day]);
+    }
+    return [...groups.entries()].map(([key, days]) => {
+      const [start, end] = key.split("-");
+      return `${days.map((d) => short[d]).join(", ")} ${start} ${t("agents.detail.scheduleTo")} ${end}`;
+    }).join(" · ");
+  })();
 
   const setDay = (day: number, next: ScheduleSlot | null) => {
     const rest = slots.filter((slot) => slot.day !== day);
@@ -54,9 +72,18 @@ export function AgentScheduleEditor({ enabled, slots, timezone, locale, onChange
 
   return (
     <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.scheduleHeading")}</h3><p>{t("agents.detail.scheduleCopy")}</p></div><div className="settings-fields">
-      <label className="switch-row"><span><strong>{t("agents.detail.scheduleToggle")}</strong><small>{t("agents.detail.scheduleToggleHint")}</small></span><input type="checkbox" checked={enabled} onChange={(e) => onChange({ enabled: e.target.checked, slots })} /></label>
-      {enabled && (
-        <div className="schedule-week">
+      <div className={enabled && open ? "esc-step open" : "esc-step"}>
+        <div className="esc-step-head">
+          <button type="button" className="esc-step-toggle" onClick={() => enabled && setOpen((v) => !v)} aria-expanded={enabled && open} disabled={!enabled}>
+            <span className="esc-step-title"><strong>{t("agents.detail.scheduleToggle")}</strong>
+              {!enabled || open ? <small>{t("agents.detail.scheduleToggleHint")}</small> : <small className="esc-step-summary">{summary}</small>}
+            </span>
+            {enabled && <ChevronDown size={16} className="esc-step-chevron" />}
+          </button>
+          <label className="switch-row esc-toggle"><input type="checkbox" checked={enabled} onChange={(e) => { onChange({ enabled: e.target.checked, slots }); setOpen(e.target.checked); }} aria-label={t("agents.detail.scheduleToggle")} /></label>
+        </div>
+      {enabled && open && (
+        <div className="schedule-week esc-step-body">
           {DAYS.map((day) => {
             const slot = byDay.get(day);
             return (
@@ -77,6 +104,7 @@ export function AgentScheduleEditor({ enabled, slots, timezone, locale, onChange
           {slots.length === 0 && <span className="field-help schedule-warning">{t("agents.detail.scheduleNoDays")}</span>}
         </div>
       )}
+      </div>
     </div></section>
   );
 }
