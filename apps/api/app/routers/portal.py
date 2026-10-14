@@ -2066,13 +2066,14 @@ async def portal_summarize_conversation(
     conversation_id: uuid.UUID,
     payload: ConversationSummaryRequest,
     client: Client = Depends(_portal_client),
+    user: PortalUser | None = Depends(_portal_user),
     db: Session = Depends(get_db),
 ):
     """Write the summary with the conversation agent's model, billed like a reply.
     Returns the stored one without calling the model when nothing new arrived."""
     conversation = _detail(db, client, conversation_id)
     try:
-        return await summarize(db, conversation, payload.language)
+        return await summarize(db, conversation, payload.language, requested_by=user and (user.name or user.email))
     except SummaryUnavailable as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001 - a provider error reads as a message, not a 500

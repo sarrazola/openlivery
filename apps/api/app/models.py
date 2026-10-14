@@ -720,6 +720,8 @@ class Conversation(Base):
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     summary_message_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Who asked for the stored summary: the portal person's name or e-mail.
+    summary_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
     taken_over_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # The portal user handling this conversation, when a person is. Cleared
     # when it goes back to the AI or is released for someone else to take.

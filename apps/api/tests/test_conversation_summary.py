@@ -50,6 +50,7 @@ def test_a_summary_is_written_on_request_billed_and_reused(authenticated_client:
     completion = _stub(monkeypatch)
     written = authenticated_client.post(path, json={"language": "es"}).json()
     assert written["summary"].startswith("- Quiere") and written["message_count"] == 3 and written["stale"] is False
+    assert written["summary_by"] == "Ana"
     assert completion.await_count == 1
     prompt = completion.await_args.args[4]
     assert "Spanish" in prompt[0]["content"] and "Customer: Quiero un tocador blanco" in prompt[1]["content"]

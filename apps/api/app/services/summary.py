@@ -53,6 +53,7 @@ def summary_out(db: Session, conversation: Conversation) -> dict:
     return {
         "summary": conversation.summary,
         "summary_at": conversation.summary_at,
+        "summary_by": conversation.summary_by,
         "message_count": conversation.summary_message_count or 0,
         "current_message_count": count,
         "stale": bool(conversation.summary) and count != (conversation.summary_message_count or 0),
@@ -74,7 +75,7 @@ def _transcript(db: Session, conversation: Conversation) -> str:
     return "\n".join(lines)
 
 
-async def summarize(db: Session, conversation: Conversation, language: str = "es") -> dict:
+async def summarize(db: Session, conversation: Conversation, language: str = "es", *, requested_by: str | None = None) -> dict:
     """Write (or return the still-current) summary of the conversation."""
     count = exchanged_count(db, conversation)
     if count == 0:
@@ -104,7 +105,8 @@ async def summarize(db: Session, conversation: Conversation, language: str = "es
     db.execute(
         update(Conversation)
         .where(Conversation.id == conversation.id)
-        .values(summary=text, summary_at=now_utc(), summary_message_count=count, updated_at=Conversation.updated_at)
+        .values(summary=text, summary_at=now_utc(), summary_message_count=count, summary_by=(requested_by or None) and requested_by[:160],
+                updated_at=Conversation.updated_at)
     )
     db.commit()
     db.refresh(conversation)

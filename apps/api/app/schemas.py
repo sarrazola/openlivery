@@ -483,6 +483,8 @@ class ConversationSummaryOut(BaseModel):
 
     summary: str | None = None
     summary_at: datetime | None = None
+    # Who asked for it: the portal person's name, or their e-mail.
+    summary_by: str | None = None
     message_count: int = 0
     current_message_count: int = 0
     stale: bool = False

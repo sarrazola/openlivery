@@ -9,6 +9,7 @@ import { useLanguage, useT } from "@/lib/i18n";
 type Summary = {
   summary: string | null;
   summary_at: string | null;
+  summary_by: string | null;
   message_count: number;
   current_message_count: number;
   stale: boolean;
@@ -59,7 +60,7 @@ export function ConversationSummary({ slug, conversationId, requested }: { slug:
           <FileText size={15} />
           <strong>{t("portal.inbox.conversation.summaryTitle")}</strong>
           {busy ? <small>{t("portal.inbox.conversation.summaryWriting")}</small>
-            : data?.summary_at ? <small>{data.stale ? t("portal.inbox.conversation.summaryStale") : t("portal.inbox.conversation.summaryMeta", { count: data.message_count, when: formatWhen(data.summary_at, lang) })}</small> : null}
+            : data?.summary_at ? <small>{data.stale ? t("portal.inbox.conversation.summaryStale") : [data.summary_by, t("portal.inbox.conversation.summaryMeta", { count: data.message_count, when: formatWhen(data.summary_at, lang) })].filter(Boolean).join(" · ")}</small> : null}
           <ChevronDown size={15} className="conversation-summary-chevron" />
         </button>
         {data?.stale && !busy && <button type="button" className="button ghost small" onClick={write}><RefreshCw size={13} /> {t("portal.inbox.conversation.summaryUpdate")}</button>}
