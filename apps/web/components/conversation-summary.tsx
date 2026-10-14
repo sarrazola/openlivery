@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, FileText, LoaderCircle, RefreshCw, X } from "lucide-react";
 import { api, messageFrom } from "@/lib/api";
 import { formatWhen } from "@/lib/datetime";
@@ -19,7 +19,8 @@ type Summary = {
  * Nothing is written until someone asks from the conversation's menu: each
  * request is a model call billed like a reply, and asking again before new
  * messages arrive returns the stored one. `requested` grows by one each time
- * the menu item is pressed. */
+ * the menu item is pressed; only a press made while this card is mounted
+ * writes, so opening another conversation never replays an earlier one. */
 export function ConversationSummary({ slug, conversationId, requested }: { slug: string; conversationId: string; requested: number }) {
   const t = useT();
   const { lang } = useLanguage();
@@ -29,6 +30,9 @@ export function ConversationSummary({ slug, conversationId, requested }: { slug:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const path = `/portal/${slug}/conversations/${conversationId}/summary`;
+  // The count already seen: a remount (back to the list, then another
+  // conversation) starts from the current count instead of acting on it.
+  const handled = useRef(requested);
 
   // A stored summary shows folded when the conversation opens; reading it is free.
   useEffect(() => {
@@ -46,8 +50,9 @@ export function ConversationSummary({ slug, conversationId, requested }: { slug:
   }
 
   useEffect(() => {
-    if (requested > 0) write();
-    // Only a new request from the menu writes; the path change resets above.
+    if (requested <= handled.current) return;
+    handled.current = requested;
+    write();
   }, [requested]);
 
   if (hidden || (!data?.summary && !busy && !error)) return null;
