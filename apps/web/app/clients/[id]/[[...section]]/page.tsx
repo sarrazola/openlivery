@@ -18,6 +18,7 @@ import { TemplateWebhooksView } from "@/components/template-webhooks";
 import { FormSkeleton, ListRowsSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
 import { PasswordInput } from "@/components/password-input";
+import { PasswordGenerator } from "@/components/password-generator";
 import { accountName, ChannelIcon } from "@/lib/channels";
 import { WhatsAppCloudSetup } from "@/components/channels/whatsapp-cloud";
 import { WhatsAppSetup } from "@/components/channels/whatsapp";
@@ -237,13 +238,18 @@ function PortalUsers({ clientId }: { clientId: string }) {
   const [deleting, setDeleting] = useState<PortalUser | null>(null);
   const [suspending, setSuspending] = useState<PortalUser | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
+  // The password fields are controlled so "Generate password" can fill both.
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [generated, setGenerated] = useState(false);
+  const generate = (value: string) => { setPassword(value); setConfirm(value); setGenerated(true); };
 
   const load = useCallback(async () => {
     setUsers(await api<PortalUser[]>(`/clients/${clientId}/portal-users`));
   }, [clientId]);
   useEffect(() => { load().catch(() => {}); }, [load]);
 
-  function open(target: PortalUser | "new") { setModalError(null); setEditing(target); }
+  function open(target: PortalUser | "new") { setModalError(null); setPassword(""); setConfirm(""); setGenerated(false); setEditing(target); }
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -313,9 +319,10 @@ function PortalUsers({ clientId }: { clientId: string }) {
         </div>
         <label>{t("clients.detail.portalUserRole")}<select name="role" defaultValue={defaultRole}><option value="admin">{t("clients.detail.portalUserRoleAdmin")}</option><option value="agent">{t("clients.detail.portalUserRoleAgent")}</option></select><span className="field-help">{t("clients.detail.portalUserRoleHint")}</span></label>
         {creating ? <div className="form-grid">
-          <label>{t("clients.detail.portalUserPassword")}<PasswordInput name="password" required minLength={8} autoComplete="new-password" placeholder={t("clients.detail.portalPasswordMin")} /></label>
-          <label>{t("clients.detail.portalUserConfirmPassword")}<PasswordInput name="password_confirm" required minLength={8} autoComplete="new-password" placeholder={t("clients.detail.portalUserConfirmPlaceholder")} /></label>
-        </div> : <label>{t("clients.detail.portalUserNewPassword")}<PasswordInput name="password" minLength={8} autoComplete="new-password" placeholder={t("clients.detail.portalUserPasswordKeep")} /><span className="field-help">{t("clients.detail.portalUserNewPasswordHint")}</span></label>}
+          <label>{t("clients.detail.portalUserPassword")}<PasswordInput name="password" required minLength={8} autoComplete="new-password" placeholder={t("clients.detail.portalPasswordMin")} value={password} onChange={(e) => setPassword(e.target.value)} revealed={generated} /></label>
+          <label>{t("clients.detail.portalUserConfirmPassword")}<PasswordInput name="password_confirm" required minLength={8} autoComplete="new-password" placeholder={t("clients.detail.portalUserConfirmPlaceholder")} value={confirm} onChange={(e) => setConfirm(e.target.value)} revealed={generated} /></label>
+        </div> : <label>{t("clients.detail.portalUserNewPassword")}<PasswordInput name="password" minLength={8} autoComplete="new-password" placeholder={t("clients.detail.portalUserPasswordKeep")} value={password} onChange={(e) => setPassword(e.target.value)} revealed={generated} /><span className="field-help">{t("clients.detail.portalUserNewPasswordHint")}</span></label>}
+        <PasswordGenerator value={generated ? password : ""} onGenerate={generate} />
         {modalError && <Alert>{modalError}</Alert>}
         <div className="modal-actions"><button type="button" className="button" onClick={() => setEditing(null)}>{t("common.cancel")}</button><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={16} /> : creating ? t("clients.detail.portalUserAdd") : t("common.saveChanges")}</button></div>
       </form>

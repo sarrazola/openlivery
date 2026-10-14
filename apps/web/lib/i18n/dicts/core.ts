@@ -3,6 +3,11 @@
 const en = {
   common: {
     save: "Save",
+    generatePassword: "Generate password",
+    copyPassword: "Copy password",
+    copied: "Copied",
+    passwordCopied: "Password copied. Share it with the person.",
+    passwordCopyFailed: "Could not copy it. Select it and copy it by hand.",
     saveChanges: "Save changes",
     cancel: "Cancel",
     create: "Create",
@@ -151,6 +156,11 @@ const en = {
 const es: typeof en = {
   common: {
     save: "Guardar",
+    generatePassword: "Generar contraseña",
+    copyPassword: "Copiar contraseña",
+    copied: "Copiada",
+    passwordCopied: "Contraseña copiada. Compártela con la persona.",
+    passwordCopyFailed: "No se pudo copiar. Selecciónala y cópiala a mano.",
     saveChanges: "Guardar cambios",
     cancel: "Cancelar",
     create: "Crear",
