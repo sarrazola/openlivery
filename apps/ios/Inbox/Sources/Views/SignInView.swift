@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Signing in.
 ///
-/// A hosted build with a directory (see Brand.hostedSignInURL) asks for an
+/// A build with an account directory (see Brand.hostedSignInURL) asks for an
 /// e-mail and a password and nothing else: the directory answers with the
 /// account's own server, or with several accounts when the same person works
 /// for more than one business. "Change server" leads to a screen for the
@@ -250,7 +250,7 @@ private struct LoginForm: View {
             switch target {
             case .hosted:
                 guard let directory = Brand.hostedSignInURL else {
-                    // A hosted build with no directory has nowhere to send an e-mail alone.
+                    // Without an account directory, ask for the server address.
                     path.append(.server)
                     return
                 }

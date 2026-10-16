@@ -49,7 +49,7 @@ import kotlinx.coroutines.launch
 /**
  * Where the session comes from.
  *
- * A hosted build with a directory asks for an e-mail and a password alone; the
+ * A build with an account directory accepts an e-mail and password; the
  * directory answers with the account's own server, or with several accounts
  * when the same person works for more than one business. "Change server" is
  * for a self-hosted core, where the address is typed and the sign-in goes
@@ -95,7 +95,7 @@ fun SignInScreen(model: AppModel) {
                 if (hosted) {
                     val directory = Brand.hostedSignInUrl
                     if (directory == null) {
-                        // A hosted build with no directory has nowhere to send an e-mail alone.
+                        // Without an account directory, ask for the server address.
                         serverPage = true
                     } else {
                         val found = try {

@@ -46,7 +46,7 @@ object Brand {
         if (!withScheme.startsWith("https://")) null else HostedPreset(label, withScheme)
     }
 
-    /** Where a hosted build signs in with an e-mail alone: a directory the publisher runs. */
+    /** Optional account-directory endpoint used by a configured service preset. */
     val hostedSignInUrl: URL? = run {
         if (hosted == null) return@run null
         val raw = value(BuildConfig.BRAND_HOSTED_SIGN_IN)

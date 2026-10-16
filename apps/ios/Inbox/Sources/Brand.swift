@@ -62,9 +62,9 @@ enum Brand {
         return HostedPreset(label: label, serverTemplate: withScheme)
     }()
 
-    /// Where a hosted build signs in with an e-mail alone: a directory the
-    /// publisher runs that answers with the account's own server. Without it, a
-    /// hosted build asks for the workspace name and derives the address.
+    /// Optional account-directory endpoint used by a configured service preset.
+    /// The directory returns the account's server after credential validation.
+    /// Without one, the preset resolves an address from a workspace name.
     static let hostedSignInURL: URL? = {
         guard hosted != nil else { return nil }
         let raw = value("HostedSignIn")
