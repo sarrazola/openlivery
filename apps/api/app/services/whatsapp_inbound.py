@@ -152,8 +152,8 @@ async def process_inbound(
     select the Conversation channel label and FK column for the caller.
     """
     if conversation_channel == "whatsapp" or (conversation_channel == "whatsapp_cloud" and channel.coexistence):
-        from .whatsapp_coexistence import lock_chats
-        lock_chats(db, channel.id, [peer for peer in (inbound.external_chat_id, inbound.sender_user_id) if peer])
+        from .whatsapp_coexistence import lock_chats_off_loop
+        await lock_chats_off_loop(db, channel.id, [peer for peer in (inbound.external_chat_id, inbound.sender_user_id) if peer])
     fk_column = getattr(Conversation, channel_fk_field)
 
     existing = db.scalar(

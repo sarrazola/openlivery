@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import event, select, update
+from sqlalchemy import event, select, text, update
 
 from app.models import Contact, Conversation, Message, WhatsAppCloudChannel, WhatsAppCoexistenceEvent, now_utc
 from app.services import whatsapp_coexistence as coex, whatsapp_inbound
@@ -496,3 +496,41 @@ def test_phone_pause_expires_and_answers_pending_customer_in_coexistence(channel
         asyncio.run(resume_due(db))
     completion.assert_awaited_once()
     send.assert_awaited_once()
+
+
+def test_a_message_waiting_for_its_chat_lock_does_not_stop_the_holder(channel, monkeypatch):
+    # The first message holds the chat lock while its media is described; the
+    # second, for the same chat, arrives meanwhile on the same event loop.
+    holding = asyncio.Event()
+
+    async def resolve(db, agent, inbound, **kwargs):
+        if inbound.external_message_id == "with-media":
+            holding.set()
+            await asyncio.sleep(0.5)
+        return inbound.text, inbound.text
+
+    monkeypatch.setattr(whatsapp_inbound, "resolve_inbound_content", resolve)
+    monkeypatch.setattr(whatsapp_inbound, "schedule_debounced_reply", lambda *args: None)
+
+    async def deliver(db, mid):
+        # Fail fast instead of hanging if the wait blocks the loop again.
+        db.execute(text("SET LOCAL lock_timeout = '3s'"))
+        return await whatsapp_inbound.process_inbound(
+            db, db.get(WhatsAppCloudChannel, channel),
+            whatsapp_cloud_webhook.parse_message(raw(mid, age=0), {}),
+            conversation_channel="whatsapp_cloud", channel_fk_field="whatsapp_cloud_channel_id")
+
+    async def second(db):
+        await holding.wait()
+        return await deliver(db, "follow-up")
+
+    async def both():
+        with TestingSession() as first_db, TestingSession() as second_db:
+            return await asyncio.gather(deliver(first_db, "with-media"), second(second_db))
+
+    first, later = asyncio.run(both())
+    assert first.accepted and later.accepted
+    assert first.conversation_id == later.conversation_id
+    with TestingSession() as db:
+        assert {m.external_message_id for m in db.scalars(select(Message).where(
+            Message.kind == "message"))} == {"with-media", "follow-up"}

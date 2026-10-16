@@ -35,7 +35,7 @@ from ..schemas import TemplateWebhookCall
 from .contacts import display_name, normalize_phone, resolve_contact
 from .conversation_state import note_reply, record_activity
 from .routing import route_new_conversation_by_tags
-from .whatsapp_coexistence import lock_chats
+from .whatsapp_coexistence import lock_chats_off_loop
 from .whatsapp_templates import (
     list_templates,
     message_buttons,
@@ -211,7 +211,7 @@ async def deliver(db: Session, webhook: TemplateWebhook, payload: TemplateWebhoo
 
     # Two calls for the same phone wait for each other here, so they end up in
     # one conversation instead of opening two.
-    lock_chats(db, channel.id, [phone])
+    await lock_chats_off_loop(db, channel.id, [phone])
     if key:
         earlier = _earlier_delivery(db, webhook, key)
         if earlier:

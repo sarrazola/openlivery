@@ -45,6 +45,18 @@ def lock_chats(db, channel_id, peers):
         db.execute(text("SELECT pg_advisory_xact_lock(key) FROM unnest(CAST(:keys AS bigint[])) AS key ORDER BY key"), {"keys": keys})
 
 
+async def lock_chats_off_loop(db, channel_id, peers):
+    """lock_chats for code running on the event loop.
+
+    The lock lasts until the holder's transaction ends, and the holder can be
+    another task on this same loop, awaiting a network call before it commits.
+    Waiting for the lock on the loop's own thread would keep that task from
+    ever resuming, and every request on the process would stop with it. The
+    session is used by nothing else while this coroutine awaits the thread.
+    """
+    await asyncio.to_thread(lock_chats, db, channel_id, peers)
+
+
 def window_fields(conversation):
     channel = conversation.whatsapp_cloud_channel
     last = conversation.social_last_inbound_at
