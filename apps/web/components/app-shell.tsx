@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSelectedLayoutSegments } from "next/navigation";
 import { ReactNode, useEffect, useLayoutEffect, useState } from "react";
 import { BarChart3, Bot, Building2, CreditCard, Inbox, LayoutDashboard, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Settings, Sparkles, Wallet, X } from "lucide-react";
 import { api } from "@/lib/api";
@@ -66,8 +66,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     try { localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0"); } catch {}
   }
   const isLogin = pathname === "/login";
-  const isPortal = pathname.startsWith("/portal/");
-  const isWidget = pathname.startsWith("/widget/");
+  // The rendered route, not the address: a portal served on a client's own
+  // domain is rewritten to /portal/<slug> by the proxy while the address stays
+  // "/" or "/inbox", and the portal page keeps it there. Judged by the address
+  // alone, the shell would ask for the agency session, get a 401 and send the
+  // signed-in portal user to /login, which rewrites back to the portal.
+  const [rootSegment] = useSelectedLayoutSegments();
+  const isPortal = pathname.startsWith("/portal/") || rootSegment === "portal";
+  const isWidget = pathname.startsWith("/widget/") || rootSegment === "widget";
   const isExtraPublic = EXTRA_PUBLIC_PATHS.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`),
   );
