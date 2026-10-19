@@ -49,6 +49,7 @@ export type ClientDomain = {
   verified: boolean;
   txt_host: string | null;
   txt_value: string | null;
+  cname_target: string | null;
 };
 
 export type Agent = {

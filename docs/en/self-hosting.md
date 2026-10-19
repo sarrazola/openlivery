@@ -217,6 +217,8 @@ shows:
 | `CNAME` | `chat.brand.com` | your gateway host (e.g. `app.youragency.com`) |
 | `TXT` | `_openlivery-challenge.chat.brand.com` | the token shown |
 
+Set `PORTAL_DOMAIN_CNAME_TARGET` to that gateway host and the page shows it as the CNAME value instead of the placeholder.
+
 Click **Verify**. Once the TXT record is found the domain is marked verified, the
 gateway starts issuing its certificate, and the frontend routes the domain to
 that client's portal. The portal must be **published** for the domain to serve.

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, Up
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_user
 from .. import industries
@@ -58,13 +59,15 @@ ALLOWED_LOGO_TYPES = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
 
 
 def _domain_out(client: Client) -> ClientDomainOut:
+    cname_target = (get_settings().portal_domain_cname_target or "").strip() or None
     if not client.portal_domain:
-        return ClientDomainOut(domain=None, verified=False, txt_host=None, txt_value=None)
+        return ClientDomainOut(domain=None, verified=False, txt_host=None, txt_value=None, cname_target=cname_target)
     return ClientDomainOut(
         domain=client.portal_domain,
         verified=client.portal_domain_verified,
         txt_host=dns_service.challenge_host(client.portal_domain),
         txt_value=client.portal_domain_token,
+        cname_target=cname_target,
     )
 
 

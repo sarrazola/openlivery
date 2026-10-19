@@ -34,6 +34,7 @@ Para una instalación local sin Docker, las mismas variables van en un `.env` en
 | `PUSH_WEBPUSH_PRIVATE_KEY` | Clave privada VAPID con la que el portal notifica a los navegadores directamente, sin proveedor. `python -m app.webpush_keys` imprime una; consérvala, rotarla desuscribe a todos los navegadores | vacío (apagado) |
 | `PUSH_WEBPUSH_SUBJECT` | A quién pueden contactar los fabricantes de navegadores sobre el remitente, como `mailto:` o una URL | `mailto:admin@localhost` |
 | `PORTAL_IOS_APP_URL`, `PORTAL_ANDROID_APP_URL` | Páginas en las tiendas de la app móvil que publica este despliegue. El portal muestra los badges de las tiendas en su pantalla de entrada y en Preferencias; vacío no muestra nada | vacío |
+| `PORTAL_DOMAIN_CNAME_TARGET` | Host al que debe apuntar (CNAME) el dominio propio del portal de un cliente en este despliegue, p. ej. `app.tuagencia.com`. La página del cliente lo muestra junto a los registros DNS; vacío muestra un texto de ejemplo y la nota de que hay que activar el gateway multi-dominio | vacío |
 | `BACKEND_INTERNAL_URL` | Cómo alcanza el contenedor web a la API desde el servidor (usado por `proxy.ts` para dominios de portal personalizados) | `http://api:8000` |
 
 ### La advertencia sobre ENCRYPTION_KEY

@@ -213,6 +213,8 @@ registros DNS que te muestra:
 | `CNAME` | `chat.marca.com` | el host de tu gateway (por ejemplo `app.youragency.com`) |
 | `TXT` | `_openlivery-challenge.chat.marca.com` | el token que se muestra |
 
+Pon en `PORTAL_DOMAIN_CNAME_TARGET` el host de tu gateway y la página lo mostrará como valor del CNAME en vez del texto de ejemplo.
+
 Pulsa **Verificar**. Cuando encuentre el registro TXT, el dominio queda marcado
 como verificado, el gateway empieza a emitir su certificado y el frontend enruta
 el dominio al portal de ese cliente. El portal tiene que estar **publicado** para

@@ -182,6 +182,8 @@ class ClientDomainOut(BaseModel):
     # DNS records the operator/client must create.
     txt_host: str | None
     txt_value: str | None
+    # Where the CNAME must point, when the deployment says so.
+    cname_target: str | None
 
 
 class ProviderKeyUpdate(BaseModel):

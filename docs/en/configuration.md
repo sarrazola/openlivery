@@ -35,6 +35,7 @@ For a non-Docker local setup, the same variables go in a `.env` at the repo root
 | `PUSH_WEBPUSH_PRIVATE_KEY` | VAPID private key that lets the portal notify browsers directly, with no provider. `python -m app.webpush_keys` prints one; keep it, rotating it unsubscribes every browser | empty (off) |
 | `PUSH_WEBPUSH_SUBJECT` | Who browser vendors may contact about the sender, as `mailto:` or a URL | `mailto:admin@localhost` |
 | `PORTAL_IOS_APP_URL`, `PORTAL_ANDROID_APP_URL` | Store pages of the mobile app this deployment publishes. The portal shows the stores' badges on its sign-in page and under Preferences; empty shows nothing | empty |
+| `PORTAL_DOMAIN_CNAME_TARGET` | The host a client's own portal domain must point at (CNAME) on this deployment, e.g. `app.youragency.com`. The client page shows it with the DNS records; empty shows a placeholder and the note that the multi-domain gateway must be enabled | empty |
 
 ### The ENCRYPTION_KEY warning
 
