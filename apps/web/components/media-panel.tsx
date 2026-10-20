@@ -84,7 +84,7 @@ export function MediaPanel({ open, onClose, messages, urlFor }: {
               ) : attachment.kind === "audio" ? (
                 <div key={attachment.id} className="media-panel-audio"><AudioBubble src={urlFor(attachment)} /></div>
               ) : (
-                <video key={attachment.id} src={urlFor(attachment)} controls preload="metadata" />
+                <video key={attachment.id} src={urlFor(attachment)} controls preload="none" />
               ))}
             </div>
           ) : <p className="media-panel-empty">{t("chat.emptyShared")}</p>)}

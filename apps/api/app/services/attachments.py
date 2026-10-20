@@ -11,7 +11,7 @@ from urllib.parse import quote
 
 from fastapi import HTTPException, Response
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 from ..models import Conversation, Message, MessageAttachment
 
@@ -84,6 +84,7 @@ def conversation_attachment(db: Session, conversation: Conversation, attachment_
     """Load an attachment ensuring it belongs to the given conversation."""
     attachment = db.scalar(
         select(MessageAttachment)
+        .options(undefer(MessageAttachment.data))
         .join(Message, Message.id == MessageAttachment.message_id)
         .where(MessageAttachment.id == attachment_id, Message.conversation_id == conversation.id)
     )
