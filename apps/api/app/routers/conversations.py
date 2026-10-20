@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -382,18 +382,22 @@ def get_attachment(
     conversation_id: uuid.UUID,
     attachment_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    access_token: str | None = Cookie(default=None),
 ):
-    # A download needs ownership and one file, not the conversation history.
-    conversation = db.scalar(select(Conversation).where(
-        Conversation.id == conversation_id, Conversation.agency_id == user.agency_id,
-    ))
-    if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    response = attachment_response(conversation_attachment(db, conversation, attachment_id))
-    # The response owns the bytes; slow readers must not retain a connection.
-    db.close()
-    return response
+    # Authenticate and read in one worker invocation. A separate sync auth
+    # dependency can retain a connection while every worker waits for one.
+    try:
+        user = get_current_user(access_token=access_token, db=db)
+        # A download needs ownership and one file, not the conversation history.
+        conversation = db.scalar(select(Conversation).where(
+            Conversation.id == conversation_id, Conversation.agency_id == user.agency_id,
+        ))
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        return attachment_response(conversation_attachment(db, conversation, attachment_id))
+    finally:
+        # The response owns the bytes; slow readers must not retain a connection.
+        db.close()
 
 
 @router.patch("/{conversation_id}/mode", response_model=ConversationDetail)

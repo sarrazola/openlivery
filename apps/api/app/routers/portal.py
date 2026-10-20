@@ -2181,19 +2181,24 @@ async def portal_attachment(
     conversation_id: uuid.UUID,
     attachment_id: uuid.UUID,
     playback_format: str | None = Query(default=None, alias="format", pattern="^m4a$"),
-    client: Client = Depends(_portal_client),
+    portal_access_token: str | None = Cookie(default=None),
+    authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ):
     def load_attachment():
-        conversation = db.scalar(select(Conversation).where(
-            Conversation.id == conversation_id, Conversation.client_id == client.id,
-        ))
-        if not conversation:
-            raise HTTPException(status_code=404, detail="Conversation not found")
-        attachment = conversation_attachment(db, conversation, attachment_id)
-        # Bytes are loaded already. Release before conversion or response IO.
-        db.close()
-        return attachment
+        # Keep authentication and reads in one worker, so no connection is held
+        # between worker invocations when concurrent downloads fill the pool.
+        try:
+            client = _portal_client(slug, portal_access_token, authorization, db)
+            conversation = db.scalar(select(Conversation).where(
+                Conversation.id == conversation_id, Conversation.client_id == client.id,
+            ))
+            if not conversation:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            return conversation_attachment(db, conversation, attachment_id)
+        finally:
+            # Bytes are loaded already. Release before conversion or response IO.
+            db.close()
 
     # Synchronous database IO must not block other requests on the event loop.
     attachment = await run_in_threadpool(load_attachment)

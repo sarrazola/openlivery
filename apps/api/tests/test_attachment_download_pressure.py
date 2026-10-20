@@ -51,9 +51,10 @@ def test_download_does_not_materialize_message_history(authenticated_client, por
 
 
 @pytest.mark.parametrize("portal", [False, True])
-def test_slow_downloads_release_pool_before_sending(authenticated_client, portal):
+@pytest.mark.parametrize("downloads,pool_size", [(8, 2), (64, 10)])
+def test_slow_downloads_release_pool_before_sending(authenticated_client, portal, downloads, pool_size):
     path, headers, _ = _download(authenticated_client, portal)
-    engine = create_engine(os.environ["DATABASE_URL"], pool_size=2, max_overflow=0, pool_timeout=1)
+    engine = create_engine(os.environ["DATABASE_URL"], pool_size=pool_size, max_overflow=0, pool_timeout=1)
     sessions = sessionmaker(bind=engine)
 
     def download_db():
@@ -73,7 +74,7 @@ def test_slow_downloads_release_pool_before_sending(authenticated_client, portal
                 nonlocal sending
                 if message["type"] == "http.response.body":
                     sending += 1
-                    if sending == 8:
+                    if sending == downloads:
                         ready.set()
                     await release.wait()
                 await send(message)
@@ -83,7 +84,7 @@ def test_slow_downloads_release_pool_before_sending(authenticated_client, portal
             transport=httpx.ASGITransport(app=slow_reader), base_url="http://testserver",
             cookies=authenticated_client.cookies,
         ) as client:
-            requests = [asyncio.create_task(client.get(path, headers=headers)) for _ in range(8)]
+            requests = [asyncio.create_task(client.get(path, headers=headers)) for _ in range(downloads)]
             try:
                 await asyncio.wait_for(ready.wait(), timeout=10)
                 assert engine.pool.checkedout() == 0
