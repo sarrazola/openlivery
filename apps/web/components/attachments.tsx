@@ -34,23 +34,33 @@ function fallbackWave(seed: string): number[] {
 /** Custom voice-note player, WhatsApp-style: real waveform bars that fill
  * smoothly as the audio plays, click-to-seek, and a 1x/1.5x/2x speed toggle. */
 export function AudioBubble({ src, stamp }: { src: string; stamp?: string }) {
+  return <AudioBubblePlayer key={src} src={src} stamp={stamp} />;
+}
+
+function AudioBubblePlayer({ src, stamp }: { src: string; stamp?: string }) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [activated, setActivated] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [rate, setRate] = useState(1);
   const [bars, setBars] = useState<number[] | null>(null);
 
-  // Build the waveform by decoding the audio (Web Audio API); fall back to a
-  // stable pseudo-wave when the browser cannot decode the codec.
+  // Decode only after playback starts. Opening a long conversation must not
+  // download every voice note just to draw its waveform.
   useEffect(() => {
+    if (!activated) return;
     let cancelled = false;
+    const controller = new AbortController();
+    let context: AudioContext | undefined;
     (async () => {
       try {
-        const response = await fetch(src, { credentials: "include" });
+        const response = await fetch(src, { credentials: "include", signal: controller.signal });
+        if (!response.ok) throw new Error("Audio download failed");
         const buffer = await response.arrayBuffer();
+        if (cancelled) return;
         const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        const context = new Ctx();
+        context = new Ctx();
         const decoded = await context.decodeAudioData(buffer);
         const channel = decoded.getChannelData(0);
         const block = Math.max(1, Math.floor(channel.length / WAVE_BARS));
@@ -65,13 +75,18 @@ export function AudioBubble({ src, stamp }: { src: string; stamp?: string }) {
         });
         const max = Math.max(...peaks, 0.001);
         if (!cancelled) setBars(peaks.map((peak) => Math.max(0.18, peak / max)));
-        void context.close();
       } catch {
         if (!cancelled) setBars(fallbackWave(src));
+      } finally {
+        if (context && context.state !== "closed") void context.close().catch(() => {});
       }
     })();
-    return () => { cancelled = true; };
-  }, [src]);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (context && context.state !== "closed") void context.close().catch(() => {});
+    };
+  }, [src, activated]);
 
   // Smooth progress while playing (timeupdate alone fires ~4x/s and looks jumpy).
   useEffect(() => {
@@ -106,7 +121,7 @@ export function AudioBubble({ src, stamp }: { src: string; stamp?: string }) {
     const audio = audioRef.current;
     if (!audio) return;
     if (playing) audio.pause();
-    else void audio.play();
+    else void audio.play().catch(() => setPlaying(false));
   }
 
   function cycleRate() {
@@ -153,11 +168,11 @@ export function AudioBubble({ src, stamp }: { src: string; stamp?: string }) {
       <audio
         ref={audioRef}
         src={src}
-        preload="metadata"
+        preload="none"
         onLoadedMetadata={onLoadedMetadata}
         onDurationChange={onLoadedMetadata}
         onTimeUpdate={() => { if (!playing) setTime(audioRef.current?.currentTime || 0); }}
-        onPlay={() => { setPlaying(true); if (audioRef.current) audioRef.current.playbackRate = rate; }}
+        onPlay={() => { setActivated(true); setPlaying(true); if (audioRef.current) audioRef.current.playbackRate = rate; }}
         onPause={() => setPlaying(false)}
         onEnded={() => { setPlaying(false); setTime(0); }}
       />
@@ -260,7 +275,7 @@ export function MessageAttachments({ attachments, urlFor, gallery, stamp }: {
         }
         // Also match older rows stored before "video" was a first-class kind.
         if (attachment.kind === "video" || attachment.mime.startsWith("video/")) {
-          return <video key={attachment.id} className="attachment-video" controls preload="metadata" src={url} />;
+          return <video key={attachment.id} className="attachment-video" controls preload="none" src={url} />;
         }
         return (
           <a key={attachment.id} className="attachment-file" href={url} target="_blank" rel="noreferrer">

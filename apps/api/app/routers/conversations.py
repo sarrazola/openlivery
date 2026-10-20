@@ -384,8 +384,16 @@ def get_attachment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    conversation = _conversation(db, user, conversation_id)
-    return attachment_response(conversation_attachment(db, conversation, attachment_id))
+    # A download needs ownership and one file, not the conversation history.
+    conversation = db.scalar(select(Conversation).where(
+        Conversation.id == conversation_id, Conversation.agency_id == user.agency_id,
+    ))
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    response = attachment_response(conversation_attachment(db, conversation, attachment_id))
+    # The response owns the bytes; slow readers must not retain a connection.
+    db.close()
+    return response
 
 
 @router.patch("/{conversation_id}/mode", response_model=ConversationDetail)

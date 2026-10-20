@@ -2183,8 +2183,14 @@ async def portal_attachment(
     client: Client = Depends(_portal_client),
     db: Session = Depends(get_db),
 ):
-    conversation = _detail(db, client, conversation_id)
+    conversation = db.scalar(select(Conversation).where(
+        Conversation.id == conversation_id, Conversation.client_id == client.id,
+    ))
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
     attachment = conversation_attachment(db, conversation, attachment_id)
+    # Bytes are loaded already. Release the connection before conversion or IO.
+    db.close()
     if playback_format is None:
         return attachment_response(attachment)
     if attachment.kind != "audio":
