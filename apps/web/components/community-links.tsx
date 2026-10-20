@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { Star } from "lucide-react";
 import { useT } from "@/lib/i18n";
+import { WhatsAppIcon } from "@/components/whatsapp-icon";
 import { DiscordIcon } from "@/components/discord-icon";
 import { GithubIcon } from "@/components/github-icon";
-import { COMMUNITY_LINKS, DISCORD_INVITE_URL, GITHUB_REPO, GITHUB_REPO_URL } from "@/lib/community";
+import { COMMUNITY_LINKS, DISCORD_INVITE_URL, GITHUB_REPO, GITHUB_REPO_URL, WHATSAPP_GROUP_URL } from "@/lib/community";
 
 const STARS_CACHE_KEY = `openlivery:github-stars:${GITHUB_REPO}`;
 const STARS_TTL_MS = 60 * 60 * 1000;
@@ -59,10 +60,24 @@ export function CommunityLinks({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
   const showGithub = COMMUNITY_LINKS.includes("github");
   const showDiscord = COMMUNITY_LINKS.includes("discord");
+  const showWhatsApp = COMMUNITY_LINKS.includes("whatsapp");
   const stars = useGithubStars(showGithub);
-  if (!showGithub && !showDiscord) return null;
+  if (!showGithub && !showDiscord && !showWhatsApp) return null;
   return (
     <div className="sidebar-community-row">
+      {showWhatsApp && (
+        <a
+          href={WHATSAPP_GROUP_URL}
+          className="sidebar-community sidebar-community-whatsapp"
+          target="_blank"
+          rel="noopener noreferrer"
+          title={t("shell.joinWhatsApp")}
+          aria-label={t("shell.joinWhatsApp")}
+          onClick={onNavigate}
+        >
+          <WhatsAppIcon size={20} />
+        </a>
+      )}
       {showDiscord && (
         <a
           href={DISCORD_INVITE_URL}

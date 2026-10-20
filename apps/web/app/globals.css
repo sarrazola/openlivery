@@ -188,6 +188,8 @@ h1, h2, h3, .brand { font-family: var(--font-display); letter-spacing: -.015em; 
 .sidebar-community { display: inline-flex; align-items: center; gap: 6px; color: var(--faint); font-weight: var(--weight-medium); transition: .18s ease; }
 .sidebar-community:hover { color: white; }
 .sidebar-community svg { flex: 0 0 auto; }
+.sidebar-community-whatsapp svg { color: #25d366; }
+.sidebar-community-whatsapp:hover svg { color: #5ef29a; }
 .sidebar-community-discord svg { color: #7289da; }
 .sidebar-community-discord:hover svg { color: #99aeff; }
 .sidebar-community-stars { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 1; }
