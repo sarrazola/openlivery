@@ -116,6 +116,28 @@ def test_conversion_runs_without_a_database_connection(authenticated_client, mon
     assert response.status_code == 200 and response.content == b"converted"
 
 
+def test_portal_download_does_not_run_sync_sql_on_the_event_loop(authenticated_client):
+    from conftest import test_engine
+
+    path, headers, _ = _setup(authenticated_client)
+    attachment_queries = []
+
+    def check_thread(connection, cursor, statement, parameters, context, executemany):
+        if "message_attachments" not in statement:
+            return
+        attachment_queries.append(statement)
+        with pytest.raises(RuntimeError, match="no running event loop"):
+            asyncio.get_running_loop()
+
+    event.listen(test_engine, "before_cursor_execute", check_thread)
+    try:
+        response = authenticated_client.get(path, headers=headers)
+    finally:
+        event.remove(test_engine, "before_cursor_execute", check_thread)
+    assert response.status_code == 200 and response.content == b"original-media"
+    assert attachment_queries
+
+
 def test_admin_attachment_keeps_ownership_checks(authenticated_client):
     path, headers, _ = _download(authenticated_client, False)
     other_path, _, _ = _download(authenticated_client, False)

@@ -10,6 +10,7 @@ import re
 from fastapi import APIRouter, Cookie, Depends, Header, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import Interval, and_, case, exists, func, literal, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
+from starlette.concurrency import run_in_threadpool
 
 from pydantic import BaseModel, Field
 
@@ -2183,14 +2184,19 @@ async def portal_attachment(
     client: Client = Depends(_portal_client),
     db: Session = Depends(get_db),
 ):
-    conversation = db.scalar(select(Conversation).where(
-        Conversation.id == conversation_id, Conversation.client_id == client.id,
-    ))
-    if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    attachment = conversation_attachment(db, conversation, attachment_id)
-    # Bytes are loaded already. Release the connection before conversion or IO.
-    db.close()
+    def load_attachment():
+        conversation = db.scalar(select(Conversation).where(
+            Conversation.id == conversation_id, Conversation.client_id == client.id,
+        ))
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        attachment = conversation_attachment(db, conversation, attachment_id)
+        # Bytes are loaded already. Release before conversion or response IO.
+        db.close()
+        return attachment
+
+    # Synchronous database IO must not block other requests on the event loop.
+    attachment = await run_in_threadpool(load_attachment)
     if playback_format is None:
         return attachment_response(attachment)
     if attachment.kind != "audio":
