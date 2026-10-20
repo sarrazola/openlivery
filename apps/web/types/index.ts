@@ -6,7 +6,7 @@ export type User = {
   agency: Agency;
 };
 
-export type Agency = { id: string; name: string; slug: string; brand_color: string; logo_url: string | null };
+export type Agency = { id: string; name: string; slug: string; brand_color: string; logo_url: string | null; ios_app_url?: string | null; android_app_url?: string | null };
 
 export type AgentSummary = { id: string; name: string; is_active: boolean };
 
@@ -444,8 +444,6 @@ export type PortalPublic = {
   agency_brand_color: string;
   agency_logo_url: string | null;
   client_logo_url: string | null;
-  ios_app_url?: string | null;
-  android_app_url?: string | null;
 };
 
 export type SocialProvider = "instagram" | "messenger";

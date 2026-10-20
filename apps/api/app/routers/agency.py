@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_user
 from ..models import Agency, User
@@ -16,9 +17,20 @@ MAX_LOGO_BYTES = 2 * 1024 * 1024
 ALLOWED_LOGO_TYPES = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
 
 
+def present(agency: Agency) -> AgencyOut:
+    """The agency plus the deployment's store links, which live in settings
+    rather than on the row: every deployment publishes one app, not one per
+    agency."""
+    settings = get_settings()
+    out = AgencyOut.model_validate(agency)
+    out.ios_app_url = (settings.portal_ios_app_url or "").strip() or None
+    out.android_app_url = (settings.portal_android_app_url or "").strip() or None
+    return out
+
+
 @router.get("", response_model=AgencyOut)
 def get_agency(user: User = Depends(get_current_user)):
-    return user.agency
+    return present(user.agency)
 
 
 @router.patch("", response_model=AgencyOut)
@@ -40,7 +52,7 @@ def update_agency(
         setattr(agency, key, value)
     db.commit()
     db.refresh(agency)
-    return agency
+    return present(agency)
 
 
 @router.post("/logo", response_model=AgencyOut)
@@ -58,7 +70,7 @@ async def upload_logo(
     user.agency.logo_mime = file.content_type
     db.commit()
     db.refresh(user.agency)
-    return user.agency
+    return present(user.agency)
 
 
 @router.get("/logo")

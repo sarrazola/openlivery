@@ -1,13 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BellRing, Languages, Monitor, Moon, Smartphone, Sun, SunMoon } from "lucide-react";
+import { BellRing, Languages, Monitor, Moon, Sun, SunMoon } from "lucide-react";
 import { useLanguage, type I18nKey } from "@/lib/i18n";
 import { useTheme, type ThemePreference } from "@/lib/theme";
 import { disablePush, enablePush, pushConfig, pushState, type PushState, type WebPushConfig } from "@/lib/web-push";
-import { api } from "@/lib/api";
-import type { PortalPublic } from "@/types";
-import { AppBadges } from "@/components/app-badges";
 
 const THEMES: { value: ThemePreference; labelKey: I18nKey; icon: typeof Sun }[] = [
   { value: "system", labelKey: "shell.themeSystem", icon: Monitor },
@@ -44,27 +41,8 @@ export function PreferencesSection({ pushSlug }: { pushSlug?: string } = {}) {
           </div>
         </div>
         {pushSlug && <PushRow slug={pushSlug} />}
-        {pushSlug && <MobileAppRow slug={pushSlug} />}
       </div>
     </section>
-  );
-}
-
-// Where to get the mobile app, when the deployment publishes one.
-function MobileAppRow({ slug }: { slug: string }) {
-  const { t } = useLanguage();
-  const [links, setLinks] = useState<{ ios?: string | null; android?: string | null } | null>(null);
-  useEffect(() => {
-    let alive = true;
-    api<PortalPublic>(`/portal/${slug}`).then((info) => { if (alive) setLinks({ ios: info.ios_app_url, android: info.android_app_url }); }).catch(() => {});
-    return () => { alive = false; };
-  }, [slug]);
-  if (!links || (!links.ios && !links.android)) return null;
-  return (
-    <div className="switch-row compact mobile-app-row">
-      <span><strong><Smartphone size={14} /> {t("settings.preferences.mobileApp")}</strong><small>{t("settings.preferences.mobileAppHint")}</small></span>
-      <AppBadges ios={links.ios} android={links.android} />
-    </div>
   );
 }
 

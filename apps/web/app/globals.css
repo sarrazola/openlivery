@@ -1467,18 +1467,10 @@ textarea { line-height: 1.55; }
   align-items: center;
 }
 .access-intro { padding: 56px 0; }
-/* The stores' badges, served by the stores: a quiet row under the preview on
-   the sign-in page and beside the "Mobile app" row under Preferences. */
-.app-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.app-badges a { display: block; line-height: 0; overflow: hidden; }
-/* Google's PNG carries a transparent margin that Apple's SVG does not; the
-   extra height and negative margins trim it so both read the same size. */
-.app-badges img { height: 40px; width: auto; display: block; }
-.app-badges img.badge-google { height: 48px; margin: -4px -6px; }
-.access-apps { margin-top: 22px; display: flex; flex-direction: column; gap: 8px; }
-.access-apps small { color: var(--muted); font-size: 13px; font-weight: 500; }
-.mobile-app-row .app-badges img { height: 34px; }
-.mobile-app-row .app-badges img.badge-google { height: 41px; margin: -3.5px -5px; }
+/* Plain links to the stores, under the agency's identity in Settings. */
+.app-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
+.app-links a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-text); font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.app-links a:hover { text-decoration: underline; }
 .access-eyebrow { color: var(--accent-text); font-size: 12px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
 .portal-access .access-eyebrow { color: var(--portal-color, var(--accent-text)); }
 .access-intro > h1 { max-width: 660px; margin: 12px 0 16px; font-size: clamp(40px, 4.5vw, 58px); font-weight: 600; line-height: 1.04; letter-spacing: -2.5px; }

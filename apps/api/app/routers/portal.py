@@ -266,7 +266,6 @@ def _detail(db: Session, client: Client, conversation_id: uuid.UUID) -> Conversa
 def public_portal(slug: str, db: Session = Depends(get_db)):
     client = _public_client(db, slug)
     agency = db.get(Agency, client.agency_id)
-    settings = get_settings()
     return {
         "client_name": client.name,
         "portal_title": client.portal_title or f"{client.name} Inbox",
@@ -277,8 +276,6 @@ def public_portal(slug: str, db: Session = Depends(get_db)):
         # the client logo when set.
         "agency_logo_url": f"/api/portal/{slug}/logo" if agency.logo_data else None,
         "client_logo_url": f"/api/portal/{slug}/client-logo" if client.logo_mime else None,
-        "ios_app_url": (settings.portal_ios_app_url or "").strip() or None,
-        "android_app_url": (settings.portal_android_app_url or "").strip() or None,
     }
 
 

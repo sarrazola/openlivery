@@ -7,7 +7,6 @@ const en = {
   access: {
     secureBadge: "Secure client portal",
     eyebrow: "Client portal",
-    apps: "Also on your phone",
     intro:
       "Review the conversations, follow along with the agent, and take control whenever a person needs to step in.",
     preview: {
@@ -597,7 +596,6 @@ const es: typeof en = {
   access: {
     secureBadge: "Portal seguro de cliente",
     eyebrow: "Portal de cliente",
-    apps: "También en tu celular",
     intro:
       "Revisa las conversaciones, acompaña al agente y toma el control cuando una persona necesite intervenir.",
     preview: {
