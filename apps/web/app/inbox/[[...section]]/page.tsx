@@ -304,7 +304,7 @@ export default function InboxPage() {
                 const stamp = formatTime(message.created_at, lang);
                 const hasAudio = message.attachments?.some((a) => a.kind === "audio");
                 return (
-                  <div key={message.id} className={`inbox-message ${message.role}${grouped ? " grouped" : ""}`}>
+                  <div key={message.id} className={`inbox-message ${message.role}${message.role === "assistant" ? " mine" : ""}${grouped ? " grouped" : ""}`}>
                     {!grouped && <small>{message.sender_name || (message.role === "assistant" ? t("inbox.senderAgent") : t("inbox.senderVisitor"))}</small>}
                     <MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={stamp} />
                     {message.content && <p><QuotedSnippet messages={selected.messages ?? []} quotedId={message.quoted_message_id} /><RichText text={message.content} /><time className="msg-time">{stamp}{message.role === "assistant" && isSocialChannel(selected.channel) && <DeliveryTicks status={message.delivery_status} error={message.delivery_error} />}</time></p>}
