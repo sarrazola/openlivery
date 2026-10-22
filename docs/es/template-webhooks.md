@@ -11,6 +11,11 @@ se envió.
 Necesita un cliente con un número de [WhatsApp Cloud API](whatsapp-cloud-api.md)
 y al menos una plantilla aprobada.
 
+Se puede asociar cualquier plantilla aprobada, de cualquier categoría. Una
+plantilla de marketing cuesta más por mensaje que una de utilidad, y un número
+que envía promociones a personas que no las pidieron termina reportado, así
+que reserva esos webhooks para contactos que aceptaron recibirlas.
+
 ## Crear uno
 
 1. Abre el cliente y ve a **Webhooks**.
