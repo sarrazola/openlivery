@@ -10,6 +10,11 @@ answers, the agent replies knowing what was sent.
 It needs a client with a [WhatsApp Cloud API](whatsapp-cloud-api.md) number and
 at least one approved template.
 
+Any approved template can be bound, whatever its category. A marketing
+template costs more per message than a utility one, and a number that sends
+promotions to people who did not ask for them gets reported, so keep those
+webhooks for contacts who agreed to receive them.
+
 ## Create one
 
 1. Open the client and go to **Webhooks**.

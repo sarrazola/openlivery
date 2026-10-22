@@ -294,10 +294,10 @@ def test_a_templates_buttons_stay_on_the_message_and_a_tap_answers_it(authentica
         assert answer.content == "Necesito cambiarla" and answer.quoted_message_id == uuid.UUID(result["message_id"])
 
 
-def test_webhooks_send_utility_templates_only(authenticated_client: TestClient, monkeypatch):
-    """A webhook carries notices. An approved marketing template is not
-    offered, cannot be bound, and stops sending if Meta moves the bound
-    template to marketing after the fact."""
+def test_webhooks_send_any_approved_template(authenticated_client: TestClient, monkeypatch):
+    """Approval is the one condition. A marketing template is offered with
+    its category and binds like any other, a pending one binds nothing, and
+    a bound reminder keeps going out after Meta moves it to marketing."""
     client = authenticated_client
     customer, _agent, channel, sent = _setup(client, monkeypatch)
     base = f"/api/clients/{customer['id']}/webhooks"
@@ -305,19 +305,23 @@ def test_webhooks_send_utility_templates_only(authenticated_client: TestClient, 
     # The picker reads the business account through the router's own import.
     monkeypatch.setattr(webhooks_router, "list_templates", service.list_templates)
     offered = client.get(f"{base}/templates", params={"channel_id": channel["id"]}).json()
-    assert sorted(t["name"] for t in offered) == ["appointment_reminder", "confirm_visit"]
+    assert sorted(t["name"] for t in offered) == ["appointment_reminder", "confirm_visit", "spring_sale"]
+    assert next(t["category"] for t in offered if t["name"] == "spring_sale") == "MARKETING"
 
-    refused = client.post(base, json={"name": "Sale", "channel_id": channel["id"], "template_name": "spring_sale", "template_language": "es"})
-    assert refused.status_code == 409 and "utility" in refused.json()["detail"]
+    sale = client.post(base, json={"name": "Sale", "channel_id": channel["id"], "template_name": "spring_sale", "template_language": "es"})
+    assert sale.status_code == 201, sale.text
+    pending = client.post(base, json={"name": "Promo", "channel_id": channel["id"], "template_name": "promo", "template_language": "es"})
+    assert pending.status_code == 409 and "not approved" in pending.json()["detail"]
     webhook = _create(client, customer, channel)
-    assert client.patch(f"{base}/{webhook['id']}", json={"template_name": "spring_sale"}).status_code == 409
+    assert client.patch(f"{base}/{webhook['id']}", json={"template_name": "spring_sale"}).status_code == 200
+    assert client.patch(f"{base}/{webhook['id']}", json={"template_name": "appointment_reminder"}).status_code == 200
 
     # Meta recategorizes the reminder during a later review: the next call
-    # stops with the reason instead of going out as marketing.
+    # goes out as before, since the template is still approved.
     moved = dict(REMINDER, category="MARKETING", previous_category="UTILITY")
     monkeypatch.setattr(service, "list_templates", AsyncMock(return_value=[moved, PENDING, CONFIRM, PROMO]))
     url, auth = _hook(webhook)
     client.cookies.clear()
-    stopped = client.post(url, headers=auth, json={"phone": "573001112233", "variables": VALUES})
-    assert stopped.status_code == 409 and "marketing" in stopped.json()["detail"]
-    assert sent.await_count == 0
+    called = client.post(url, headers=auth, json={"phone": "573001112233", "variables": VALUES})
+    assert called.status_code == 200, called.text
+    assert sent.await_count == 1 and sent.call_args.kwargs["name"] == "appointment_reminder"

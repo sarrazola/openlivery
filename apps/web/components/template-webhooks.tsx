@@ -215,7 +215,8 @@ function WebhookModal({ base, webhook, channels, agents, templates, loadTemplate
         <option value="">{options ? t("clients.webhooks.templatePick") : t("clients.webhooks.templatesLoading")}</option>
         {options?.map((item) => <option key={templateKey(item)} value={templateKey(item)}>{item.name} ({item.language})</option>)}
       </select>
-        <span className="field-help">{options && !options.length ? t("clients.webhooks.templatesEmpty") : t("clients.webhooks.utilityOnly")}</span>
+        <span className="field-help">{options && !options.length ? t("clients.webhooks.templatesEmpty") : t("clients.webhooks.anyApproved")}</span>
+        {template?.category === "MARKETING" && <span className="field-help">{t("clients.webhooks.marketingNote")}</span>}
       </label>
       {template && <div className="webhook-variables">
         <p className="webhook-template-body">{template.body}</p>
