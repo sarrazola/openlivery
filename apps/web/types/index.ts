@@ -105,6 +105,19 @@ export type Provider = {
 
 export type ProviderTest = { ok: boolean; message: string; models: string[] };
 
+// A file the agent can send to a customer (product photo, catalog). Not
+// knowledge: only the name and the note on when to send it reach the model.
+export type MediaAsset = {
+  id: string;
+  name: string;
+  description: string;
+  kind: "image" | "file";
+  mime: string;
+  filename: string;
+  size_bytes: number;
+  created_at: string;
+};
+
 export type KnowledgeDocument = {
   id: string;
   filename: string;

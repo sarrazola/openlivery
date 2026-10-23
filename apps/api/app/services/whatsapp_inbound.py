@@ -40,6 +40,7 @@ from .escalation import (
 )
 from .follow_ups import after_agent_reply
 from .resolution import build_resolution_spec, resolution_prompt
+from .media_library import build_media_spec, media_prompt
 from .whatsapp import deliver_reaction, send_channel_media, send_channel_message, signal_channel_read
 from .whatsapp_format import parse_reply_directives
 from .whatsapp_identity import resolve_peer_contact
@@ -458,8 +459,13 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     resolution_spec = build_resolution_spec(resolution_holder) if agent.resolve_enabled else None
     if resolution_spec:
         system_content += "\n\n" + resolution_prompt(agent)
+    # The files the business lets the agent send, when it has any.
+    media_spec = build_media_spec(db, agent)
+    if media_spec:
+        system_content += "\n\n" + media_prompt(agent)
     extra_specs = [
         *(escalation_specs or []), *([capture_spec] if capture_spec else []), *([resolution_spec] if resolution_spec else []),
+        *([media_spec] if media_spec else []),
     ] or None
     messages = [
         {"role": "system", "content": system_content},

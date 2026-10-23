@@ -21,7 +21,9 @@ RESULT_PREVIEW_CHARS = 500
 async def _execute(spec: ToolSpec, args: dict) -> tuple[str, bool, list]:
     files: list = []
     if spec.handler is not None:
-        result, is_error = spec.handler(args)
+        outcome = spec.handler(args)
+        result, is_error = outcome[0], outcome[1]
+        files = list(outcome[2]) if len(outcome) > 2 else []
     elif spec.mcp_tool_name is not None:
         result, is_error = await call_mcp_tool(spec.tool, spec.mcp_tool_name, args)
     else:

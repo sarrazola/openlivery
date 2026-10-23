@@ -9,6 +9,9 @@ PyJWT==2.13.0
 bcrypt==4.3.0
 cryptography==50.0.0
 pypdf==6.14.2
+# Images in an agent's media library are resized and re-encoded on upload so
+# every channel accepts the one stored copy.
+Pillow==12.3.0
 httpx==0.28.1
 mcp==1.28.1
 dnspython==2.7.0
