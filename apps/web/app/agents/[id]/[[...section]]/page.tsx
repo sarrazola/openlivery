@@ -3,9 +3,9 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, AudioLines, Bot, CheckCircle2, FileText, ImageIcon, LoaderCircle, MessageSquareText, Plug, Plus, Power, PowerOff, RefreshCw, Save, Settings2, Sparkles, Trash2, UploadCloud, XCircle } from "lucide-react";
+import { ArrowLeft, AudioLines, Bot, CheckCircle2, FileText, ImageIcon, LoaderCircle, MessageSquareText, Pencil, Plug, Plus, Power, PowerOff, RefreshCw, Save, Settings2, Sparkles, Trash2, UploadCloud, X, XCircle } from "lucide-react";
 import { SectionTabs } from "@/components/section-tabs";
-import { api, messageFrom } from "@/lib/api";
+import { api, apiUrl, messageFrom } from "@/lib/api";
 import { currentSections, showSections } from "@/lib/section-path";
 import { useLanguage } from "@/lib/i18n";
 import { businessLabel, useIndustries } from "@/lib/industries";
@@ -24,7 +24,7 @@ import { AgentScheduleEditor, onDutyNow } from "@/components/agent-schedule";
 import { Combobox } from "@/components/combobox";
 import { DEFAULT_PROVIDER, DEFAULT_AUDIO_MODEL, DEFAULT_EMBEDDING_MODEL, DEFAULT_IMAGE_MODEL, modelsFor, modelOptionsFor, estimateTokens, modelContextWindow, AUDIO_MODELS, EMBEDDING_MODELS, IMAGE_MODELS } from "@/lib/providers";
 import { narrowModels, useAvailableModels } from "@/lib/use-available-models";
-import type { Agent, AgentTool, KnowledgeDocument, QAPair, EmbeddingModelInfo, ScheduleSlot } from "@/types";
+import type { Agent, AgentTool, KnowledgeDocument, MediaAsset, QAPair, EmbeddingModelInfo, ScheduleSlot } from "@/types";
 
 type Tab = "basics" | "knowledge" | "tools" | "playground";
 const TABS: Tab[] = ["basics", "knowledge", "tools", "playground"];
@@ -52,6 +52,14 @@ export default function AgentDetailPage() {
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [audioModel, setAudioModel] = useState<string>(DEFAULT_AUDIO_MODEL);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+  const [media, setMedia] = useState<MediaAsset[]>([]);
+  // The add-file form and the row being edited in the library.
+  const mediaRef = useRef<HTMLInputElement>(null);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaName, setMediaName] = useState("");
+  const [mediaDescription, setMediaDescription] = useState("");
+  const [mediaEditing, setMediaEditing] = useState<{ id: string; name: string; description: string } | null>(null);
+  const [mediaToDelete, setMediaToDelete] = useState<MediaAsset | null>(null);
   const [qaPairs, setQaPairs] = useState<QAPair[]>([]);
   const [tools, setTools] = useState<AgentTool[]>([]);
   // Tools a deployment manages on the agent's behalf stay out of the custom list (see lib/extensions/agent-tools).
@@ -67,8 +75,8 @@ export default function AgentDetailPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
-    const [a, d, q, tl] = await Promise.all([api<Agent>(`/agents/${id}`), api<KnowledgeDocument[]>(`/agents/${id}/documents`), api<QAPair[]>(`/agents/${id}/qa`), api<AgentTool[]>(`/agents/${id}/tools`)]);
-    setAgent(a); setName(a.name); setDocuments(d); setQaPairs(q); setTools(tl);
+    const [a, d, q, tl, m] = await Promise.all([api<Agent>(`/agents/${id}`), api<KnowledgeDocument[]>(`/agents/${id}/documents`), api<QAPair[]>(`/agents/${id}/qa`), api<AgentTool[]>(`/agents/${id}/tools`), api<MediaAsset[]>(`/agents/${id}/media`)]);
+    setAgent(a); setName(a.name); setDocuments(d); setQaPairs(q); setTools(tl); setMedia(m);
     // What the model receives on every message, measured on the real prompt.
     api<{ prompt: string }>(`/agents/${id}/prompt`).then((r) => setPromptTokens(estimateTokens(r.prompt))).catch(() => setPromptTokens(null));
     setProvider(a.provider); setModel(a.model);
@@ -187,6 +195,41 @@ export default function AgentDetailPage() {
     setDocuments((items) => items.filter((item) => item.id !== doc.id));
   }
 
+  function pickMediaFile(file: File | undefined) {
+    setMediaFile(file ?? null);
+    // The file's own name is a fair first guess at what to call it.
+    if (file && !mediaName.trim()) setMediaName(file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim().slice(0, 80));
+  }
+  async function addMedia(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!mediaFile) return;
+    setBusy(true);
+    const data = new FormData(); data.append("file", mediaFile); data.append("name", mediaName.trim()); data.append("description", mediaDescription.trim());
+    try {
+      const asset = await api<MediaAsset>(`/agents/${id}/media`, { method: "POST", body: data });
+      setMedia((items) => [...items, asset]);
+      setMediaFile(null); setMediaName(""); setMediaDescription("");
+      if (mediaRef.current) mediaRef.current.value = "";
+      toast.success(t("agents.detail.mediaAdded"));
+    } catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); }
+  }
+  async function saveMedia(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!mediaEditing) return;
+    setBusy(true);
+    try {
+      const asset = await api<MediaAsset>(`/agents/${id}/media/${mediaEditing.id}`, { method: "PATCH", body: JSON.stringify({ name: mediaEditing.name.trim(), description: mediaEditing.description.trim() }) });
+      setMedia((items) => items.map((item) => (item.id === asset.id ? asset : item)));
+      setMediaEditing(null);
+      toast.success(t("agents.detail.mediaUpdated"));
+    } catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); }
+  }
+  async function removeMedia(asset: MediaAsset) {
+    await api(`/agents/${id}/media/${asset.id}`, { method: "DELETE" });
+    setMedia((items) => items.filter((item) => item.id !== asset.id));
+  }
+  const mediaSize = (asset: MediaAsset) => asset.size_bytes >= 1024 * 1024 ? `${(asset.size_bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(asset.size_bytes / 1024))} KB`;
+
   async function addQA(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true);
     const form = event.currentTarget;
@@ -207,11 +250,13 @@ export default function AgentDetailPage() {
     <Link href="/agents" className="back-link"><ArrowLeft size={16} /> {t("agents.detail.back")}</Link>
     <header className="agent-detail-head"><div className="agent-title-wrap"><span className="agent-avatar xl"><Bot size={29} /></span><div><div className="title-line"><h1>{agent.name}</h1><span className={agent.is_active ? "pill purple" : "pill"}>{agent.is_active ? t("agents.detail.published") : t("agents.detail.unpublished")}</span>{agent.is_active && !onDutyNow(agent) && <span className="pill">{t("agents.detail.offDuty")}</span>}</div><p><Link href={`/clients/${agent.client_id}`} className="table-link">{agent.client.name}</Link>{businessLabel(catalog, agent.client, lang) ? ` · ${businessLabel(catalog, agent.client, lang)}` : ""}</p></div></div><div className="header-actions"><button className={agent.is_active ? "button ghost" : "button primary"} onClick={() => (agent.is_active ? setConfirmingDeactivate(true) : togglePublish())} disabled={busy}>{agent.is_active ? <><PowerOff size={16} /> {t("agents.detail.unpublish")}</> : <><Power size={16} /> {t("agents.detail.publish")}</>}</button><button type="button" className="button secondary" onClick={() => changeTab("playground")}><MessageSquareText size={17} /> {t("agents.detail.openPlayground")}</button></div></header>
     {docToDelete && <ConfirmModal title={t("agents.detail.confirmDelete", { filename: docToDelete.filename })} confirmLabel={t("agents.detail.delete")} cancelLabel={t("common.cancel")} confirmIcon={<Trash2 size={15} />} onConfirm={() => removeDocument(docToDelete)} onClose={() => setDocToDelete(null)} />}
+    {mediaToDelete && <ConfirmModal title={t("agents.detail.confirmDelete", { filename: mediaToDelete.name })} confirmLabel={t("agents.detail.delete")} cancelLabel={t("common.cancel")} confirmIcon={<Trash2 size={15} />} onConfirm={() => removeMedia(mediaToDelete)} onClose={() => setMediaToDelete(null)} />}
     <Modal open={deleteOpen} title={t("agents.detail.deleteTitle", { name: agent.name })} onClose={() => setDeleteOpen(false)}>
       <div className="modal-form">
         <p className="modal-copy">{t("agents.detail.deleteCopy")}</p>
         <ul className="deletion-list">
           <li><strong>{documents.length}</strong> {t("agents.detail.deleteCountDocuments")}</li>
+          <li><strong>{media.length}</strong> {t("agents.detail.deleteCountMedia")}</li>
           <li><strong>{qaPairs.length}</strong> {t("agents.detail.deleteCountQa")}</li>
           <li><strong>{tools.length}</strong> {t("agents.detail.deleteCountTools")}</li>
         </ul>
@@ -284,6 +329,22 @@ export default function AgentDetailPage() {
         <button className="dropzone" onClick={() => fileRef.current?.click()} disabled={busy}><span><UploadCloud size={24} /></span><strong>{busy ? t("agents.detail.processing") : t("agents.detail.uploadPdf")}</strong><small>{t("agents.detail.uploadHint")}</small></button><input ref={fileRef} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => upload(e.target.files?.[0])} />
         <div className="documents-list">{documents.map((doc) => <div className="document-row" key={doc.id}><span className={`document-icon ${doc.status}`}><FileText size={19} /></span><div><strong>{doc.filename}</strong><small>{doc.status === "processed" ? `${t("agents.detail.charsExtracted", { count: doc.character_count.toLocaleString("es") })} · ${smallBase ? t("agents.detail.sentInFull") : doc.chunk_count && doc.indexed_model === agent.embedding_model ? t("agents.detail.indexedChunks", { count: doc.chunk_count }) : t("agents.detail.notIndexed")}` : doc.error_message}</small></div><span className={`document-status ${doc.status}`}>{doc.status === "processed" ? <><CheckCircle2 size={14} /> {t("agents.detail.processed")}</> : <><XCircle size={14} /> {t("agents.detail.error")}</>}</span>{doc.status === "processed" && !smallBase && <button className="icon-button" onClick={() => reindexOne(doc)} disabled={indexing || busy} title={t("agents.detail.reindex")}><RefreshCw size={15} /></button>}<button className="icon-button danger-icon" onClick={() => setDocToDelete(doc)} title={t("agents.detail.delete")}><Trash2 size={16} /></button></div>)}{!documents.length && <div className="inline-empty slim"><FileText size={22} /><div><strong>{t("agents.detail.noDocumentsTitle")}</strong><span>{t("agents.detail.noDocumentsHint")}</span></div></div>}</div>
       </section>
+    <section className="panel documents-panel"><div className="panel-head"><div><h3>{t("agents.detail.mediaHeading")}</h3><p>{t("agents.detail.mediaCopy")}</p></div></div>
+      <form className="media-form" onSubmit={addMedia}>
+        <button type="button" className={`button secondary${mediaFile ? " media-file-picked" : ""}`} onClick={() => mediaRef.current?.click()} disabled={busy}><UploadCloud size={15} /> <span>{mediaFile ? mediaFile.name : t("agents.detail.mediaChooseFile")}</span></button>
+        <input ref={mediaRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,.jpg,.jpeg,.png,.webp,.gif,.pdf" hidden onChange={(e) => pickMediaFile(e.target.files?.[0])} />
+        <label>{t("agents.detail.mediaNameLabel")}<input value={mediaName} onChange={(e) => setMediaName(e.target.value)} maxLength={80} required placeholder={t("agents.detail.mediaNamePlaceholder")} /></label>
+        <label>{t("agents.detail.mediaDescriptionLabel")}<input value={mediaDescription} onChange={(e) => setMediaDescription(e.target.value)} maxLength={300} placeholder={t("agents.detail.mediaDescriptionPlaceholder")} /></label>
+        <button className="button secondary align-start" disabled={busy || !mediaFile || !mediaName.trim()}><Plus size={15} /> {t("agents.detail.mediaAdd")}</button>
+        <span className="field-help">{t("agents.detail.mediaHint", { max: 30 })}</span>
+      </form>
+      <div className="documents-list">{media.map((asset) => <div className="document-row media-row" key={asset.id}>
+        {asset.kind === "image" ? <img className="media-thumb" src={apiUrl(`/agents/${id}/media/${asset.id}/content`)} alt="" /> : <span className="document-icon"><FileText size={19} /></span>}
+        {mediaEditing?.id === asset.id
+          ? <><form className="media-edit" onSubmit={saveMedia}><input value={mediaEditing.name} onChange={(e) => setMediaEditing({ ...mediaEditing, name: e.target.value })} maxLength={80} required placeholder={t("agents.detail.mediaNamePlaceholder")} autoFocus /><input value={mediaEditing.description} onChange={(e) => setMediaEditing({ ...mediaEditing, description: e.target.value })} maxLength={300} placeholder={t("agents.detail.mediaDescriptionPlaceholder")} /><button className="button secondary" disabled={busy || !mediaEditing.name.trim()}>{t("agents.detail.mediaSave")}</button></form><button type="button" className="icon-button" onClick={() => setMediaEditing(null)} title={t("common.cancel")}><X size={16} /></button></>
+          : <><div><strong>{asset.name}</strong><small>{asset.description || t("agents.detail.mediaNoDescription")} · {asset.filename} · {mediaSize(asset)}</small></div><button type="button" className="icon-button" onClick={() => setMediaEditing({ id: asset.id, name: asset.name, description: asset.description })} disabled={busy} title={t("agents.detail.mediaEdit")}><Pencil size={15} /></button><button type="button" className="icon-button danger-icon" onClick={() => setMediaToDelete(asset)} title={t("agents.detail.delete")}><Trash2 size={16} /></button></>}
+      </div>)}{!media.length && <div className="inline-empty slim"><ImageIcon size={22} /><div><strong>{t("agents.detail.mediaEmptyTitle")}</strong><span>{t("agents.detail.mediaEmptyHint")}</span></div></div>}</div>
+    </section>
     <section className="panel"><div className="panel-head"><div><h3>{t("agents.detail.embeddingHeading")} <AiHint text={t("aiContext.embedding")} /></h3><p>{t("agents.detail.embeddingCopy")}</p></div><button type="button" className="button secondary" onClick={() => reindex()} disabled={indexing || busy || !documents.some((doc) => doc.status === "processed")}>{indexing ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />} {indexing ? t("agents.detail.reindexing") : t("agents.detail.reindex")}</button></div>
       <label className="embedding-picker">{t("agents.detail.embeddingModelLabel")}
         <select value={agent.embedding_model || DEFAULT_EMBEDDING_MODEL} disabled={indexing} onChange={(e) => changeEmbeddingModel(e.target.value)}>

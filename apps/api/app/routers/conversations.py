@@ -28,6 +28,7 @@ from ..services.attachments import (
 )
 from ..services.tools import run_completion
 from ..services.capture import build_capture_spec, capture_context, field_definitions
+from ..services.media_library import build_media_spec, media_prompt
 from ..services.knowledge import build_system_prompt, llm_turns, retrieve_knowledge
 from ..services.operator_media import store_operator_media_reply
 from ..services.providers import resolve_agent_credentials
@@ -268,11 +269,16 @@ async def _generate_reply(
     capture_block = capture_context(agent, refreshed, definitions, agent.prompt_language)
     system_content = build_system_prompt(agent, knowledge.text, capture_block)
     capture_spec = build_capture_spec(agent, refreshed, definitions, [])
+    # The files the agent may send go out here too, so the library can be
+    # rehearsed before a customer sees it.
+    media_spec = build_media_spec(db, agent)
+    if media_spec:
+        system_content += "\n\n" + media_prompt(agent)
     messages = [{"role": "system", "content": system_content}, *history]
     base_url, api_key = credentials
     completion = await run_completion(
         db, agent, base_url, api_key, messages, temperature=agent.temperature, max_tokens=agent.max_tokens,
-        extra_specs=[capture_spec] if capture_spec else None,
+        extra_specs=[spec for spec in (capture_spec, media_spec) if spec] or None,
     )
     note_reply(conversation)
     reply = Message(

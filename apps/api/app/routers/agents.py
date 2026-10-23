@@ -3,7 +3,7 @@ import uuid
 from io import BytesIO
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from pypdf import PdfReader
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, joinedload
@@ -11,15 +11,21 @@ from sqlalchemy.orm import Session, joinedload
 from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import Agent, AgentCaptureField, AgentQA, AgentTool, Client, EscalationRule, KnowledgeChunk, KnowledgeDocument, PortalUser, Team, User, WhatsAppChannel, WhatsAppCloudChannel, WidgetChannel, now_utc
+from ..models import Agent, AgentCaptureField, AgentMediaAsset, AgentQA, AgentTool, Client, EscalationRule, KnowledgeChunk, KnowledgeDocument, PortalUser, Team, User, WhatsAppChannel, WhatsAppCloudChannel, WidgetChannel, now_utc
 from ..schemas import (
     AgentCreate, AgentOut, AgentPromptOut, AgentUpdate, CaptureConfigIn, CaptureConfigOut, CaptureFieldOut, ContactFieldOut,
-    DocumentOut, EscalationConfigIn, EscalationConfigOut, FollowUpConfigIn, FollowUpConfigOut, QAPairCreate, QAPairOut,
+    DocumentOut, EscalationConfigIn, EscalationConfigOut, FollowUpConfigIn, FollowUpConfigOut, MediaAssetOut, MediaAssetUpdate,
+    QAPairCreate, QAPairOut,
     check_reply_delay,
 )
 from ..services.capture import CAPTURE_CHANNELS, field_definitions
 from ..services.follow_ups import FOLLOW_UP_CHANNELS, MAX_MINUTES, MIN_MINUTES, check_schedule
 from ..services.knowledge import build_system_prompt, embed_document_chunks, reindex_agent, reindex_document
+from ..services.attachments import content_disposition, is_inline_safe
+from ..services.media_library import (
+    MAX_DESCRIPTION_CHARS, MAX_FILE_UPLOAD_BYTES, MAX_MEDIA_ASSETS, MAX_NAME_CHARS, MediaValidationError, guess_mime, normalize_upload,
+    upload_limit,
+)
 
 
 router = APIRouter(prefix="/agents", tags=["Agents"])
@@ -250,6 +256,125 @@ def delete_document(agent_id: uuid.UUID, document_id: uuid.UUID, db: Session = D
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     db.delete(document)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Media library: files the agent can send -------------------------------
+
+
+def _media_asset(db: Session, agent: Agent, asset_id: uuid.UUID) -> AgentMediaAsset:
+    asset = db.scalar(select(AgentMediaAsset).where(AgentMediaAsset.id == asset_id, AgentMediaAsset.agent_id == agent.id))
+    if not asset:
+        raise HTTPException(status_code=404, detail="File not found")
+    return asset
+
+
+def _check_media_name(db: Session, agent: Agent, name: str, *, except_id: uuid.UUID | None = None) -> str:
+    """The name is what the model picks from, so it is required and unique
+    per agent, ignoring case."""
+    name = " ".join(name.split())
+    if not name:
+        raise HTTPException(status_code=422, detail="Give the file a name")
+    if len(name) > MAX_NAME_CHARS:
+        raise HTTPException(status_code=422, detail=f"The name can have at most {MAX_NAME_CHARS} characters")
+    clash = db.scalar(
+        select(AgentMediaAsset.id).where(
+            AgentMediaAsset.agent_id == agent.id, func.lower(AgentMediaAsset.name) == name.lower(),
+            AgentMediaAsset.id != except_id if except_id else True,
+        )
+    )
+    if clash:
+        raise HTTPException(status_code=409, detail="Another file of this agent already has that name")
+    return name
+
+
+@router.get("/{agent_id}/media", response_model=list[MediaAssetOut])
+def list_media(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    agent = _agent(db, user, agent_id)
+    return db.scalars(
+        select(AgentMediaAsset).where(AgentMediaAsset.agent_id == agent.id).order_by(AgentMediaAsset.created_at)
+    ).all()
+
+
+@router.post("/{agent_id}/media", response_model=MediaAssetOut, status_code=status.HTTP_201_CREATED)
+async def upload_media(
+    agent_id: uuid.UUID,
+    file: UploadFile = File(...),
+    name: str = Form(...),
+    description: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    agent = _agent(db, user, agent_id)
+    count = db.scalar(select(func.count()).select_from(AgentMediaAsset).where(AgentMediaAsset.agent_id == agent.id)) or 0
+    if count >= MAX_MEDIA_ASSETS:
+        raise HTTPException(status_code=409, detail=f"This agent already has {MAX_MEDIA_ASSETS} files, the maximum. Remove one first.")
+    name = _check_media_name(db, agent, name)
+    description = " ".join(description.split())
+    if len(description) > MAX_DESCRIPTION_CHARS:
+        raise HTTPException(status_code=422, detail=f"The description can have at most {MAX_DESCRIPTION_CHARS} characters")
+    data = await file.read(MAX_FILE_UPLOAD_BYTES + 1)
+    if not data:
+        raise HTTPException(status_code=400, detail="The file is empty")
+    mime = guess_mime(file.content_type, file.filename, data)
+    limit = upload_limit(mime)
+    if len(data) > limit:
+        raise HTTPException(status_code=413, detail=f"The file exceeds the {limit // (1024 * 1024)} MB limit")
+    try:
+        normalized = normalize_upload(data, mime, file.filename)
+    except MediaValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    asset = AgentMediaAsset(
+        agent_id=agent.id, name=name, description=description, kind=normalized.kind, mime=normalized.mime,
+        filename=normalized.filename, size_bytes=len(normalized.data), data=normalized.data,
+    )
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+@router.patch("/{agent_id}/media/{asset_id}", response_model=MediaAssetOut)
+def update_media(
+    agent_id: uuid.UUID, asset_id: uuid.UUID, payload: MediaAssetUpdate,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    agent = _agent(db, user, agent_id)
+    asset = _media_asset(db, agent, asset_id)
+    if payload.name is not None:
+        asset.name = _check_media_name(db, agent, payload.name, except_id=asset.id)
+    if payload.description is not None:
+        asset.description = " ".join(payload.description.split())
+    asset.updated_at = now_utc()
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+@router.get("/{agent_id}/media/{asset_id}/content")
+def media_content(agent_id: uuid.UUID, asset_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """The stored bytes, for the preview in the library. Images render inline;
+    anything else downloads."""
+    agent = _agent(db, user, agent_id)
+    asset = _media_asset(db, agent, asset_id)
+    inline = is_inline_safe(asset.mime)
+    return Response(
+        content=asset.data,
+        media_type=asset.mime if inline else "application/octet-stream",
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "Vary": "Origin",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": content_disposition(asset.filename, inline=inline),
+        },
+    )
+
+
+@router.delete("/{agent_id}/media/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_media(agent_id: uuid.UUID, asset_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    agent = _agent(db, user, agent_id)
+    db.delete(_media_asset(db, agent, asset_id))
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

@@ -230,6 +230,7 @@ class Agent(Base):
 
     client: Mapped[Client] = relationship(back_populates="agents")
     documents: Mapped[list["KnowledgeDocument"]] = relationship(back_populates="agent", cascade="all, delete-orphan")
+    media_assets: Mapped[list["AgentMediaAsset"]] = relationship(back_populates="agent", cascade="all, delete-orphan", order_by="AgentMediaAsset.created_at")
     qa_pairs: Mapped[list["AgentQA"]] = relationship(back_populates="agent", cascade="all, delete-orphan", order_by="AgentQA.position")
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="agent", cascade="all, delete-orphan")
     whatsapp_channels: Mapped[list["WhatsAppChannel"]] = relationship(back_populates="agent")
@@ -480,6 +481,34 @@ class KnowledgeChunk(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     document: Mapped[KnowledgeDocument] = relationship(back_populates="chunks")
+
+
+class AgentMediaAsset(Base):
+    """A file the agent can send to a customer: a product photo, a catalog, a
+    price list. Not knowledge: nothing here is read or indexed. The model sees
+    only the name and the description of when to send it, and the bytes leave
+    as a message attachment through the conversation's channel.
+
+    Images are normalized on upload (resized, re-encoded) so one stored file is
+    accepted by every channel. Bytes live in Postgres like KnowledgeDocument;
+    the column is deferred so listing the library never loads them.
+    """
+
+    __tablename__ = "agent_media_assets"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    kind: Mapped[str] = mapped_column(String(20))  # image | file
+    mime: Mapped[str] = mapped_column(String(100))
+    filename: Mapped[str] = mapped_column(String(255))
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    data: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+    agent: Mapped[Agent] = relationship(back_populates="media_assets")
 
 
 class UsageRecord(Base):

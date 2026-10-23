@@ -387,6 +387,22 @@ class DocumentOut(ORMModel):
     chunk_count: int = 0
 
 
+class MediaAssetOut(ORMModel):
+    id: uuid.UUID
+    name: str
+    description: str
+    kind: str
+    mime: str
+    filename: str
+    size_bytes: int
+    created_at: datetime
+
+
+class MediaAssetUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str | None = Field(default=None, max_length=300)
+
+
 class EmbeddingModelOut(BaseModel):
     id: str
     provider: str
