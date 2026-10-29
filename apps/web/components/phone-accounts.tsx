@@ -19,11 +19,12 @@ const FIELDS: Record<CallProvider, Field[]> = {
   ],
   telnyx: [{ name: "api_key", label: "phone.settings.apiKey", secret: true }],
 };
-// Each provider's own guide to the credentials asked for here.
+// The page of each provider where the credentials asked for here are, with
+// its path as the link text so it can be found by hand too.
 const GUIDES: Record<CallProvider, { url: string; label: I18nKey }> = {
-  elevenlabs: { url: "https://elevenlabs.io/docs/overview/administration/workspaces/api-keys", label: "phone.settings.elevenlabsGuide" },
-  twilio: { url: "https://support.twilio.com/hc/en-us/articles/14726256820123-Procedure-to-Find-the-Twilio-Account-SID", label: "phone.settings.twilioGuide" },
-  telnyx: { url: "https://developers.telnyx.com/docs/development/api-fundamentals/create-api-keys", label: "phone.settings.telnyxGuide" },
+  elevenlabs: { url: "https://elevenlabs.io/app/settings/api-keys", label: "phone.settings.elevenlabsGuide" },
+  twilio: { url: "https://console.twilio.com/", label: "phone.settings.twilioGuide" },
+  telnyx: { url: "https://portal.telnyx.com/#/app/api-keys", label: "phone.settings.telnyxGuide" },
 };
 const CARRIERS: { id: Carrier; name: string }[] = [{ id: "twilio", name: "Twilio" }, { id: "telnyx", name: "Telnyx" }];
 const nameOf = (provider: CallProvider) => provider === "elevenlabs" ? "ElevenLabs" : provider === "twilio" ? "Twilio" : "Telnyx";
