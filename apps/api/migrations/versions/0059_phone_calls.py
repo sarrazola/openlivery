@@ -1,9 +1,10 @@
 """Phone calls.
 
 ``call_accounts`` holds an agency's ElevenLabs key and its phone carrier
-accounts, ``phone_channels`` the numbers agents answer and ``phone_calls`` one
-row per call. Conversations gain the line they came in on. Additive: new
-tables and a nullable column, nothing else moves."""
+accounts, ``phone_channels`` the numbers voice agents answer and
+``phone_calls`` one row per call. Conversations gain the line they came in on;
+agents gain their kind (chat or voice), voice and greeting. Additive: new
+tables and columns with defaults, nothing else moves."""
 from alembic import op
 import sqlalchemy as sa
 
@@ -17,6 +18,11 @@ def upgrade():
     # conversations first: a reply locks it before the channel tables.
     op.add_column("conversations", sa.Column("phone_channel_id", sa.Uuid(), nullable=True))
     op.create_index("ix_conversations_phone_channel_id", "conversations", ["phone_channel_id"])
+
+    op.add_column("agents", sa.Column("kind", sa.String(20), nullable=False, server_default="chat"))
+    op.add_column("agents", sa.Column("voice_id", sa.String(80), nullable=False, server_default=""))
+    op.add_column("agents", sa.Column("voice_name", sa.String(180), nullable=False, server_default=""))
+    op.add_column("agents", sa.Column("greeting", sa.Text(), nullable=False, server_default=""))
 
     op.create_table(
         "call_accounts",
@@ -50,10 +56,6 @@ def upgrade():
         sa.Column("provider_number_id", sa.String(80), nullable=True),
         sa.Column("elevenlabs_agent_id", sa.String(80), nullable=True),
         sa.Column("elevenlabs_phone_number_id", sa.String(80), nullable=True),
-        sa.Column("voice_id", sa.String(80), nullable=False),
-        sa.Column("voice_name", sa.String(180), nullable=False, server_default=""),
-        sa.Column("greeting", sa.Text(), nullable=False, server_default=""),
-        sa.Column("voice_model", sa.String(180), nullable=False, server_default=""),
         sa.Column("transfer_number", sa.String(32), nullable=True),
         sa.Column("llm_secret_hash", sa.String(64), nullable=False, server_default=""),
         sa.Column("is_enabled", sa.Boolean(), nullable=False, server_default="true"),
@@ -94,6 +96,8 @@ def downgrade():
     op.drop_constraint("fk_conversations_phone_channel", "conversations", type_="foreignkey")
     op.drop_index("ix_conversations_phone_channel_id", table_name="conversations")
     op.drop_column("conversations", "phone_channel_id")
+    for column in ("greeting", "voice_name", "voice_id", "kind"):
+        op.drop_column("agents", column)
     op.drop_index("ix_phone_calls_phone_channel_id", table_name="phone_calls")
     op.drop_table("phone_calls")
     for column in ("agency_id", "client_id", "agent_id"):

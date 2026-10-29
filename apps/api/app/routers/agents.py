@@ -85,8 +85,13 @@ def get_agent(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User = D
     return _agent(db, user, agent_id)
 
 
+# What a voice agent's phone lines carry into ElevenLabs: a change to any of
+# them is pushed to every connected line.
+_LINE_FIELDS = {"voice_id", "greeting", "model", "prompt_language", "name"}
+
+
 @router.patch("/{agent_id}", response_model=AgentOut)
-def update_agent(agent_id: uuid.UUID, payload: AgentUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+async def update_agent(agent_id: uuid.UUID, payload: AgentUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     agent = _agent(db, user, agent_id)
     values = payload.model_dump(exclude_unset=True)
     client_id = values.get("client_id", agent.client_id)
@@ -106,7 +111,27 @@ def update_agent(agent_id: uuid.UUID, payload: AgentUpdate, db: Session = Depend
     for key, value in values.items():
         setattr(agent, key, value)
     db.commit()
+    if agent.kind == "voice" and _LINE_FIELDS & values.keys():
+        await _resync_phone_lines(db, agent)
     return _agent(db, user, agent_id)
+
+
+async def _resync_phone_lines(db: Session, agent: Agent) -> None:
+    from ..models import PhoneChannel
+    from ..services import phone_calls
+    from ..services.telephony import TelephonyError
+
+    lines = db.scalars(select(PhoneChannel).where(
+        PhoneChannel.agent_id == agent.id, PhoneChannel.is_enabled.is_(True), PhoneChannel.status == "connected"
+    )).all()
+    for line in lines:
+        try:
+            await phone_calls.connect_line(db, line)
+        except (phone_calls.PhoneSetupError, TelephonyError) as exc:
+            db.rollback()
+            line.status = "error"
+            line.last_error = str(exc)
+            db.commit()
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -109,6 +109,7 @@ class AgentSummary(ORMModel):
     id: uuid.UUID
     name: str
     is_active: bool
+    kind: str = "chat"
 
 
 class ClientOut(ORMModel):
@@ -268,6 +269,11 @@ class AgentBase(BaseModel):
     # On duty only inside these slots when enabled (see services.availability).
     schedule_enabled: bool = False
     schedule_slots: list[ScheduleSlot] = []
+    # Fixed at creation: a chat agent answers messages, a voice agent calls.
+    kind: Literal["chat", "voice"] = "chat"
+    voice_id: str = Field(default="", max_length=80)
+    voice_name: str = Field(default="", max_length=180)
+    greeting: str = Field(default="", max_length=600)
 
     @model_validator(mode="after")
     def _reply_delay_bounds(self) -> "AgentBase":
@@ -307,6 +313,9 @@ class AgentUpdate(BaseModel):
     is_active: bool | None = None
     schedule_enabled: bool | None = None
     schedule_slots: list[ScheduleSlot] | None = None
+    voice_id: str | None = Field(default=None, max_length=80)
+    voice_name: str | None = Field(default=None, max_length=180)
+    greeting: str | None = Field(default=None, max_length=600)
 
 
 class AgentOut(ORMModel):
@@ -338,6 +347,10 @@ class AgentOut(ORMModel):
     is_active: bool
     schedule_enabled: bool
     schedule_slots: list[ScheduleSlot]
+    kind: str
+    voice_id: str
+    voice_name: str
+    greeting: str
     created_at: datetime
     updated_at: datetime
     client: ClientOut

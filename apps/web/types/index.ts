@@ -8,7 +8,9 @@ export type User = {
 
 export type Agency = { id: string; name: string; slug: string; brand_color: string; logo_url: string | null; ios_app_url?: string | null; android_app_url?: string | null };
 
-export type AgentSummary = { id: string; name: string; is_active: boolean };
+// "chat" answers messages; "voice" answers phone calls. Fixed when the agent is created.
+export type AgentKind = "chat" | "voice";
+export type AgentSummary = { id: string; name: string; is_active: boolean; kind?: AgentKind };
 
 export type IndustryLabel = { en: string; es: string };
 export type BusinessType = { code: string; label: IndustryLabel };
@@ -83,6 +85,10 @@ export type Agent = {
   // client's timezone and the day is 0 (Monday) to 6 (Sunday).
   schedule_enabled: boolean;
   schedule_slots: ScheduleSlot[];
+  kind: AgentKind;
+  voice_id: string;
+  voice_name: string;
+  greeting: string;
   client: Client;
   created_at: string;
   updated_at: string;
@@ -113,8 +119,7 @@ export type PhoneVoice = { voice_id: string; name: string; accent: string; gende
 export type CarrierNumber = { id: string; phone_number: string; name: string };
 export type PhoneLine = {
   id: string; client_id: string; agent_id: string; label: string | null; phone_number: string;
-  provider: "twilio" | "telnyx"; provider_number_id: string | null; voice_id: string; voice_name: string;
-  greeting: string; voice_model: string; transfer_number: string | null;
+  provider: "twilio" | "telnyx"; provider_number_id: string | null; transfer_number: string | null;
   status: "connected" | "disconnected" | "error"; is_enabled: boolean; last_error: string | null;
   last_connected_at: string | null; created_at: string; updated_at: string;
 };

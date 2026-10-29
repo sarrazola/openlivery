@@ -126,6 +126,8 @@ def _client_agent(db: Session, user: User, client_id: uuid.UUID, agent_id: uuid.
     ))
     if not agent:
         raise HTTPException(status_code=400, detail="Select an agent that belongs to this client")
+    if agent.kind != "voice":
+        raise HTTPException(status_code=400, detail="A phone line is answered by a voice agent. Choose one, or create one.")
     return agent
 
 

@@ -224,6 +224,13 @@ class Agent(Base):
     # Embedding model for this agent's knowledge base. Vectors from different
     # models are not comparable, so chunks record theirs and a change reindexes.
     embedding_model: Mapped[str] = mapped_column(String(180), default="openai/text-embedding-3-small", server_default="openai/text-embedding-3-small")
+    # What the agent answers, chosen when it is created: "chat" (messages on
+    # WhatsApp, Instagram, Messenger, the web) or "voice" (phone calls). A voice
+    # agent speaks with ``voice_id`` and opens every call with ``greeting``.
+    kind: Mapped[str] = mapped_column(String(20), default="chat", server_default="chat")
+    voice_id: Mapped[str] = mapped_column(String(80), default="", server_default="")
+    voice_name: Mapped[str] = mapped_column(String(180), default="", server_default="")
+    greeting: Mapped[str] = mapped_column(Text, default="", server_default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
@@ -396,9 +403,9 @@ class CallAccount(Base):
 
 
 class PhoneChannel(Base):
-    """A phone number of the client that an agent answers. The number lives
-    at the agency's carrier; ElevenLabs takes its calls and asks OpenLivery
-    for every reply, so the agent behind it is the same as in the chat."""
+    """A phone number of the client that a voice agent answers. The number
+    lives at the agency's carrier; ElevenLabs takes its calls with the agent's
+    voice and asks OpenLivery for every reply."""
 
     __tablename__ = "phone_channels"
 
@@ -414,12 +421,6 @@ class PhoneChannel(Base):
     provider_number_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     elevenlabs_agent_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     elevenlabs_phone_number_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    voice_id: Mapped[str] = mapped_column(String(80))
-    voice_name: Mapped[str] = mapped_column(String(180), default="", server_default="")
-    greeting: Mapped[str] = mapped_column(Text, default="", server_default="")
-    # The model that thinks on calls, lighter than the chat's for latency;
-    # empty uses the agent's own.
-    voice_model: Mapped[str] = mapped_column(String(180), default="", server_default="")
     # Where a call goes when the caller needs a person; empty means a person
     # calls back instead.
     transfer_number: Mapped[str | None] = mapped_column(String(32), nullable=True)

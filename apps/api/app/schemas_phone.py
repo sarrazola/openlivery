@@ -43,20 +43,12 @@ class PhoneLineCreate(BaseModel):
     provider: str = Field(pattern="^(twilio|telnyx)$")
     provider_number_id: str = Field(min_length=1, max_length=80)
     phone_number: str = Field(min_length=4, max_length=32)
-    voice_id: str = Field(min_length=1, max_length=80)
-    voice_name: str = Field(default="", max_length=180)
-    greeting: str = Field(default="", max_length=600)
-    voice_model: str = Field(default="", max_length=180)
     transfer_number: str | None = Field(default=None, max_length=32)
     label: str | None = Field(default=None, max_length=80)
 
 
 class PhoneLineUpdate(BaseModel):
     agent_id: uuid.UUID | None = None
-    voice_id: str | None = Field(default=None, max_length=80)
-    voice_name: str | None = Field(default=None, max_length=180)
-    greeting: str | None = Field(default=None, max_length=600)
-    voice_model: str | None = Field(default=None, max_length=180)
     transfer_number: str | None = Field(default=None, max_length=32)
     label: str | None = Field(default=None, max_length=80)
     is_enabled: bool | None = None
@@ -70,10 +62,6 @@ class PhoneLineOut(BaseModel):
     phone_number: str
     provider: str
     provider_number_id: str | None
-    voice_id: str
-    voice_name: str
-    greeting: str
-    voice_model: str
     transfer_number: str | None
     status: str
     is_enabled: bool

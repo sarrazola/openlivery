@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, AudioLines, Bot, CheckCircle2, FileText, ImageIcon, LoaderCircle, MessageSquareText, Pencil, Plug, Plus, Power, PowerOff, RefreshCw, Save, Settings2, Sparkles, Trash2, UploadCloud, X, XCircle } from "lucide-react";
+import { ArrowLeft, AudioLines, Bot, CheckCircle2, FileText, ImageIcon, Mic, LoaderCircle, MessageSquareText, Pencil, Plug, Plus, Power, PowerOff, RefreshCw, Save, Settings2, Sparkles, Trash2, UploadCloud, X, XCircle } from "lucide-react";
 import { SectionTabs } from "@/components/section-tabs";
 import { api, apiUrl, messageFrom } from "@/lib/api";
 import { currentSections, showSections } from "@/lib/section-path";
@@ -20,14 +20,15 @@ import { agentToolsExtensions } from "@/lib/extensions/agent-tools";
 import { EscalationRulesEditor } from "@/components/escalation-rules";
 import { ContactCaptureEditor } from "@/components/contact-capture";
 import { FollowUpEditor } from "@/components/follow-ups";
+import { AgentVoiceTab } from "@/components/agent-voice-tab";
 import { AgentScheduleEditor, onDutyNow } from "@/components/agent-schedule";
 import { Combobox } from "@/components/combobox";
 import { DEFAULT_PROVIDER, DEFAULT_AUDIO_MODEL, DEFAULT_EMBEDDING_MODEL, DEFAULT_IMAGE_MODEL, modelsFor, modelOptionsFor, estimateTokens, modelContextWindow, AUDIO_MODELS, EMBEDDING_MODELS, IMAGE_MODELS } from "@/lib/providers";
 import { narrowModels, useAvailableModels } from "@/lib/use-available-models";
 import type { Agent, AgentTool, KnowledgeDocument, MediaAsset, QAPair, EmbeddingModelInfo, ScheduleSlot } from "@/types";
 
-type Tab = "basics" | "knowledge" | "tools" | "playground";
-const TABS: Tab[] = ["basics", "knowledge", "tools", "playground"];
+type Tab = "basics" | "voice" | "knowledge" | "tools" | "playground";
+const TABS: Tab[] = ["basics", "voice", "knowledge", "tools", "playground"];
 
 export default function AgentDetailPage() {
   const { t, lang } = useLanguage();
@@ -269,6 +270,7 @@ export default function AgentDetailPage() {
     {confirmingDeactivate && <ConfirmModal title={t("agents.detail.deactivateTitle")} message={t("agents.detail.deactivateCopy")} confirmLabel={t("agents.detail.unpublish")} cancelLabel={t("common.cancel")} confirmIcon={<PowerOff size={15} />} onConfirm={togglePublish} onClose={() => setConfirmingDeactivate(false)} />}
     <SectionTabs<Tab> value={tab} onChange={changeTab} tabs={[
       { id: "basics", label: t("agents.detail.tabBasics"), icon: Settings2 },
+      ...(agent.kind === "voice" ? [{ id: "voice" as const, label: t("phone.agent.tab"), icon: Mic }] : []),
       { id: "knowledge", label: t("agents.detail.tabKnowledge"), icon: FileText, badge: documents.length },
       { id: "tools", label: t("tools.tab"), icon: Plug, badge: tools.length },
       { id: "playground", label: t("agents.detail.tabPlayground"), icon: MessageSquareText },
@@ -296,7 +298,7 @@ export default function AgentDetailPage() {
       <ContactCaptureEditor agentId={agent.id} clientId={agent.client_id} />
       <EscalationRulesEditor agentId={agent.id} clientId={agent.client_id} />
       <FollowUpEditor agentId={agent.id} />
-      <AgentScheduleEditor enabled={schedule.enabled} slots={schedule.slots} timezone={agent.client.timezone} locale={lang} onChange={setSchedule} />
+      {agent.kind !== "voice" && <AgentScheduleEditor enabled={schedule.enabled} slots={schedule.slots} timezone={agent.client.timezone} locale={lang} onChange={setSchedule} />}
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.aiModelHeading")}</h3><p>{t("agents.detail.aiModelCopy")}</p></div><div className="settings-fields">
         <label>{t("agents.detail.modelLabel")}{(() => { const allowed = narrowModels(modelsFor(provider), available?.chat?.[provider]); const known = modelOptionsFor(provider).filter((item) => allowed.includes(item.id)); const ordered = [...known.filter((item) => item.recommended), ...known.filter((item) => !item.recommended)].map((item) => item.id); const options = [...ordered, ...allowed.filter((id) => !ordered.includes(id))]; const labels = Object.fromEntries(known.map((item) => [item.id, item.label])); const tierOf = (g: string) => g === "fast" ? t("agents.wizard.modelGroupFast") : g === "balanced" ? t("agents.wizard.modelGroupBalanced") : t("agents.wizard.modelGroupCapable"); const tags = Object.fromEntries(known.map((item) => [item.id, item.recommended ? t("agents.wizard.modelBadgeRecommended") : tierOf(item.group)])); return <Combobox value={model} onChange={setModel} options={options} labels={labels} tags={tags} placeholder={t("agents.detail.modelPlaceholder")} allowCustom />; })()}</label>
         <div className="context-bar"><div style={{ width: `${contextPct}%` }} /><small><Sparkles size={12} /> {t("agents.detail.promptTokens", { count: (promptTokens ?? 0).toLocaleString(lang) })} · {t("agents.detail.contextUsage", { count: (promptTokens ?? 0).toLocaleString(lang), total: contextWindow.toLocaleString(lang) })}</small></div>
@@ -305,6 +307,7 @@ export default function AgentDetailPage() {
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.temperatureLabel")}</span><strong>{temperature.toFixed(1)}/2</strong></div><input type="range" min="0" max="2" step="0.1" value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} /><span className="field-help">{t("agents.detail.temperatureHint")}</span></div>
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.maxTokensLabel")}</span><strong>{maxTokens}/8192</strong></div><input type="range" min="256" max="8192" step="256" value={maxTokens} onChange={(e) => setMaxTokens(Number(e.target.value))} /><span className="field-help">{t("agents.detail.maxTokensHint")}</span></div>
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.memoryLimitLabel")}</span><strong>{memoryLimit}/100</strong></div><input type="range" min="0" max="100" step="1" value={memoryLimit} onChange={(e) => setMemoryLimit(Number(e.target.value))} /><span className="field-help">{t("agents.detail.memoryLimitHint")}</span></div>
+        {agent.kind !== "voice" && <>
         <label>{t("agents.detail.phoneHandoverLabel")}<input type="number" min="1" max="1440" required value={phoneHandoverMinutes} onChange={(e) => setPhoneHandoverMinutes(Number(e.target.value))} /><span className="field-help">{t("agents.detail.phoneHandoverHint")}</span></label>
         <div className="group-intro"><strong>{t("agents.detail.replyDelayHeading")}</strong></div>
         <div className="slider-field"><div className="slider-head"><span>{t("agents.detail.replyDelayMinLabel")} <AiHint text={t("agents.detail.replyDelayMinHint")} /></span><strong>{replyDelayMin}/60 s</strong></div><input type="range" min="0" max="60" step="1" value={replyDelayMin} onChange={(e) => { const v = Number(e.target.value); setReplyDelayMin(v); if (v > replyDelayMax) setReplyDelayMax(v); }} /></div>
@@ -318,6 +321,7 @@ export default function AgentDetailPage() {
           <label className="capability-head"><input type="checkbox" checked={audioEnabled} onChange={(e) => setAudioEnabled(e.target.checked)} /><AudioLines size={17} /><span><strong>{t("agents.detail.audioLabel")}</strong><small>{t("agents.detail.audioHint")}</small></span></label>
           {audioEnabled && <label className="capability-model">{t("agents.detail.modelLabel")}<Combobox value={audioModel} onChange={setAudioModel} options={narrowModels(AUDIO_MODELS, available?.audio)} placeholder={DEFAULT_AUDIO_MODEL} allowCustom /></label>}
         </div>
+        </>}
         </details>
       </div></section>
       <div className="sticky-save"><div className="sticky-left"><button type="button" className="button danger" onClick={() => { setDeleteError(null); setDeleteName(""); setDeleteOpen(true); }}><Trash2 size={16} /> {t("agents.detail.deleteAgent")}</button><span>{t("agents.detail.stickyNote")}</span></div><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} {t("agents.detail.saveConfig")}</button></div>
@@ -329,7 +333,7 @@ export default function AgentDetailPage() {
         <button className="dropzone" onClick={() => fileRef.current?.click()} disabled={busy}><span><UploadCloud size={24} /></span><strong>{busy ? t("agents.detail.processing") : t("agents.detail.uploadPdf")}</strong><small>{t("agents.detail.uploadHint")}</small></button><input ref={fileRef} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => upload(e.target.files?.[0])} />
         <div className="documents-list">{documents.map((doc) => <div className="document-row" key={doc.id}><span className={`document-icon ${doc.status}`}><FileText size={19} /></span><div><strong>{doc.filename}</strong><small>{doc.status === "processed" ? `${t("agents.detail.charsExtracted", { count: doc.character_count.toLocaleString("es") })} · ${smallBase ? t("agents.detail.sentInFull") : doc.chunk_count && doc.indexed_model === agent.embedding_model ? t("agents.detail.indexedChunks", { count: doc.chunk_count }) : t("agents.detail.notIndexed")}` : doc.error_message}</small></div><span className={`document-status ${doc.status}`}>{doc.status === "processed" ? <><CheckCircle2 size={14} /> {t("agents.detail.processed")}</> : <><XCircle size={14} /> {t("agents.detail.error")}</>}</span>{doc.status === "processed" && !smallBase && <button className="icon-button" onClick={() => reindexOne(doc)} disabled={indexing || busy} title={t("agents.detail.reindex")}><RefreshCw size={15} /></button>}<button className="icon-button danger-icon" onClick={() => setDocToDelete(doc)} title={t("agents.detail.delete")}><Trash2 size={16} /></button></div>)}{!documents.length && <div className="inline-empty slim"><FileText size={22} /><div><strong>{t("agents.detail.noDocumentsTitle")}</strong><span>{t("agents.detail.noDocumentsHint")}</span></div></div>}</div>
       </section>
-    <section className="panel documents-panel"><div className="panel-head"><div><h3>{t("agents.detail.mediaHeading")}</h3><p>{t("agents.detail.mediaCopy")}</p></div></div>
+    {agent.kind !== "voice" && <section className="panel documents-panel"><div className="panel-head"><div><h3>{t("agents.detail.mediaHeading")}</h3><p>{t("agents.detail.mediaCopy")}</p></div></div>
       <form className="media-form" onSubmit={addMedia}>
         <button type="button" className={`button secondary${mediaFile ? " media-file-picked" : ""}`} onClick={() => mediaRef.current?.click()} disabled={busy}><UploadCloud size={15} /> <span>{mediaFile ? mediaFile.name : t("agents.detail.mediaChooseFile")}</span></button>
         <input ref={mediaRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,.jpg,.jpeg,.png,.webp,.gif,.pdf" hidden onChange={(e) => pickMediaFile(e.target.files?.[0])} />
@@ -344,7 +348,7 @@ export default function AgentDetailPage() {
           ? <><form className="media-edit" onSubmit={saveMedia}><input value={mediaEditing.name} onChange={(e) => setMediaEditing({ ...mediaEditing, name: e.target.value })} maxLength={80} required placeholder={t("agents.detail.mediaNamePlaceholder")} autoFocus /><input value={mediaEditing.description} onChange={(e) => setMediaEditing({ ...mediaEditing, description: e.target.value })} maxLength={300} placeholder={t("agents.detail.mediaDescriptionPlaceholder")} /><button className="button secondary" disabled={busy || !mediaEditing.name.trim()}>{t("agents.detail.mediaSave")}</button></form><button type="button" className="icon-button" onClick={() => setMediaEditing(null)} title={t("common.cancel")}><X size={16} /></button></>
           : <><div><strong>{asset.name}</strong><small>{asset.description || t("agents.detail.mediaNoDescription")} · {asset.filename} · {mediaSize(asset)}</small></div><button type="button" className="icon-button" onClick={() => setMediaEditing({ id: asset.id, name: asset.name, description: asset.description })} disabled={busy} title={t("agents.detail.mediaEdit")}><Pencil size={15} /></button><button type="button" className="icon-button danger-icon" onClick={() => setMediaToDelete(asset)} title={t("agents.detail.delete")}><Trash2 size={16} /></button></>}
       </div>)}{!media.length && <div className="inline-empty slim"><ImageIcon size={22} /><div><strong>{t("agents.detail.mediaEmptyTitle")}</strong><span>{t("agents.detail.mediaEmptyHint")}</span></div></div>}</div>
-    </section>
+    </section>}
     <section className="panel"><div className="panel-head"><div><h3>{t("agents.detail.embeddingHeading")} <AiHint text={t("aiContext.embedding")} /></h3><p>{t("agents.detail.embeddingCopy")}</p></div><button type="button" className="button secondary" onClick={() => reindex()} disabled={indexing || busy || !documents.some((doc) => doc.status === "processed")}>{indexing ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />} {indexing ? t("agents.detail.reindexing") : t("agents.detail.reindex")}</button></div>
       <label className="embedding-picker">{t("agents.detail.embeddingModelLabel")}
         <select value={agent.embedding_model || DEFAULT_EMBEDDING_MODEL} disabled={indexing} onChange={(e) => changeEmbeddingModel(e.target.value)}>
@@ -364,6 +368,7 @@ export default function AgentDetailPage() {
     {tab === "tools" && <AgentToolsTab agentId={id} tools={customTools} onToolsChange={(next) => setTools([...next, ...managedTools])} />}
     {tab === "tools" && ManagedSection && <ManagedSection agentId={id} onToolsChange={() => api<AgentTool[]>(`/agents/${id}/tools`).then(setTools).catch(() => {})} />}
 
+    {tab === "voice" && agent.kind === "voice" && <AgentVoiceTab agent={agent} onSaved={setAgent} />}
     {tab === "playground" && <ChatPlayground lockedAgentId={agent.id} />}
   </div>;
 }

@@ -92,8 +92,12 @@ def owned_client(db: Session, user: User, client_id, agent_id=None):
     client = db.scalar(select(Client).where(Client.id == client_id, Client.agency_id == user.agency_id))
     if not client:
         raise HTTPException(404, "Client not found")
-    if agent_id is not None and not db.scalar(select(Agent.id).where(Agent.id == agent_id, Agent.client_id == client.id, Agent.agency_id == user.agency_id)):
-        raise HTTPException(400, "Select an agent that belongs to this client")
+    if agent_id is not None:
+        kind = db.scalar(select(Agent.kind).where(Agent.id == agent_id, Agent.client_id == client.id, Agent.agency_id == user.agency_id))
+        if kind is None:
+            raise HTTPException(400, "Select an agent that belongs to this client")
+        if kind == "voice":
+            raise HTTPException(400, "A voice agent answers phone calls only. Choose a chat agent for this channel.")
     return client
 
 

@@ -208,16 +208,16 @@ def _agent_body(line: PhoneChannel, secret_id: str, webhook_id: str | None) -> d
     body: dict = {
         "name": f"{line.client.name} · {line.label or line.phone_number}"[:120],
         "conversation_config": {
-            "tts": {"voice_id": line.voice_id},
+            "tts": {"voice_id": agent.voice_id},
             "agent": {
-                "first_message": line.greeting,
+                "first_message": agent.greeting,
                 "language": _language(agent),
                 "prompt": {
                     "prompt": MARKER,
                     "llm": "custom-llm",
                     "custom_llm": {
                         "url": llm_url(line),
-                        "model_id": (line.voice_model or agent.model).strip(),
+                        "model_id": agent.model.strip(),
                         "api_key": {"secret_id": secret_id},
                     },
                     "built_in_tools": tools,
@@ -238,9 +238,12 @@ async def connect_line(db: Session, line: PhoneChannel) -> None:
     the caller stores the message on the line."""
     account, api_key = elevenlabs_key(db, line.agency_id)
     carrier = carrier_secret(db, line.agency_id, line.provider)
-    if not (line.voice_model or line.agent.model).strip():
-        raise PhoneSetupError("The agent has no model. Choose one in the agent before connecting the line.")
-    line.voice_name = (await elevenlabs.ensure_voice(api_key, line.voice_id)) or line.voice_name
+    agent = line.agent
+    if agent.kind != "voice":
+        raise PhoneSetupError("A phone line is answered by a voice agent. Choose one, or create one.")
+    if not agent.voice_id or not agent.model.strip():
+        raise PhoneSetupError("The agent has no voice or no model yet. Choose them in the agent's Voice tab.")
+    agent.voice_name = (await elevenlabs.ensure_voice(api_key, agent.voice_id)) or agent.voice_name
     if not account.webhook_id:
         webhook_id, signing = await elevenlabs.create_webhook(api_key, "OpenLivery calls", webhook_url(account))
         account.webhook_id = webhook_id
@@ -306,10 +309,6 @@ def line_out(line: PhoneChannel) -> dict:
         "phone_number": line.phone_number,
         "provider": line.provider,
         "provider_number_id": line.provider_number_id,
-        "voice_id": line.voice_id,
-        "voice_name": line.voice_name,
-        "greeting": line.greeting,
-        "voice_model": line.voice_model,
         "transfer_number": line.transfer_number,
         "status": line.status,
         "is_enabled": line.is_enabled,
@@ -455,7 +454,7 @@ async def answer_turn(db: Session, line: PhoneChannel, body: dict) -> Reply:
     db.commit()
 
     credentials = resolve_agent_credentials(db, agent)
-    model = (line.voice_model or agent.model).strip()
+    model = agent.model.strip()
     if not agent.is_active or not credentials or not model:
         line.last_error = "A call came in, but the agent is not ready (model or provider key missing)."
         db.commit()

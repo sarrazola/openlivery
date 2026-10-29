@@ -76,12 +76,12 @@ def _line(client: TestClient, **overrides) -> tuple[dict, dict, dict]:
     client.put("/api/providers/openrouter", json={"api_key": "secret"})
     customer = client.post("/api/clients", json={"name": "Dentix", "is_active": True}).json()
     agent = client.post("/api/agents", json={
-        "client_id": customer["id"], "provider": "openrouter", "model": "openai/gpt-4.1", "name": "Sofía",
+        "client_id": customer["id"], "provider": "openrouter", "model": "google/gemini-3.5-flash-lite", "name": "Sofía",
         "instructions": "Agenda citas.", "personality": "", "is_active": True,
+        "kind": "voice", "voice_id": "voice_1", "greeting": "¡Hola! Hablas con Dentix.",
     }).json()
     body = {
         "agent_id": agent["id"], "provider": "twilio", "provider_number_id": "PN1", "phone_number": "+15550001111",
-        "voice_id": "voice_1", "greeting": "¡Hola! Hablas con Dentix.", "voice_model": "google/gemini-3.5-flash-lite",
         **overrides,
     }
     created = client.post(f"/api/phone/clients/{customer['id']}/lines", json=body)
@@ -307,3 +307,25 @@ def test_removing_a_line_takes_it_out_of_elevenlabs_and_keeps_its_calls(authenti
     elevenlabs.delete_agent.assert_awaited_with("xi-key", "agent_el_1")
     with SessionLocal() as db:
         assert db.scalar(select(Conversation).where(Conversation.channel == "phone")) is not None
+
+
+def test_voice_and_chat_agents_keep_to_their_channels(authenticated_client: TestClient, provisioning):
+    client = authenticated_client
+    customer, voice_agent, line = _line(client)
+    chat_agent = client.post("/api/agents", json={
+        "client_id": customer["id"], "provider": "openrouter", "model": "openai/gpt-4.1", "name": "Chat",
+        "instructions": "", "personality": "", "is_active": True,
+    }).json()
+    assert chat_agent["kind"] == "chat"
+    refused = client.put(f"/api/phone/lines/{line['id']}", json={"agent_id": chat_agent["id"]})
+    assert refused.status_code == 400 and "voice agent" in refused.json()["detail"]
+    refused = client.put(f"/api/webchat/channels/{customer['id']}", json={"agent_id": voice_agent["id"], "is_enabled": True})
+    assert refused.status_code == 400 and "phone calls only" in refused.json()["detail"]
+
+
+def test_changing_the_voice_updates_the_lines_at_elevenlabs(authenticated_client: TestClient, provisioning):
+    client = authenticated_client
+    _, agent, _ = _line(client)
+    assert client.patch(f"/api/agents/{agent['id']}", json={"voice_id": "voice_2", "greeting": "Hola, Dentix."}).status_code == 200
+    tts = provisioning["agent_body"]["conversation_config"]
+    assert tts["tts"]["voice_id"] == "voice_2" and tts["agent"]["first_message"] == "Hola, Dentix."

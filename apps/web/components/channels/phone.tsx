@@ -1,17 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bot, CheckCircle2, CircleAlert, LoaderCircle, Mic, Pause, Phone, PhoneForwarded, Play, Plug, Power, Search, ShieldCheck, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { ArrowLeft, Bot, CheckCircle2, CircleAlert, LoaderCircle, Phone, PhoneForwarded, Plug, Power, ShieldCheck, Trash2 } from "lucide-react";
 import { Alert, Modal } from "@/components/ui";
 import { AccountList } from "@/components/account-list";
 import { api, messageFrom } from "@/lib/api";
 import { accountName, accountTitle, rememberLine, requestedLine, type ChannelSetupProps } from "@/lib/channels";
 import { useLanguage, type I18nKey } from "@/lib/i18n";
-import type { CallAccount, CarrierNumber, PhoneLine, PhoneVoice } from "@/types";
+import type { CallAccount, CarrierNumber, PhoneLine } from "@/types";
 
-// A light model answers sooner; latency matters more on a call than in a chat.
-const DEFAULT_VOICE_MODEL = "google/gemini-3.5-flash-lite";
 const statusKey: Record<PhoneLine["status"], I18nKey> = {
   connected: "phone.channel.statusConnected",
   disconnected: "phone.channel.statusDisconnected",
@@ -19,10 +17,10 @@ const statusKey: Record<PhoneLine["status"], I18nKey> = {
 };
 
 /** A client's phone lines, inside the client's Channels tab: one number of
- * the agency's Twilio or Telnyx account per line, the agent that answers it
- * and the voice it speaks with. Saving connects the line. */
+ * the agency's Twilio or Telnyx account per line and the voice agent that
+ * answers it, with its voice and greeting. Saving connects the line. */
 export function PhoneSetup({ client, onBack }: ChannelSetupProps) {
-  const { t, lang } = useLanguage();
+  const { t } = useLanguage();
   const [lines, setLines] = useState<PhoneLine[]>([]);
   const [accounts, setAccounts] = useState<CallAccount[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -37,10 +35,8 @@ export function PhoneSetup({ client, onBack }: ChannelSetupProps) {
   const [provider, setProvider] = useState<"twilio" | "telnyx">("twilio");
   const [numbers, setNumbers] = useState<CarrierNumber[] | null>(null);
   const [numberId, setNumberId] = useState("");
-  const [voice, setVoice] = useState<{ id: string; name: string }>({ id: "", name: "" });
-  const [greeting, setGreeting] = useState("");
-  const [voiceModel, setVoiceModel] = useState(DEFAULT_VOICE_MODEL);
   const [transfer, setTransfer] = useState("");
+  const voiceAgents = client.agents.filter((agent) => agent.kind === "voice");
   const line = adding ? null : lines.find((item) => item.id === selectedId) ?? null;
   const carriers = accounts.filter((a) => a.provider !== "elevenlabs" && a.configured).map((a) => a.provider as "twilio" | "telnyx");
   const ready = accounts.some((a) => a.provider === "elevenlabs" && a.configured) && carriers.length > 0;
@@ -52,13 +48,10 @@ export function PhoneSetup({ client, onBack }: ChannelSetupProps) {
   const show = useCallback((item: PhoneLine | null) => {
     setAdding(false);
     setSelectedId(item?.id ?? null);
-    setAgentId(item?.agent_id || client.agents[0]?.id || "");
+    setAgentId(item?.agent_id || client.agents.find((agent) => agent.kind === "voice")?.id || "");
     setLabel(item?.label || "");
     setProvider(item?.provider || "twilio");
     setNumberId(item?.provider_number_id || "");
-    setVoice({ id: item?.voice_id || "", name: item?.voice_name || "" });
-    setGreeting(item?.greeting || "");
-    setVoiceModel(item ? item.voice_model : DEFAULT_VOICE_MODEL);
     setTransfer(item?.transfer_number || "");
     setError("");
     rememberLine(item?.id ?? null);
@@ -88,7 +81,7 @@ export function PhoneSetup({ client, onBack }: ChannelSetupProps) {
   async function save() {
     setBusy(true); setError("");
     try {
-      const common = { agent_id: agentId, label: label.trim() || null, voice_id: voice.id, voice_name: voice.name, greeting: greeting.trim(), voice_model: voiceModel.trim(), transfer_number: transfer.trim() || null };
+      const common = { agent_id: agentId, label: label.trim() || null, transfer_number: transfer.trim() || null };
       let saved: PhoneLine;
       if (line) {
         saved = await api<PhoneLine>(`/phone/lines/${line.id}`, { method: "PUT", body: JSON.stringify(common) });
@@ -131,7 +124,7 @@ export function PhoneSetup({ client, onBack }: ChannelSetupProps) {
     stateLabel: item.is_enabled ? t(statusKey[item.status]) : t("phone.channel.off"),
   }));
   const connectedCount = rows.filter((row) => row.state === "connected").length;
-  const canSave = Boolean(agentId && voice.id && greeting.trim() && (line || numberId) && !busy);
+  const canSave = Boolean(agentId && (line || numberId) && !busy);
 
   return <div className="wa-page">
     {listView || !lines.length
@@ -149,10 +142,11 @@ export function PhoneSetup({ client, onBack }: ChannelSetupProps) {
     {!listView && ready && <div className="wa-layout"><main>
       <section className="wa-panel"><div className="wa-panel-head"><span><Bot size={19} /></span><div><h2>{t("clients.whatsapp.assignedAgent")}</h2><p>{t("clients.whatsapp.assignedAgentCopy")}</p></div></div>
         <div className="wa-agent-row">
-          <label>{t("clients.whatsapp.agentToRespond")}<select value={agentId} onChange={(event) => setAgentId(event.target.value)} disabled={busy}><option value="">{t("clients.whatsapp.selectAgent")}</option>{client.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}{agent.is_active ? "" : t("clients.whatsapp.inactiveSuffix")}</option>)}</select></label>
+          <label>{t("clients.whatsapp.agentToRespond")}<select value={agentId} onChange={(event) => setAgentId(event.target.value)} disabled={busy}><option value="">{t("clients.whatsapp.selectAgent")}</option>{voiceAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}{agent.is_active ? "" : t("clients.whatsapp.inactiveSuffix")}</option>)}</select></label>
           <label>{t("clients.whatsapp.lineName")}<input value={label} maxLength={80} placeholder={t("clients.whatsapp.lineNamePlaceholder")} onChange={(event) => setLabel(event.target.value)} disabled={busy} /></label>
         </div>
-        {!client.agents.length && <Alert>{t("clients.whatsapp.needsAgent")}</Alert>}
+        <p className="social-meta">{t("phone.channel.agentVoiceHint")}</p>
+        {!voiceAgents.length && <Alert type="info">{t("phone.channel.noVoiceAgents")} <Link href={`/agents/new?client=${client.id}&kind=voice`}>{t("phone.channel.createVoiceAgent")}</Link></Alert>}
       </section>
 
       <section className="wa-panel"><div className="wa-panel-head"><span><Phone size={19} /></span><div><h2>{t("phone.channel.numberTitle")}</h2><p>{t("phone.channel.numberCopy")}</p></div></div>
@@ -162,14 +156,6 @@ export function PhoneSetup({ client, onBack }: ChannelSetupProps) {
             : <select value={numberId} onChange={(event) => setNumberId(event.target.value)} disabled={busy || !numbers.length}><option value="">{t("phone.channel.selectNumber")}</option>{numbers.map((n) => <option key={n.id} value={n.id}>{n.phone_number}{n.name && n.name !== n.phone_number ? ` · ${n.name}` : ""}</option>)}</select>}</label>
         </div>}
         {!line && numbers?.length === 0 && <p className="social-meta">{t("phone.channel.noNumbers")}</p>}
-      </section>
-
-      <section className="wa-panel"><div className="wa-panel-head"><span><Mic size={19} /></span><div><h2>{t("phone.channel.voiceTitle")}</h2><p>{t("phone.channel.voiceCopy")}</p></div></div>
-        <VoicePicker language={lang} value={voice.id} name={voice.name} onChange={setVoice} />
-        <label>{t("phone.channel.greetingLabel")}<textarea rows={2} maxLength={600} value={greeting} placeholder={t("phone.channel.greetingPlaceholder")} onChange={(event) => setGreeting(event.target.value)} disabled={busy} /></label>
-        <p className="social-meta">{t("phone.channel.greetingHint")}</p>
-        <label>{t("phone.channel.modelLabel")}<input value={voiceModel} maxLength={180} onChange={(event) => setVoiceModel(event.target.value)} disabled={busy} /></label>
-        <p className="social-meta">{t("phone.channel.modelHint")}</p>
       </section>
 
       <section className="wa-panel"><div className="wa-panel-head"><span><PhoneForwarded size={19} /></span><div><h2>{t("phone.channel.transferLabel")}</h2><p>{t("phone.channel.transferHint")}</p></div></div>
@@ -189,45 +175,5 @@ export function PhoneSetup({ client, onBack }: ChannelSetupProps) {
         <div className="modal-actions"><button type="button" className="button" onClick={() => setRemoving(false)}>{t("common.cancel")}</button><button type="button" className="button danger" disabled={busy} onClick={remove}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Trash2 size={15} /> {t("phone.channel.remove")}</>}</button></div>
       </div>
     </Modal>
-  </div>;
-}
-
-/** Voices from the ElevenLabs library in the interface's language, with a
- * preview to listen to before choosing. */
-function VoicePicker({ language, value, name, onChange }: { language: string; value: string; name: string; onChange: (voice: { id: string; name: string }) => void }) {
-  const { t } = useLanguage();
-  const [search, setSearch] = useState("");
-  const [voices, setVoices] = useState<PhoneVoice[] | null>(null);
-  const [playing, setPlaying] = useState<string | null>(null);
-  const audio = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      api<PhoneVoice[]>(`/phone/voices?language=${encodeURIComponent(language)}&search=${encodeURIComponent(search.trim())}`)
-        .then(setVoices).catch(() => setVoices([]));
-    }, search ? 350 : 0);
-    return () => window.clearTimeout(timer);
-  }, [language, search]);
-  useEffect(() => () => audio.current?.pause(), []);
-
-  function listen(voice: PhoneVoice) {
-    audio.current?.pause();
-    if (playing === voice.voice_id || !voice.preview_url) { setPlaying(null); return; }
-    audio.current = new Audio(voice.preview_url);
-    audio.current.onended = () => setPlaying(null);
-    audio.current.play().catch(() => setPlaying(null));
-    setPlaying(voice.voice_id);
-  }
-
-  return <div className="voice-picker">
-    {value && <p className="social-meta">{t("phone.channel.chosen")}: <strong>{name || value}</strong></p>}
-    <label className="voice-search"><Search size={15} /><input value={search} placeholder={t("phone.channel.searchVoices")} onChange={(event) => setSearch(event.target.value)} /></label>
-    {voices === null ? <p className="field-help"><LoaderCircle className="spin" size={14} /></p>
-      : !voices.length ? <p className="social-meta">{t("phone.channel.noVoices")}</p>
-      : <ul className="voice-list">{voices.map((voice) => <li key={voice.voice_id} className={voice.voice_id === value ? "chosen" : ""}>
-        <button type="button" className="button ghost small" onClick={() => listen(voice)} disabled={!voice.preview_url} aria-label={t("phone.channel.listen")}>{playing === voice.voice_id ? <Pause size={14} /> : <Play size={14} />}</button>
-        <span><strong>{voice.name}</strong><small>{[voice.accent, voice.gender].filter(Boolean).join(" · ")}</small></span>
-        <button type="button" className={`button small ${voice.voice_id === value ? "primary" : "secondary"}`} onClick={() => onChange({ id: voice.voice_id, name: voice.name })}>{voice.voice_id === value ? t("phone.channel.chosen") : t("phone.channel.choose")}</button>
-      </li>)}</ul>}
   </div>;
 }
