@@ -41,6 +41,7 @@ export default function NewAgentPage() {
   const [reached, setReached] = useState(0);
   const setStep = (next: number | ((s: number) => number)) => setStepState((s) => { const value = typeof next === "function" ? next(s) : next; setReached((r) => Math.max(r, value)); return value; });
   const [clients, setClients] = useState<Client[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [templateId, setTemplateId] = useState("");
@@ -72,7 +73,7 @@ export default function NewAgentPage() {
     api<Client[]>("/clients").then((c) => {
       setClients(c);
       setClientId(preferred || c[0]?.id || "");
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setLoaded(true));
   }, []);
 
   const promptTokens = useMemo(() => estimateTokens([brief.summary, brief.products, brief.audience, brief.policies, instructions, brief.dos, brief.donts, personality].join("\n")), [brief, instructions, personality]);
@@ -91,7 +92,8 @@ export default function NewAgentPage() {
     setStep(1);
   }
 
-  if (!kind) return <div className="page narrow-page" />;
+  // Nothing until the address and the clients are read: no flash of "create a client first".
+  if (!kind || !loaded) return <div className="page narrow-page" />;
   const steps = STEPS[kind];
   const current = steps[step];
   const identityDone = name.trim().length > 0 && Boolean(clientId);
