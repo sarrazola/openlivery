@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, LoaderCircle, Phone, Plus, Save, Trash2 } from "lucide-react";
+import { CheckCircle2, ExternalLink, LoaderCircle, Phone, Plus, Save, Trash2 } from "lucide-react";
 import { Alert } from "@/components/ui";
 import { PasswordInput } from "@/components/password-input";
 import { useToast } from "@/components/toast";
@@ -14,15 +14,18 @@ type Carrier = "twilio" | "telnyx";
 const FIELDS: Record<CallProvider, Field[]> = {
   elevenlabs: [{ name: "api_key", label: "phone.settings.apiKey", secret: true }],
   twilio: [
-    { name: "account_sid", label: "phone.settings.accountSid", secret: false },
+    { name: "account_sid", label: "phone.settings.accountSid", secret: true },
     { name: "auth_token", label: "phone.settings.authToken", secret: true },
   ],
   telnyx: [{ name: "api_key", label: "phone.settings.apiKey", secret: true }],
 };
-const CARRIERS: { id: Carrier; name: string; hint: I18nKey }[] = [
-  { id: "twilio", name: "Twilio", hint: "phone.settings.twilioCopy" },
-  { id: "telnyx", name: "Telnyx", hint: "phone.settings.telnyxCopy" },
-];
+// Each provider's own guide to the credentials asked for here.
+const GUIDES: Record<CallProvider, { url: string; label: I18nKey }> = {
+  elevenlabs: { url: "https://elevenlabs.io/docs/overview/administration/workspaces/api-keys", label: "phone.settings.elevenlabsGuide" },
+  twilio: { url: "https://support.twilio.com/hc/en-us/articles/14726256820123-Procedure-to-Find-the-Twilio-Account-SID", label: "phone.settings.twilioGuide" },
+  telnyx: { url: "https://developers.telnyx.com/docs/development/api-fundamentals/create-api-keys", label: "phone.settings.telnyxGuide" },
+};
+const CARRIERS: { id: Carrier; name: string }[] = [{ id: "twilio", name: "Twilio" }, { id: "telnyx", name: "Telnyx" }];
 const nameOf = (provider: CallProvider) => provider === "elevenlabs" ? "ElevenLabs" : provider === "twilio" ? "Twilio" : "Telnyx";
 
 /** Settings > Phone calls: the agency's ElevenLabs key and the account of the
@@ -37,12 +40,18 @@ export function PhoneAccounts() {
 
   return <section className="section-block"><div className="section-heading"><div><h2><Phone size={18} /> {t("phone.settings.heading")}</h2><p>{t("phone.settings.copy")}</p></div></div>
     {accounts && <>
-      <section className="form-section"><div className="section-copy"><h2>{t("phone.settings.elevenlabsTitle")}</h2><p>{t("phone.settings.elevenlabsCopy")}</p></div>
+      <section className="form-section"><div className="section-copy"><h2>{t("phone.settings.elevenlabsTitle")}</h2><p>{t("phone.settings.elevenlabsCopy")}</p><GuideLink provider="elevenlabs" /></div>
         <div className="form-fields"><AccountForm provider="elevenlabs" state={stateOf("elevenlabs")} onChange={load} /></div>
       </section>
       <CarrierSection stateOf={stateOf} onChange={load} />
     </>}
   </section>;
+}
+
+function GuideLink({ provider }: { provider: CallProvider }) {
+  const t = useT();
+  const guide = GUIDES[provider];
+  return <a className="guide-link" href={guide.url} target="_blank" rel="noreferrer"><ExternalLink size={13} /> {t(guide.label)}</a>;
 }
 
 /** One carrier at a time on screen: the connected ones, each with its
@@ -54,16 +63,16 @@ function CarrierSection({ stateOf, onChange }: { stateOf: (p: CallProvider) => C
   const [carrier, setCarrier] = useState<Carrier>(connected[0]?.id ?? "twilio");
   const available = CARRIERS.filter((c) => !stateOf(c.id)?.stored);
   const showForm = !connected.length || adding;
-  const picked = CARRIERS.find((c) => c.id === carrier) ?? CARRIERS[0];
 
   return <section className="form-section"><div className="section-copy"><h2>{t("phone.settings.carrierTitle")}</h2><p>{t("phone.settings.carrierCopy")}</p></div>
     <div className="form-fields">
       {connected.map((c) => <div key={c.id} className="carrier-connected"><strong>{c.name}</strong><AccountForm provider={c.id} state={stateOf(c.id)} onChange={onChange} /></div>)}
       {showForm && <>
-        <div className="segmented" role="radiogroup" aria-label={t("phone.settings.carrierLabel")}>
-          {(adding ? available : CARRIERS).map((c) => <button key={c.id} type="button" role="radio" aria-checked={carrier === c.id} className={carrier === c.id ? "active" : ""} onClick={() => setCarrier(c.id)}>{c.name}</button>)}
-        </div>
-        <p className="field-help">{t(picked.hint)}</p>
+        <label>{t("phone.settings.carrierLabel")}
+          <select value={carrier} onChange={(event) => setCarrier(event.target.value as Carrier)}>
+            {(adding ? available : CARRIERS).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>
         <AccountForm key={carrier} provider={carrier} state={undefined} onChange={() => { setAdding(false); onChange(); }} onCancel={adding ? () => setAdding(false) : undefined} />
       </>}
       {!showForm && available.length > 0 && <button type="button" className="button ghost align-start" onClick={() => { setCarrier(available[0].id); setAdding(true); }}><Plus size={15} /> {t("phone.settings.addCarrier", { name: available[0].name })}</button>}
@@ -117,7 +126,7 @@ function AccountForm({ provider, state, onChange, onCancel }: { provider: CallPr
         : <input value={values[field.name] || ""} autoComplete="off" onChange={(e) => setValues((v) => ({ ...v, [field.name]: e.target.value }))} />}
     </label>)}
     <div className="form-footer split">
-      {cancel ? <button type="button" className="button ghost" disabled={busy} onClick={cancel}>{t("common.cancel")}</button> : <span />}
+      {cancel ? <button type="button" className="button ghost" disabled={busy} onClick={cancel}>{t("common.cancel")}</button> : provider !== "elevenlabs" ? <GuideLink provider={provider} /> : <span />}
       <button type="button" className="button primary" disabled={busy || !complete} onClick={save}>{busy ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />} {t("phone.settings.save")}</button>
     </div>
   </>;
