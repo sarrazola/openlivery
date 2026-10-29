@@ -1718,6 +1718,7 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .voice-list li span { display: grid; min-width: 0; }
 .voice-list li small { color: var(--muted); }
 .phone-line-number { margin: 0; }
+.carrier-connected { display: grid; gap: 8px; }
 /* The call a phone conversation was: duration, cost, ElevenLabs' summary. */
 .call-header { display: grid; gap: 6px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); font-size: 13px; }
 .call-header-facts { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); }
