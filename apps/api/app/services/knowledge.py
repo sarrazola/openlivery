@@ -373,6 +373,7 @@ def _section(title: str, body: str, level: int = 2) -> str:
 _CHANNEL_NAMES = {
     "whatsapp": "WhatsApp", "whatsapp_cloud": "WhatsApp", "instagram": "Instagram", "messenger": "Facebook Messenger",
     "widget": {"es": "Chat web", "en": "Web chat"},
+    "phone": {"es": "Llamada telefónica", "en": "Phone call"},
 }
 
 

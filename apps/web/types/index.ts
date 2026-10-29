@@ -105,6 +105,22 @@ export type Provider = {
 
 export type ProviderTest = { ok: boolean; message: string; models: string[] };
 
+// Phone calls: the agency's accounts (ElevenLabs and its carriers) and the
+// lines its clients' agents answer.
+export type CallProvider = "elevenlabs" | "twilio" | "telnyx";
+export type CallAccount = { provider: CallProvider; configured: boolean; stored: boolean; secret_hint: string; last_error: string | null };
+export type PhoneVoice = { voice_id: string; name: string; accent: string; gender: string; description: string; preview_url: string | null };
+export type CarrierNumber = { id: string; phone_number: string; name: string };
+export type PhoneLine = {
+  id: string; client_id: string; agent_id: string; label: string | null; phone_number: string;
+  provider: "twilio" | "telnyx"; provider_number_id: string | null; voice_id: string; voice_name: string;
+  greeting: string; voice_model: string; transfer_number: string | null;
+  status: "connected" | "disconnected" | "error"; is_enabled: boolean; last_error: string | null;
+  last_connected_at: string | null; created_at: string; updated_at: string;
+};
+// What a phone conversation adds: the call it was, once ElevenLabs reports it.
+export type PhoneCallInfo = { caller: string | null; started_at: string; ended_at: string | null; duration_seconds: number | null; cost_credits: number | null; summary: string | null };
+
 // A file the agent can send to a customer (product photo, catalog). Not
 // knowledge: only the name and the note on when to send it reach the model.
 export type MediaAsset = {
@@ -204,6 +220,7 @@ export type ConversationAcquisition = {
 };
 export type Conversation = {
   id: string;
+  phone_call?: PhoneCallInfo | null;
   client_id: string;
   agent_id: string;
   title: string;

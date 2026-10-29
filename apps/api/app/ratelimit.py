@@ -76,3 +76,6 @@ whatsapp_cloud_webhook_rate_limit = RateLimiter(300, 60, name="whatsapp-cloud-we
 # A template webhook is authenticated by its secret; the limit
 # leaves room for a batch of reminders and stops a loop from draining a number.
 template_webhook_rate_limit = RateLimiter(300, 60, name="template-webhook")
+# Every turn of a phone call is one request, authenticated by the line's
+# secret; the limit leaves room for several calls at once on a line.
+phone_call_rate_limit = RateLimiter(600, 60, name="phone-call")

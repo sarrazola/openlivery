@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, CheckCircle2, Images, Inbox as InboxIcon, LoaderCircle, Search, UserRound } from "lucide-react";
+import { CallHeader } from "@/components/call-header";
 import { PageHead } from "@/components/ui";
 import { AttachButton, MessageAttachments, PendingAttachment, RecordButton, useFileDrop, type GalleryImage } from "@/components/attachments";
 import { MediaPanel } from "@/components/media-panel";
@@ -298,6 +299,7 @@ export default function InboxPage() {
               </div>
             </header>
             <div className="inbox-messages" ref={messagesRef}>
+              <CallHeader call={selected.phone_call} />
               {selected.messages?.map((message, index) => {
                 const prev = index > 0 ? selected.messages![index - 1] : null;
                 const grouped = Boolean(prev && prev.role === message.role && prev.sender_name === message.sender_name);

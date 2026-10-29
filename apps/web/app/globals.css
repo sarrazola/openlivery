@@ -447,6 +447,7 @@ textarea { line-height: 1.55; }
 .channel-badge.whatsapp_cloud { background: var(--green); }
 .channel-badge.widget { background: var(--blue); }
 .channel-badge.playground { background: var(--violet); }
+.channel-badge.phone { background: var(--amber); }
 .row-arrow { width: 34px; height: 34px; display: grid; place-items: center; color: var(--muted); border-radius: 6px; }
 .row-arrow:hover { color: var(--accent-text); background: var(--accent-soft); }
 .table-link { color: var(--accent-text); font-weight: 500; }
@@ -1706,6 +1707,22 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .compact-channel-grid article > span { color: var(--accent-text); background: var(--accent-soft); }
 .compact-channel-grid article > span.whatsapp { color: var(--green-text); background: var(--green-soft); }
 .compact-channel-grid article > span.webchat { color: var(--accent-text); background: var(--accent-soft); }
+.compact-channel-grid article > span.phone { color: var(--amber-text); background: var(--amber-soft); }
+/* Phone lines: the voice list with a preview button per voice. */
+.voice-picker { display: grid; gap: 10px; }
+.voice-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 0 10px; }
+.voice-search input { border: 0; padding: 9px 0; flex: 1; background: transparent; }
+.voice-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 320px; overflow-y: auto; }
+.voice-list li { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.voice-list li.chosen { border-color: var(--accent); background: var(--accent-soft); }
+.voice-list li span { display: grid; min-width: 0; }
+.voice-list li small { color: var(--muted); }
+.phone-line-number { margin: 0; }
+/* The call a phone conversation was: duration, cost, ElevenLabs' summary. */
+.call-header { display: grid; gap: 6px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); font-size: 13px; }
+.call-header-facts { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); }
+.call-header-facts strong { color: var(--ink); font-weight: 600; }
+.call-header p { margin: 0; }
 .compact-channel-grid article > span.instagram { color: var(--pink-text); background: var(--pink-soft); }
 .compact-channel-grid article > span.facebook { color: var(--blue-text); background: var(--blue-soft); }
 .connection-dot { border-color: var(--line); background: var(--green); }

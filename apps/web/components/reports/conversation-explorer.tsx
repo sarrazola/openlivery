@@ -174,6 +174,7 @@ export function ConversationExplorer({ basePath, scope, options, onOpen }: {
     if (value === "instagram") return t("social.instagram.title");
     if (value === "messenger") return t("social.messenger.title");
     if (value === "widget") return t("inbox.channelWidget");
+    if (value === "phone") return t("phone.title");
     return value;
   };
   const sourceLabel = (value: string | undefined) => value === "ad" ? t("reports.explorer.sourceAd") : value === "post" ? t("reports.explorer.sourcePost") : value || none;

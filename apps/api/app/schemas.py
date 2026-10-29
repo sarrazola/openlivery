@@ -516,8 +516,19 @@ class ConversationSummaryRequest(BaseModel):
     language: Literal["es", "en"] = "es"
 
 
+class PhoneCallOut(ORMModel):
+    caller: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    duration_seconds: int | None = None
+    cost_credits: int | None = None
+    summary: str | None = None
+
+
 class ConversationDetail(ConversationOut):
     messages: list[MessageOut] = []
+    # The call a phone conversation was; None on every other channel.
+    phone_call: PhoneCallOut | None = None
 
 
 class ConversationInboxOut(BaseModel):

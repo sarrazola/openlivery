@@ -6,6 +6,7 @@ import { Alert, PageHead } from "@/components/ui";
 import { FormSkeleton } from "@/components/skeleton";
 import { PreferencesSection } from "@/components/preferences-section";
 import { AppLinks } from "@/components/app-links";
+import { PhoneAccounts } from "@/components/phone-accounts";
 import { useToast } from "@/components/toast";
 import { api, messageFrom } from "@/lib/api";
 import { useT, type TranslateFn } from "@/lib/i18n";
@@ -77,6 +78,8 @@ export default function SettingsPage() {
         <ProviderKeyCard key={preset.id} preset={preset} state={providers.find((x) => x.provider === preset.id)} busy={busy} onSave={saveKey} onRemove={removeKey} onToggle={toggleKey} t={t} />
       ))}
     </section>
+
+    <PhoneAccounts />
 
     <PreferencesSection />
   </div>;

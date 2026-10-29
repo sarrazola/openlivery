@@ -369,6 +369,97 @@ class WhatsAppCloudChannel(Base):
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="whatsapp_cloud_channel")
 
 
+class CallAccount(Base):
+    """An agency's account at a service phone calls go through: ElevenLabs
+    (voice, speech recognition, turn taking) or a phone carrier (Twilio,
+    Telnyx) whose numbers ring the agent. One per provider per agency, bring
+    your own key; the secret is a JSON object encrypted like provider keys."""
+
+    __tablename__ = "call_accounts"
+    __table_args__ = (UniqueConstraint("agency_id", "provider", name="uq_call_accounts_agency_provider"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    agency_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agencies.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(20))
+    # Names the account in URLs a provider calls back, without revealing the row id.
+    public_id: Mapped[str] = mapped_column(String(64), default=new_public_id, unique=True)
+    encrypted_secret: Mapped[str] = mapped_column(Text)
+    secret_hint: Mapped[str] = mapped_column(String(40), default="", server_default="")
+    # ElevenLabs only: the workspace webhook that reports finished calls, and
+    # the secret its requests are signed with.
+    webhook_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    encrypted_webhook_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
+class PhoneChannel(Base):
+    """A phone number of the client that an agent answers. The number lives
+    at the agency's carrier; ElevenLabs takes its calls and asks OpenLivery
+    for every reply, so the agent behind it is the same as in the chat."""
+
+    __tablename__ = "phone_channels"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    agency_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agencies.id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="RESTRICT"), index=True)
+    # Names the line in the URL ElevenLabs calls on every turn.
+    public_id: Mapped[str] = mapped_column(String(64), default=new_public_id, unique=True)
+    label: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    phone_number: Mapped[str] = mapped_column(String(32))
+    provider: Mapped[str] = mapped_column(String(20))
+    provider_number_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    elevenlabs_agent_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    elevenlabs_phone_number_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    voice_id: Mapped[str] = mapped_column(String(80))
+    voice_name: Mapped[str] = mapped_column(String(180), default="", server_default="")
+    greeting: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # The model that thinks on calls, lighter than the chat's for latency;
+    # empty uses the agent's own.
+    voice_model: Mapped[str] = mapped_column(String(180), default="", server_default="")
+    # Where a call goes when the caller needs a person; empty means a person
+    # calls back instead.
+    transfer_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # ElevenLabs presents this as a bearer token on every turn. Only its hash
+    # is kept: the value lives in the ElevenLabs workspace's secret store.
+    llm_secret_hash: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[str] = mapped_column(String(30), default="disconnected")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+    client: Mapped[Client] = relationship()
+    agent: Mapped[Agent] = relationship()
+
+
+class PhoneCall(Base):
+    """One call on a phone line and the conversation it became. Filled while
+    the call runs and completed by the report ElevenLabs sends at hang-up."""
+
+    __tablename__ = "phone_calls"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), unique=True)
+    phone_channel_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("phone_channels.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # ElevenLabs' conversation id: the same on every turn of the call.
+    external_call_id: Mapped[str] = mapped_column(String(80), unique=True)
+    caller: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # What ElevenLabs charged for the call, in its credits.
+    cost_credits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    end_reason: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class TemplateWebhook(Base):
     """An address another system posts to so an approved template goes out on
     one WhatsApp API number. The number and the template are fixed here; the
@@ -713,6 +804,9 @@ class Conversation(Base):
     widget_channel_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("widget_channels.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    phone_channel_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("phone_channels.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     external_chat_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
     contact_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -782,6 +876,8 @@ class Conversation(Base):
     whatsapp_cloud_channel: Mapped[WhatsAppCloudChannel | None] = relationship(back_populates="conversations")
     widget_channel: Mapped["WidgetChannel | None"] = relationship(back_populates="conversations")
     social_channel: Mapped["SocialChannel | None"] = relationship()
+    phone_channel: Mapped["PhoneChannel | None"] = relationship()
+    phone_call: Mapped["PhoneCall | None"] = relationship(uselist=False, viewonly=True)
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")
 
     @property

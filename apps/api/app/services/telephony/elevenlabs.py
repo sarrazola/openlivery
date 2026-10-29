@@ -1,0 +1,152 @@
+"""The ElevenLabs Agents API, with the agency's own key.
+
+OpenLivery keeps one ElevenLabs agent per phone line: ElevenLabs owns the
+voice, the speech recognition and the turn taking, and asks the line's
+"custom LLM" URL for every reply, so the thinking stays with the OpenLivery
+agent. Numbers are imported into the workspace and assigned to that agent.
+"""
+
+import httpx
+
+from . import TelephonyError
+
+API = "https://api.elevenlabs.io/v1"
+TIMEOUT = 20
+# Events the post-call webhook reports: the transcript and calls that never connected.
+WEBHOOK_EVENTS = ["transcript", "call_initiation_failure"]
+
+
+def _detail(response: httpx.Response) -> str:
+    try:
+        body = response.json()
+    except ValueError:
+        return response.text[:300]
+    detail = body.get("detail") if isinstance(body, dict) else body
+    if isinstance(detail, dict):
+        return str(detail.get("message") or detail)[:300]
+    if isinstance(detail, list) and detail:
+        first = detail[0]
+        return str(first.get("msg") if isinstance(first, dict) else first)[:300]
+    return str(detail)[:300]
+
+
+async def _request(api_key: str, method: str, path: str, **kwargs) -> dict:
+    async with httpx.AsyncClient(base_url=API, timeout=TIMEOUT, headers={"xi-api-key": api_key}) as client:
+        try:
+            response = await client.request(method, path, **kwargs)
+        except httpx.HTTPError as exc:
+            raise TelephonyError(f"ElevenLabs could not be reached: {exc.__class__.__name__}") from exc
+    if response.status_code == 401:
+        raise TelephonyError("ElevenLabs rejected the API key.")
+    if response.status_code >= 400:
+        raise TelephonyError(f"ElevenLabs refused the request ({response.status_code}): {_detail(response)}")
+    return response.json() if response.content else {}
+
+
+async def validate_key(api_key: str) -> str:
+    """Prove the key works for Agents, the part of the API calls need."""
+    await _request(api_key, "GET", "/convai/agents", params={"page_size": 1})
+    return "ElevenLabs connected."
+
+
+async def list_voices(api_key: str, *, language: str = "es", search: str = "") -> list[dict]:
+    """Conversational voices from the shared library in the agents' language,
+    the most used first: a phone agent needs a native accent, and the library
+    has local ones (Colombian, Mexican...) that the default voices lack."""
+    params = {"language": language, "use_cases": "conversational", "page_size": 30, "sort": "usage_character_count_1y"}
+    if search:
+        params["search"] = search
+    found = await _request(api_key, "GET", "/shared-voices", params=params)
+    voices = []
+    for voice in found.get("voices", []):
+        voices.append({
+            "voice_id": voice.get("voice_id"),
+            "name": voice.get("name") or "",
+            "accent": voice.get("accent") or "",
+            "gender": voice.get("gender") or "",
+            "description": (voice.get("description") or "")[:240],
+            "preview_url": voice.get("preview_url"),
+        })
+    return [voice for voice in voices if voice["voice_id"]]
+
+
+async def ensure_voice(api_key: str, voice_id: str) -> str:
+    """An agent speaks only with a voice in the workspace: add a library voice
+    the first time. Returns the voice's name."""
+    async with httpx.AsyncClient(base_url=API, timeout=TIMEOUT, headers={"xi-api-key": api_key}) as client:
+        own = await client.get(f"/voices/{voice_id}")
+    if own.status_code == 200:
+        return own.json().get("name") or ""
+    shared = await _request(api_key, "GET", "/shared-voices", params={"search": voice_id, "page_size": 10})
+    voice = next((v for v in shared.get("voices", []) if v.get("voice_id") == voice_id), None)
+    if not voice:
+        raise TelephonyError("That voice is no longer in the ElevenLabs library. Choose another one.")
+    await _request(
+        api_key, "POST", f"/voices/add/{voice['public_owner_id']}/{voice_id}", json={"new_name": voice.get("name") or voice_id}
+    )
+    return voice.get("name") or ""
+
+
+async def ensure_secret(api_key: str, name: str, value: str) -> str:
+    """Store ``value`` in the workspace's secret store under ``name`` and
+    return its id; an existing secret of that name is overwritten."""
+    secrets = (await _request(api_key, "GET", "/convai/secrets")).get("secrets", [])
+    existing = next((s for s in secrets if s.get("name") == name), None)
+    if existing:
+        await _request(
+            api_key, "PATCH", f"/convai/secrets/{existing['secret_id']}", json={"type": "update", "name": name, "value": value}
+        )
+        return existing["secret_id"]
+    return (await _request(api_key, "POST", "/convai/secrets", json={"type": "new", "name": name, "value": value}))["secret_id"]
+
+
+async def delete_secret(api_key: str, name: str) -> None:
+    secrets = (await _request(api_key, "GET", "/convai/secrets")).get("secrets", [])
+    for secret in secrets:
+        if secret.get("name") == name:
+            await _request(api_key, "DELETE", f"/convai/secrets/{secret['secret_id']}")
+
+
+async def create_webhook(api_key: str, name: str, url: str) -> tuple[str, str | None]:
+    """A workspace webhook signed with HMAC. Returns (webhook id, signing secret)."""
+    created = await _request(
+        api_key, "POST", "/workspace/webhooks", json={"settings": {"auth_type": "hmac", "name": name, "webhook_url": url}}
+    )
+    return created["webhook_id"], created.get("webhook_secret")
+
+
+async def delete_webhook(api_key: str, webhook_id: str) -> None:
+    await _request(api_key, "DELETE", f"/workspace/webhooks/{webhook_id}")
+
+
+async def upsert_agent(api_key: str, agent_id: str | None, body: dict) -> str:
+    if agent_id:
+        await _request(api_key, "PATCH", f"/convai/agents/{agent_id}", json=body)
+        return agent_id
+    return (await _request(api_key, "POST", "/convai/agents/create", json=body))["agent_id"]
+
+
+async def delete_agent(api_key: str, agent_id: str) -> None:
+    await _request(api_key, "DELETE", f"/convai/agents/{agent_id}")
+
+
+async def import_twilio_number(api_key: str, *, phone_number: str, label: str, sid: str, token: str, agent_id: str) -> str:
+    """ElevenLabs points the Twilio number's calls at itself."""
+    body = {"provider": "twilio", "phone_number": phone_number, "label": label, "sid": sid, "token": token, "agent_id": agent_id}
+    return (await _request(api_key, "POST", "/convai/phone-numbers", json=body))["phone_number_id"]
+
+
+async def import_sip_number(api_key: str, *, phone_number: str, label: str, inbound: dict, outbound: dict, agent_id: str) -> str:
+    body = {
+        "provider": "sip_trunk", "phone_number": phone_number, "label": label, "agent_id": agent_id,
+        "inbound_trunk_config": inbound, "outbound_trunk_config": outbound,
+    }
+    return (await _request(api_key, "POST", "/convai/phone-numbers", json=body))["phone_number_id"]
+
+
+async def assign_number(api_key: str, phone_number_id: str, agent_id: str) -> None:
+    await _request(api_key, "PATCH", f"/convai/phone-numbers/{phone_number_id}", json={"agent_id": agent_id})
+
+
+async def release_number(api_key: str, phone_number_id: str) -> None:
+    await _request(api_key, "DELETE", f"/convai/phone-numbers/{phone_number_id}")

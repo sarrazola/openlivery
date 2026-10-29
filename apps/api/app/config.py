@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     messenger_login_config_id: str = ""
     # Public HTTPS origin; defaults to frontend_url when left empty.
     social_public_url: str = ""
+    # Public HTTPS origin ElevenLabs calls on every turn of a phone call and
+    # when one ends; defaults to frontend_url when left empty.
+    phone_public_url: str = ""
     social_oauth_state_minutes: int = 10
 
     # Conversations the AI is answering resolve themselves after this many
