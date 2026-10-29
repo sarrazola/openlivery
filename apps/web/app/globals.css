@@ -1718,7 +1718,10 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .phone-line-number { margin: 0; }
 .carrier-connected { display: grid; gap: 8px; }
 .kind-badge { margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 600; color: var(--amber-text); background: var(--amber-soft); }
-.kind-grid { margin-bottom: 18px; }
+.channel-dot.chat { background: var(--accent); }
+.voice-wizard .wizard-head .eyebrow { display: inline-flex; align-items: center; gap: 6px; color: var(--amber-text); }
+.channel-dot.voice { background: var(--amber); }
+.new-agent-menu { width: min(300px, 88vw); }
 .guide-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; font-size: 13px; color: var(--accent-text); }
 /* The call a phone conversation was: duration, cost, ElevenLabs' summary. */
 .call-header { display: grid; gap: 6px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); font-size: 13px; }
