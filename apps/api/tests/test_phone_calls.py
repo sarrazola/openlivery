@@ -122,7 +122,8 @@ def test_a_line_carries_the_agent_into_elevenlabs(authenticated_client: TestClie
     prompt = config["agent"]["prompt"]
     # ElevenLabs thinks with its Realtime model and the agent's own prompt:
     # its job, its offer, who is calling and how to speak on the phone.
-    assert config["realtime_model"] == "eleven_realtime_v1_mini" and "llm" not in prompt and "custom_llm" not in prompt
+    assert config["realtime_model"] == "eleven_realtime_v1_mini" and prompt["llm"] == phone_calls.REALTIME_IDLE_LLM
+    assert "custom_llm" not in prompt
     assert "Agenda citas." in prompt["prompt"] and "Limpieza: $80.000." in prompt["prompt"]
     assert "{{system__caller_id}}" in prompt["prompt"] and "LLAMADA TELEFÓNICA" in prompt["prompt"]
     assert "transfer_to_number" in prompt["prompt"]
