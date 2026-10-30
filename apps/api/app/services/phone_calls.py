@@ -21,6 +21,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -392,15 +393,30 @@ def _open_call(db: Session, line: PhoneChannel, call: CallTurn) -> Conversation:
 def _store_turns(db: Session, conversation: Conversation, call: CallTurn, agent: Agent) -> str:
     """Store what was said since the last stored turn; returns the caller's
     latest words, for knowledge retrieval. Turns are keyed by their position
-    in the call, so a retried request stores nothing twice."""
-    known = set(db.scalars(select(Message.external_message_id).where(Message.conversation_id == conversation.id)))
+    in the call, so a retried request stores nothing twice.
+
+    The history moves under a stored turn in two ways. A caller who keeps
+    talking comes back as the same turn, longer, and the stored text follows
+    it. A reply the caller talked over can drop out of the history, so its
+    position now holds what the caller said: the reply keeps its text under
+    another key and the position goes to the caller."""
+    stored = {
+        message.external_message_id: message
+        for message in db.scalars(select(Message).where(Message.conversation_id == conversation.id, Message.external_message_id.like("turn:%")))
+    }
     latest = ""
     for index, turn in enumerate(call.turns):
         key = f"turn:{index}"
         if turn["role"] == "user":
             latest = turn["content"]
-        if key in known:
+        existing = stored.get(key)
+        if existing is not None and existing.role == turn["role"]:
+            if turn["role"] == "user" and existing.content != turn["content"]:
+                existing.content = turn["content"]
             continue
+        if existing is not None:
+            existing.external_message_id = f"unheard:{existing.id}"
+            db.flush()
         db.add(Message(
             conversation_id=conversation.id,
             role=turn["role"],
@@ -436,6 +452,22 @@ def _passthrough_specs(tools: list[dict], holder: list[dict]) -> list[ToolSpec]:
     return specs
 
 
+def _store_call(db: Session, line: PhoneChannel, call: CallTurn) -> tuple[Conversation, str]:
+    """Open the call's conversation and store its turns. ElevenLabs can ask
+    for the same turn twice at once; the slower request loses the insert, and
+    a second pass finds what the other one stored."""
+    try:
+        conversation = _open_call(db, line, call)
+        query = _store_turns(db, conversation, call, line.agent)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        conversation = _open_call(db, line, call)
+        query = _store_turns(db, conversation, call, line.agent)
+        db.commit()
+    return conversation, query
+
+
 @dataclass
 class Reply:
     text: str
@@ -449,9 +481,7 @@ async def answer_turn(db: Session, line: PhoneChannel, body: dict) -> Reply:
     """One reply of the call, with the agent behind the line."""
     call = parse_turn(body)
     agent = line.agent
-    conversation = _open_call(db, line, call)
-    query = _store_turns(db, conversation, call, agent)
-    db.commit()
+    conversation, query = _store_call(db, line, call)
 
     credentials = resolve_agent_credentials(db, agent)
     model = agent.model.strip()
@@ -501,16 +531,27 @@ async def answer_turn(db: Session, line: PhoneChannel, body: dict) -> Reply:
 
     outbound = None
     if completion.text:
-        outbound = Message(
-            conversation_id=conversation.id, role="assistant", content=completion.text, sources=knowledge.sources,
-            tool_calls=completion.tool_calls, sender_type="ai", sender_name=agent.name,
-            external_message_id=f"turn:{len(call.turns)}",
-        )
-        db.add(outbound)
+        # The same history asked again (a retry, or the caller still talking)
+        # replaces the reply it got before, which the caller never heard.
+        key = f"turn:{len(call.turns)}"
+        outbound = db.scalar(select(Message).where(Message.conversation_id == conversation.id, Message.external_message_id == key))
+        if outbound is None:
+            outbound = Message(
+                conversation_id=conversation.id, role="assistant", content=completion.text, sources=knowledge.sources,
+                tool_calls=completion.tool_calls, sender_type="ai", sender_name=agent.name, external_message_id=key,
+            )
+            db.add(outbound)
+        else:
+            outbound.content, outbound.sources, outbound.tool_calls = completion.text, knowledge.sources, completion.tool_calls
     record_usage(db, agent.agency_id, agent.id, agent.provider, model, completion, conversation=conversation, message=outbound)
     apply_captures(db, conversation, capture_holder, definitions)
     line.last_error = None
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # A request for the same turn running alongside stored its reply
+        # first; this one is still said, which is what the caller waits for.
+        db.rollback()
 
     transfer = next((item for item in passthrough if item["name"] == "transfer_to_number"), None)
     if transfer and not escalation_holder:

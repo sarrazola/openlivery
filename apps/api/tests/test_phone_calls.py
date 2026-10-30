@@ -205,6 +205,38 @@ def test_a_call_is_answered_by_the_agent_and_streamed_back(authenticated_client:
         assert len(records) == 2 and {r.model for r in records} == {"google/gemini-3.5-flash-lite"}
 
 
+def test_a_caller_who_talks_over_the_agent_keeps_getting_answers(authenticated_client: TestClient, provisioning, monkeypatch):
+    client = authenticated_client
+    _, _, line = _line(client)
+    replies = iter(["¿Qué servicio buscas?", "Un corte, perfecto. ¿Qué día?", "Un corte, perfecto. ¿Qué día?", "Listo, el martes."])
+    monkeypatch.setattr(phone_calls, "run_completion", AsyncMock(side_effect=lambda *args, **kwargs: ai_service.Completion(text=next(replies))))
+
+    def say(turns: list[dict]):
+        return _turn(client, line, provisioning["secret"], _body(turns))
+
+    greeting = {"role": "assistant", "content": "Barbería, habla Carlos."}
+    assert say([greeting, {"role": "user", "content": "Eh."}]).status_code == 200
+    # The caller kept talking: the same turn comes back longer, and ElevenLabs
+    # asks for it twice. Each ask gets an answer instead of a clash.
+    longer = [greeting, {"role": "user", "content": "Eh, quiero un corte."}]
+    assert say(longer).status_code == 200
+    assert say(longer).status_code == 200
+    # The reply they talked over drops out of the history; its place is theirs.
+    assert say([*longer, {"role": "user", "content": "Para el martes."}]).status_code == 200
+
+    with SessionLocal() as db:
+        conversation = db.scalar(select(Conversation).where(Conversation.channel == "phone"))
+        stored = db.scalars(select(Message).where(Message.conversation_id == conversation.id).order_by(Message.created_at))
+        said = [(m.role, m.content, m.external_message_id.split(":")[0] if m.external_message_id.startswith("unheard:") else m.external_message_id) for m in stored]
+    assert said == [
+        ("assistant", "Barbería, habla Carlos.", "turn:0"),
+        ("user", "Eh, quiero un corte.", "turn:1"),
+        ("assistant", "Un corte, perfecto. ¿Qué día?", "unheard"),
+        ("user", "Para el martes.", "turn:2"),
+        ("assistant", "Listo, el martes.", "turn:3"),
+    ]
+
+
 def test_every_call_is_its_own_conversation(authenticated_client: TestClient, provisioning, monkeypatch):
     client = authenticated_client
     _, _, line = _line(client)
