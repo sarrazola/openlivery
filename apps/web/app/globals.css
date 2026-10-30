@@ -560,7 +560,7 @@ textarea { line-height: 1.55; }
 /* The console link sits on the first field's label line, so it costs no height
    and is gone once the key is stored. */
 .voice-chosen { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
-.voice-chosen span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.voice-chosen > span:not(.pill) { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .voice-chosen small { color: var(--subtle); font-size: 12px; }
 .voice-id-label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .voice-paste { display: flex; gap: 8px; margin-top: 10px; }

@@ -98,7 +98,8 @@ export default function NewAgentPage() {
   const steps = STEPS[kind];
   const current = steps[step];
   const identityDone = name.trim().length > 0 && Boolean(clientId);
-  const voiceDone = Boolean(voice.id) && greeting.trim().length > 0;
+  // The voice may stay the default one; what it says on picking up may not.
+  const voiceDone = greeting.trim().length > 0;
   const canNext = current === "identity" ? identityDone : current === "voice" ? voiceDone : true;
   // A step is open once visited, and past the identity only with a name and a client.
   const identityIndex = steps.indexOf("identity");
@@ -178,7 +179,7 @@ export default function NewAgentPage() {
 
       {current === "voice" && <div className="wizard-fields">
         <div className="wizard-copy"><h2>{t("phone.agent.stepVoiceTitle")}</h2><p>{t("phone.agent.stepVoiceSubtitle")}</p></div>
-        <VoicePicker value={voice.id} name={voice.name} onChange={setVoice} />
+        <VoicePicker language={lang} value={voice.id} name={voice.name} onChange={setVoice} />
         <label>{t("phone.channel.greetingLabel")}<textarea rows={2} maxLength={600} value={greeting} placeholder={t("phone.channel.greetingPlaceholder")} onChange={(e) => setGreeting(e.target.value)} /></label>
         <span className="field-help">{t("phone.channel.greetingHint")}</span>
       </div>}

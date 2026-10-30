@@ -11,7 +11,7 @@ import type { Agent } from "@/types";
 /** A voice agent's Voice tab: how it sounds and what it says when it picks
  * up. Saving pushes the change to the phone lines it answers. */
 export function AgentVoiceTab({ agent, onSaved }: { agent: Agent; onSaved: (agent: Agent) => void }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const toast = useToast();
   const [voice, setVoice] = useState({ id: agent.voice_id, name: agent.voice_name });
   const [greeting, setGreeting] = useState(agent.greeting);
@@ -30,11 +30,11 @@ export function AgentVoiceTab({ agent, onSaved }: { agent: Agent; onSaved: (agen
   return <div className="settings-form">
     <section className="settings-section"><div className="settings-copy"><h3>{t("phone.agent.voiceTitle")}</h3><p>{t("phone.agent.voiceCopy")}</p></div>
       <div className="settings-fields">
-        <VoicePicker value={voice.id} name={voice.name} onChange={setVoice} />
+        <VoicePicker language={agent.prompt_language || lang} value={voice.id} name={voice.name} onChange={setVoice} />
         <label>{t("phone.channel.greetingLabel")}<textarea rows={2} maxLength={600} value={greeting} placeholder={t("phone.channel.greetingPlaceholder")} onChange={(e) => setGreeting(e.target.value)} /></label>
         <span className="field-help">{t("phone.channel.greetingHint")}</span>
       </div>
     </section>
-    <div className="sticky-save"><div className="sticky-left" /><button type="button" className="button primary" disabled={busy || !changed || !voice.id} onClick={save}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} {t("phone.agent.save")}</button></div>
+    <div className="sticky-save"><div className="sticky-left" /><button type="button" className="button primary" disabled={busy || !changed} onClick={save}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} {t("phone.agent.save")}</button></div>
   </div>;
 }

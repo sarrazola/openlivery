@@ -81,6 +81,18 @@ CALLBACK_RULE = {
 }
 
 
+# The voice of an agent that has not picked one: a conversational voice from
+# the ElevenLabs library in the agent's language, among the most used there.
+DEFAULT_VOICES = {
+    "es": "YExhVa4bZONzeingloMX",   # Juan Carlos, Latin American Spanish
+    "en": "UgBBYS2sOqTuMpoF3BR0",   # Mark, American English
+}
+
+
+def voice_of(agent: Agent) -> str:
+    return agent.voice_id.strip() or DEFAULT_VOICES[_language(agent)]
+
+
 # When the caller is put through, unless the agent says otherwise.
 TRANSFER_WHEN = {
     "es": "Cuando el cliente pide hablar con una persona o necesita algo que no puedes resolver.",
@@ -319,7 +331,7 @@ def _agent_body(line: PhoneChannel, webhook_id: str | None) -> dict:
             # null hands the agent back to the ones set here.
             "realtime_model": model if model in REALTIME_MODELS else None,
             "asr": {"user_input_audio_format": PHONE_AUDIO},
-            "tts": {"voice_id": agent.voice_id, "agent_output_audio_format": PHONE_AUDIO},
+            "tts": {"voice_id": voice_of(agent), "agent_output_audio_format": PHONE_AUDIO},
             "turn": _turn_settings(lang),
             "agent": {"first_message": agent.greeting, "language": lang, "prompt": prompt},
         },
@@ -341,11 +353,11 @@ async def connect_line(db: Session, line: PhoneChannel) -> None:
     agent = line.agent
     if agent.kind != "voice":
         raise PhoneSetupError("A phone line is answered by a voice agent. Choose one, or create one.")
-    if not agent.voice_id:
-        raise PhoneSetupError("The agent has no voice yet. Choose one in the agent's Voice tab.")
     if agent.model.strip() not in VOICE_MODELS:
         raise PhoneSetupError("Choose the agent's voice model: " + ", ".join(VOICE_MODELS.values()) + ".")
-    agent.voice_name = (await elevenlabs.ensure_voice(api_key, agent.voice_id)) or agent.voice_name
+    name = await elevenlabs.ensure_voice(api_key, voice_of(agent))
+    if agent.voice_id:
+        agent.voice_name = name or agent.voice_name
     if not account.webhook_id:
         webhook_id, signing = await elevenlabs.create_webhook(api_key, "OpenLivery calls", webhook_url(account))
         account.webhook_id = webhook_id

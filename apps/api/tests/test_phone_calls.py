@@ -309,3 +309,12 @@ def test_a_voice_agent_says_when_and_where_a_call_goes_to_a_person(authenticated
     assert saved.json()["transfer_number"] == "+573005550000"
     transfer = provisioning["agent_body"]["conversation_config"]["agent"]["prompt"]["built_in_tools"]["transfer_to_number"]
     assert transfer["params"]["transfers"][0]["condition"] == "Si pide un descuento."
+
+
+def test_an_agent_without_a_voice_speaks_with_the_default_one(authenticated_client: TestClient, provisioning):
+    client = authenticated_client
+    _, agent, line = _line(client)
+    assert client.patch(f"/api/agents/{agent['id']}", json={"voice_id": "", "voice_name": ""}).status_code == 200
+    assert provisioning["agent_body"]["conversation_config"]["tts"]["voice_id"] == phone_calls.DEFAULT_VOICES["es"]
+    with SessionLocal() as db:
+        assert db.get(PhoneChannel, line["id"]).status == "connected"

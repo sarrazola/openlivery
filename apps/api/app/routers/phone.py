@@ -103,6 +103,20 @@ async def find_voice(voice_id: str, db: Session = Depends(get_db), user: User = 
     return voice
 
 
+@router.get("/default-voice", response_model=PhoneVoiceOut)
+async def default_voice(language: str = "es", db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """The voice an agent in ``language`` speaks with until it picks one."""
+    voice_id = phone_calls.DEFAULT_VOICES.get(language[:2], phone_calls.DEFAULT_VOICES["es"])
+    try:
+        _, api_key = phone_calls.elevenlabs_key(db, user.agency_id)
+        voice = await elevenlabs.find_voice(api_key, voice_id)
+    except (phone_calls.PhoneSetupError, TelephonyError) as exc:
+        raise _setup_error(exc) from exc
+    if voice is None:
+        raise HTTPException(status_code=404, detail="The default voice is not in the ElevenLabs library any more.")
+    return voice
+
+
 @router.get("/models", response_model=list[PhoneModelOut])
 def list_models(user: User = Depends(get_current_user)):
     """What a voice agent can think with, the default first."""
