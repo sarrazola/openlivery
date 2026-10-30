@@ -39,7 +39,7 @@ export function VoicePicker({ language, value, name, onChange }: { language: str
   return <div className="voice-picker">
     {value && <p className="social-meta">{t("phone.channel.chosen")}: <strong>{name || value}</strong></p>}
     {!unavailable && <input type="search" className="voice-search" value={search} aria-label={t("phone.channel.searchVoices")} placeholder={t("phone.channel.searchVoices")} onChange={(event) => setSearch(event.target.value)} />}
-    {unavailable ? <p className="social-meta">{t("phone.agent.needsElevenLabs")} <Link href="/settings/phone">{t("phone.channel.goToSettings")}</Link></p>
+    {unavailable ? <p className="social-meta">{t("phone.agent.needsElevenLabs")} <Link href="/settings/providers">{t("phone.channel.goToSettings")}</Link></p>
       : voices === null ? <p className="field-help"><LoaderCircle className="spin" size={14} /></p>
       : !voices.length ? <p className="social-meta">{t("phone.channel.noVoices")}</p>
       : <ul className="voice-list">{voices.map((voice) => <li key={voice.voice_id} className={voice.voice_id === value ? "chosen" : ""}>

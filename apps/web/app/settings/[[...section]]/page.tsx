@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Eye, EyeOff, ImagePlus, LoaderCircle, PauseCircle, Save, ShieldCheck, Trash2 } from "lucide-react";
 import { Alert, PageHead } from "@/components/ui";
 import { FormSkeleton } from "@/components/skeleton";
-import { PreferencesSection } from "@/components/preferences-section";
 import { AppLinks } from "@/components/app-links";
 import { PhoneAccounts } from "@/components/phone-accounts";
 import { useToast } from "@/components/toast";
@@ -81,7 +80,6 @@ export default function SettingsPage() {
 
     <PhoneAccounts />
 
-    <PreferencesSection />
   </div>;
 }
 

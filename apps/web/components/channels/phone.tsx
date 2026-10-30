@@ -136,7 +136,7 @@ export function PhoneSetup({ client, onBack }: ChannelSetupProps) {
       <p>{t("phone.channel.headerCopy")}</p></div>
       {line && <div className={`wa-state ${line.status}`}>{line.status === "connected" ? <CheckCircle2 size={17} /> : <CircleAlert size={17} />} {line.is_enabled ? t(statusKey[line.status]) : t("phone.channel.off")}</div>}
     </header>
-    {!ready && <Alert>{t("phone.channel.missingAccounts")} <Link href="/settings">{t("phone.channel.goToSettings")}</Link></Alert>}
+    {!ready && <Alert>{t("phone.channel.missingAccounts")} <Link href="/settings/providers">{t("phone.channel.goToSettings")}</Link></Alert>}
     {error && <Alert>{error}</Alert>}
     {listView && <AccountList rows={rows} summary={lines.length === 1 ? t("phone.channel.lineOne") : t("phone.channel.linesSummary", { count: lines.length, connected: connectedCount })} addLabel={t("phone.channel.addLine")} openLabel={t("clients.detail.configure")} onOpen={(lineId) => show(lines.find((item) => item.id === lineId) ?? null)} onAdd={startAdding} />}
     {!listView && ready && <div className="wa-layout"><main>

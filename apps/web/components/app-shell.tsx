@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSelectedLayoutSegments } from "next/navigation";
 import { ReactNode, useEffect, useLayoutEffect, useState } from "react";
-import { BarChart3, Bot, Building2, CreditCard, Inbox, LayoutDashboard, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Settings, Sparkles, Wallet, X } from "lucide-react";
+import { BarChart3, Bot, Building2, CreditCard, Inbox, LayoutDashboard, Menu, PanelLeftClose, PanelLeftOpen, Settings, Sparkles, Wallet, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useLanguage, type I18nKey } from "@/lib/i18n";
 import { CommunityLinks } from "@/components/community-links";
+import { UserMenu } from "@/components/user-menu";
 import { appShellExtensions } from "@/lib/extensions/app-shell";
 import type { User } from "@/types";
 
@@ -136,11 +137,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="sidebar-bottom">
           <CommunityLinks onNavigate={() => setMobileOpen(false)} />
-          <div className="sidebar-foot">
-            <div className="user-avatar">{user.name.slice(0, 1).toUpperCase()}</div>
-            <div className="user-meta"><strong>{user.name}</strong><span>{user.email}</span></div>
-            <button className="icon-button inverse" onClick={logout} title={t("shell.logout")}><LogOut size={17} /></button>
-          </div>
+          <UserMenu user={user} onLogout={logout} />
         </div>
       </aside>
       <main className="main-content">{children}</main>

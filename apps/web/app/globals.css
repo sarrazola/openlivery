@@ -2257,6 +2257,36 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .pref-list .pref-row > div button { height: 30px; padding: 0 12px; gap: 6px; font-size: var(--text-sm); }
 @media (max-width: 720px) { .pref-list .pref-row { flex-direction: column; align-items: stretch; } .pref-list .pref-row > div { justify-content: stretch; } .pref-list .pref-row > div button { flex: 1; } }
 
+/* The person's menu at the foot of the agency sidebar: who is signed in opens
+   language, appearance and signing out, above it (beside it when folded). */
+.sidebar-foot { position: relative; }
+.user-menu-trigger { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; margin: -6px; padding: 6px; color: inherit; text-align: left; border: 0; border-radius: 9px; background: transparent; cursor: pointer; transition: background .15s ease; }
+.user-menu-trigger:hover, .user-menu-trigger[aria-expanded="true"] { background: var(--surface-3); }
+.user-menu-trigger > svg { flex: 0 0 auto; color: var(--subtle); }
+.user-menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 10px); z-index: 30; display: flex; flex-direction: column; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 10px 32px rgba(var(--shadow-rgb), calc(.16 * var(--shadow-k))); }
+.user-menu-head { display: none; min-width: 0; flex-direction: column; gap: 2px; padding-bottom: 10px; border-bottom: 1px solid var(--line-soft); }
+.user-menu-head strong { color: var(--ink); font-size: 13px; }
+.user-menu-head span { color: var(--subtle); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-menu-group { display: flex; flex-direction: column; gap: 6px; }
+.user-menu-group > span { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.user-menu-group > span svg { color: var(--subtle); }
+.user-menu-options { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--surface-3); }
+.user-menu-options button { flex: 1 1 0; min-width: 0; height: 28px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; color: var(--muted); border: 0; border-radius: 6px; background: transparent; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: .15s ease; }
+.user-menu-options button svg { flex: 0 0 auto; }
+.user-menu-options button:hover { color: var(--ink); }
+.user-menu-options button.active { color: var(--accent-text); background: var(--surface); box-shadow: 0 1px 2px rgba(var(--shadow-rgb), calc(.1 * var(--shadow-k))); }
+:root[data-theme="dark"] .user-menu-options button.active { background: var(--surface-4); }
+.user-menu-item { display: flex; align-items: center; gap: 8px; margin: 0 -6px -6px; padding: 10px 8px 8px; color: var(--ink-2); border: 0; border-top: 1px solid var(--line-soft); border-radius: 0 0 8px 8px; background: transparent; font-size: 13px; font-weight: 600; text-align: left; cursor: pointer; }
+.user-menu-item:hover { color: var(--red-text); }
+.user-menu-item svg { color: var(--subtle); }
+.user-menu-item:hover svg { color: var(--red-text); }
+@media (min-width: 851px) {
+  .sidebar-collapsed .user-menu-trigger { flex: 0 0 auto; margin: 0; padding: 4px; }
+  .sidebar-collapsed .user-menu-trigger > svg { display: none; }
+  .sidebar-collapsed .user-menu { left: calc(100% + 14px); right: auto; bottom: 0; width: 240px; }
+  .sidebar-collapsed .user-menu-head { display: flex; }
+}
+
 /* Contacts import and export in the portal: toolbar actions and the import dialog. */
 .portal-contacts-toolbar .toolbar-actions { display: flex; align-items: center; gap: 6px; }
 .portal-contacts-toolbar .icon-button { width: 32px; height: 32px; }
