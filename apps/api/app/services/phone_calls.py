@@ -28,7 +28,9 @@ from . import contacts
 from .conversation_state import set_status
 from .knowledge import build_system_prompt
 from .routing import route_new_conversation_by_tags
+from .ai import Completion
 from .telephony import TelephonyError, carriers, elevenlabs
+from .usage import record_usage
 
 PROVIDERS = ("elevenlabs", *carriers.CARRIERS)
 CHANNEL = "phone"
@@ -524,6 +526,22 @@ def signature_valid(account: CallAccount, raw_body: bytes, header: str | None, *
     return hmac.compare_digest(expected, signature)
 
 
+def _cost(metadata: dict) -> tuple[float | None, dict]:
+    """What a call cost in USD (the voice's minutes plus the model) and the
+    model's tokens, as ElevenLabs reports them on the finished call."""
+    charging = metadata.get("charging") or {}
+    prices = [charging.get(key) for key in ("platform_price", "llm_price")]
+    cost = sum(float(price) for price in prices if isinstance(price, (int, float))) if any(isinstance(p, (int, float)) for p in prices) else None
+    usage = ((charging.get("llm_usage") or {}).get("irreversible_generation") or {}).get("model_usage") or {}
+    tokens = {"model": next(iter(usage), ""), "input": 0, "cached": 0, "output": 0}
+    for entry in usage.values():
+        count = lambda part: int((entry.get(part) or {}).get("tokens") or 0)  # noqa: E731
+        tokens["input"] += count("input") + count("input_cache_read") + count("input_cache_write")
+        tokens["cached"] += count("input_cache_read")
+        tokens["output"] += count("output_total")
+    return cost, tokens
+
+
 def finish_call(db: Session, account: CallAccount, payload: dict) -> None:
     """Record the report ElevenLabs sends when a call ends: its transcript,
     duration and cost, and close the conversation unless a person has it."""
@@ -549,8 +567,17 @@ def finish_call(db: Session, account: CallAccount, payload: dict) -> None:
     record.ended_at = now_utc()
     duration = metadata.get("call_duration_secs")
     record.duration_seconds = int(duration) if isinstance(duration, (int, float)) else None
-    cost = metadata.get("cost")
-    record.cost_credits = int(cost) if isinstance(cost, (int, float)) else None
+    cost, tokens = _cost(metadata)
+    record.cost_usd = cost
+    # The call is one usage record, like a reply: Reports prices and lists it.
+    record_usage(
+        db, line.agency_id, line.agent_id, "elevenlabs", tokens["model"] or line.agent.model,
+        Completion(
+            "", tokens["input"], tokens["output"], cost_usd=cost, cached_tokens=tokens["cached"], served_by="ElevenLabs",
+            duration_ms=record.duration_seconds * 1000 if record.duration_seconds is not None else None,
+        ),
+        conversation=conversation, purpose="call",
+    )
     record.end_reason = str(metadata.get("termination_reason") or "")[:180] or None
     record.summary = ((data.get("analysis") or {}).get("transcript_summary") or None)
     if conversation.mode != "human" and conversation.status != "resolved":

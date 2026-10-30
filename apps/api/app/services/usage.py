@@ -49,7 +49,7 @@ def record_usage(
     the session flushes. The caller owns the commit. Returns the pending
     record (with its id), or None when there was nothing to record.
     """
-    if completion.input_tokens <= 0 and completion.output_tokens <= 0:
+    if completion.input_tokens <= 0 and completion.output_tokens <= 0 and not completion.cost_usd:
         return None
     if message is not None and message.id is None:
         message.id = new_uuid()

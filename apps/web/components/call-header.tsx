@@ -22,7 +22,7 @@ export function CallHeader({ call }: { call?: PhoneCallInfo | null }) {
       {call.ended_at
         ? <>
           {call.duration_seconds != null && <span>{t("phone.call.duration")}: <strong>{minutes(call.duration_seconds)}</strong></span>}
-          {call.cost_credits != null && <span>{t("phone.call.cost")}: <strong>{t("phone.call.credits", { n: call.cost_credits.toLocaleString() })}</strong></span>}
+          {call.cost_usd != null && <span>{t("phone.call.cost")}: <strong>${Number(call.cost_usd).toFixed(3)}</strong></span>}
         </>
         : <span><strong>{t("phone.call.inProgress")}</strong></span>}
     </div>

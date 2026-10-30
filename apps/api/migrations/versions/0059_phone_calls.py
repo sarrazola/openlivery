@@ -78,7 +78,7 @@ def upgrade():
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("ended_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("duration_seconds", sa.Integer(), nullable=True),
-        sa.Column("cost_credits", sa.Integer(), nullable=True),
+        sa.Column("cost_usd", sa.Numeric(12, 6), nullable=True),
         sa.Column("end_reason", sa.String(180), nullable=True),
         sa.Column("summary", sa.Text(), nullable=True),
         sa.UniqueConstraint("conversation_id", name="uq_phone_calls_conversation_id"),

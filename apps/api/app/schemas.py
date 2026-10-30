@@ -534,7 +534,7 @@ class PhoneCallOut(ORMModel):
     started_at: datetime
     ended_at: datetime | None = None
     duration_seconds: int | None = None
-    cost_credits: int | None = None
+    cost_usd: float | None = None
     summary: str | None = None
 
 

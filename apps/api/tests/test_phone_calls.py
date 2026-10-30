@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Conversation, Message, PhoneCall, PhoneChannel
+from app.models import Conversation, Message, PhoneCall, PhoneChannel, UsageRecord
 from app.services import phone_calls
 from app.services.telephony import TelephonyError, elevenlabs
 
@@ -174,7 +174,13 @@ def test_the_end_of_call_report_keeps_the_call(authenticated_client: TestClient,
         {"role": "user", "message": "Quiero una limpieza", "time_in_call_secs": 4},
         {"role": "user", "message": "...", "time_in_call_secs": 5},
         {"role": "agent", "message": "Claro, ¿para qué día?", "time_in_call_secs": 6},
-    ], call_duration_secs=66, cost=880, termination_reason="Client disconnected")
+    ], call_duration_secs=66, cost=880, termination_reason="Client disconnected", charging={
+        "platform_price": 0.105, "llm_price": 0.004,
+        "llm_usage": {"irreversible_generation": {"model_usage": {"eleven_realtime_v1_mini": {
+            "input": {"tokens": 1200}, "input_cache_read": {"tokens": 800}, "input_cache_write": {"tokens": 100},
+            "output_total": {"tokens": 90},
+        }}}},
+    })
 
     raw, headers = _signed(report, secret="wrong")
     assert client.post(url, content=raw, headers=headers).status_code == 401
@@ -185,7 +191,13 @@ def test_the_end_of_call_report_keeps_the_call(authenticated_client: TestClient,
     assert client.post(url, content=raw, headers=headers).status_code == 200  # a retry changes nothing
     with SessionLocal() as db:
         call = db.scalar(select(PhoneCall).where(PhoneCall.external_call_id == "conv_9"))
-        assert (call.duration_seconds, call.cost_credits, call.summary) == (66, 880, "The caller booked a cleaning.")
+        assert (call.duration_seconds, float(call.cost_usd), call.summary) == (66, 0.109, "The caller booked a cleaning.")
+        # The call is one usage record, priced in USD, that Reports lists with the conversation.
+        usage = db.scalar(select(UsageRecord).where(UsageRecord.conversation_id == call.conversation_id))
+        assert (usage.provider, usage.model, usage.purpose) == ("elevenlabs", "eleven_realtime_v1_mini", "call")
+        assert (usage.input_tokens, usage.cached_tokens, usage.output_tokens, usage.duration_ms) == (2100, 800, 90, 66_000)
+        assert round(float(usage.cost_usd), 3) == 0.109
+        assert db.scalar(select(UsageRecord.id).where(UsageRecord.purpose == "call").offset(1)) is None  # the retry added none
         conversation = db.get(Conversation, call.conversation_id)
         assert conversation.status == "resolved" and conversation.contact.phone == "573001112233"
         # The transcript, without the turns nothing was heard in, each at the moment it was said.

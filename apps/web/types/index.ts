@@ -125,7 +125,7 @@ export type PhoneLine = {
   last_connected_at: string | null; created_at: string; updated_at: string;
 };
 // What a phone conversation adds: the call it was, once ElevenLabs reports it.
-export type PhoneCallInfo = { caller: string | null; started_at: string; ended_at: string | null; duration_seconds: number | null; cost_credits: number | null; summary: string | null };
+export type PhoneCallInfo = { caller: string | null; started_at: string; ended_at: string | null; duration_seconds: number | null; cost_usd: number | null; summary: string | null };
 
 // A file the agent can send to a customer (product photo, catalog). Not
 // knowledge: only the name and the note on when to send it reach the model.
@@ -581,7 +581,7 @@ export type ReportReply = {
   tools: number;
   tool_errors: number;
   // "reply", or "summary" for a conversation summary a person asked for.
-  purpose?: "reply" | "summary";
+  purpose?: "reply" | "summary" | "call";
 };
 
 /** A detail a contact can hold: the built-in name, email and phone, or a

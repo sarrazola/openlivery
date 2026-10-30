@@ -455,7 +455,8 @@ class PhoneCall(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # What ElevenLabs charged for the call, in its credits.
-    cost_credits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # What the call cost in USD as ElevenLabs reports it: the voice's minutes plus the model.
+    cost_usd: Mapped[float | None] = mapped_column(Numeric(12, 6), nullable=True)
     end_reason: Mapped[str | None] = mapped_column(String(180), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
