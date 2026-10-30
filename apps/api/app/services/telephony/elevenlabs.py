@@ -3,7 +3,8 @@
 OpenLivery keeps one ElevenLabs agent per phone line, carrying the
 OpenLivery agent's prompt: ElevenLabs runs the whole call (speech
 recognition, turn taking, the model, the voice). Numbers are imported into
-the workspace and assigned to that agent.
+the workspace and assigned to that agent, and the agent's tools are webhook
+tools that call OpenLivery back.
 """
 
 import re
@@ -32,6 +33,11 @@ def _detail(response: httpx.Response) -> str:
     return str(detail)[:300]
 
 
+class NotFound(TelephonyError):
+    """What a request named is not in the workspace (deleted there, or the
+    workspace changed)."""
+
+
 async def _request(api_key: str, method: str, path: str, **kwargs) -> dict:
     async with httpx.AsyncClient(base_url=API, timeout=TIMEOUT, headers={"xi-api-key": api_key}) as client:
         try:
@@ -40,6 +46,8 @@ async def _request(api_key: str, method: str, path: str, **kwargs) -> dict:
             raise TelephonyError(f"ElevenLabs could not be reached: {exc.__class__.__name__}") from exc
     if response.status_code == 401:
         raise TelephonyError(_unauthorized(response))
+    if response.status_code == 404:
+        raise NotFound(f"ElevenLabs has no such resource: {_detail(response)}")
     if response.status_code >= 400:
         raise TelephonyError(f"ElevenLabs refused the request ({response.status_code}): {_detail(response)}")
     return response.json() if response.content else {}
@@ -124,14 +132,49 @@ async def delete_webhook(api_key: str, webhook_id: str) -> None:
 
 
 async def upsert_agent(api_key: str, agent_id: str | None, body: dict) -> str:
+    """Update the agent, or create it when there is none or it is gone. A
+    404 may name something the body refers to (a tool), so the agent itself
+    is looked up before another one is created."""
     if agent_id:
-        await _request(api_key, "PATCH", f"/convai/agents/{agent_id}", json=body)
-        return agent_id
+        try:
+            await _request(api_key, "PATCH", f"/convai/agents/{agent_id}", json=body)
+            return agent_id
+        except NotFound:
+            try:
+                await _request(api_key, "GET", f"/convai/agents/{agent_id}")
+            except NotFound:
+                pass
+            else:
+                raise
     return (await _request(api_key, "POST", "/convai/agents/create", json=body))["agent_id"]
 
 
 async def delete_agent(api_key: str, agent_id: str) -> None:
     await _request(api_key, "DELETE", f"/convai/agents/{agent_id}")
+
+
+async def create_secret(api_key: str, name: str, value: str) -> str:
+    """A workspace secret: ElevenLabs sends it in a header and never shows it again."""
+    return (await _request(api_key, "POST", "/convai/secrets", json={"type": "new", "name": name, "value": value}))["secret_id"]
+
+
+async def delete_secret(api_key: str, secret_id: str) -> None:
+    await _request(api_key, "DELETE", f"/convai/secrets/{secret_id}")
+
+
+async def upsert_tool(api_key: str, tool_id: str | None, config: dict) -> str:
+    """Update a workspace tool, or create it when there is none or it is gone."""
+    if tool_id:
+        try:
+            await _request(api_key, "PATCH", f"/convai/tools/{tool_id}", json={"tool_config": config})
+            return tool_id
+        except NotFound:
+            pass
+    return (await _request(api_key, "POST", "/convai/tools", json={"tool_config": config}))["id"]
+
+
+async def delete_tool(api_key: str, tool_id: str) -> None:
+    await _request(api_key, "DELETE", f"/convai/tools/{tool_id}")
 
 
 async def import_twilio_number(api_key: str, *, phone_number: str, label: str, sid: str, token: str, agent_id: str) -> str:

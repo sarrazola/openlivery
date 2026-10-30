@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..deps import get_current_user
 from ..models import Agent, CallAccount, Client, PhoneChannel, User
+from ..ratelimit import phone_call_rate_limit
 from ..schemas_phone import (
     CallAccountIn,
     CallAccountOut,
@@ -256,3 +257,50 @@ async def call_report(public_id: str, request: Request, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="Invalid JSON") from exc
     phone_calls.finish_call(db, account, payload)
     return {"ok": True}
+
+
+def _calling_line(db: Session, public_id: str, request: Request) -> PhoneChannel:
+    """The line an ElevenLabs callback names, once its secret checks out."""
+    line = db.scalar(select(PhoneChannel).where(PhoneChannel.public_id == public_id))
+    if not line or not phone_calls.callback_authorized(db, line, request.headers.get(phone_calls.TOKEN_HEADER)):
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return line
+
+
+async def _json_body(request: Request) -> dict:
+    try:
+        body = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON") from exc
+    return body if isinstance(body, dict) else {}
+
+
+@public_router.post("/lines/{public_id}/start", dependencies=[Depends(phone_call_rate_limit)])
+async def call_starts(public_id: str, request: Request, db: Session = Depends(get_db)):
+    """ElevenLabs asks who is calling when a call comes in. A failure here
+    must not keep the phone from being answered: the agent then starts with
+    what it always knows."""
+    line = _calling_line(db, public_id, request)
+    payload = await _json_body(request)
+    try:
+        return phone_calls.start_call(db, line, payload)
+    except Exception:
+        log.exception("Could not say who is calling on line %s", line.id)
+        db.rollback()
+        return {"type": "conversation_initiation_client_data",
+                "dynamic_variables": {phone_calls.CALLER_VAR: "", phone_calls.PENDING_VAR: ""}}
+
+
+@public_router.post("/lines/{public_id}/tools/{name}", dependencies=[Depends(phone_call_rate_limit)])
+async def call_tool(public_id: str, name: str, request: Request, db: Session = Depends(get_db)):
+    """A tool the agent used on a call. The model reads the answer, so a
+    failure is answered as text it can act on, never as an HTTP error."""
+    line = _calling_line(db, public_id, request)
+    payload = await _json_body(request)
+    try:
+        result, is_error = await phone_calls.run_tool(db, line, name, payload)
+    except Exception:
+        log.exception("Tool %s failed on line %s", name, line.id)
+        db.rollback()
+        result, is_error = "The tool is not available right now.", True
+    return {"error": result} if is_error else {"result": result}

@@ -400,6 +400,11 @@ class CallAccount(Base):
     # the secret its requests are signed with.
     webhook_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     encrypted_webhook_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # ElevenLabs only: the workspace secret its agents send when they call
+    # back during a call (who is calling, a tool), and the hash it is checked
+    # against. The value itself is only ever stored at ElevenLabs.
+    tool_secret_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    tool_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
@@ -409,7 +414,7 @@ class CallAccount(Base):
 class PhoneChannel(Base):
     """A phone number of the client that a voice agent answers. The number
     lives at the agency's carrier; ElevenLabs takes its calls with the agent's
-    voice and asks OpenLivery for every reply."""
+    voice and calls OpenLivery back for who is calling and for its tools."""
 
     __tablename__ = "phone_channels"
 
@@ -417,7 +422,7 @@ class PhoneChannel(Base):
     agency_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agencies.id", ondelete="CASCADE"), index=True)
     client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
     agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="RESTRICT"), index=True)
-    # Names the line in the URL ElevenLabs calls on every turn.
+    # Names the line in the URLs ElevenLabs calls during a call.
     public_id: Mapped[str] = mapped_column(String(64), default=new_public_id, unique=True)
     label: Mapped[str | None] = mapped_column(String(80), nullable=True)
     phone_number: Mapped[str] = mapped_column(String(32))
@@ -425,6 +430,9 @@ class PhoneChannel(Base):
     provider_number_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     elevenlabs_agent_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     elevenlabs_phone_number_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # The line's tools at ElevenLabs, by name: {"id": ..., "hash": ...}, the
+    # hash of what was last written so an unchanged tool is not written again.
+    elevenlabs_tools: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[str] = mapped_column(String(30), default="disconnected")
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

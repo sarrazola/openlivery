@@ -245,6 +245,7 @@ async def upload_document(
             await embed_document_chunks(db, agent, document)
         except Exception:
             db.rollback()
+        phone_calls.refresh_lines_soon(db, agent_id=agent.id)
     return _document_out(document)
 
 
@@ -281,6 +282,7 @@ def delete_document(agent_id: uuid.UUID, document_id: uuid.UUID, db: Session = D
         raise HTTPException(status_code=404, detail="Document not found")
     db.delete(document)
     db.commit()
+    phone_calls.refresh_lines_soon(db, agent_id=agent.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -417,6 +419,7 @@ def create_qa(agent_id: uuid.UUID, payload: QAPairCreate, db: Session = Depends(
     db.add(pair)
     db.commit()
     db.refresh(pair)
+    phone_calls.refresh_lines_soon(db, agent_id=agent.id)
     return pair
 
 
@@ -428,6 +431,7 @@ def delete_qa(agent_id: uuid.UUID, qa_id: uuid.UUID, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="Q&A pair not found")
     db.delete(pair)
     db.commit()
+    phone_calls.refresh_lines_soon(db, agent_id=agent.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 def _rule_out(rule: EscalationRule) -> dict:
@@ -509,6 +513,7 @@ def replace_escalation_config(
             )
         )
     db.commit()
+    phone_calls.refresh_lines_soon(db, agent_id=agent.id)
     return _escalation_out(db, agent)
 
 
@@ -561,6 +566,7 @@ def replace_capture_config(
         db.add(AgentCaptureField(agent_id=agent.id, field_key=item.field_key, channels=list(item.channels), position=position))
     db.commit()
     db.refresh(agent)
+    phone_calls.refresh_lines_soon(db, agent_id=agent.id)
     return _capture_out(db, agent)
 
 

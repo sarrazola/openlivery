@@ -52,12 +52,16 @@ def _chunks(text: str, size: int = 1800) -> list[str]:
     return result
 
 
-def build_knowledge(agent: Agent, documents: list[KnowledgeDocument], query: str) -> KnowledgeResult:
+def build_knowledge(
+    agent: Agent, documents: list[KnowledgeDocument], query: str, *, full_up_to: int = MAX_FULL_CONTEXT_CHARS
+) -> KnowledgeResult:
+    """Everything when the documents fit in ``full_up_to`` characters, else the
+    chunks that best match the query."""
     valid_docs = [doc for doc in documents if doc.status == "processed" and doc.extracted_text.strip()]
     total = sum(len(doc.extracted_text) for doc in valid_docs)
     sources: list[dict] = []
 
-    if total <= MAX_FULL_CONTEXT_CHARS:
+    if total <= full_up_to:
         sections = []
         for doc in valid_docs:
             sections.append(f"DOCUMENTO: {doc.filename}\n{doc.extracted_text}")
@@ -161,23 +165,25 @@ async def reindex_agent(db: Session, agent: Agent) -> int:
     return written
 
 
-async def retrieve_knowledge(db: Session, agent: Agent, query: str) -> KnowledgeResult:
+async def retrieve_knowledge(
+    db: Session, agent: Agent, query: str, *, full_up_to: int = MAX_FULL_CONTEXT_CHARS
+) -> KnowledgeResult:
     """Return the knowledge context for a query.
 
-    Small knowledge bases are included in full. Larger ones use semantic search
-    over stored embeddings, falling back to keyword ranking when embeddings are
-    unavailable.
+    Knowledge bases up to ``full_up_to`` characters are included in full.
+    Larger ones use semantic search over stored embeddings, falling back to
+    keyword ranking when embeddings are unavailable.
     """
     documents = list(
         db.scalars(select(KnowledgeDocument).where(KnowledgeDocument.agent_id == agent.id)).all()
     )
     valid_docs = [doc for doc in documents if doc.status == "processed" and doc.extracted_text.strip()]
     total = sum(len(doc.extracted_text) for doc in valid_docs)
-    if total <= MAX_FULL_CONTEXT_CHARS:
-        return build_knowledge(agent, valid_docs, query)
+    if total <= full_up_to:
+        return build_knowledge(agent, valid_docs, query, full_up_to=full_up_to)
 
     semantic = await _semantic_search(db, agent, query)
-    return semantic if semantic is not None else build_knowledge(agent, valid_docs, query)
+    return semantic if semantic is not None else build_knowledge(agent, valid_docs, query, full_up_to=full_up_to)
 
 
 async def _semantic_search(db: Session, agent: Agent, query: str) -> KnowledgeResult | None:

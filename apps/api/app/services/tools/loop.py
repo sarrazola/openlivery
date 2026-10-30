@@ -18,7 +18,8 @@ MAX_TOOL_ITERATIONS = 5
 RESULT_PREVIEW_CHARS = 500
 
 
-async def _execute(spec: ToolSpec, args: dict) -> tuple[str, bool, list]:
+async def execute_spec(spec: ToolSpec, args: dict) -> tuple[str, bool, list]:
+    """Run one tool call: (result_text, is_error, files)."""
     files: list = []
     if spec.handler is not None:
         outcome = spec.handler(args)
@@ -88,7 +89,7 @@ async def tool_loop(
             if spec is None:
                 result, is_error, files = f"Error: unknown tool '{function.get('name')}'", True, []
             else:
-                result, is_error, files = await _execute(spec, args)
+                result, is_error, files = await execute_spec(spec, args)
             if files:
                 attachments.extend(files)
                 del attachments[MAX_TOOL_FILES:]

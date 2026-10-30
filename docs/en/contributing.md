@@ -114,6 +114,13 @@ changing their shape is a breaking change and gets a line in the changelog:
 - `app.services.phone_calls.register_call_account_fallback(fn)`: lends a
   phone account (the ElevenLabs workspace, a carrier) to an agency that stored
   none; `GET /api/phone/accounts` reports it as `source`.
+- `app.services.phone_calls.register_public_base(fn)`: says where ElevenLabs
+  calls an agency back (who is calling, the line's tools, the end-of-call
+  report), for a deployment that serves each agency on its own address;
+  `PHONE_PUBLIC_URL` answers otherwise.
+- `app.services.phone_calls.refresh_lines_soon(db, agent_id=...)`: writes an
+  agent's phone lines again a moment later, once per burst. Code outside the
+  core's endpoints that changes an agent's tools calls it.
 - `app.services.usage.register_usage_hook(fn)`: sees every usage record as it
   is written, inside the caller's session; it cannot fail the reply.
 - `app.services.notifications.register_provider(name, fn)`: delivers push

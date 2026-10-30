@@ -632,4 +632,6 @@ def delete_contact_field(
     strip_attribute(db, client.id, row.key)
     db.delete(row)
     db.commit()
+    # The agents that collected it on calls stop offering to save it.
+    phone_calls.refresh_lines_soon(db, client_id=client.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
