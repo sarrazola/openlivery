@@ -99,6 +99,21 @@ def _turn(client: TestClient, line: dict, secret: str, body: dict):
     )
 
 
+def _streams(monkeypatch, answer) -> None:
+    """Stand in for the model: ``answer`` gets the messages and the tools and
+    returns the reply (running a tool's handler is the model calling it); its
+    text streams back in two pieces, as the voice would receive it."""
+    async def fake(db, agent_row, base_url, api_key, messages, done, temperature=None, max_tokens=None, extra_specs=None, model=None):
+        completion = answer(messages=messages, specs=list(extra_specs or []), model=model, max_tokens=max_tokens)
+        middle = len(completion.text) // 2
+        for piece in (completion.text[:middle], completion.text[middle:]):
+            if piece:
+                yield piece
+        done.append(completion)
+
+    monkeypatch.setattr(phone_calls, "stream_completion", fake)
+
+
 def test_a_key_without_the_webhook_permission_is_refused_by_name(monkeypatch):
     missing = {"detail": {"status": "missing_permissions", "message": "The API key you used is missing the permission webhooks_write to execute this operation."}}
     webhook_status = {"code": 401}
@@ -147,6 +162,11 @@ def test_adding_a_line_sets_it_up_at_elevenlabs(authenticated_client: TestClient
     destination = prompt["built_in_tools"]["transfer_to_number"]["params"]["transfers"][0]["transfer_destination"]
     assert destination == {"type": "phone", "phone_number": "+573005550000"}
     assert body["conversation_config"]["agent"]["first_message"] == "¡Hola! Hablas con Dentix."
+    # It starts on the reply before it is sure the caller finished, and fills a long wait in their language.
+    turn = body["conversation_config"]["turn"]
+    assert turn["speculative_turn"] is True
+    assert turn["soft_timeout_config"]["timeout_seconds"] == phone_calls.FILLER_AFTER_SECONDS
+    assert turn["soft_timeout_config"]["message"] in phone_calls.FILLERS["es"]
     assert body["platform_settings"]["workspace_overrides"]["webhooks"]["post_call_webhook_id"] == "wh_1"
     # The bearer value is only in ElevenLabs; the line keeps its hash.
     with SessionLocal() as db:
@@ -166,11 +186,11 @@ def test_a_call_is_answered_by_the_agent_and_streamed_back(authenticated_client:
     _, agent, line = _line(client)
     captured = {}
 
-    async def fake(db, agent_row, base_url, api_key, messages, temperature=None, max_tokens=None, extra_specs=None, model=None):
-        captured.update(messages=messages, model=model, specs=[s.name for s in extra_specs or []], max_tokens=max_tokens)
+    def answer(messages, specs, model, max_tokens):
+        captured.update(messages=messages, model=model, specs=[s.name for s in specs], max_tokens=max_tokens)
         return ai_service.Completion(text="Claro que sí. ¿Para qué día?", input_tokens=12, output_tokens=8)
 
-    monkeypatch.setattr(phone_calls, "run_completion", fake)
+    _streams(monkeypatch, answer)
     greeting = {"role": "assistant", "content": "¡Hola! Hablas con Dentix."}
     first = _turn(client, line, provisioning["secret"], _body([greeting, {"role": "user", "content": "Quiero una cita"}]))
     assert first.status_code == 200, first.text
@@ -209,7 +229,7 @@ def test_a_caller_who_talks_over_the_agent_keeps_getting_answers(authenticated_c
     client = authenticated_client
     _, _, line = _line(client)
     replies = iter(["¿Qué servicio buscas?", "Un corte, perfecto. ¿Qué día?", "Un corte, perfecto. ¿Qué día?", "Listo, el martes."])
-    monkeypatch.setattr(phone_calls, "run_completion", AsyncMock(side_effect=lambda *args, **kwargs: ai_service.Completion(text=next(replies))))
+    _streams(monkeypatch, lambda **_: ai_service.Completion(text=next(replies)))
 
     def say(turns: list[dict]):
         return _turn(client, line, provisioning["secret"], _body(turns))
@@ -240,7 +260,7 @@ def test_a_caller_who_talks_over_the_agent_keeps_getting_answers(authenticated_c
 def test_every_call_is_its_own_conversation(authenticated_client: TestClient, provisioning, monkeypatch):
     client = authenticated_client
     _, _, line = _line(client)
-    monkeypatch.setattr(phone_calls, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Hola.")))
+    _streams(monkeypatch, lambda **_: ai_service.Completion(text="Hola."))
     for call_id in ("conv_a", "conv_b"):
         assert _turn(client, line, provisioning["secret"], _body([{"role": "user", "content": "Hola"}], call_id=call_id)).status_code == 200
     with SessionLocal() as db:
@@ -259,13 +279,13 @@ def test_hanging_up_is_handed_back_to_elevenlabs(authenticated_client: TestClien
     client = authenticated_client
     _, _, line = _line(client)
 
-    async def fake(db, agent_row, base_url, api_key, messages, temperature=None, max_tokens=None, extra_specs=None, model=None):
-        end_call = next(s for s in extra_specs if s.name == "end_call")
+    def answer(specs, **_):
+        end_call = next(s for s in specs if s.name == "end_call")
         result, is_error = end_call.handler({})
         assert not is_error and "Say one short sentence" in result
         return ai_service.Completion(text="Con gusto, que estés muy bien.")
 
-    monkeypatch.setattr(phone_calls, "run_completion", fake)
+    _streams(monkeypatch, answer)
     chunks = _chunks(_turn(client, line, provisioning["secret"], _body([{"role": "user", "content": "Eso era todo, gracias"}])))
     assert _spoken(chunks) == "Con gusto, que estés muy bien."
     calls = [c["choices"][0]["delta"]["tool_calls"][0] for c in chunks if c["choices"] and "tool_calls" in c["choices"][0]["delta"]]
@@ -280,14 +300,14 @@ def test_a_transfer_puts_a_person_on_the_conversation(authenticated_client: Test
         "type": "object", "properties": {"transfer_number": {"type": "string"}, "client_message": {"type": "string"},
                                          "agent_message": {"type": "string"}, "reason": {"type": "string"}}}}}
 
-    async def fake(db, agent_row, base_url, api_key, messages, temperature=None, max_tokens=None, extra_specs=None, model=None):
-        assert "escalate_to_human" not in [s.name for s in extra_specs]
+    def answer(messages, specs, **_):
+        assert "escalate_to_human" not in [s.name for s in specs]
         assert "transfer_to_number" in messages[0]["content"]
-        transfer = next(s for s in extra_specs if s.name == "transfer_to_number")
+        transfer = next(s for s in specs if s.name == "transfer_to_number")
         transfer.handler({"transfer_number": "+573005550000", "client_message": "Te comunico", "agent_message": "Quiere hablar con alguien", "reason": "pide una persona"})
         return ai_service.Completion(text="Te comunico con una persona.")
 
-    monkeypatch.setattr(phone_calls, "run_completion", fake)
+    _streams(monkeypatch, answer)
     chunks = _chunks(_turn(client, line, provisioning["secret"], _body([{"role": "user", "content": "Quiero hablar con alguien"}], tools=[transfer_tool])))
     names = [c["choices"][0]["delta"]["tool_calls"][0]["function"]["name"] for c in chunks if c["choices"] and "tool_calls" in c["choices"][0]["delta"]]
     assert names == ["transfer_to_number"]
@@ -307,7 +327,7 @@ def _signed(payload: dict, secret: str = WEBHOOK_SECRET, at: int | None = None) 
 def test_the_end_of_call_report_closes_the_call(authenticated_client: TestClient, provisioning, monkeypatch):
     client = authenticated_client
     _, _, line = _line(client)
-    monkeypatch.setattr(phone_calls, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Hola.")))
+    _streams(monkeypatch, lambda **_: ai_service.Completion(text="Hola."))
     _turn(client, line, provisioning["secret"], _body([{"role": "user", "content": "Hola"}], call_id="conv_9"))
     with SessionLocal() as db:
         account = phone_calls.get_account(db, db.get(PhoneChannel, line["id"]).agency_id, "elevenlabs")
@@ -353,7 +373,7 @@ def test_a_call_hung_up_before_any_turn_still_shows_up(authenticated_client: Tes
 def test_removing_a_line_takes_it_out_of_elevenlabs_and_keeps_its_calls(authenticated_client: TestClient, provisioning, monkeypatch):
     client = authenticated_client
     _, _, line = _line(client)
-    monkeypatch.setattr(phone_calls, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Hola.")))
+    _streams(monkeypatch, lambda **_: ai_service.Completion(text="Hola."))
     _turn(client, line, provisioning["secret"], _body([{"role": "user", "content": "Hola"}]))
     assert client.delete(f"/api/phone/lines/{line['id']}").status_code == 204
     elevenlabs.release_number.assert_awaited_with("xi-key", "phnum_1")

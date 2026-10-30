@@ -18,13 +18,16 @@ import re
 import secrets
 import time
 import uuid
-from dataclasses import dataclass, field
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..database import new_session
 from ..models import Agent, CallAccount, Conversation, Message, PhoneCall, PhoneChannel, now_utc
 from ..security import decrypt_secret, encrypt_secret
 from . import contacts
@@ -35,7 +38,7 @@ from .knowledge import build_system_prompt, contact_context, retrieve_knowledge
 from .providers import resolve_agent_credentials
 from .routing import route_new_conversation_by_tags
 from .telephony import TelephonyError, carriers, elevenlabs
-from .tools import run_completion
+from .tools import stream_completion
 from .tools.specs import ToolSpec
 from .usage import record_usage
 
@@ -189,6 +192,33 @@ def _language(agent: Agent) -> str:
     return agent.prompt_language if agent.prompt_language in PHONE_RULES else "es"
 
 
+# A reply that takes longer than this gets a short filler from the voice, so
+# the caller hears the line is alive; most replies start sooner and never do.
+FILLER_AFTER_SECONDS = 1.5
+FILLERS = {
+    "es": ["Claro, déjame ver.", "Ya, dame un momento.", "Mmm, un segundo."],
+    "en": ["Sure, let me see.", "One moment.", "Hmm, one second."],
+}
+
+
+def _turn_settings(lang: str) -> dict:
+    """How the voice takes turns: it starts asking for the reply while the
+    caller is still silent, before it is sure they finished (a later, longer
+    turn replaces that reply), and fills a long wait instead of going quiet."""
+    fillers = FILLERS[lang]
+    return {
+        "speculative_turn": True,
+        "soft_timeout_config": {
+            "timeout_seconds": FILLER_AFTER_SECONDS,
+            "message": fillers[0],
+            "additional_soft_timeout_messages": fillers[1:],
+            "randomize_fillers": True,
+            "max_soft_timeouts_per_generation": 2,
+            "disable_until_first_user_message": True,
+        },
+    }
+
+
 def _agent_body(line: PhoneChannel, secret_id: str, webhook_id: str | None) -> dict:
     agent = line.agent
     tools: dict = {"end_call": {"type": "system", "name": "end_call", "description": "", "params": {"system_tool_type": "end_call"}}}
@@ -210,6 +240,7 @@ def _agent_body(line: PhoneChannel, secret_id: str, webhook_id: str | None) -> d
         "name": f"{line.client.name} · {line.label or line.phone_number}"[:120],
         "conversation_config": {
             "tts": {"voice_id": agent.voice_id},
+            "turn": _turn_settings(_language(agent)),
             "agent": {
                 "first_message": agent.greeting,
                 "language": _language(agent),
@@ -469,29 +500,82 @@ def _store_call(db: Session, line: PhoneChannel, call: CallTurn) -> tuple[Conver
 
 
 @dataclass
-class Reply:
-    text: str
-    tool_calls: list[dict] = field(default_factory=list)
-    model: str = ""
-    input_tokens: int = 0
-    output_tokens: int = 0
+class Turn:
+    """A turn stored and ready to answer, by id: the answer streams on its own
+    session, after the request's has closed."""
+
+    line_id: uuid.UUID
+    conversation_id: uuid.UUID
+    call: CallTurn
+    query: str
 
 
-async def answer_turn(db: Session, line: PhoneChannel, body: dict) -> Reply:
-    """One reply of the call, with the agent behind the line."""
+def take_turn(db: Session, line: PhoneChannel, body: dict) -> Turn:
+    """Store what has been said on the call so far."""
     call = parse_turn(body)
-    agent = line.agent
     conversation, query = _store_call(db, line, call)
+    return Turn(line.id, conversation.id, call, query)
+
+
+class _Stream:
+    """Chunks of an OpenAI chat-completion stream, the format ElevenLabs reads."""
+
+    def __init__(self, model: str):
+        self.id = f"chatcmpl-{uuid.uuid4().hex}"
+        self.created = int(time.time())
+        self.model = model
+
+    def chunk(self, delta: dict | None = None, finish: str | None = None, usage: dict | None = None) -> str:
+        payload: dict = {"id": self.id, "object": "chat.completion.chunk", "created": self.created, "model": self.model}
+        payload["choices"] = [] if usage else [{"index": 0, "delta": delta or {}, "finish_reason": finish}]
+        if usage:
+            payload["usage"] = usage
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    def end(self, tool_calls: list[dict], completion=None):
+        for index, call in enumerate(tool_calls):
+            yield self.chunk({"tool_calls": [{
+                "index": index, "id": f"call_{uuid.uuid4().hex[:24]}", "type": "function",
+                "function": {"name": call["name"], "arguments": json.dumps(call["arguments"], ensure_ascii=False)},
+            }]})
+        yield self.chunk(finish="tool_calls" if tool_calls else "stop")
+        inputs, outputs = (completion.input_tokens, completion.output_tokens) if completion else (0, 0)
+        yield self.chunk(usage={"prompt_tokens": inputs, "completion_tokens": outputs, "total_tokens": inputs + outputs})
+        yield "data: [DONE]\n\n"
+
+
+async def answer_turn(turn: Turn) -> AsyncIterator[str]:
+    """The agent's reply to a turn, streamed: the text goes out as the model
+    writes it, so the voice starts on the first words; the tools ElevenLabs
+    runs (hanging up, putting the caller through) follow it; the reply is
+    stored once the stream is done. FastAPI closes the request's session
+    before the body is sent, so this one opens its own."""
+    db = new_session()
+    try:
+        async for chunk in _answer(db, turn):
+            yield chunk
+    finally:
+        db.close()
+
+
+async def _answer(db: Session, turn: Turn) -> AsyncIterator[str]:
+    line = db.get(PhoneChannel, turn.line_id)
+    conversation = db.get(Conversation, turn.conversation_id)
+    agent, call = line.agent, turn.call
+    model = agent.model.strip()
+    stream = _Stream(model)
+    yield stream.chunk({"role": "assistant", "content": ""})
 
     credentials = resolve_agent_credentials(db, agent)
-    model = agent.model.strip()
     if not agent.is_active or not credentials or not model:
         line.last_error = "A call came in, but the agent is not ready (model or provider key missing)."
         db.commit()
-        return Reply(text="")
+        for chunk in stream.end([]):
+            yield chunk
+        return
 
     lang = _language(agent)
-    knowledge = await retrieve_knowledge(db, agent, query)
+    knowledge = await retrieve_knowledge(db, agent, turn.query)
     definitions = field_definitions(db, agent.client_id, agent.prompt_language)
     capture_holder: list = []
     system_content = build_system_prompt(agent, knowledge.text, capture_context(agent, conversation, definitions, agent.prompt_language))
@@ -524,10 +608,23 @@ async def answer_turn(db: Session, line: PhoneChannel, body: dict) -> Reply:
     messages = [{"role": "system", "content": system_content}, *history]
     base_url, api_key = credentials
     max_tokens = min(agent.max_tokens, MAX_REPLY_TOKENS) if agent.max_tokens else MAX_REPLY_TOKENS
-    completion = await run_completion(
-        db, agent, base_url, api_key, messages,
-        temperature=agent.temperature, max_tokens=max_tokens, extra_specs=extra_specs or None, model=model,
-    )
+    done: list = []
+    try:
+        async for piece in stream_completion(
+            db, agent, base_url, api_key, messages, done,
+            temperature=agent.temperature, max_tokens=max_tokens, extra_specs=extra_specs or None, model=model,
+        ):
+            yield stream.chunk({"content": piece})
+    except HTTPException as exc:
+        # Close the stream properly anyway: ElevenLabs asks again on the
+        # caller's next words instead of waiting on a reply that never ends.
+        line.last_error = f"The model did not answer on a call: {exc.detail}"[:500]
+        db.commit()
+    completion = done[-1] if done else None
+    for chunk in stream.end(passthrough, completion):
+        yield chunk
+    if completion is None:
+        return
 
     outbound = None
     if completion.text:
@@ -550,7 +647,7 @@ async def answer_turn(db: Session, line: PhoneChannel, body: dict) -> Reply:
         db.commit()
     except IntegrityError:
         # A request for the same turn running alongside stored its reply
-        # first; this one is still said, which is what the caller waits for.
+        # first; this one was still said, which is what the caller waited for.
         db.rollback()
 
     transfer = next((item for item in passthrough if item["name"] == "transfer_to_number"), None)
@@ -561,47 +658,6 @@ async def answer_turn(db: Session, line: PhoneChannel, body: dict) -> Reply:
     if escalation_holder:
         await apply_escalation(db, conversation, agent, escalation_holder[-1])
         db.commit()
-    return Reply(
-        text=completion.text,
-        tool_calls=passthrough,
-        model=model,
-        input_tokens=completion.input_tokens,
-        output_tokens=completion.output_tokens,
-    )
-
-
-_SENTENCE = re.compile(r"(?<=[.!?¿¡…])\s+")
-
-
-def stream_reply(reply: Reply):
-    """The reply as an OpenAI chat-completion stream, sentence by sentence so
-    the voice starts on the first one."""
-    stream_id = f"chatcmpl-{uuid.uuid4().hex}"
-    created = int(time.time())
-
-    def chunk(delta: dict | None = None, finish: str | None = None, usage: dict | None = None) -> str:
-        payload: dict = {"id": stream_id, "object": "chat.completion.chunk", "created": created, "model": reply.model}
-        payload["choices"] = [] if usage else [{"index": 0, "delta": delta or {}, "finish_reason": finish}]
-        if usage:
-            payload["usage"] = usage
-        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-    yield chunk({"role": "assistant", "content": ""})
-    sentences = [s for s in _SENTENCE.split(reply.text.strip()) if s] if reply.text.strip() else []
-    for index, sentence in enumerate(sentences):
-        yield chunk({"content": sentence + (" " if index < len(sentences) - 1 else "")})
-    for index, call in enumerate(reply.tool_calls):
-        yield chunk({"tool_calls": [{
-            "index": index, "id": f"call_{uuid.uuid4().hex[:24]}", "type": "function",
-            "function": {"name": call["name"], "arguments": json.dumps(call["arguments"], ensure_ascii=False)},
-        }]})
-    yield chunk(finish="tool_calls" if reply.tool_calls else "stop")
-    yield chunk(usage={
-        "prompt_tokens": reply.input_tokens,
-        "completion_tokens": reply.output_tokens,
-        "total_tokens": reply.input_tokens + reply.output_tokens,
-    })
-    yield "data: [DONE]\n\n"
 
 
 # --- the end of a call ---------------------------------------------------------

@@ -237,8 +237,7 @@ async def call_turn(
     db: Session = Depends(get_db),
 ):
     """One reply of a call, in the OpenAI streaming format ElevenLabs reads.
-    The turn is computed first and then streamed, so the database session is
-    done before the body runs."""
+    What was said is stored here; the reply streams as the model writes it."""
     line = db.scalar(select(PhoneChannel).where(PhoneChannel.public_id == public_id))
     if not line or not phone_calls.secret_matches(line, authorization):
         raise HTTPException(status_code=401, detail="Unknown line or wrong secret")
@@ -246,10 +245,10 @@ async def call_turn(
         raise HTTPException(status_code=409, detail="This line is switched off")
     try:
         body = await request.json()
-        reply = await phone_calls.answer_turn(db, line, body)
+        turn = phone_calls.take_turn(db, line, body)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return StreamingResponse(phone_calls.stream_reply(reply), media_type="text/event-stream")
+    return StreamingResponse(phone_calls.answer_turn(turn), media_type="text/event-stream")
 
 
 @public_router.post("/accounts/{public_id}/webhook")
