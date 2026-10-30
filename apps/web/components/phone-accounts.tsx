@@ -43,7 +43,7 @@ export function PhoneAccounts() {
   return <section className="section-block"><div className="section-heading"><div><h2><Phone size={18} /> {t("phone.settings.heading")}</h2><p>{t("phone.settings.copy")}</p></div></div>
     {accounts && <>
       <section className="form-section"><div className="section-copy"><h2>{t("phone.settings.elevenlabsTitle")}</h2><p>{t("phone.settings.elevenlabsCopy")}</p><GuideLink provider="elevenlabs" /></div>
-        <div className="form-fields"><AccountForm provider="elevenlabs" state={stateOf("elevenlabs")} onChange={load} /></div>
+        <div className="form-fields key-form"><AccountForm provider="elevenlabs" state={stateOf("elevenlabs")} onChange={load} /></div>
       </section>
       <CarrierSection stateOf={stateOf} onChange={load} />
     </>}
@@ -66,8 +66,8 @@ function CarrierSection({ stateOf, onChange }: { stateOf: (p: CallProvider) => C
   const available = CARRIERS.filter((c) => !stateOf(c.id)?.stored);
   const showForm = !connected.length || adding;
 
-  return <section className="form-section"><div className="section-copy"><h2>{t("phone.settings.carrierTitle")}</h2><p>{t("phone.settings.carrierCopy")}</p></div>
-    <div className="form-fields">
+  return <section className="form-section"><div className="section-copy"><h2>{t("phone.settings.carrierTitle")}</h2><p>{t("phone.settings.carrierCopy")}</p>{showForm && <GuideLink provider={carrier} />}</div>
+    <div className="form-fields key-form">
       {connected.map((c) => <div key={c.id} className="carrier-connected"><strong>{c.name}</strong><AccountForm provider={c.id} state={stateOf(c.id)} onChange={onChange} /></div>)}
       {showForm && <>
         <label>{t("phone.settings.carrierLabel")}
@@ -106,16 +106,17 @@ function AccountForm({ provider, state, onChange, onCancel }: { provider: CallPr
     } catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); }
   }
 
+  // Errors stay in the confirmation dialog, which shows them.
   async function remove() {
-    setBusy(true);
-    try { await api(`/phone/accounts/${provider}`, { method: "DELETE" }); toast.success(t("phone.settings.removed")); onChange(); }
-    catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); }
+    await api(`/phone/accounts/${provider}`, { method: "DELETE" });
+    toast.success(t("phone.settings.removed"));
+    onChange();
   }
 
   if (stored) return <div className="key-configured">
     <div className="key-configured-head">
       <span className="key-configured-status"><CheckCircle2 size={18} /> {t("phone.settings.connected", { name: nameOf(provider), hint: state?.secret_hint || "" })}</span>
-      <KeyActions busy={busy} replaceLabel={t("phone.settings.replace")} removeLabel={t("phone.settings.remove")} onReplace={() => { setValues({}); setReplacing(true); }} onRemove={remove} />
+      <KeyActions busy={busy} replaceLabel={t("phone.settings.replace")} removeLabel={t("phone.settings.remove")} confirmTitle={t("phone.settings.removeTitle", { name: nameOf(provider) })} confirmMessage={t("phone.settings.removeCopy", { name: nameOf(provider) })} onReplace={() => { setValues({}); setReplacing(true); }} onRemove={remove} />
     </div>
     {state?.last_error && <Alert>{state.last_error}</Alert>}
   </div>;
@@ -127,7 +128,7 @@ function AccountForm({ provider, state, onChange, onCancel }: { provider: CallPr
         : <input value={values[field.name] || ""} autoComplete="off" onChange={(e) => setValues((v) => ({ ...v, [field.name]: e.target.value }))} />}
     </label>)}
     <div className="form-footer split">
-      {cancel ? <button type="button" className="button ghost" disabled={busy} onClick={cancel}>{t("common.cancel")}</button> : provider !== "elevenlabs" ? <GuideLink provider={provider} /> : <span />}
+      {cancel ? <button type="button" className="button ghost" disabled={busy} onClick={cancel}>{t("common.cancel")}</button> : <span />}
       <button type="button" className="button primary" disabled={busy || !complete} onClick={save}>{busy ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />} {t("phone.settings.save")}</button>
     </div>
   </>;

@@ -551,6 +551,10 @@ textarea { line-height: 1.55; }
 .key-configured-actions { flex: 0 0 auto; display: flex; gap: 6px; }
 .key-configured-actions .icon-button { width: 32px; height: 32px; }
 .key-configured-actions .key-remove:hover:not(:disabled) { color: var(--red-text); border-color: var(--red-line); background: var(--red-soft); }
+/* Credential cards: each label sits over its input, and the save row closes
+   the card without the padding a page-level footer carries. */
+.key-form label:not(.switch-row) { display: flex; flex-direction: column; gap: 8px; }
+.key-form .form-footer { padding: 0; }
 .toast-viewport { position: fixed; top: 18px; right: 18px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; width: min(380px, calc(100vw - 36px)); pointer-events: none; }
 .toast { pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); box-shadow: 0 12px 30px rgba(var(--shadow-rgb), calc(.16 * var(--shadow-k))); font-size: 14px; color: var(--ink); animation: toast-in .18s ease; }
 .toast-icon { flex: 0 0 auto; display: inline-flex; margin-top: 1px; }
