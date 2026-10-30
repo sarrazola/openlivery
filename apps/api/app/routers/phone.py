@@ -5,15 +5,13 @@ import json
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import get_current_user
 from ..models import Agent, CallAccount, Client, PhoneChannel, User
-from ..ratelimit import phone_call_rate_limit
 from ..schemas_phone import (
     CallAccountIn,
     CallAccountOut,
@@ -22,6 +20,7 @@ from ..schemas_phone import (
     PhoneLineCreate,
     PhoneLineOut,
     PhoneLineUpdate,
+    PhoneModelOut,
     PhoneVoiceOut,
 )
 from ..services import phone_calls
@@ -98,6 +97,27 @@ async def list_voices(search: str = "", language: str = "es", db: Session = Depe
         return await elevenlabs.list_voices(api_key, language=language[:5], search=search[:80])
     except (phone_calls.PhoneSetupError, TelephonyError) as exc:
         raise _setup_error(exc) from exc
+
+
+@router.get("/voices/{voice_id}", response_model=PhoneVoiceOut)
+async def find_voice(voice_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    try:
+        _, api_key = phone_calls.elevenlabs_key(db, user.agency_id)
+        voice = await elevenlabs.find_voice(api_key, voice_id.strip()[:80])
+    except (phone_calls.PhoneSetupError, TelephonyError) as exc:
+        raise _setup_error(exc) from exc
+    if voice is None:
+        raise HTTPException(status_code=404, detail="ElevenLabs has no voice with that ID in its library.")
+    return voice
+
+
+@router.get("/models", response_model=list[PhoneModelOut])
+def list_models(user: User = Depends(get_current_user)):
+    """What a voice agent can think with, the default first."""
+    return [
+        {"id": model, "label": label, "realtime": model in phone_calls.REALTIME_MODELS}
+        for model, label in phone_calls.VOICE_MODELS.items()
+    ]
 
 
 @router.get("/numbers", response_model=list[CarrierNumberOut])
@@ -227,28 +247,6 @@ async def remove_line(line_id: uuid.UUID, db: Session = Depends(get_db), user: U
 
 
 # --- what ElevenLabs calls -----------------------------------------------------
-
-
-@public_router.post("/lines/{public_id}/llm/chat/completions", dependencies=[Depends(phone_call_rate_limit)])
-async def call_turn(
-    public_id: str,
-    request: Request,
-    authorization: str | None = Header(default=None),
-    db: Session = Depends(get_db),
-):
-    """One reply of a call, in the OpenAI streaming format ElevenLabs reads.
-    What was said is stored here; the reply streams as the model writes it."""
-    line = db.scalar(select(PhoneChannel).where(PhoneChannel.public_id == public_id))
-    if not line or not phone_calls.secret_matches(line, authorization):
-        raise HTTPException(status_code=401, detail="Unknown line or wrong secret")
-    if not line.is_enabled:
-        raise HTTPException(status_code=409, detail="This line is switched off")
-    try:
-        body = await request.json()
-        turn = phone_calls.take_turn(db, line, body)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return StreamingResponse(phone_calls.answer_turn(turn), media_type="text/event-stream")
 
 
 @public_router.post("/accounts/{public_id}/webhook")

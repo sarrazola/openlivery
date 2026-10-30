@@ -3,18 +3,23 @@
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, Pause, Play } from "lucide-react";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { Alert } from "@/components/ui";
+import { api, messageFrom } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import type { PhoneVoice } from "@/types";
 
 /** Voices from the ElevenLabs library in the interface's language, with a
- * preview to listen to before choosing. Needs the agency's ElevenLabs key. */
+ * preview to listen to before choosing, or one pasted by its ID from that
+ * library. Needs the agency's ElevenLabs key. */
 export function VoicePicker({ language, value, name, onChange }: { language: string; value: string; name: string; onChange: (voice: { id: string; name: string }) => void }) {
   const { t } = useLanguage();
   const [search, setSearch] = useState("");
   const [voices, setVoices] = useState<PhoneVoice[] | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+  const [pasted, setPasted] = useState("");
+  const [looking, setLooking] = useState(false);
+  const [pasteError, setPasteError] = useState("");
   const audio = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -36,6 +41,15 @@ export function VoicePicker({ language, value, name, onChange }: { language: str
     setPlaying(voice.voice_id);
   }
 
+  async function usePasted() {
+    setLooking(true); setPasteError("");
+    try {
+      const voice = await api<PhoneVoice>(`/phone/voices/${encodeURIComponent(pasted.trim())}`);
+      onChange({ id: voice.voice_id, name: voice.name });
+      setPasted("");
+    } catch (err) { setPasteError(messageFrom(err)); } finally { setLooking(false); }
+  }
+
   return <div className="voice-picker">
     {value && <p className="social-meta">{t("phone.channel.chosen")}: <strong>{name || value}</strong></p>}
     {!unavailable && <input type="search" className="voice-search" value={search} aria-label={t("phone.channel.searchVoices")} placeholder={t("phone.channel.searchVoices")} onChange={(event) => setSearch(event.target.value)} />}
@@ -47,5 +61,10 @@ export function VoicePicker({ language, value, name, onChange }: { language: str
         <span><strong>{voice.name}</strong><small>{[voice.accent, voice.gender].filter(Boolean).join(" · ")}</small></span>
         <button type="button" className={`button small ${voice.voice_id === value ? "primary" : "secondary"}`} onClick={() => onChange({ id: voice.voice_id, name: voice.name })}>{voice.voice_id === value ? t("phone.channel.chosen") : t("phone.channel.choose")}</button>
       </li>)}</ul>}
+    {!unavailable && <div className="voice-paste">
+      <input value={pasted} placeholder={t("phone.channel.pasteVoiceId")} aria-label={t("phone.channel.pasteVoiceId")} onChange={(event) => { setPasted(event.target.value); setPasteError(""); }} />
+      <button type="button" className="button secondary" disabled={looking || !pasted.trim()} onClick={usePasted}>{looking ? <LoaderCircle className="spin" size={14} /> : t("phone.channel.useVoiceId")}</button>
+    </div>}
+    {pasteError && <Alert>{pasteError}</Alert>}
   </div>;
 }

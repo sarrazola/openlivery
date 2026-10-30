@@ -426,7 +426,6 @@ class PhoneChannel(Base):
     transfer_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # ElevenLabs presents this as a bearer token on every turn. Only its hash
     # is kept: the value lives in the ElevenLabs workspace's secret store.
-    llm_secret_hash: Mapped[str] = mapped_column(String(64), default="", server_default="")
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[str] = mapped_column(String(30), default="disconnected")
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

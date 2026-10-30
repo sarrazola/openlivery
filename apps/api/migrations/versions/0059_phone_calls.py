@@ -57,7 +57,6 @@ def upgrade():
         sa.Column("elevenlabs_agent_id", sa.String(80), nullable=True),
         sa.Column("elevenlabs_phone_number_id", sa.String(80), nullable=True),
         sa.Column("transfer_number", sa.String(32), nullable=True),
-        sa.Column("llm_secret_hash", sa.String(64), nullable=False, server_default=""),
         sa.Column("is_enabled", sa.Boolean(), nullable=False, server_default="true"),
         sa.Column("status", sa.String(30), nullable=False, server_default="disconnected"),
         sa.Column("last_error", sa.Text(), nullable=True),

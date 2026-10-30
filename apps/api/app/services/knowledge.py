@@ -419,13 +419,15 @@ def contact_context(conversation, lang: str | None = None, definitions: dict | N
     return _section(text["contact"], "\n".join(lines) + "\n\n" + text["contact_rule"])
 
 
-def build_system_prompt(agent: Agent, knowledge_text: str, capture_text: str = "") -> str:
+def build_system_prompt(agent: Agent, knowledge_text: str, capture_text: str = "", *, with_time: bool = True) -> str:
     """Compose the system prompt as a markdown document.
 
     Headings and the few fixed sentences follow the agent's prompt language;
     what the operator typed goes in verbatim. Empty sections are left out.
     ``capture_text`` (from ``services.capture.capture_context``) goes right
     after the job, where the model still reads instructions as its own tasks.
+    ``with_time`` off leaves out the current date and time, for a prompt that
+    is stored and used later (a phone line's, whose platform adds them).
     """
     client = agent.client
     lang = agent.prompt_language if agent.prompt_language in _PROMPT_TEXT else "es"
@@ -451,7 +453,7 @@ def build_system_prompt(agent: Agent, knowledge_text: str, capture_text: str = "
     head = "\n".join([
         f"# {text['title'].format(name=agent.name, client=client.name)}",
         *identity,
-        text["now"].format(tz=tz_name, now=f"{text['weekdays'][now.weekday()]}, {now:%Y-%m-%d %H:%M}"),
+        *([text["now"].format(tz=tz_name, now=f"{text['weekdays'][now.weekday()]}, {now:%Y-%m-%d %H:%M}")] if with_time else []),
     ])
     parts = [head]
     if agent.instructions.strip():

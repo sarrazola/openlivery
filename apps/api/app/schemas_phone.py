@@ -32,6 +32,12 @@ class PhoneVoiceOut(BaseModel):
     preview_url: str | None = None
 
 
+class PhoneModelOut(BaseModel):
+    id: str
+    label: str
+    realtime: bool
+
+
 class CarrierNumberOut(BaseModel):
     id: str
     phone_number: str

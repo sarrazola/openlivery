@@ -1,9 +1,9 @@
 """The ElevenLabs Agents API, with the agency's own key.
 
-OpenLivery keeps one ElevenLabs agent per phone line: ElevenLabs owns the
-voice, the speech recognition and the turn taking, and asks the line's
-"custom LLM" URL for every reply, so the thinking stays with the OpenLivery
-agent. Numbers are imported into the workspace and assigned to that agent.
+OpenLivery keeps one ElevenLabs agent per phone line, carrying the
+OpenLivery agent's prompt: ElevenLabs runs the whole call (speech
+recognition, turn taking, the model, the voice). Numbers are imported into
+the workspace and assigned to that agent.
 """
 
 import re
@@ -79,17 +79,31 @@ async def list_voices(api_key: str, *, language: str = "es", search: str = "") -
     if search:
         params["search"] = search
     found = await _request(api_key, "GET", "/shared-voices", params=params)
-    voices = []
-    for voice in found.get("voices", []):
-        voices.append({
-            "voice_id": voice.get("voice_id"),
-            "name": voice.get("name") or "",
-            "accent": voice.get("accent") or "",
-            "gender": voice.get("gender") or "",
-            "description": (voice.get("description") or "")[:240],
-            "preview_url": voice.get("preview_url"),
-        })
+    voices = [_voice(voice) for voice in found.get("voices", [])]
     return [voice for voice in voices if voice["voice_id"]]
+
+
+def _voice(voice: dict) -> dict:
+    return {
+        "voice_id": voice.get("voice_id"),
+        "name": voice.get("name") or "",
+        "accent": voice.get("accent") or (voice.get("labels") or {}).get("accent") or "",
+        "gender": voice.get("gender") or (voice.get("labels") or {}).get("gender") or "",
+        "description": (voice.get("description") or "")[:240],
+        "preview_url": voice.get("preview_url"),
+    }
+
+
+async def find_voice(api_key: str, voice_id: str) -> dict | None:
+    """A voice by its id, from the workspace or the shared library, for an
+    operator who pasted one they found there; None when neither has it."""
+    async with httpx.AsyncClient(base_url=API, timeout=TIMEOUT, headers={"xi-api-key": api_key}) as client:
+        own = await client.get(f"/voices/{voice_id}")
+    if own.status_code == 200:
+        return _voice(own.json())
+    shared = await _request(api_key, "GET", "/shared-voices", params={"search": voice_id, "page_size": 10})
+    voice = next((v for v in shared.get("voices", []) if v.get("voice_id") == voice_id), None)
+    return _voice(voice) if voice else None
 
 
 async def ensure_voice(api_key: str, voice_id: str) -> str:
@@ -107,26 +121,6 @@ async def ensure_voice(api_key: str, voice_id: str) -> str:
         api_key, "POST", f"/voices/add/{voice['public_owner_id']}/{voice_id}", json={"new_name": voice.get("name") or voice_id}
     )
     return voice.get("name") or ""
-
-
-async def ensure_secret(api_key: str, name: str, value: str) -> str:
-    """Store ``value`` in the workspace's secret store under ``name`` and
-    return its id; an existing secret of that name is overwritten."""
-    secrets = (await _request(api_key, "GET", "/convai/secrets")).get("secrets", [])
-    existing = next((s for s in secrets if s.get("name") == name), None)
-    if existing:
-        await _request(
-            api_key, "PATCH", f"/convai/secrets/{existing['secret_id']}", json={"type": "update", "name": name, "value": value}
-        )
-        return existing["secret_id"]
-    return (await _request(api_key, "POST", "/convai/secrets", json={"type": "new", "name": name, "value": value}))["secret_id"]
-
-
-async def delete_secret(api_key: str, name: str) -> None:
-    secrets = (await _request(api_key, "GET", "/convai/secrets")).get("secrets", [])
-    for secret in secrets:
-        if secret.get("name") == name:
-            await _request(api_key, "DELETE", f"/convai/secrets/{secret['secret_id']}")
 
 
 async def create_webhook(api_key: str, name: str, url: str) -> tuple[str, str | None]:

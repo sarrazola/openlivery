@@ -12,6 +12,7 @@ import { DEFAULT_PROVIDER, modelsFor, modelOptionsFor, defaultModelFor, estimate
 import { narrowModels, useAvailableModels } from "@/lib/use-available-models";
 import { Combobox } from "@/components/combobox";
 import { agentTemplates, localize } from "@/lib/agent-templates";
+import { VoiceModelPicker } from "@/components/voice-model-picker";
 import { VoicePicker } from "@/components/voice-picker";
 import type { Agent, AgentKind, Client } from "@/types";
 import { AiHint } from "@/components/ai-hint";
@@ -28,7 +29,7 @@ const STEP_LABELS: Record<Step, I18nKey> = {
   essentials: "agents.wizard.s3", model: "agents.wizard.s4", review: "agents.wizard.s5",
 };
 // On a call every second of thinking is heard: voice agents start on a light model.
-const VOICE_MODEL = "google/gemini-3.5-flash-lite";
+const VOICE_MODEL = "eleven_realtime_v1_mini";
 
 export default function NewAgentPage() {
   const { t, lang } = useLanguage();
@@ -227,9 +228,8 @@ export default function NewAgentPage() {
           <div><dt>{t("agents.wizard.reviewPrompt")}</dt><dd><span className="token-pill"><Sparkles size={13} /> {t("agents.wizard.tokens", { count: promptTokens.toLocaleString(lang) })}</span></dd></div>
         </dl>
         {kind === "voice" && <>
-          <label>{t("agents.new.modelLabel")}{modelPicker}</label>
+          <label>{t("agents.new.modelLabel")}<VoiceModelPicker value={model} onChange={setModel} /></label>
           <span className="field-help">{t("phone.agent.modelHint")}</span>
-          <details className="advanced-options wizard-advanced"><summary>{t("agents.detail.advancedHeading")}</summary><p className="field-help">{t("agents.detail.advancedCopy")}</p>{sampling}</details>
         </>}
       </div>}
     </section>

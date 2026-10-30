@@ -1,3 +1,3 @@
-from .runner import run_completion, stream_completion
+from .runner import run_completion
 
-__all__ = ["run_completion", "stream_completion"]
+__all__ = ["run_completion"]

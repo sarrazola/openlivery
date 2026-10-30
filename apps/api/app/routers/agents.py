@@ -18,6 +18,7 @@ from ..schemas import (
     QAPairCreate, QAPairOut,
     check_reply_delay,
 )
+from ..services import phone_calls
 from ..services.capture import CAPTURE_CHANNELS, field_definitions
 from ..services.follow_ups import FOLLOW_UP_CHANNELS, MAX_MINUTES, MIN_MINUTES, check_schedule
 from ..services.knowledge import build_system_prompt, embed_document_chunks, reindex_agent, reindex_document
@@ -71,9 +72,18 @@ def list_agents(db: Session = Depends(get_db), user: User = Depends(get_current_
     ).unique().all()
 
 
+def _check_voice_model(model: str) -> None:
+    try:
+        phone_calls.check_voice_model(model)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.post("", response_model=AgentOut, status_code=status.HTTP_201_CREATED)
 def create_agent(payload: AgentCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _validate_client(db, user, payload.client_id)
+    if payload.kind == "voice":
+        _check_voice_model(payload.model)
     agent = Agent(agency_id=user.agency_id, **payload.model_dump())
     db.add(agent)
     db.commit()
@@ -83,11 +93,6 @@ def create_agent(payload: AgentCreate, db: Session = Depends(get_db), user: User
 @router.get("/{agent_id}", response_model=AgentOut)
 def get_agent(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     return _agent(db, user, agent_id)
-
-
-# What a voice agent's phone lines carry into ElevenLabs: a change to any of
-# them is pushed to every connected line.
-_LINE_FIELDS = {"voice_id", "greeting", "model", "prompt_language", "name"}
 
 
 @router.patch("/{agent_id}", response_model=AgentOut)
@@ -108,30 +113,14 @@ async def update_agent(agent_id: uuid.UUID, payload: AgentUpdate, db: Session = 
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if agent.kind == "voice" and "model" in values:
+        _check_voice_model(values["model"])
     for key, value in values.items():
         setattr(agent, key, value)
     db.commit()
-    if agent.kind == "voice" and _LINE_FIELDS & values.keys():
-        await _resync_phone_lines(db, agent)
+    if agent.kind == "voice" and phone_calls.AGENT_LINE_FIELDS & values.keys():
+        await phone_calls.resync_lines(db, agent_id=agent.id)
     return _agent(db, user, agent_id)
-
-
-async def _resync_phone_lines(db: Session, agent: Agent) -> None:
-    from ..models import PhoneChannel
-    from ..services import phone_calls
-    from ..services.telephony import TelephonyError
-
-    lines = db.scalars(select(PhoneChannel).where(
-        PhoneChannel.agent_id == agent.id, PhoneChannel.is_enabled.is_(True), PhoneChannel.status == "connected"
-    )).all()
-    for line in lines:
-        try:
-            await phone_calls.connect_line(db, line)
-        except (phone_calls.PhoneSetupError, TelephonyError) as exc:
-            db.rollback()
-            line.status = "error"
-            line.last_error = str(exc)
-            db.commit()
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)

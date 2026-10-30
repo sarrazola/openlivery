@@ -1,62 +1,47 @@
 """Phone calls answered by an agent.
 
-ElevenLabs answers the number, hears the caller and speaks; for every reply it
-calls the line's "custom LLM" URL with the call so far, and OpenLivery answers
-with the same agent as in the chat: its instructions, knowledge, contact
-fields, tools and escalation. A call is its own conversation on the ``phone``
-channel, closed when ElevenLabs reports the hang-up.
-
-ElevenLabs' own tools (hang up, transfer to a number) reach the model as
-pass-through tools: when the model calls one, the reply ends and the call is
-streamed back to ElevenLabs, which runs it after speaking the text.
+ElevenLabs answers the number and runs the call: it hears the caller, decides
+when they finished or cut in, thinks with one of its own models and speaks.
+OpenLivery writes what the agent knows into the ElevenLabs agent of each line
+(its business, offer, rules and the phone rules, its greeting and voice) and
+writes it again whenever the agent changes, so a turn never waits on us. When
+the call ends ElevenLabs reports it, and it becomes a conversation on the
+``phone`` channel with its transcript, closed unless a person has it.
 """
 
 import hashlib
 import hmac
 import json
-import logging
-import re
-import secrets
 import time
-import uuid
-from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
-from fastapi import HTTPException
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..database import new_session
 from ..models import Agent, CallAccount, Conversation, Message, PhoneCall, PhoneChannel, now_utc
 from ..security import decrypt_secret, encrypt_secret
 from . import contacts
-from .capture import apply_captures, build_capture_spec, capture_context, field_definitions
 from .conversation_state import set_status
-from .escalation import EscalationRequest, active_rules, apply_escalation, build_escalation_spec, escalation_enabled, escalation_prompt
-from .knowledge import build_system_prompt, contact_context, retrieve_knowledge
-from .providers import resolve_agent_credentials
+from .knowledge import build_system_prompt
 from .routing import route_new_conversation_by_tags
 from .telephony import TelephonyError, carriers, elevenlabs
-from .tools import stream_completion
-from .tools.specs import ToolSpec
-from .usage import record_usage
 
 PROVIDERS = ("elevenlabs", *carriers.CARRIERS)
 CHANNEL = "phone"
-# What OpenLivery sets as the ElevenLabs agent's prompt. ElevenLabs fills the
-# variables on every call and sends the result as part of the system message,
-# which is how a turn names its call: no other field carries it.
-MARKER = (
-    "openlivery-call conversation={{system__conversation_id}} "
-    "caller={{system__caller_id}} called={{system__called_number}}"
-)
-_MARKER_RE = re.compile(r"openlivery-call conversation=(\S+) caller=(\S+) called=(\S+)")
 SIGNATURE_TOLERANCE_SECONDS = 30 * 60
-# A spoken reply is short; this caps a model that forgets it.
-MAX_REPLY_TOKENS = 400
-logger = logging.getLogger(__name__)
+
+# The models a voice agent thinks with, all run by ElevenLabs next to the
+# voice. The Realtime ones are built for conversation and answer fastest; the
+# others run in ElevenLabs' custom mode.
+VOICE_MODELS = {
+    "eleven_realtime_v1_mini": "Realtime Mini",
+    "eleven_realtime_v1_max": "Realtime Max",
+    "gemini-3.8-flash": "Gemini 3.8 Flash",
+}
+DEFAULT_VOICE_MODEL = "eleven_realtime_v1_mini"
+REALTIME_MODELS = {"eleven_realtime_v1_mini", "eleven_realtime_v1_max"}
 
 PHONE_RULES = {
     "es": (
@@ -88,8 +73,20 @@ CALLBACK_RULE = {
 }
 
 
+# Who is calling, filled in by ElevenLabs on every call.
+CALLER = {
+    "es": "## Quien llama\n- **Teléfono desde el que llama:** {{system__caller_id}}",
+    "en": "## Caller\n- **Calling from:** {{system__caller_id}}",
+}
+
+
 class PhoneSetupError(RuntimeError):
     """Something the operator has to fix before a line can take calls."""
+
+
+def check_voice_model(model: str) -> None:
+    if model not in VOICE_MODELS:
+        raise ValueError(f"A voice agent thinks with one of: {', '.join(VOICE_MODELS.values())}.")
 
 
 # --- accounts ----------------------------------------------------------------
@@ -173,21 +170,8 @@ def public_base() -> str:
     return (settings.phone_public_url or settings.frontend_url).rstrip("/")
 
 
-def llm_url(line: PhoneChannel) -> str:
-    # ElevenLabs appends /chat/completions to this.
-    return f"{public_base()}/api/public/phone/lines/{line.public_id}/llm"
-
-
 def webhook_url(account: CallAccount) -> str:
     return f"{public_base()}/api/public/phone/accounts/{account.public_id}/webhook"
-
-
-def _hash(value: str) -> str:
-    return hashlib.sha256(value.encode()).hexdigest()
-
-
-def secret_name(line: PhoneChannel) -> str:
-    return f"openlivery-line-{line.public_id}"
 
 
 def _language(agent: Agent) -> str:
@@ -206,9 +190,9 @@ PHONE_AUDIO = "ulaw_8000"
 
 
 def _turn_settings(lang: str) -> dict:
-    """How the voice takes turns: it starts asking for the reply while the
-    caller is still silent, before it is sure they finished (a later, longer
-    turn replaces that reply), and fills a long wait instead of going quiet."""
+    """How the voice takes turns: it starts on the reply while the caller is
+    still silent, before it is sure they finished, and fills a long wait
+    instead of going quiet."""
     return {
         "speculative_turn": True,
         "soft_timeout_config": {
@@ -220,8 +204,20 @@ def _turn_settings(lang: str) -> dict:
     }
 
 
-def _agent_body(line: PhoneChannel, secret_id: str, webhook_id: str | None) -> dict:
+def call_prompt(line: PhoneChannel) -> str:
+    """What the line's ElevenLabs agent is told: the agent's prompt as the
+    chat builds it, who is calling, and how to speak on the phone. The date
+    and time are left to ElevenLabs, which adds them on every call in the
+    client's timezone; written here they would be the moment of the sync."""
     agent = line.agent
+    lang = _language(agent)
+    rules = PHONE_RULES[lang] + (TRANSFER_RULE[lang] if line.transfer_number else CALLBACK_RULE[lang])
+    return "\n\n".join([build_system_prompt(agent, "", with_time=False), CALLER[lang], rules.rstrip()])
+
+
+def _agent_body(line: PhoneChannel, webhook_id: str | None) -> dict:
+    agent = line.agent
+    lang = _language(agent)
     tools: dict = {"end_call": {"type": "system", "name": "end_call", "description": "", "params": {"system_tool_type": "end_call"}}}
     if line.transfer_number:
         tools["transfer_to_number"] = {
@@ -237,26 +233,20 @@ def _agent_body(line: PhoneChannel, secret_id: str, webhook_id: str | None) -> d
                 }],
             },
         }
+    model = agent.model.strip()
+    prompt: dict = {"prompt": call_prompt(line), "built_in_tools": tools, "timezone": agent.client.timezone or "UTC"}
+    if model not in REALTIME_MODELS:
+        prompt["llm"] = model
     body: dict = {
         "name": f"{line.client.name} · {line.label or line.phone_number}"[:120],
         "conversation_config": {
+            # Realtime replaces the LLM, speech and turn models with its own;
+            # null hands the agent back to the ones set here.
+            "realtime_model": model if model in REALTIME_MODELS else None,
             "asr": {"user_input_audio_format": PHONE_AUDIO},
             "tts": {"voice_id": agent.voice_id, "agent_output_audio_format": PHONE_AUDIO},
-            "turn": _turn_settings(_language(agent)),
-            "agent": {
-                "first_message": agent.greeting,
-                "language": _language(agent),
-                "prompt": {
-                    "prompt": MARKER,
-                    "llm": "custom-llm",
-                    "custom_llm": {
-                        "url": llm_url(line),
-                        "model_id": agent.model.strip(),
-                        "api_key": {"secret_id": secret_id},
-                    },
-                    "built_in_tools": tools,
-                },
-            },
+            "turn": _turn_settings(lang),
+            "agent": {"first_message": agent.greeting, "language": lang, "prompt": prompt},
         },
     }
     if webhook_id:
@@ -268,27 +258,25 @@ def _agent_body(line: PhoneChannel, secret_id: str, webhook_id: str | None) -> d
 
 async def connect_line(db: Session, line: PhoneChannel) -> None:
     """Set the line up at ElevenLabs and point its number there. Safe to run
-    again: it updates what exists. Raises PhoneSetupError or TelephonyError;
-    the caller stores the message on the line."""
+    again: it updates what exists, which is how a change to the agent reaches
+    its lines. Raises PhoneSetupError or TelephonyError; the caller stores the
+    message on the line."""
     account, api_key = elevenlabs_key(db, line.agency_id)
     carrier = carrier_secret(db, line.agency_id, line.provider)
     agent = line.agent
     if agent.kind != "voice":
         raise PhoneSetupError("A phone line is answered by a voice agent. Choose one, or create one.")
-    if not agent.voice_id or not agent.model.strip():
-        raise PhoneSetupError("The agent has no voice or no model yet. Choose them in the agent's Voice tab.")
+    if not agent.voice_id:
+        raise PhoneSetupError("The agent has no voice yet. Choose one in the agent's Voice tab.")
+    if agent.model.strip() not in VOICE_MODELS:
+        raise PhoneSetupError("Choose the agent's voice model: " + ", ".join(VOICE_MODELS.values()) + ".")
     agent.voice_name = (await elevenlabs.ensure_voice(api_key, agent.voice_id)) or agent.voice_name
     if not account.webhook_id:
         webhook_id, signing = await elevenlabs.create_webhook(api_key, "OpenLivery calls", webhook_url(account))
         account.webhook_id = webhook_id
         account.encrypted_webhook_secret = encrypt_secret(signing) if signing else None
         db.commit()
-    token = "olv_" + secrets.token_urlsafe(32)
-    secret_id = await elevenlabs.ensure_secret(api_key, secret_name(line), token)
-    line.llm_secret_hash = _hash(token)
-    line.elevenlabs_agent_id = await elevenlabs.upsert_agent(
-        api_key, line.elevenlabs_agent_id, _agent_body(line, secret_id, account.webhook_id)
-    )
+    line.elevenlabs_agent_id = await elevenlabs.upsert_agent(api_key, line.elevenlabs_agent_id, _agent_body(line, account.webhook_id))
     db.commit()
     label = f"{line.client.name} · {line.label or line.phone_number}"[:60]
     if line.elevenlabs_phone_number_id:
@@ -310,6 +298,33 @@ async def connect_line(db: Session, line: PhoneChannel) -> None:
     db.commit()
 
 
+# What a line's ElevenLabs agent carries from the agent and from its client:
+# a change to any of them is written again into every connected line.
+AGENT_LINE_FIELDS = {
+    "name", "voice_id", "greeting", "model", "prompt_language", "instructions", "personality",
+    "brief_summary", "brief_products", "brief_audience", "brief_policies", "brief_dos", "brief_donts",
+}
+CLIENT_LINE_FIELDS = {"name", "industry", "business_type", "business_custom", "timezone"}
+
+
+async def resync_lines(db: Session, *, agent_id=None, client_id=None) -> None:
+    """Write the agent again into its connected lines; one that cannot take
+    it keeps the error to show."""
+    query = select(PhoneChannel).where(PhoneChannel.is_enabled.is_(True), PhoneChannel.status == "connected")
+    if agent_id is not None:
+        query = query.where(PhoneChannel.agent_id == agent_id)
+    if client_id is not None:
+        query = query.where(PhoneChannel.client_id == client_id)
+    for line in db.scalars(query).all():
+        try:
+            await connect_line(db, line)
+        except (PhoneSetupError, TelephonyError) as exc:
+            db.rollback()
+            line.status = "error"
+            line.last_error = str(exc)
+            db.commit()
+
+
 async def disconnect_line(db: Session, line: PhoneChannel) -> None:
     """Take the number and the agent out of ElevenLabs. Best effort on each
     step: whatever is already gone does not stop the rest."""
@@ -321,7 +336,6 @@ async def disconnect_line(db: Session, line: PhoneChannel) -> None:
             steps.append(elevenlabs.release_number(api_key, line.elevenlabs_phone_number_id))
         if line.elevenlabs_agent_id:
             steps.append(elevenlabs.delete_agent(api_key, line.elevenlabs_agent_id))
-        steps.append(elevenlabs.delete_secret(api_key, secret_name(line)))
         for step in steps:
             try:
                 await step
@@ -329,7 +343,6 @@ async def disconnect_line(db: Session, line: PhoneChannel) -> None:
                 pass
     line.elevenlabs_phone_number_id = None
     line.elevenlabs_agent_id = None
-    line.llm_secret_hash = ""
     line.status = "disconnected"
     db.commit()
 
@@ -353,328 +366,87 @@ def line_out(line: PhoneChannel) -> dict:
     }
 
 
-# --- a turn ------------------------------------------------------------------
-
-
-def secret_matches(line: PhoneChannel, authorization: str | None) -> bool:
-    scheme, _, presented = (authorization or "").strip().partition(" ")
-    if scheme.lower() != "bearer" or not presented.strip() or not line.llm_secret_hash:
-        return False
-    return hmac.compare_digest(_hash(presented.strip()), line.llm_secret_hash)
+# --- the end of a call ---------------------------------------------------------
 
 
 @dataclass
-class CallTurn:
-    """What ElevenLabs sent, reduced to what a reply needs."""
+class CallReport:
+    """A finished call as ElevenLabs reports it, reduced to what is kept."""
 
     call_id: str
     caller: str | None
-    turns: list[dict]           # user/assistant turns as said on the call, oldest first
-    tools: list[dict]           # ElevenLabs' tools, OpenAI format
+    started: float | None                 # unix seconds
+    turns: list[tuple[str, str, float]]   # (role, text, seconds into the call)
 
 
-def _known(value: str) -> str | None:
-    return None if value in ("", "None", "null", "undefined") or value.startswith("{{") else value
+def _known(value) -> str | None:
+    value = str(value or "").strip()
+    return None if value in ("", "None", "null", "undefined") else value
 
 
-def parse_turn(body: dict) -> CallTurn:
-    messages = body.get("messages") or []
-    marker = None
-    for message in messages:
-        if message.get("role") == "system":
-            marker = _MARKER_RE.search(str(message.get("content") or ""))
-            if marker:
-                break
-    if not marker or not _known(marker.group(1)):
-        raise ValueError("The request does not name its call")
+def _report(data: dict) -> CallReport:
+    metadata = data.get("metadata") or {}
+    phone_call = metadata.get("phone_call") or {}
     turns = []
-    for message in messages:
-        role, content = message.get("role"), message.get("content")
-        if role in ("user", "assistant") and isinstance(content, str) and content.strip() and content != "None":
-            turns.append({"role": role, "content": content.strip()})
-    return CallTurn(call_id=marker.group(1), caller=_known(marker.group(2)), turns=turns, tools=list(body.get("tools") or []))
+    for item in data.get("transcript") or []:
+        text = (item.get("message") or "").strip()
+        # "..." is a turn the speech recognition heard nothing in.
+        if not text or text.strip(". ") == "":
+            continue
+        role = "assistant" if item.get("role") == "agent" else "user"
+        turns.append((role, text, float(item.get("time_in_call_secs") or 0)))
+    started = metadata.get("start_time_unix_secs")
+    return CallReport(
+        call_id=data["conversation_id"],
+        caller=_known(phone_call.get("external_number")),
+        started=float(started) if isinstance(started, (int, float)) else None,
+        turns=turns,
+    )
 
 
-def _open_call(db: Session, line: PhoneChannel, call: CallTurn) -> Conversation:
-    """The call's conversation: found by ElevenLabs' id, or opened on its
-    first turn. Every call is a new conversation, never an open case."""
-    existing = db.scalar(select(PhoneCall).where(PhoneCall.external_call_id == call.call_id))
+def _open_call(db: Session, line: PhoneChannel, call_id: str, caller: str | None) -> Conversation:
+    """The call's conversation, found by ElevenLabs' id or opened. Every call
+    is a new conversation, never an open case."""
+    existing = db.scalar(select(PhoneCall).where(PhoneCall.external_call_id == call_id))
     if existing:
         return db.get(Conversation, existing.conversation_id)
-    phone = contacts.normalize_phone(call.caller)
+    phone = contacts.normalize_phone(caller)
     contact = contacts.resolve_contact(db, line.client_id, phone=phone) if phone else None
-    title = contacts.display_name(contact)[:240] if contact else (call.caller or "Phone call")
+    title = contacts.display_name(contact)[:240] if contact else (caller or "Phone call")
     conversation = Conversation(
         agency_id=line.agency_id,
         client_id=line.client_id,
         agent_id=line.agent_id,
         channel=CHANNEL,
         phone_channel_id=line.id,
-        external_chat_id=f"call:{call.call_id}",
+        external_chat_id=f"call:{call_id}",
         contact_id=contact.id if contact else None,
         contact_name=(contact.name.strip()[:180] if contact and contact.name.strip() else None),
         title=title,
     )
     db.add(conversation)
     db.flush()
-    db.add(PhoneCall(conversation_id=conversation.id, phone_channel_id=line.id, external_call_id=call.call_id, caller=call.caller))
+    db.add(PhoneCall(conversation_id=conversation.id, phone_channel_id=line.id, external_call_id=call_id, caller=caller))
     route_new_conversation_by_tags(db, conversation, contact)
     db.flush()
     return conversation
 
 
-def _store_turns(db: Session, conversation: Conversation, call: CallTurn, agent: Agent) -> str:
-    """Store what was said since the last stored turn; returns the caller's
-    latest words, for knowledge retrieval. Turns are keyed by their position
-    in the call, so a retried request stores nothing twice.
-
-    The history moves under a stored turn in two ways. A caller who keeps
-    talking comes back as the same turn, longer, and the stored text follows
-    it. A reply the caller talked over can drop out of the history, so its
-    position now holds what the caller said: the reply keeps its text under
-    another key and the position goes to the caller."""
-    stored = {
-        message.external_message_id: message
-        for message in db.scalars(select(Message).where(Message.conversation_id == conversation.id, Message.external_message_id.like("turn:%")))
-    }
-    latest = ""
-    for index, turn in enumerate(call.turns):
-        key = f"turn:{index}"
-        if turn["role"] == "user":
-            latest = turn["content"]
-        existing = stored.get(key)
-        if existing is not None and existing.role == turn["role"]:
-            if turn["role"] == "user" and existing.content != turn["content"]:
-                existing.content = turn["content"]
-            continue
-        if existing is not None:
-            existing.external_message_id = f"unheard:{existing.id}"
-            db.flush()
+def _store_transcript(db: Session, conversation: Conversation, report: CallReport, agent: Agent) -> None:
+    """The call's turns as messages, each at the moment it was said."""
+    if db.scalar(select(Message.id).where(Message.conversation_id == conversation.id, Message.external_message_id.like("turn:%")).limit(1)):
+        return
+    for index, (role, text, offset) in enumerate(report.turns):
         db.add(Message(
             conversation_id=conversation.id,
-            role=turn["role"],
-            content=turn["content"],
-            external_message_id=key,
-            sender_type="ai" if turn["role"] == "assistant" else "visitor",
-            sender_name=agent.name if turn["role"] == "assistant" else None,
+            role=role,
+            content=text,
+            external_message_id=f"turn:{index}",
+            sender_type="ai" if role == "assistant" else "visitor",
+            sender_name=agent.name if role == "assistant" else None,
+            created_at=datetime.fromtimestamp(report.started + offset, timezone.utc) if report.started else now_utc(),
         ))
     conversation.updated_at = now_utc()
-    return latest
-
-
-def _passthrough_specs(tools: list[dict], holder: list[dict]) -> list[ToolSpec]:
-    """ElevenLabs' tools as tools the model can call. Calling one ends the
-    reply: it is recorded here and handed back to ElevenLabs to run."""
-    specs = []
-    for tool in tools:
-        function = tool.get("function") or {}
-        name = function.get("name")
-        if not name:
-            continue
-
-        def handler(args: dict, _name: str = name) -> tuple[str, bool]:
-            holder.append({"name": _name, "arguments": args})
-            return "Done: it runs right after this reply. Say one short sentence to the caller now, nothing else.", False
-
-        specs.append(ToolSpec(
-            name=name,
-            description=function.get("description") or name,
-            input_schema=function.get("parameters") or {"type": "object", "properties": {}},
-            handler=handler,
-        ))
-    return specs
-
-
-def _store_call(db: Session, line: PhoneChannel, call: CallTurn) -> tuple[Conversation, str]:
-    """Open the call's conversation and store its turns. ElevenLabs can ask
-    for the same turn twice at once; the slower request loses the insert, and
-    a second pass finds what the other one stored."""
-    try:
-        conversation = _open_call(db, line, call)
-        query = _store_turns(db, conversation, call, line.agent)
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        conversation = _open_call(db, line, call)
-        query = _store_turns(db, conversation, call, line.agent)
-        db.commit()
-    return conversation, query
-
-
-@dataclass
-class Turn:
-    """A turn stored and ready to answer, by id: the answer streams on its own
-    session, after the request's has closed."""
-
-    line_id: uuid.UUID
-    conversation_id: uuid.UUID
-    call: CallTurn
-    query: str
-    received: float     # perf_counter when the request came in
-
-
-def take_turn(db: Session, line: PhoneChannel, body: dict) -> Turn:
-    """Store what has been said on the call so far."""
-    received = time.perf_counter()
-    call = parse_turn(body)
-    conversation, query = _store_call(db, line, call)
-    return Turn(line.id, conversation.id, call, query, received)
-
-
-class _Stream:
-    """Chunks of an OpenAI chat-completion stream, the format ElevenLabs reads."""
-
-    def __init__(self, model: str):
-        self.id = f"chatcmpl-{uuid.uuid4().hex}"
-        self.created = int(time.time())
-        self.model = model
-
-    def chunk(self, delta: dict | None = None, finish: str | None = None, usage: dict | None = None) -> str:
-        payload: dict = {"id": self.id, "object": "chat.completion.chunk", "created": self.created, "model": self.model}
-        payload["choices"] = [] if usage else [{"index": 0, "delta": delta or {}, "finish_reason": finish}]
-        if usage:
-            payload["usage"] = usage
-        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-    def end(self, tool_calls: list[dict], completion=None):
-        for index, call in enumerate(tool_calls):
-            yield self.chunk({"tool_calls": [{
-                "index": index, "id": f"call_{uuid.uuid4().hex[:24]}", "type": "function",
-                "function": {"name": call["name"], "arguments": json.dumps(call["arguments"], ensure_ascii=False)},
-            }]})
-        yield self.chunk(finish="tool_calls" if tool_calls else "stop")
-        inputs, outputs = (completion.input_tokens, completion.output_tokens) if completion else (0, 0)
-        yield self.chunk(usage={"prompt_tokens": inputs, "completion_tokens": outputs, "total_tokens": inputs + outputs})
-        yield "data: [DONE]\n\n"
-
-
-async def answer_turn(turn: Turn) -> AsyncIterator[str]:
-    """The agent's reply to a turn, streamed: the text goes out as the model
-    writes it, so the voice starts on the first words; the tools ElevenLabs
-    runs (hanging up, putting the caller through) follow it; the reply is
-    stored once the stream is done. FastAPI closes the request's session
-    before the body is sent, so this one opens its own."""
-    db = new_session()
-    try:
-        async for chunk in _answer(db, turn):
-            yield chunk
-    finally:
-        db.close()
-
-
-async def _answer(db: Session, turn: Turn) -> AsyncIterator[str]:
-    line = db.get(PhoneChannel, turn.line_id)
-    conversation = db.get(Conversation, turn.conversation_id)
-    agent, call = line.agent, turn.call
-    model = agent.model.strip()
-    stream = _Stream(model)
-    yield stream.chunk({"role": "assistant", "content": ""})
-
-    credentials = resolve_agent_credentials(db, agent)
-    if not agent.is_active or not credentials or not model:
-        line.last_error = "A call came in, but the agent is not ready (model or provider key missing)."
-        db.commit()
-        for chunk in stream.end([]):
-            yield chunk
-        return
-
-    lang = _language(agent)
-    knowledge = await retrieve_knowledge(db, agent, turn.query)
-    definitions = field_definitions(db, agent.client_id, agent.prompt_language)
-    capture_holder: list = []
-    system_content = build_system_prompt(agent, knowledge.text, capture_context(agent, conversation, definitions, agent.prompt_language))
-    for block in (
-        contact_context(conversation, agent.prompt_language, definitions),
-        contacts.previous_conversation_recap(db, conversation),
-    ):
-        if block:
-            system_content += "\n\n" + block
-    system_content += "\n\n" + PHONE_RULES[lang]
-
-    passthrough: list[dict] = []
-    tools = call.tools
-    escalation_holder: list = []
-    extra_specs: list[ToolSpec] = []
-    if line.transfer_number:
-        system_content += TRANSFER_RULE[lang]
-    else:
-        tools = [t for t in tools if (t.get("function") or {}).get("name") != "transfer_to_number"]
-        rules = active_rules(db, agent)
-        if escalation_enabled(db, agent, rules):
-            system_content += CALLBACK_RULE[lang] + "\n" + escalation_prompt(rules, builtin_enabled=agent.escalation_builtin_enabled)
-            extra_specs.append(build_escalation_spec(rules, escalation_holder, builtin_enabled=agent.escalation_builtin_enabled))
-    capture_spec = build_capture_spec(agent, conversation, definitions, capture_holder)
-    if capture_spec:
-        extra_specs.append(capture_spec)
-    extra_specs.extend(_passthrough_specs(tools, passthrough))
-
-    history = call.turns[-agent.memory_limit:] if agent.memory_limit else call.turns
-    messages = [{"role": "system", "content": system_content}, *history]
-    base_url, api_key = credentials
-    max_tokens = min(agent.max_tokens, MAX_REPLY_TOKENS) if agent.max_tokens else MAX_REPLY_TOKENS
-    done: list = []
-    asked = time.perf_counter()
-    first_words = None
-    try:
-        async for piece in stream_completion(
-            db, agent, base_url, api_key, messages, done,
-            temperature=agent.temperature, max_tokens=max_tokens, extra_specs=extra_specs or None, model=model,
-        ):
-            first_words = first_words or time.perf_counter()
-            yield stream.chunk({"content": piece})
-    except HTTPException as exc:
-        # Close the stream properly anyway: ElevenLabs asks again on the
-        # caller's next words instead of waiting on a reply that never ends.
-        line.last_error = f"The model did not answer on a call: {exc.detail}"[:500]
-        db.commit()
-    completion = done[-1] if done else None
-    for chunk in stream.end(passthrough, completion):
-        yield chunk
-    # Where a turn's wait goes: our own work before the model, the model's
-    # first words, the whole reply. What the caller waits is the first two.
-    logger.info(
-        "Call turn %s: prepared in %d ms, first words after %s ms, done in %d ms",
-        call.call_id, (asked - turn.received) * 1000,
-        f"{(first_words - asked) * 1000:.0f}" if first_words else "-", (time.perf_counter() - turn.received) * 1000,
-    )
-    if completion is None:
-        return
-
-    outbound = None
-    if completion.text:
-        # The same history asked again (a retry, or the caller still talking)
-        # replaces the reply it got before, which the caller never heard.
-        key = f"turn:{len(call.turns)}"
-        outbound = db.scalar(select(Message).where(Message.conversation_id == conversation.id, Message.external_message_id == key))
-        if outbound is None:
-            outbound = Message(
-                conversation_id=conversation.id, role="assistant", content=completion.text, sources=knowledge.sources,
-                tool_calls=completion.tool_calls, sender_type="ai", sender_name=agent.name, external_message_id=key,
-            )
-            db.add(outbound)
-        else:
-            outbound.content, outbound.sources, outbound.tool_calls = completion.text, knowledge.sources, completion.tool_calls
-    record_usage(db, agent.agency_id, agent.id, agent.provider, model, completion, conversation=conversation, message=outbound)
-    apply_captures(db, conversation, capture_holder, definitions)
-    line.last_error = None
-    try:
-        db.commit()
-    except IntegrityError:
-        # A request for the same turn running alongside stored its reply
-        # first; this one was still said, which is what the caller waited for.
-        db.rollback()
-
-    transfer = next((item for item in passthrough if item["name"] == "transfer_to_number"), None)
-    if transfer and not escalation_holder:
-        args = transfer["arguments"]
-        reason = str(args.get("reason") or args.get("agent_message") or "")[:300]
-        escalation_holder.append(EscalationRequest(reason=reason, trigger="human_request"))
-    if escalation_holder:
-        await apply_escalation(db, conversation, agent, escalation_holder[-1])
-        db.commit()
-
-
-# --- the end of a call ---------------------------------------------------------
 
 
 def signature_valid(account: CallAccount, raw_body: bytes, header: str | None, *, now: float | None = None) -> bool:
@@ -694,33 +466,27 @@ def signature_valid(account: CallAccount, raw_body: bytes, header: str | None, *
 
 
 def finish_call(db: Session, account: CallAccount, payload: dict) -> None:
-    """Record the report ElevenLabs sends when a call ends and close the
-    conversation, unless a person has it now."""
+    """Record the report ElevenLabs sends when a call ends: its transcript,
+    duration and cost, and close the conversation unless a person has it."""
     if payload.get("type") != "post_call_transcription":
         return
     data = payload.get("data") or {}
-    call_id = data.get("conversation_id")
-    if not call_id:
+    if not data.get("conversation_id"):
         return
-    record = db.scalar(select(PhoneCall).where(PhoneCall.external_call_id == call_id))
+    report = _report(data)
+    record = db.scalar(select(PhoneCall).where(PhoneCall.external_call_id == report.call_id))
+    if record is not None and record.ended_at is not None:
+        return
+    line = db.scalar(select(PhoneChannel).where(
+        PhoneChannel.agency_id == account.agency_id, PhoneChannel.elevenlabs_agent_id == data.get("agent_id")
+    )) if record is None else db.get(PhoneChannel, record.phone_channel_id)
+    if line is None:
+        return
+    conversation = _open_call(db, line, report.call_id, report.caller)
+    _store_transcript(db, conversation, report, line.agent)
+    db.flush()
+    record = db.scalar(select(PhoneCall).where(PhoneCall.external_call_id == report.call_id))
     metadata = data.get("metadata") or {}
-    if record is None:
-        # The caller hung up before saying anything: no turn ever reached us.
-        line = db.scalar(select(PhoneChannel).where(
-            PhoneChannel.agency_id == account.agency_id, PhoneChannel.elevenlabs_agent_id == data.get("agent_id")
-        ))
-        if line is None:
-            return
-        phone_call = metadata.get("phone_call") or {}
-        caller = phone_call.get("external_number")
-        greeting = next((t.get("message") for t in data.get("transcript") or [] if t.get("role") == "agent" and t.get("message")), None)
-        call = CallTurn(call_id=call_id, caller=caller, turns=[{"role": "assistant", "content": greeting}] if greeting else [], tools=[])
-        conversation = _open_call(db, line, call)
-        _store_turns(db, conversation, call, line.agent)
-        db.flush()
-        record = db.scalar(select(PhoneCall).where(PhoneCall.external_call_id == call_id))
-    if record.ended_at is not None:
-        return
     record.ended_at = now_utc()
     duration = metadata.get("call_duration_secs")
     record.duration_seconds = int(duration) if isinstance(duration, (int, float)) else None
@@ -728,8 +494,6 @@ def finish_call(db: Session, account: CallAccount, payload: dict) -> None:
     record.cost_credits = int(cost) if isinstance(cost, (int, float)) else None
     record.end_reason = str(metadata.get("termination_reason") or "")[:180] or None
     record.summary = ((data.get("analysis") or {}).get("transcript_summary") or None)
-    conversation = db.get(Conversation, record.conversation_id)
-    if conversation and conversation.mode != "human" and conversation.status != "resolved":
-        agent = db.get(Agent, conversation.agent_id)
-        set_status(db, conversation, "resolved", actor=agent.name if agent else None)
+    if conversation.mode != "human" and conversation.status != "resolved":
+        set_status(db, conversation, "resolved", actor=line.agent.name)
     db.commit()

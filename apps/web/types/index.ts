@@ -115,6 +115,7 @@ export type ProviderTest = { ok: boolean; message: string; models: string[] };
 // lines its clients' agents answer.
 export type CallProvider = "elevenlabs" | "twilio" | "telnyx";
 export type CallAccount = { provider: CallProvider; configured: boolean; stored: boolean; secret_hint: string; last_error: string | null };
+export type PhoneModel = { id: string; label: string; realtime: boolean };
 export type PhoneVoice = { voice_id: string; name: string; accent: string; gender: string; description: string; preview_url: string | null };
 export type CarrierNumber = { id: string; phone_number: string; name: string };
 export type PhoneLine = {

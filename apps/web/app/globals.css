@@ -559,6 +559,8 @@ textarea { line-height: 1.55; }
 /* The console link sits on the first field's label line, so it costs no height
    and is gone once the key is stored. */
 .settings-copy .settings-note { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); }
+.voice-paste { display: flex; gap: 8px; margin-top: 10px; }
+.voice-paste input { flex: 1; min-width: 0; }
 .field-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .field-label-row .guide-link { margin-top: 0; font-weight: 500; }
 .toast-viewport { position: fixed; top: 18px; right: 18px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; width: min(380px, calc(100vw - 36px)); pointer-events: none; }
