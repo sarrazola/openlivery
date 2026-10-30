@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, ExternalLink, LoaderCircle, Phone, Plus, Save, Trash2 } from "lucide-react";
+import { CheckCircle2, ExternalLink, LoaderCircle, Phone, Plus, Save } from "lucide-react";
 import { Alert } from "@/components/ui";
+import { KeyActions } from "@/components/key-actions";
 import { PasswordInput } from "@/components/password-input";
 import { useToast } from "@/components/toast";
 import { api, messageFrom } from "@/lib/api";
@@ -112,12 +113,11 @@ function AccountForm({ provider, state, onChange, onCancel }: { provider: CallPr
   }
 
   if (stored) return <div className="key-configured">
-    <span className="key-configured-status"><CheckCircle2 size={18} /> {t("phone.settings.connected", { name: nameOf(provider), hint: state?.secret_hint || "" })}</span>
-    {state?.last_error && <Alert>{state.last_error}</Alert>}
-    <div className="key-configured-actions">
-      <button type="button" className="button ghost" disabled={busy} onClick={() => { setValues({}); setReplacing(true); }}>{t("phone.settings.replace")}</button>
-      <button type="button" className="button danger" disabled={busy} onClick={remove}><Trash2 size={15} /> {t("phone.settings.remove")}</button>
+    <div className="key-configured-head">
+      <span className="key-configured-status"><CheckCircle2 size={18} /> {t("phone.settings.connected", { name: nameOf(provider), hint: state?.secret_hint || "" })}</span>
+      <KeyActions busy={busy} replaceLabel={t("phone.settings.replace")} removeLabel={t("phone.settings.remove")} onReplace={() => { setValues({}); setReplacing(true); }} onRemove={remove} />
     </div>
+    {state?.last_error && <Alert>{state.last_error}</Alert>}
   </div>;
   const cancel = state?.stored ? () => { setValues({}); setReplacing(false); } : onCancel;
   return <>

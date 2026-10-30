@@ -547,7 +547,10 @@ textarea { line-height: 1.55; }
 .button.danger:hover { filter: brightness(.95); }
 .key-configured { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .key-configured-status { display: inline-flex; align-items: center; gap: 8px; color: var(--green); font-weight: 600; font-size: 14px; }
-.key-configured-actions { display: flex; gap: 8px; }
+.key-configured-head { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.key-configured-actions { flex: 0 0 auto; display: flex; gap: 6px; }
+.key-configured-actions .icon-button { width: 32px; height: 32px; }
+.key-configured-actions .key-remove:hover:not(:disabled) { color: var(--red-text); border-color: var(--red-line); background: var(--red-soft); }
 .toast-viewport { position: fixed; top: 18px; right: 18px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; width: min(380px, calc(100vw - 36px)); pointer-events: none; }
 .toast { pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); box-shadow: 0 12px 30px rgba(var(--shadow-rgb), calc(.16 * var(--shadow-k))); font-size: 14px; color: var(--ink); animation: toast-in .18s ease; }
 .toast-icon { flex: 0 0 auto; display: inline-flex; margin-top: 1px; }
@@ -2263,23 +2266,22 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .user-menu-trigger { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; margin: -6px; padding: 6px; color: inherit; text-align: left; border: 0; border-radius: 9px; background: transparent; cursor: pointer; transition: background .15s ease; }
 .user-menu-trigger:hover, .user-menu-trigger[aria-expanded="true"] { background: var(--surface-3); }
 .user-menu-trigger > svg { flex: 0 0 auto; color: var(--subtle); }
-.user-menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 10px); z-index: 30; display: flex; flex-direction: column; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 10px 32px rgba(var(--shadow-rgb), calc(.16 * var(--shadow-k))); }
-.user-menu-head { display: none; min-width: 0; flex-direction: column; gap: 2px; padding-bottom: 10px; border-bottom: 1px solid var(--line-soft); }
+.user-menu-trigger .user-avatar { font-size: 13px; letter-spacing: .02em; }
+.user-menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 10px); z-index: 30; display: flex; flex-direction: column; gap: 2px; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 10px 32px rgba(var(--shadow-rgb), calc(.16 * var(--shadow-k))); }
+.user-menu-head { display: none; min-width: 0; flex-direction: column; gap: 2px; margin-bottom: 4px; padding: 6px 8px 10px; border-bottom: 1px solid var(--line-soft); }
 .user-menu-head strong { color: var(--ink); font-size: 13px; }
 .user-menu-head span { color: var(--subtle); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.user-menu-group { display: flex; flex-direction: column; gap: 6px; }
-.user-menu-group > span { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
-.user-menu-group > span svg { color: var(--subtle); }
-.user-menu-options { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--surface-3); }
-.user-menu-options button { flex: 1 1 0; min-width: 0; height: 28px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; color: var(--muted); border: 0; border-radius: 6px; background: transparent; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: .15s ease; }
-.user-menu-options button svg { flex: 0 0 auto; }
+.user-menu-row { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 4px 0 8px; }
+.user-menu-row > span { min-width: 0; display: inline-flex; align-items: center; gap: 10px; color: var(--ink-2); font-size: 13.5px; font-weight: 500; white-space: nowrap; }
+.user-menu-row > span svg, .user-menu-item svg { flex: 0 0 auto; color: var(--subtle); }
+.user-menu-options { flex: 0 0 auto; display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: var(--surface-3); }
+.user-menu-options button { min-width: 32px; height: 28px; padding: 0 8px; display: inline-grid; place-items: center; color: var(--subtle); border: 0; border-radius: 7px; background: transparent; font-size: 12px; font-weight: 600; letter-spacing: .02em; cursor: pointer; transition: .15s ease; }
 .user-menu-options button:hover { color: var(--ink); }
-.user-menu-options button.active { color: var(--accent-text); background: var(--surface); box-shadow: 0 1px 2px rgba(var(--shadow-rgb), calc(.1 * var(--shadow-k))); }
+.user-menu-options button.active { color: var(--ink); background: var(--surface); box-shadow: 0 1px 2px rgba(var(--shadow-rgb), calc(.1 * var(--shadow-k))); }
 :root[data-theme="dark"] .user-menu-options button.active { background: var(--surface-4); }
-.user-menu-item { display: flex; align-items: center; gap: 8px; margin: 0 -6px -6px; padding: 10px 8px 8px; color: var(--ink-2); border: 0; border-top: 1px solid var(--line-soft); border-radius: 0 0 8px 8px; background: transparent; font-size: 13px; font-weight: 600; text-align: left; cursor: pointer; }
-.user-menu-item:hover { color: var(--red-text); }
-.user-menu-item svg { color: var(--subtle); }
-.user-menu-item:hover svg { color: var(--red-text); }
+.user-menu-item { min-height: 42px; display: flex; align-items: center; gap: 10px; padding: 0 8px; color: var(--ink-2); border: 0; border-radius: 8px; background: transparent; font-size: 13.5px; font-weight: 500; text-align: left; cursor: pointer; transition: background .15s ease; }
+.user-menu-sep { height: 1px; margin: 4px 2px; background: var(--line-soft); }
+.user-menu-item:hover { background: var(--surface-3); }
 @media (min-width: 851px) {
   .sidebar-collapsed .user-menu-trigger { flex: 0 0 auto; margin: 0; padding: 4px; }
   .sidebar-collapsed .user-menu-trigger > svg { display: none; }

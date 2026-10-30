@@ -5,6 +5,7 @@ import { CheckCircle2, Eye, EyeOff, ImagePlus, LoaderCircle, PauseCircle, Save, 
 import { Alert, PageHead } from "@/components/ui";
 import { FormSkeleton } from "@/components/skeleton";
 import { AppLinks } from "@/components/app-links";
+import { KeyActions } from "@/components/key-actions";
 import { PhoneAccounts } from "@/components/phone-accounts";
 import { useToast } from "@/components/toast";
 import { api, messageFrom } from "@/lib/api";
@@ -102,13 +103,12 @@ function ProviderKeyCard({ preset, state, busy, onSave, onRemove, onToggle, t }:
       <div className="form-fields">
         {configured ? (
           <div className="key-configured">
-            <span className="key-configured-status">{enabled ? <CheckCircle2 size={18} /> : <PauseCircle size={18} />} {t(enabled ? "settings.providers.configured" : "settings.providers.paused", { label: preset.label })}</span>
+            <div className="key-configured-head">
+              <span className="key-configured-status">{enabled ? <CheckCircle2 size={18} /> : <PauseCircle size={18} />} {t(enabled ? "settings.providers.configured" : "settings.providers.paused", { label: preset.label })}</span>
+              <KeyActions busy={busy} replaceLabel={t("settings.providers.replace")} removeLabel={t("settings.providers.remove")} onReplace={() => { setKey(""); setReplacing(true); }} onRemove={() => onRemove(preset.id)} />
+            </div>
             <label className="switch-row"><span><strong>{t("settings.providers.useKey")}</strong><small>{t("settings.providers.useKeyHint")}</small></span><input type="checkbox" checked={enabled} disabled={busy} onChange={(e) => onToggle(preset.id, e.target.checked)} /></label>
             {!enabled && !state?.configured && <Alert type="error">{t("settings.providers.pausedNothingAnswers")}</Alert>}
-            <div className="key-configured-actions">
-              <button type="button" className="button ghost" disabled={busy} onClick={() => { setKey(""); setReplacing(true); }}>{t("settings.providers.replace")}</button>
-              <button type="button" className="button danger" disabled={busy} onClick={() => onRemove(preset.id)}><Trash2 size={15} /> {t("settings.providers.remove")}</button>
-            </div>
           </div>
         ) : (
           <>
