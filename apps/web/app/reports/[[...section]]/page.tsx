@@ -298,7 +298,7 @@ export default function ReportsPage() {
                   <td>{row.conversation_id ? <code style={{ fontSize: 12 }}>{row.conversation_id.slice(0, 8)}</code> : "—"}</td>
                   <td>{row.contact_name || (row.conversation_id ? t("reports.unknown") : "—")}</td>
                   <td>{row.client_name || "—"}</td><td>{row.agent_name || "—"}</td><td>{channelLabel(row.channel)}</td>
-                  <td>{row.model}{row.purpose === "summary" && <> <span className="pill">{t("reports.cols.purposeSummary")}</span></>}</td>
+                  <td>{row.model}{row.purpose === "summary" && <> <span className="pill">{t("reports.cols.purposeSummary")}</span></>}{row.purpose === "call" && <> <span className="pill">{t("reports.cols.purposeCall")}</span></>}</td>
                   <td>{row.served_by || "—"}</td>
                   <td>{row.duration_ms == null ? "—" : `${(row.duration_ms / 1000).toFixed(row.duration_ms < 10_000 ? 1 : 0)} s`}</td>
                   <td>{fmtInt(row.input_tokens)}</td><td>{fmtInt(row.output_tokens)}</td>

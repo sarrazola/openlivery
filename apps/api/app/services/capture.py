@@ -32,8 +32,8 @@ MAX_VALUE_CHARS = 500
 
 # Channel groups an agent can limit a field to. Both WhatsApp lines are one
 # choice to the operator; the playground rehearses every field.
-CAPTURE_CHANNELS = ("whatsapp", "instagram", "messenger", "widget")
-_CHANNEL_GROUP = {"whatsapp": "whatsapp", "whatsapp_cloud": "whatsapp", "instagram": "instagram", "messenger": "messenger", "widget": "widget"}
+CAPTURE_CHANNELS = ("whatsapp", "instagram", "messenger", "widget", "phone")
+_CHANNEL_GROUP = {"whatsapp": "whatsapp", "whatsapp_cloud": "whatsapp", "instagram": "instagram", "messenger": "messenger", "widget": "widget", "phone": "phone"}
 
 TOOL_NAME = "save_contact_field"
 

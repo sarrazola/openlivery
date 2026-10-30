@@ -142,3 +142,22 @@ def test_reports_need_a_session_and_start_empty(client: TestClient):
     })
     empty = client.get(f"/api/reports/costs?{_period()}").json()
     assert empty["totals"]["replies"] == 0 and empty["by_client"] == [] and empty["by_day"] == []
+
+
+def test_a_day_in_the_report_is_the_viewers_day(authenticated_client: TestClient, monkeypatch):
+    """Cut in UTC, an evening's replies in Bogotá (UTC-5) fell on the next
+    day: they were missing from "today" until midnight UTC."""
+    from datetime import datetime, timezone
+
+    client = authenticated_client
+    _, _, conversation = _setup(client)
+    _reply(client, monkeypatch, conversation, ai_service.Completion(text="Hi", input_tokens=10, output_tokens=5, cost_usd=0.01), "hello")
+    with TestingSession() as db:
+        record = db.query(UsageRecord).one()
+        # 23:30 in Bogotá on 2026-10-29 is 04:30 UTC on the 30th.
+        record.created_at = datetime(2026, 10, 30, 4, 30, tzinfo=timezone.utc)
+        db.commit()
+    evening = "from=2026-10-29&to=2026-10-29"
+    assert client.get(f"/api/reports/costs?{evening}&tz=America/Bogota").json()["totals"]["replies"] == 1
+    assert client.get(f"/api/reports/replies?{evening}&tz=America/Bogota").json()["total"] == 1
+    assert client.get(f"/api/reports/costs?from=2026-10-30&to=2026-10-30&tz=America/Bogota").json()["totals"]["replies"] == 0

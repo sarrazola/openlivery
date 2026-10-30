@@ -46,6 +46,8 @@ def configure_channel(
     )
     if not agent:
         raise HTTPException(status_code=400, detail="Select an agent that belongs to this client")
+    if agent.kind == "voice":
+        raise HTTPException(status_code=400, detail="A voice agent answers phone calls only. Choose a chat agent for this channel.")
     channel = db.scalar(select(WidgetChannel).where(WidgetChannel.client_id == client.id))
     if not channel:
         channel = WidgetChannel(agency_id=user.agency_id, client_id=client.id, agent_id=agent.id)

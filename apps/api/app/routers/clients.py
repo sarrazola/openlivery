@@ -50,6 +50,7 @@ from ..services.whatsapp_templates import (
     validate_template_name,
 )
 from ..services import dns as dns_service
+from ..services import phone_calls
 from ..slugs import slugify, unique_slug
 
 
@@ -117,7 +118,7 @@ def get_client(client_id: uuid.UUID, db: Session = Depends(get_db), user: User =
 
 
 @router.patch("/{client_id}", response_model=ClientOut)
-def update_client(client_id: uuid.UUID, payload: ClientUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+async def update_client(client_id: uuid.UUID, payload: ClientUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     client = _client(db, user, client_id)
     values = payload.model_dump(exclude_unset=True)
     industry = values.get("industry", client.industry)
@@ -130,6 +131,9 @@ def update_client(client_id: uuid.UUID, payload: ClientUpdate, db: Session = Dep
     for key, value in values.items():
         setattr(client, key, value)
     db.commit()
+    # Its phone lines carry the client's name, business and timezone.
+    if phone_calls.CLIENT_LINE_FIELDS & values.keys():
+        phone_calls.refresh_lines_soon(db, client_id=client.id)
     return _client(db, user, client_id)
 
 
@@ -628,4 +632,6 @@ def delete_contact_field(
     strip_attribute(db, client.id, row.key)
     db.delete(row)
     db.commit()
+    # The agents that collected it on calls stop offering to save it.
+    phone_calls.refresh_lines_soon(db, client_id=client.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

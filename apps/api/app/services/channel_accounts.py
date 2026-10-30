@@ -14,7 +14,7 @@ from collections import Counter
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import Conversation, SocialChannel, WhatsAppChannel, WhatsAppCloudChannel
+from ..models import Conversation, PhoneChannel, SocialChannel, WhatsAppChannel, WhatsAppCloudChannel
 
 
 _FAMILY = {
@@ -22,6 +22,7 @@ _FAMILY = {
     "whatsapp_cloud": (WhatsAppCloudChannel, "whatsapp_cloud_channel_id"),
     "instagram": (SocialChannel, "social_channel_id"),
     "messenger": (SocialChannel, "social_channel_id"),
+    "phone": (PhoneChannel, "phone_channel_id"),
 }
 
 
@@ -33,9 +34,9 @@ def phone_suffix(phone: str | None, digits: int = 4) -> str | None:
 
 def fallback_label(channel) -> str | None:
     """What identifies the account when the operator gave it no name."""
-    if isinstance(channel, (WhatsAppChannel, WhatsAppCloudChannel)):
+    if isinstance(channel, (WhatsAppChannel, WhatsAppCloudChannel, PhoneChannel)):
         suffix = phone_suffix(channel.phone_number)
-        return f"\u00b7\u00b7\u00b7{suffix}" if suffix else channel.display_name
+        return f"\u00b7\u00b7\u00b7{suffix}" if suffix else getattr(channel, "display_name", None)
     if isinstance(channel, SocialChannel):
         return f"@{channel.username}" if channel.username else channel.display_name
     return None
@@ -107,7 +108,7 @@ def annotate(db: Session, conversations: list[Conversation]) -> None:
     counts: Counter = Counter()
     client_ids = {row.client_id for row in channels.values()}
     if client_ids:
-        for model in (WhatsAppChannel, WhatsAppCloudChannel):
+        for model in (WhatsAppChannel, WhatsAppCloudChannel, PhoneChannel):
             for client_id, n in db.execute(
                 select(model.client_id, func.count(model.id)).where(model.client_id.in_(client_ids)).group_by(model.client_id)
             ):

@@ -18,6 +18,7 @@ from ..schemas import (
     QAPairCreate, QAPairOut,
     check_reply_delay,
 )
+from ..services import phone_calls
 from ..services.capture import CAPTURE_CHANNELS, field_definitions
 from ..services.follow_ups import FOLLOW_UP_CHANNELS, MAX_MINUTES, MIN_MINUTES, check_schedule
 from ..services.knowledge import build_system_prompt, embed_document_chunks, reindex_agent, reindex_document
@@ -51,8 +52,9 @@ def _validate_client(db: Session, user: User, client_id: uuid.UUID) -> None:
 
 def _channels_of(db: Session, agent: Agent) -> list[WhatsAppChannel | WhatsAppCloudChannel | WidgetChannel]:
     """Every channel this agent answers: both WhatsApp lines and the web chat."""
-    from ..models import SocialChannel
+    from ..models import PhoneChannel, SocialChannel
     return [
+        *db.scalars(select(PhoneChannel).where(PhoneChannel.agent_id == agent.id)).all(),
         *db.scalars(select(SocialChannel).where(SocialChannel.agent_id == agent.id)).all(),
         *db.scalars(select(WhatsAppChannel).where(WhatsAppChannel.agent_id == agent.id)).all(),
         *db.scalars(select(WhatsAppCloudChannel).where(WhatsAppCloudChannel.agent_id == agent.id)).all(),
@@ -70,10 +72,26 @@ def list_agents(db: Session = Depends(get_db), user: User = Depends(get_current_
     ).unique().all()
 
 
+def _check_voice_model(model: str) -> None:
+    try:
+        phone_calls.check_voice_model(model)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _transfer_number(value: str | None) -> str | None:
+    try:
+        return phone_calls.transfer_number(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.post("", response_model=AgentOut, status_code=status.HTTP_201_CREATED)
 def create_agent(payload: AgentCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _validate_client(db, user, payload.client_id)
-    agent = Agent(agency_id=user.agency_id, **payload.model_dump())
+    if payload.kind == "voice":
+        _check_voice_model(payload.model)
+    agent = Agent(agency_id=user.agency_id, **payload.model_dump(exclude={"transfer_number"}), transfer_number=_transfer_number(payload.transfer_number))
     db.add(agent)
     db.commit()
     return _agent(db, user, agent.id)
@@ -85,7 +103,7 @@ def get_agent(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User = D
 
 
 @router.patch("/{agent_id}", response_model=AgentOut)
-def update_agent(agent_id: uuid.UUID, payload: AgentUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+async def update_agent(agent_id: uuid.UUID, payload: AgentUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     agent = _agent(db, user, agent_id)
     values = payload.model_dump(exclude_unset=True)
     client_id = values.get("client_id", agent.client_id)
@@ -102,9 +120,16 @@ def update_agent(agent_id: uuid.UUID, payload: AgentUpdate, db: Session = Depend
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if agent.kind == "voice" and "model" in values:
+        _check_voice_model(values["model"])
+    if "transfer_number" in values:
+        values["transfer_number"] = _transfer_number(values["transfer_number"])
     for key, value in values.items():
         setattr(agent, key, value)
     db.commit()
+    if agent.kind == "voice" and phone_calls.AGENT_LINE_FIELDS & values.keys():
+        # Written into ElevenLabs a moment later: the save does not wait on it.
+        phone_calls.refresh_lines_soon(db, agent_id=agent.id)
     return _agent(db, user, agent_id)
 
 
@@ -221,6 +246,7 @@ async def upload_document(
             await embed_document_chunks(db, agent, document)
         except Exception:
             db.rollback()
+        phone_calls.refresh_lines_soon(db, agent_id=agent.id)
     return _document_out(document)
 
 
@@ -257,6 +283,7 @@ def delete_document(agent_id: uuid.UUID, document_id: uuid.UUID, db: Session = D
         raise HTTPException(status_code=404, detail="Document not found")
     db.delete(document)
     db.commit()
+    phone_calls.refresh_lines_soon(db, agent_id=agent.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -393,6 +420,7 @@ def create_qa(agent_id: uuid.UUID, payload: QAPairCreate, db: Session = Depends(
     db.add(pair)
     db.commit()
     db.refresh(pair)
+    phone_calls.refresh_lines_soon(db, agent_id=agent.id)
     return pair
 
 
@@ -404,6 +432,7 @@ def delete_qa(agent_id: uuid.UUID, qa_id: uuid.UUID, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="Q&A pair not found")
     db.delete(pair)
     db.commit()
+    phone_calls.refresh_lines_soon(db, agent_id=agent.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 def _rule_out(rule: EscalationRule) -> dict:
@@ -485,6 +514,7 @@ def replace_escalation_config(
             )
         )
     db.commit()
+    phone_calls.refresh_lines_soon(db, agent_id=agent.id)
     return _escalation_out(db, agent)
 
 
@@ -537,6 +567,7 @@ def replace_capture_config(
         db.add(AgentCaptureField(agent_id=agent.id, field_key=item.field_key, channels=list(item.channels), position=position))
     db.commit()
     db.refresh(agent)
+    phone_calls.refresh_lines_soon(db, agent_id=agent.id)
     return _capture_out(db, agent)
 
 

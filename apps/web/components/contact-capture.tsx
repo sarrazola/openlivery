@@ -11,8 +11,8 @@ import type { CaptureConfig, ContactField } from "@/types";
 
 /** The channel groups a field can be limited to. Both WhatsApp lines are one
  * choice here, so the label is plain "WhatsApp", not the inbox's per-line one. */
-function channelKey(channel: string): "agents.capture.channelWhatsapp" | "agents.capture.channelInstagram" | "agents.capture.channelMessenger" | "agents.capture.channelWidget" {
-  return channel === "whatsapp" ? "agents.capture.channelWhatsapp" : channel === "instagram" ? "agents.capture.channelInstagram" : channel === "messenger" ? "agents.capture.channelMessenger" : "agents.capture.channelWidget";
+function channelKey(channel: string): "agents.capture.channelWhatsapp" | "agents.capture.channelInstagram" | "agents.capture.channelMessenger" | "agents.capture.channelWidget" | "agents.capture.channelPhone" {
+  return channel === "whatsapp" ? "agents.capture.channelWhatsapp" : channel === "instagram" ? "agents.capture.channelInstagram" : channel === "messenger" ? "agents.capture.channelMessenger" : channel === "phone" ? "agents.capture.channelPhone" : "agents.capture.channelWidget";
 }
 
 /** The type of a field, as an icon: it says the same as the word in less room. */

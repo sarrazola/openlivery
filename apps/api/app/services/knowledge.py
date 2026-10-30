@@ -52,12 +52,16 @@ def _chunks(text: str, size: int = 1800) -> list[str]:
     return result
 
 
-def build_knowledge(agent: Agent, documents: list[KnowledgeDocument], query: str) -> KnowledgeResult:
+def build_knowledge(
+    agent: Agent, documents: list[KnowledgeDocument], query: str, *, full_up_to: int = MAX_FULL_CONTEXT_CHARS
+) -> KnowledgeResult:
+    """Everything when the documents fit in ``full_up_to`` characters, else the
+    chunks that best match the query."""
     valid_docs = [doc for doc in documents if doc.status == "processed" and doc.extracted_text.strip()]
     total = sum(len(doc.extracted_text) for doc in valid_docs)
     sources: list[dict] = []
 
-    if total <= MAX_FULL_CONTEXT_CHARS:
+    if total <= full_up_to:
         sections = []
         for doc in valid_docs:
             sections.append(f"DOCUMENTO: {doc.filename}\n{doc.extracted_text}")
@@ -161,23 +165,25 @@ async def reindex_agent(db: Session, agent: Agent) -> int:
     return written
 
 
-async def retrieve_knowledge(db: Session, agent: Agent, query: str) -> KnowledgeResult:
+async def retrieve_knowledge(
+    db: Session, agent: Agent, query: str, *, full_up_to: int = MAX_FULL_CONTEXT_CHARS
+) -> KnowledgeResult:
     """Return the knowledge context for a query.
 
-    Small knowledge bases are included in full. Larger ones use semantic search
-    over stored embeddings, falling back to keyword ranking when embeddings are
-    unavailable.
+    Knowledge bases up to ``full_up_to`` characters are included in full.
+    Larger ones use semantic search over stored embeddings, falling back to
+    keyword ranking when embeddings are unavailable.
     """
     documents = list(
         db.scalars(select(KnowledgeDocument).where(KnowledgeDocument.agent_id == agent.id)).all()
     )
     valid_docs = [doc for doc in documents if doc.status == "processed" and doc.extracted_text.strip()]
     total = sum(len(doc.extracted_text) for doc in valid_docs)
-    if total <= MAX_FULL_CONTEXT_CHARS:
-        return build_knowledge(agent, valid_docs, query)
+    if total <= full_up_to:
+        return build_knowledge(agent, valid_docs, query, full_up_to=full_up_to)
 
     semantic = await _semantic_search(db, agent, query)
-    return semantic if semantic is not None else build_knowledge(agent, valid_docs, query)
+    return semantic if semantic is not None else build_knowledge(agent, valid_docs, query, full_up_to=full_up_to)
 
 
 async def _semantic_search(db: Session, agent: Agent, query: str) -> KnowledgeResult | None:
@@ -373,6 +379,7 @@ def _section(title: str, body: str, level: int = 2) -> str:
 _CHANNEL_NAMES = {
     "whatsapp": "WhatsApp", "whatsapp_cloud": "WhatsApp", "instagram": "Instagram", "messenger": "Facebook Messenger",
     "widget": {"es": "Chat web", "en": "Web chat"},
+    "phone": {"es": "Llamada telefónica", "en": "Phone call"},
 }
 
 
@@ -418,13 +425,15 @@ def contact_context(conversation, lang: str | None = None, definitions: dict | N
     return _section(text["contact"], "\n".join(lines) + "\n\n" + text["contact_rule"])
 
 
-def build_system_prompt(agent: Agent, knowledge_text: str, capture_text: str = "") -> str:
+def build_system_prompt(agent: Agent, knowledge_text: str, capture_text: str = "", *, with_time: bool = True) -> str:
     """Compose the system prompt as a markdown document.
 
     Headings and the few fixed sentences follow the agent's prompt language;
     what the operator typed goes in verbatim. Empty sections are left out.
     ``capture_text`` (from ``services.capture.capture_context``) goes right
     after the job, where the model still reads instructions as its own tasks.
+    ``with_time`` off leaves out the current date and time, for a prompt that
+    is stored and used later (a phone line's, whose platform adds them).
     """
     client = agent.client
     lang = agent.prompt_language if agent.prompt_language in _PROMPT_TEXT else "es"
@@ -450,7 +459,7 @@ def build_system_prompt(agent: Agent, knowledge_text: str, capture_text: str = "
     head = "\n".join([
         f"# {text['title'].format(name=agent.name, client=client.name)}",
         *identity,
-        text["now"].format(tz=tz_name, now=f"{text['weekdays'][now.weekday()]}, {now:%Y-%m-%d %H:%M}"),
+        *([text["now"].format(tz=tz_name, now=f"{text['weekdays'][now.weekday()]}, {now:%Y-%m-%d %H:%M}")] if with_time else []),
     ])
     parts = [head]
     if agent.instructions.strip():

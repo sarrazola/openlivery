@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ImagePlus, LoaderCircle, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, ImagePlus, LoaderCircle, MessageCircle, Phone, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { PageHead } from "@/components/ui";
 import { IndustryPicker, isBusinessComplete, type IndustryValue } from "@/components/industry-picker";
@@ -35,6 +35,10 @@ export default function NewClientPage() {
   const [logo, setLogo] = useState<File | null>(null);
   const [logoUrl, setLogoUrl] = useState("");
   const logoRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  // The first agent's kind, picked in the create button's menu.
+  const nextKind = useRef<"chat" | "voice">("chat");
+  const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => {
     if (!logo) { setLogoUrl(""); return; }
     const url = URL.createObjectURL(logo); setLogoUrl(url);
@@ -42,6 +46,9 @@ export default function NewClientPage() {
   }, [logo]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true);
+    // Picked in the menu of the create button; Enter in a field means chat.
+    const kind = nextKind.current;
+    setMenuOpen(false);
     if (!complete || !name.trim()) { setBusy(false); return; }
     try {
       const created = await api<Client>("/clients", { method: "POST", body: JSON.stringify({ name: name.trim(), industry: business.industry, business_type: business.businessType, business_custom: business.custom, timezone, is_active: true }) });
@@ -50,10 +57,10 @@ export default function NewClientPage() {
         try { await api(`/clients/${created.id}/logo`, { method: "POST", body: data }); }
         catch (err) { toast.error(messageFrom(err)); }
       }
-      router.push(`/agents/new?client=${created.id}`);
+      router.push(`/agents/new?client=${created.id}${kind === "voice" ? "&kind=voice" : ""}`);
     } catch (err) { toast.error(messageFrom(err)); setBusy(false); }
   }
   return <div className="page narrow-page"><Link href="/clients" className="back-link"><ArrowLeft size={17} /> {t("clients.new.back")}</Link><PageHead eyebrow={t("clients.new.eyebrow")} title={t("clients.new.title")} description={t("clients.new.description")} />
-    <form className="page-form" onSubmit={submit}><section className="form-section"><div className="section-copy"><h2>{t("clients.new.generalInfo")}</h2><p>{t("clients.new.generalInfoCopy")}</p></div><div className="form-fields"><IndustryPicker value={business} autoFocus onChange={setBusiness} /><label><span className="label-row">{t("clients.new.name")} <AiHint text={t("aiContext.businessName")} /></span><input name="name" required value={name} disabled={!complete} onChange={(e) => setName(e.target.value)} placeholder={complete ? t("clients.new.namePlaceholder") : t("clients.new.nameLocked")} /></label><label>{t("clients.detail.timezoneLabel")}<Combobox value={timezone} onChange={setTimezone} options={TIMEZONES} placeholder={t("clients.detail.timezoneLabel")} /><span className="field-help">{t("clients.detail.timezoneHint")}</span></label><div className="logo-editor"><div className="logo-pick"><button type="button" className="text-button" onClick={() => logoRef.current?.click()}>{logo ? t("clients.detail.logoChange") : t("clients.new.logoAdd")}</button><button type="button" className="logo-preview" onClick={() => logoRef.current?.click()}>{logoUrl ? <img src={logoUrl} alt={t("clients.detail.logoAlt")} /> : <ImagePlus size={24} />}</button></div><div><strong>{t("clients.detail.logoLabel")}</strong><small>{t("clients.new.logoHint")}</small>{logo && <div><button type="button" className="text-button danger-text" onClick={() => setLogo(null)}><Trash2 size={14} /> {t("clients.detail.logoRemove")}</button></div>}</div><input ref={logoRef} hidden type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(e) => setLogo(e.target.files?.[0] ?? null)} /></div></div></section><div className="form-footer"><Link href="/clients" className="button secondary">{t("clients.new.cancel")}</Link><button className="button primary" disabled={busy || !complete || !name.trim()}>{busy ? <LoaderCircle className="spin" size={17} /> : <ArrowRight size={17} />} {t("clients.new.createClient")}</button></div></form>
+    <form ref={formRef} className="page-form" onSubmit={submit}><section className="form-section"><div className="section-copy"><h2>{t("clients.new.generalInfo")}</h2><p>{t("clients.new.generalInfoCopy")}</p></div><div className="form-fields"><IndustryPicker value={business} autoFocus onChange={setBusiness} /><label><span className="label-row">{t("clients.new.name")} <AiHint text={t("aiContext.businessName")} /></span><input name="name" required value={name} disabled={!complete} onChange={(e) => setName(e.target.value)} placeholder={complete ? t("clients.new.namePlaceholder") : t("clients.new.nameLocked")} /></label><label>{t("clients.detail.timezoneLabel")}<Combobox value={timezone} onChange={setTimezone} options={TIMEZONES} placeholder={t("clients.detail.timezoneLabel")} /><span className="field-help">{t("clients.detail.timezoneHint")}</span></label><div className="logo-editor"><div className="logo-pick"><button type="button" className="text-button" onClick={() => logoRef.current?.click()}>{logo ? t("clients.detail.logoChange") : t("clients.new.logoAdd")}</button><button type="button" className="logo-preview" onClick={() => logoRef.current?.click()}>{logoUrl ? <img src={logoUrl} alt={t("clients.detail.logoAlt")} /> : <ImagePlus size={24} />}</button></div><div><strong>{t("clients.detail.logoLabel")}</strong><small>{t("clients.new.logoHint")}</small>{logo && <div><button type="button" className="text-button danger-text" onClick={() => setLogo(null)}><Trash2 size={14} /> {t("clients.detail.logoRemove")}</button></div>}</div><input ref={logoRef} hidden type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(e) => setLogo(e.target.files?.[0] ?? null)} /></div></div></section><div className="form-footer"><Link href="/clients" className="button secondary">{t("clients.new.cancel")}</Link><div className="start-line-wrap"><button type="button" className="button primary" aria-haspopup="menu" aria-expanded={menuOpen} disabled={busy || !complete || !name.trim()} onClick={() => setMenuOpen((v) => !v)}>{busy ? <LoaderCircle className="spin" size={17} /> : <ArrowRight size={17} />} {t("clients.new.createClient")} <ChevronDown size={15} /></button>{menuOpen && <><div className="menu-backdrop" onClick={() => setMenuOpen(false)} /><div className="start-line-menu new-agent-menu up" role="menu"><button type="button" role="menuitem" onClick={() => { nextKind.current = "chat"; formRef.current?.requestSubmit(); }}><span className="channel-dot chat"><MessageCircle size={14} /></span><span><strong>{t("phone.agent.menuChat")}</strong><small>{t("phone.agent.kindChatCopy")}</small></span></button><button type="button" role="menuitem" onClick={() => { nextKind.current = "voice"; formRef.current?.requestSubmit(); }}><span className="channel-dot voice"><Phone size={14} /></span><span><strong>{t("phone.agent.menuVoice")}</strong><small>{t("phone.agent.kindVoiceCopy")}</small></span></button></div></>}</div></div></form>
   </div>;
 }
