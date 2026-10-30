@@ -105,7 +105,9 @@ function ProviderKeyCard({ preset, state, busy, onSave, onRemove, onToggle, t }:
           <div className="key-configured">
             <div className="key-configured-head">
               <span className="key-configured-status">{enabled ? <CheckCircle2 size={18} /> : <PauseCircle size={18} />} {t(enabled ? "settings.providers.configured" : "settings.providers.paused", { label: preset.label })}</span>
-              <KeyActions busy={busy} replaceLabel={t("settings.providers.replace")} removeLabel={t("settings.providers.remove")} confirmTitle={t("settings.providers.removeTitle", { label: preset.label })} confirmMessage={t("settings.providers.removeCopy")} toggle={{ checked: enabled, label: t("settings.providers.useKey"), hint: t("settings.providers.useKeyHint"), onChange: (on) => onToggle(preset.id, on) }} onReplace={() => { setKey(""); setReplacing(true); }} onRemove={() => onRemove(preset.id)} />
+              <KeyActions busy={busy} replaceLabel={t("settings.providers.replace")} removeLabel={t("settings.providers.remove")} confirmTitle={t("settings.providers.removeTitle", { label: preset.label })} confirmMessage={t("settings.providers.removeCopy")} toggle={{ checked: enabled, label: t("settings.providers.useKey"), hint: t("settings.providers.useKeyHint"), confirm: (on) => on
+                ? { title: t("settings.providers.resumeTitle", { label: preset.label }), message: t("settings.providers.resumeCopy", { label: preset.label }), label: t("settings.providers.resumeConfirm") }
+                : { title: t("settings.providers.pauseTitle", { label: preset.label }), message: t("settings.providers.pauseCopy"), label: t("settings.providers.pauseConfirm") }, onChange: (on) => onToggle(preset.id, on) }} onReplace={() => { setKey(""); setReplacing(true); }} onRemove={() => onRemove(preset.id)} />
             </div>
             {!enabled && !state?.configured && <Alert type="error">{t("settings.providers.pausedNothingAnswers")}</Alert>}
           </div>
