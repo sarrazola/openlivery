@@ -10,7 +10,7 @@ flagged as estimated.
 import csv
 import io
 import uuid
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -70,7 +70,8 @@ def _safe_tz(tz: str | None) -> str:
 
 class Filters:
     def __init__(self, agency_id: uuid.UUID, date_from: date, date_to: date,
-                 client_id: uuid.UUID | None, agent_id: uuid.UUID | None, model: str | None, q: str | None) -> None:
+                 client_id: uuid.UUID | None, agent_id: uuid.UUID | None, model: str | None, q: str | None,
+                 tz: str | None = None) -> None:
         if date_to < date_from:
             date_from, date_to = date_to, date_from
         if (date_to - date_from).days > MAX_RANGE_DAYS:
@@ -82,12 +83,15 @@ class Filters:
         self.agent_id = agent_id
         self.model = (model or "").strip()[:180] or None
         self.q = (q or "").strip()[:120]
+        # The range is in the viewer's days: cut in UTC, today would end hours
+        # early west of Greenwich and the evening's replies would vanish.
+        self.zone = ZoneInfo(_safe_tz(tz))
 
     def apply(self, query):
         query = query.where(
             UsageRecord.agency_id == self.agency_id,
-            UsageRecord.created_at >= datetime.combine(self.date_from, time.min, tzinfo=timezone.utc),
-            UsageRecord.created_at < datetime.combine(self.date_to + timedelta(days=1), time.min, tzinfo=timezone.utc),
+            UsageRecord.created_at >= datetime.combine(self.date_from, time.min, tzinfo=self.zone),
+            UsageRecord.created_at < datetime.combine(self.date_to + timedelta(days=1), time.min, tzinfo=self.zone),
         )
         if self.client_id:
             query = query.where(Conversation.client_id == self.client_id)
@@ -162,7 +166,7 @@ def cost_report(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    filters = Filters(user.agency_id, date_from, date_to, client_id, agent_id, model, None)
+    filters = Filters(user.agency_id, date_from, date_to, client_id, agent_id, model, None, tz)
     zone = _safe_tz(tz)
 
     by_model = _fold(_grouped(db, filters, UsageRecord.model), 1, lambda key: (key[0], key[0]))
@@ -248,12 +252,13 @@ def replies(
     format: str | None = None,
     limit: int = Query(default=25, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    tz: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """One line per reply, newest first; ``format=csv`` downloads the whole
     range (up to MAX_EXPORT_ROWS)."""
-    filters = Filters(user.agency_id, date_from, date_to, client_id, agent_id, model, q)
+    filters = Filters(user.agency_id, date_from, date_to, client_id, agent_id, model, q, tz)
     query = _replies_query(filters)
     if format == "csv":
         rows = [_reply(row) for row in db.execute(query.limit(MAX_EXPORT_ROWS)).all()]

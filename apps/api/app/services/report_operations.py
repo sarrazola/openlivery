@@ -66,12 +66,15 @@ class ConversationFilters:
         stamp = stamp or f"{alias}.created_at"
         clauses = [f"{alias}.agency_id = :agency_id"]
         params: dict = {"agency_id": self.agency_id, "tz": self.tz, "bucket": self.bucket}
-        start = datetime.combine(self.date_from, time.min, tzinfo=timezone.utc) if self.date_from else datetime(1970, 1, 1, tzinfo=timezone.utc)
+        # A day is the viewer's day: cut in UTC, an evening's work would land
+        # on the next day and the current one would end hours early.
+        zone = ZoneInfo(self.tz)
+        start = datetime.combine(self.date_from, time.min, tzinfo=zone) if self.date_from else datetime(1970, 1, 1, tzinfo=timezone.utc)
         params["date_from"] = start
         clauses.append(f"{stamp} >= :date_from")
         if self.date_to:
             clauses.append(f"{stamp} < :date_to")
-            params["date_to"] = datetime.combine(self.date_to + timedelta(days=1), time.min, tzinfo=timezone.utc)
+            params["date_to"] = datetime.combine(self.date_to + timedelta(days=1), time.min, tzinfo=zone)
         if self.client_id:
             clauses.append(f"{alias}.client_id = :client_id")
             params["client_id"] = self.client_id
