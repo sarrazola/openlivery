@@ -7,7 +7,9 @@ import { COUNTRIES, countryName, defaultCountry, dialCodeOf, flagOf, splitPhone 
 /** Country picker plus national number, stored the way WhatsApp keys people:
  * dial code and digits, nothing else. Whatever gets typed or pasted is
  * stripped to digits, so spaces, dashes and dots never reach the backend.
- * The picker opens a searchable panel; closed it shows only the flag. */
+ * The picker opens a searchable panel; closed it shows only the flag. In a
+ * form it posts the digits under ``name``; ``onChange`` hands them to a
+ * caller that keeps its own state. */
 export function PhoneInput({
   name,
   initial,
@@ -15,6 +17,7 @@ export function PhoneInput({
   required,
   placeholder,
   searchPlaceholder,
+  onChange,
 }: {
   name: string;
   initial?: string | null;
@@ -22,6 +25,7 @@ export function PhoneInput({
   required?: boolean;
   placeholder?: string;
   searchPlaceholder?: string;
+  onChange?: (digits: string) => void;
 }) {
   const parsed = useMemo(() => splitPhone((initial || "").replace(/[^0-9]/g, "")), [initial]);
   const [iso, setIso] = useState(parsed?.iso ?? defaultCountry());
@@ -61,6 +65,8 @@ export function PhoneInput({
   }, [open]);
 
   const dial = dialCodeOf(iso);
+  const digits = national ? dial + national : "";
+  useEffect(() => { onChange?.(digits); }, [digits]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <span className="phone-input" ref={wrapRef}>
       <button
@@ -88,7 +94,7 @@ export function PhoneInput({
           onChange={(event) => setNational(event.target.value.replace(/[^0-9]/g, ""))}
         />
       </span>
-      <input type="hidden" name={name} value={national ? dial + national : ""} />
+      <input type="hidden" name={name} value={digits} />
       {open && (
         <span className="phone-menu">
           <span className="phone-menu-search">
