@@ -166,7 +166,10 @@ def test_adding_a_line_sets_it_up_at_elevenlabs(authenticated_client: TestClient
     turn = body["conversation_config"]["turn"]
     assert turn["speculative_turn"] is True
     assert turn["soft_timeout_config"]["timeout_seconds"] == phone_calls.FILLER_AFTER_SECONDS
-    assert turn["soft_timeout_config"]["message"] in phone_calls.FILLERS["es"]
+    assert turn["soft_timeout_config"]["message"] == phone_calls.FILLERS["es"]
+    # The call's own audio, without converting it on every turn.
+    assert body["conversation_config"]["asr"]["user_input_audio_format"] == "ulaw_8000"
+    assert body["conversation_config"]["tts"]["agent_output_audio_format"] == "ulaw_8000"
     assert body["platform_settings"]["workspace_overrides"]["webhooks"]["post_call_webhook_id"] == "wh_1"
     # The bearer value is only in ElevenLabs; the line keeps its hash.
     with SessionLocal() as db:

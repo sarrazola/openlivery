@@ -14,6 +14,7 @@ streamed back to ElevenLabs, which runs it after speaking the text.
 import hashlib
 import hmac
 import json
+import logging
 import re
 import secrets
 import time
@@ -55,6 +56,7 @@ _MARKER_RE = re.compile(r"openlivery-call conversation=(\S+) caller=(\S+) called
 SIGNATURE_TOLERANCE_SECONDS = 30 * 60
 # A spoken reply is short; this caps a model that forgets it.
 MAX_REPLY_TOKENS = 400
+logger = logging.getLogger(__name__)
 
 PHONE_RULES = {
     "es": (
@@ -192,28 +194,27 @@ def _language(agent: Agent) -> str:
     return agent.prompt_language if agent.prompt_language in PHONE_RULES else "es"
 
 
-# A reply that takes longer than this gets a short filler from the voice, so
-# the caller hears the line is alive; most replies start sooner and never do.
-FILLER_AFTER_SECONDS = 1.5
-FILLERS = {
-    "es": ["Claro, déjame ver.", "Ya, dame un momento.", "Mmm, un segundo."],
-    "en": ["Sure, let me see.", "One moment.", "Hmm, one second."],
-}
+# A reply that takes longer than this gets a short sound from the voice, so
+# the caller hears the line is alive. Only a slow turn (a tool, a long
+# answer) gets there; a phrase like "one moment" in front of a normal reply
+# sounded random on calls, so it is a neutral sound, once.
+FILLER_AFTER_SECONDS = 3.0
+FILLERS = {"es": "Mmm...", "en": "Hmm..."}
+# Twilio and SIP carry the call as 8 kHz mu-law: the voice hears and speaks
+# it as is, instead of converting on every turn.
+PHONE_AUDIO = "ulaw_8000"
 
 
 def _turn_settings(lang: str) -> dict:
     """How the voice takes turns: it starts asking for the reply while the
     caller is still silent, before it is sure they finished (a later, longer
     turn replaces that reply), and fills a long wait instead of going quiet."""
-    fillers = FILLERS[lang]
     return {
         "speculative_turn": True,
         "soft_timeout_config": {
             "timeout_seconds": FILLER_AFTER_SECONDS,
-            "message": fillers[0],
-            "additional_soft_timeout_messages": fillers[1:],
-            "randomize_fillers": True,
-            "max_soft_timeouts_per_generation": 2,
+            "message": FILLERS[lang],
+            "max_soft_timeouts_per_generation": 1,
             "disable_until_first_user_message": True,
         },
     }
@@ -239,7 +240,8 @@ def _agent_body(line: PhoneChannel, secret_id: str, webhook_id: str | None) -> d
     body: dict = {
         "name": f"{line.client.name} · {line.label or line.phone_number}"[:120],
         "conversation_config": {
-            "tts": {"voice_id": agent.voice_id},
+            "asr": {"user_input_audio_format": PHONE_AUDIO},
+            "tts": {"voice_id": agent.voice_id, "agent_output_audio_format": PHONE_AUDIO},
             "turn": _turn_settings(_language(agent)),
             "agent": {
                 "first_message": agent.greeting,
@@ -508,13 +510,15 @@ class Turn:
     conversation_id: uuid.UUID
     call: CallTurn
     query: str
+    received: float     # perf_counter when the request came in
 
 
 def take_turn(db: Session, line: PhoneChannel, body: dict) -> Turn:
     """Store what has been said on the call so far."""
+    received = time.perf_counter()
     call = parse_turn(body)
     conversation, query = _store_call(db, line, call)
-    return Turn(line.id, conversation.id, call, query)
+    return Turn(line.id, conversation.id, call, query, received)
 
 
 class _Stream:
@@ -609,11 +613,14 @@ async def _answer(db: Session, turn: Turn) -> AsyncIterator[str]:
     base_url, api_key = credentials
     max_tokens = min(agent.max_tokens, MAX_REPLY_TOKENS) if agent.max_tokens else MAX_REPLY_TOKENS
     done: list = []
+    asked = time.perf_counter()
+    first_words = None
     try:
         async for piece in stream_completion(
             db, agent, base_url, api_key, messages, done,
             temperature=agent.temperature, max_tokens=max_tokens, extra_specs=extra_specs or None, model=model,
         ):
+            first_words = first_words or time.perf_counter()
             yield stream.chunk({"content": piece})
     except HTTPException as exc:
         # Close the stream properly anyway: ElevenLabs asks again on the
@@ -623,6 +630,13 @@ async def _answer(db: Session, turn: Turn) -> AsyncIterator[str]:
     completion = done[-1] if done else None
     for chunk in stream.end(passthrough, completion):
         yield chunk
+    # Where a turn's wait goes: our own work before the model, the model's
+    # first words, the whole reply. What the caller waits is the first two.
+    logger.info(
+        "Call turn %s: prepared in %d ms, first words after %s ms, done in %d ms",
+        call.call_id, (asked - turn.received) * 1000,
+        f"{(first_words - asked) * 1000:.0f}" if first_words else "-", (time.perf_counter() - turn.received) * 1000,
+    )
     if completion is None:
         return
 
