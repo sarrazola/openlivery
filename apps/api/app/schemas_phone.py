@@ -14,6 +14,8 @@ class CallAccountOut(BaseModel):
     provider: str
     configured: bool
     stored: bool
+    # Where calls get this account from: the agency's own, the deployment's, or none.
+    source: str = "none"
     secret_hint: str = ""
     last_error: str | None = None
 

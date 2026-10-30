@@ -48,7 +48,7 @@ def _setup_error(exc: Exception) -> HTTPException:
 
 @router.get("/accounts", response_model=list[CallAccountOut])
 def list_accounts(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return [phone_calls.account_out(phone_calls.get_account(db, user.agency_id, p), p) for p in phone_calls.PROVIDERS]
+    return [phone_calls.account_out(db, user.agency_id, p) for p in phone_calls.PROVIDERS]
 
 
 @router.post("/accounts/{provider}/validate", response_model=CallAccountTest)
@@ -69,15 +69,16 @@ async def save_account(provider: str, payload: CallAccountIn, db: Session = Depe
         await phone_calls.validate_account(provider, secret)
     except (phone_calls.PhoneSetupError, TelephonyError) as exc:
         raise _setup_error(exc) from exc
-    account = phone_calls.store_account(db, user.agency_id, provider, secret)
+    phone_calls.store_account(db, user.agency_id, provider, secret)
     db.commit()
-    return phone_calls.account_out(account, provider)
+    return phone_calls.account_out(db, user.agency_id, provider)
 
 
 @router.delete("/accounts/{provider}", status_code=204)
 def remove_account(provider: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     account = phone_calls.get_account(db, user.agency_id, _provider(provider))
-    if account:
+    # A row without a secret only keeps the webhook of a lent account.
+    if account and account.encrypted_secret:
         in_use = db.scalar(select(PhoneChannel.id).where(
             PhoneChannel.agency_id == user.agency_id,
             PhoneChannel.status == "connected",

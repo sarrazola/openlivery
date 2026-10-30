@@ -13,8 +13,10 @@ import hashlib
 import hmac
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -95,6 +97,35 @@ def check_voice_model(model: str) -> None:
 
 # --- accounts ----------------------------------------------------------------
 
+# A deployment may lend an account to an agency that stored none of its own (a
+# shared ElevenLabs workspace, say). It registers one function at startup; the
+# function is asked only when the agency has no account of its own for that
+# provider, and returns the account's secret as it would be stored
+# (``{"api_key": ...}`` for ElevenLabs) or None.
+CallAccountFallback = Callable[[Session, Any, str], "dict | None"]
+_account_fallback: CallAccountFallback | None = None
+AccountSource = Literal["agency", "deployment", "none"]
+
+
+def register_call_account_fallback(fallback: CallAccountFallback | None) -> None:
+    """Install what answers when an agency has no account of its own; None removes it."""
+    global _account_fallback
+    _account_fallback = fallback
+
+
+def _own(account: CallAccount | None) -> bool:
+    return account is not None and account.enabled and bool(account.encrypted_secret)
+
+
+def _lent(db: Session, agency_id, provider: str) -> dict | None:
+    return _account_fallback(db, agency_id, provider) if _account_fallback is not None else None
+
+
+def account_source(db: Session, agency_id, provider: str) -> AccountSource:
+    if _own(get_account(db, agency_id, provider)):
+        return "agency"
+    return "deployment" if _lent(db, agency_id, provider) else "none"
+
 
 def get_account(db: Session, agency_id, provider: str) -> CallAccount | None:
     return db.scalar(select(CallAccount).where(CallAccount.agency_id == agency_id, CallAccount.provider == provider))
@@ -135,6 +166,11 @@ def store_account(db: Session, agency_id, provider: str, secret: dict) -> CallAc
     if account is None:
         account = CallAccount(agency_id=agency_id, provider=provider, encrypted_secret="")
         db.add(account)
+    elif not account.encrypted_secret:
+        # The row held a lent account's webhook, which lives in the lender's
+        # workspace: the agency's own one gets its own.
+        account.webhook_id = None
+        account.encrypted_webhook_secret = None
     account.encrypted_secret = encrypt_secret(json.dumps(secret))
     account.secret_hint = secret_hint(provider, secret)
     account.enabled = True
@@ -142,28 +178,44 @@ def store_account(db: Session, agency_id, provider: str, secret: dict) -> CallAc
     return account
 
 
-def account_out(account: CallAccount | None, provider: str) -> dict:
+def account_out(db: Session, agency_id, provider: str) -> dict:
+    account = get_account(db, agency_id, provider)
+    stored = account is not None and bool(account.encrypted_secret)
+    source = account_source(db, agency_id, provider)
     return {
         "provider": provider,
-        "configured": bool(account and account.enabled),
-        "stored": account is not None,
-        "secret_hint": account.secret_hint if account else "",
-        "last_error": account.last_error if account else None,
+        "configured": source != "none",
+        "stored": stored,
+        "source": source,
+        "secret_hint": account.secret_hint if stored else "",
+        "last_error": account.last_error if stored else None,
     }
 
 
 def elevenlabs_key(db: Session, agency_id) -> tuple[CallAccount, str]:
+    """The ElevenLabs key calls use, and the agency's row that keeps its
+    webhook: the agency's own key, else the one the deployment lends."""
     account = get_account(db, agency_id, "elevenlabs")
-    if not account or not account.enabled:
+    if _own(account):
+        return account, account_secret(account)["api_key"]
+    lent = _lent(db, agency_id, "elevenlabs")
+    if not lent:
         raise PhoneSetupError("Add the ElevenLabs API key in Settings first.")
-    return account, account_secret(account)["api_key"]
+    if account is None:
+        account = CallAccount(agency_id=agency_id, provider="elevenlabs", encrypted_secret="", secret_hint="")
+        db.add(account)
+        db.flush()
+    return account, lent["api_key"]
 
 
 def carrier_secret(db: Session, agency_id, provider: str) -> dict:
     account = get_account(db, agency_id, provider)
-    if not account or not account.enabled:
+    if _own(account):
+        return account_secret(account)
+    lent = _lent(db, agency_id, provider)
+    if not lent:
         raise PhoneSetupError(f"Connect the {provider.title()} account in Settings first.")
-    return account_secret(account)
+    return lent
 
 
 # --- lines -------------------------------------------------------------------
@@ -333,9 +385,11 @@ async def resync_lines(db: Session, *, agent_id=None, client_id=None) -> None:
 async def disconnect_line(db: Session, line: PhoneChannel) -> None:
     """Take the number and the agent out of ElevenLabs. Best effort on each
     step: whatever is already gone does not stop the rest."""
-    account = get_account(db, line.agency_id, "elevenlabs")
-    if account:
-        api_key = account_secret(account)["api_key"]
+    try:
+        _, api_key = elevenlabs_key(db, line.agency_id)
+    except PhoneSetupError:
+        api_key = None
+    if api_key:
         steps = []
         if line.elevenlabs_phone_number_id:
             steps.append(elevenlabs.release_number(api_key, line.elevenlabs_phone_number_id))

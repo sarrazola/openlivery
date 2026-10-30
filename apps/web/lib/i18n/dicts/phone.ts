@@ -3,7 +3,8 @@ const en = {
   title: "Phone calls",
   settings: {
     heading: "Phone calls",
-    copy: "Your agents answer phone calls with a natural voice. ElevenLabs hears and speaks; your agent decides what to say, with the same knowledge and tools as in the chat. Calls are billed by ElevenLabs and by your phone carrier, to your own accounts.",
+    copy: "Your agents answer phone calls with a natural voice. ElevenLabs runs each call with your agent's instructions. Calls are billed by ElevenLabs and by your phone carrier, to your own accounts.",
+    copyLent: "Your agents answer phone calls with a natural voice. Connect the phone carrier account where you buy your numbers; it bills its calls to that account.",
     elevenlabsTitle: "ElevenLabs",
     elevenlabsCopy: "The voice of the calls. The key needs write access to Agents, Voices and Webhooks.",
     elevenlabsGuide: "ElevenLabs › API Keys",
@@ -115,7 +116,8 @@ const es: typeof en = {
   title: "Llamadas",
   settings: {
     heading: "Llamadas telefónicas",
-    copy: "Tus agentes contestan llamadas con una voz natural. ElevenLabs escucha y habla; tu agente decide qué decir, con el mismo conocimiento y herramientas que en el chat. Las llamadas las cobran ElevenLabs y tu operador telefónico, en tus propias cuentas.",
+    copy: "Tus agentes contestan llamadas con una voz natural. ElevenLabs atiende cada llamada con las instrucciones de tu agente. Las llamadas las cobran ElevenLabs y tu operador telefónico, en tus propias cuentas.",
+    copyLent: "Tus agentes contestan llamadas con una voz natural. Conecta la cuenta del operador telefónico donde compras tus números; ese operador te cobra sus llamadas en esa cuenta.",
     elevenlabsTitle: "ElevenLabs",
     elevenlabsCopy: "La voz de las llamadas. La clave necesita permiso de escritura en Agents, Voices y Webhooks.",
     elevenlabsGuide: "ElevenLabs › API Keys",

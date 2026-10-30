@@ -39,12 +39,14 @@ export function PhoneAccounts() {
   const load = () => api<CallAccount[]>("/phone/accounts").then(setAccounts).catch(() => setAccounts([]));
   useEffect(() => { load(); }, []);
   const stateOf = (provider: CallProvider) => accounts?.find((a) => a.provider === provider);
+  // A deployment that lends its ElevenLabs account leaves only the carrier to connect.
+  const voiceLent = stateOf("elevenlabs")?.source === "deployment";
 
-  return <section className="section-block"><div className="section-heading"><div><h2><Phone size={18} /> {t("phone.settings.heading")}</h2><p>{t("phone.settings.copy")}</p></div></div>
+  return <section className="section-block"><div className="section-heading"><div><h2><Phone size={18} /> {t("phone.settings.heading")}</h2><p>{t(voiceLent ? "phone.settings.copyLent" : "phone.settings.copy")}</p></div></div>
     {accounts && <>
-      <section className="form-section"><div className="section-copy"><h2>{t("phone.settings.elevenlabsTitle")}</h2><p>{t("phone.settings.elevenlabsCopy")}</p></div>
+      {!voiceLent && <section className="form-section"><div className="section-copy"><h2>{t("phone.settings.elevenlabsTitle")}</h2><p>{t("phone.settings.elevenlabsCopy")}</p></div>
         <div className="form-fields key-form"><AccountForm provider="elevenlabs" state={stateOf("elevenlabs")} onChange={load} /></div>
-      </section>
+      </section>}
       <CarrierSection stateOf={stateOf} onChange={load} />
     </>}
   </section>;

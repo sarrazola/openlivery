@@ -251,3 +251,32 @@ def test_changing_the_agent_or_its_client_rewrites_the_lines(authenticated_clien
     pushed = len(provisioning["bodies"])
     assert client.patch(f"/api/agents/{agent['id']}", json={"temperature": 0.3}).status_code == 200
     assert len(provisioning["bodies"]) == pushed
+
+
+def test_a_deployment_can_lend_its_elevenlabs_account(authenticated_client: TestClient, provisioning, monkeypatch):
+    client = authenticated_client
+    lent = {"elevenlabs": {"api_key": "xi-deployment"}}
+    phone_calls.register_call_account_fallback(lambda db, agency_id, provider: lent.get(provider))
+    try:
+        account = next(a for a in client.get("/api/phone/accounts").json() if a["provider"] == "elevenlabs")
+        assert (account["configured"], account["stored"], account["source"]) == (True, False, "deployment")
+
+        # A line connects on the lent key, and the agency's row keeps its webhook.
+        assert client.put("/api/phone/accounts/twilio", json={"account_sid": "AC123", "auth_token": "tok"}).status_code == 200
+        customer = client.post("/api/clients", json={"name": "Dentix", "is_active": True}).json()
+        agent = client.post("/api/agents", json={"client_id": customer["id"], "model": "eleven_realtime_v1_mini", "name": "Sofía", "kind": "voice", "voice_id": "voice_1"}).json()
+        line = client.post(f"/api/phone/clients/{customer['id']}/lines", json={
+            "agent_id": agent["id"], "provider": "twilio", "provider_number_id": "PN1", "phone_number": "+15550001111",
+        }).json()
+        assert line["status"] == "connected"
+        assert elevenlabs.create_webhook.await_args.args[0] == "xi-deployment"
+        with SessionLocal() as db:
+            row = db.scalar(select(phone_calls.CallAccount).where(phone_calls.CallAccount.provider == "elevenlabs"))
+            assert row.webhook_id == "wh_1" and row.encrypted_secret == ""
+        # Removing the lent account is not the agency's to do; storing its own takes over.
+        assert client.delete("/api/phone/accounts/elevenlabs").status_code == 204
+        assert client.put("/api/phone/accounts/elevenlabs", json={"api_key": "xi-own"}).json()["source"] == "agency"
+        with SessionLocal() as db:
+            assert db.scalar(select(phone_calls.CallAccount).where(phone_calls.CallAccount.provider == "elevenlabs")).webhook_id is None
+    finally:
+        phone_calls.register_call_account_fallback(None)

@@ -111,6 +111,9 @@ changing their shape is a breaking change and gets a line in the changelog:
 - `app.services.providers.register_credential_fallback(fn, available=probe)`:
   lends a key to an agency that stored none; `credential_source()` says which
   one would answer, and `GET /api/providers` reports it as `source`.
+- `app.services.phone_calls.register_call_account_fallback(fn)`: lends a
+  phone account (the ElevenLabs workspace, a carrier) to an agency that stored
+  none; `GET /api/phone/accounts` reports it as `source`.
 - `app.services.usage.register_usage_hook(fn)`: sees every usage record as it
   is written, inside the caller's session; it cannot fail the reply.
 - `app.services.notifications.register_provider(name, fn)`: delivers push
