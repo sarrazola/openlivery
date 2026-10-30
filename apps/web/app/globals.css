@@ -555,6 +555,11 @@ textarea { line-height: 1.55; }
    the card without the padding a page-level footer carries. */
 .key-form label:not(.switch-row) { display: flex; flex-direction: column; gap: 8px; }
 .key-form .form-footer { padding: 0; }
+.key-configured-actions .key-switch { width: auto; min-height: 0; margin-right: 6px; padding: 0; border: 0; border-radius: 0; }
+/* The console link sits on the first field's label line, so it costs no height
+   and is gone once the key is stored. */
+.field-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.field-label-row .guide-link { margin-top: 0; font-weight: 500; }
 .toast-viewport { position: fixed; top: 18px; right: 18px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; width: min(380px, calc(100vw - 36px)); pointer-events: none; }
 .toast { pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); box-shadow: 0 12px 30px rgba(var(--shadow-rgb), calc(.16 * var(--shadow-k))); font-size: 14px; color: var(--ink); animation: toast-in .18s ease; }
 .toast-icon { flex: 0 0 auto; display: inline-flex; margin-top: 1px; }

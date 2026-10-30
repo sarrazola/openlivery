@@ -42,7 +42,7 @@ export function PhoneAccounts() {
 
   return <section className="section-block"><div className="section-heading"><div><h2><Phone size={18} /> {t("phone.settings.heading")}</h2><p>{t("phone.settings.copy")}</p></div></div>
     {accounts && <>
-      <section className="form-section"><div className="section-copy"><h2>{t("phone.settings.elevenlabsTitle")}</h2><p>{t("phone.settings.elevenlabsCopy")}</p><GuideLink provider="elevenlabs" /></div>
+      <section className="form-section"><div className="section-copy"><h2>{t("phone.settings.elevenlabsTitle")}</h2><p>{t("phone.settings.elevenlabsCopy")}</p></div>
         <div className="form-fields key-form"><AccountForm provider="elevenlabs" state={stateOf("elevenlabs")} onChange={load} /></div>
       </section>
       <CarrierSection stateOf={stateOf} onChange={load} />
@@ -66,7 +66,7 @@ function CarrierSection({ stateOf, onChange }: { stateOf: (p: CallProvider) => C
   const available = CARRIERS.filter((c) => !stateOf(c.id)?.stored);
   const showForm = !connected.length || adding;
 
-  return <section className="form-section"><div className="section-copy"><h2>{t("phone.settings.carrierTitle")}</h2><p>{t("phone.settings.carrierCopy")}</p>{showForm && <GuideLink provider={carrier} />}</div>
+  return <section className="form-section"><div className="section-copy"><h2>{t("phone.settings.carrierTitle")}</h2><p>{t("phone.settings.carrierCopy")}</p></div>
     <div className="form-fields key-form">
       {connected.map((c) => <div key={c.id} className="carrier-connected"><AccountForm provider={c.id} state={stateOf(c.id)} onChange={onChange} /></div>)}
       {showForm && <>
@@ -122,7 +122,7 @@ function AccountForm({ provider, state, onChange, onCancel }: { provider: CallPr
   </div>;
   const cancel = state?.stored ? () => { setValues({}); setReplacing(false); } : onCancel;
   return <>
-    {fields.map((field) => <label key={field.name}>{t(field.label)}
+    {fields.map((field, index) => <label key={field.name}><span className="field-label-row">{t(field.label)}{index === 0 && <GuideLink provider={provider} />}</span>
       {field.secret
         ? <PasswordInput value={values[field.name] || ""} autoComplete="new-password" onChange={(e) => setValues((v) => ({ ...v, [field.name]: e.target.value }))} />
         : <input value={values[field.name] || ""} autoComplete="off" onChange={(e) => setValues((v) => ({ ...v, [field.name]: e.target.value }))} />}
