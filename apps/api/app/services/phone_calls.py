@@ -152,14 +152,14 @@ def account_out(account: CallAccount | None, provider: str) -> dict:
 def elevenlabs_key(db: Session, agency_id) -> tuple[CallAccount, str]:
     account = get_account(db, agency_id, "elevenlabs")
     if not account or not account.enabled:
-        raise PhoneSetupError("Add the ElevenLabs API key in Settings > Phone calls first.")
+        raise PhoneSetupError("Add the ElevenLabs API key in Settings first.")
     return account, account_secret(account)["api_key"]
 
 
 def carrier_secret(db: Session, agency_id, provider: str) -> dict:
     account = get_account(db, agency_id, provider)
     if not account or not account.enabled:
-        raise PhoneSetupError(f"Connect the {provider.title()} account in Settings > Phone calls first.")
+        raise PhoneSetupError(f"Connect the {provider.title()} account in Settings first.")
     return account_secret(account)
 
 
