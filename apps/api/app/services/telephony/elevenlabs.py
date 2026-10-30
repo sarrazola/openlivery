@@ -6,6 +6,8 @@ voice, the speech recognition and the turn taking, and asks the line's
 agent. Numbers are imported into the workspace and assigned to that agent.
 """
 
+import re
+
 import httpx
 
 from . import TelephonyError
@@ -37,15 +39,35 @@ async def _request(api_key: str, method: str, path: str, **kwargs) -> dict:
         except httpx.HTTPError as exc:
             raise TelephonyError(f"ElevenLabs could not be reached: {exc.__class__.__name__}") from exc
     if response.status_code == 401:
-        raise TelephonyError("ElevenLabs rejected the API key.")
+        raise TelephonyError(_unauthorized(response))
     if response.status_code >= 400:
         raise TelephonyError(f"ElevenLabs refused the request ({response.status_code}): {_detail(response)}")
     return response.json() if response.content else {}
 
 
+def _unauthorized(response: httpx.Response) -> str:
+    """A restricted key answers 401 naming the permission it lacks; say which,
+    since the fix is on the key and not in OpenLivery."""
+    message = _detail(response)
+    missing = re.search(r"missing the permission (\w+)", message)
+    if missing:
+        return f"The ElevenLabs API key is missing the {missing.group(1)} permission. Allow it on the key in ElevenLabs and try again."
+    return "ElevenLabs rejected the API key."
+
+
 async def validate_key(api_key: str) -> str:
-    """Prove the key works for Agents, the part of the API calls need."""
+    """Prove the key works for Agents, the part of the API calls need, and may
+    create the post-call webhook. The webhook check posts an empty body: a key
+    without the permission gets a 401, one with it a 422 about the body, and
+    nothing is created either way."""
     await _request(api_key, "GET", "/convai/agents", params={"page_size": 1})
+    async with httpx.AsyncClient(base_url=API, timeout=TIMEOUT, headers={"xi-api-key": api_key}) as client:
+        try:
+            response = await client.post("/workspace/webhooks", json={})
+        except httpx.HTTPError as exc:
+            raise TelephonyError(f"ElevenLabs could not be reached: {exc.__class__.__name__}") from exc
+    if response.status_code == 401:
+        raise TelephonyError(_unauthorized(response))
     return "ElevenLabs connected."
 
 

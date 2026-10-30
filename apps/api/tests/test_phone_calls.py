@@ -1,9 +1,11 @@
+import asyncio
 import hashlib
 import hmac
 import json
 import time
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -95,6 +97,25 @@ def _turn(client: TestClient, line: dict, secret: str, body: dict):
     return client.post(
         f"/api/public/phone/lines/{public_id}/llm/chat/completions", json=body, headers={"Authorization": f"Bearer {secret}"}
     )
+
+
+def test_a_key_without_the_webhook_permission_is_refused_by_name(monkeypatch):
+    missing = {"detail": {"status": "missing_permissions", "message": "The API key you used is missing the permission webhooks_write to execute this operation."}}
+    webhook_status = {"code": 401}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/workspace/webhooks"):
+            return httpx.Response(webhook_status["code"], json=missing if webhook_status["code"] == 401 else {"detail": [{"msg": "Field required"}]})
+        return httpx.Response(200, json={"agents": []})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs))
+    with pytest.raises(TelephonyError, match="missing the webhooks_write permission"):
+        asyncio.run(elevenlabs.validate_key("xi-restricted"))
+
+    # With the permission the empty body is refused for its content, and the key passes.
+    webhook_status["code"] = 422
+    assert asyncio.run(elevenlabs.validate_key("xi-full")) == "ElevenLabs connected."
 
 
 def test_a_key_is_checked_with_the_provider_before_it_is_stored(authenticated_client: TestClient, monkeypatch):
