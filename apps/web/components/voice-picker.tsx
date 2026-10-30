@@ -56,9 +56,10 @@ export function VoicePicker({ language, value, name, onChange }: { language: str
     {(value || voice) && <div className="voice-chosen">
       <button type="button" className="button ghost small" onClick={listen} disabled={!voice?.preview_url} aria-label={t("phone.channel.listen")}>{playing ? <Pause size={14} /> : <Play size={14} />}</button>
       <span><strong>{voice?.name || name || value}</strong><small>{[voice?.accent, voice?.gender].filter(Boolean).join(" · ") || value}</small></span>
-      {value ? <button type="button" className="text-button" onClick={() => onChange({ id: "", name: "" })}>{t("phone.channel.useDefaultVoice")}</button> : <span className="pill">{t("phone.channel.defaultVoice")}</span>}
+      {!value && <span className="pill">{t("phone.channel.defaultVoice")}</span>}
     </div>}
-    {!value && <p className="field-help">{t("phone.channel.defaultVoiceHint")}</p>}
+    {value ? <button type="button" className="text-button align-start" onClick={() => onChange({ id: "", name: "" })}>{t("phone.channel.useDefaultVoice")}</button>
+      : <p className="field-help">{t("phone.channel.defaultVoiceHint")}</p>}
     <div className="field-label-row"><span className="voice-id-label">{t("phone.channel.voiceIdLabel")} <AiHint text={t("phone.channel.voiceIdHelp")} /></span><a className="guide-link" href={LIBRARY} target="_blank" rel="noreferrer"><ExternalLink size={13} /> {t("phone.channel.voiceLibrary")}</a></div>
     <div className="voice-paste">
       <input value={pasted} placeholder={t("phone.channel.voiceIdPlaceholder")} aria-label={t("phone.channel.voiceIdLabel")} onChange={(event) => { setPasted(event.target.value); setError(""); }} />
