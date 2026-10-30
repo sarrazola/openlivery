@@ -226,11 +226,15 @@ class Agent(Base):
     embedding_model: Mapped[str] = mapped_column(String(180), default="openai/text-embedding-3-small", server_default="openai/text-embedding-3-small")
     # What the agent answers, chosen when it is created: "chat" (messages on
     # WhatsApp, Instagram, Messenger, the web) or "voice" (phone calls). A voice
-    # agent speaks with ``voice_id`` and opens every call with ``greeting``.
+    # agent speaks with ``voice_id`` and opens every call with ``greeting``;
+    # it puts the caller through to ``transfer_number`` (E.164) when
+    # ``transfer_when`` says so, or tells them someone will call back.
     kind: Mapped[str] = mapped_column(String(20), default="chat", server_default="chat")
     voice_id: Mapped[str] = mapped_column(String(80), default="", server_default="")
     voice_name: Mapped[str] = mapped_column(String(180), default="", server_default="")
     greeting: Mapped[str] = mapped_column(Text, default="", server_default="")
+    transfer_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    transfer_when: Mapped[str] = mapped_column(Text, default="", server_default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
@@ -421,11 +425,6 @@ class PhoneChannel(Base):
     provider_number_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     elevenlabs_agent_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     elevenlabs_phone_number_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    # Where a call goes when the caller needs a person; empty means a person
-    # calls back instead.
-    transfer_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    # ElevenLabs presents this as a bearer token on every turn. Only its hash
-    # is kept: the value lives in the ElevenLabs workspace's secret store.
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[str] = mapped_column(String(30), default="disconnected")
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

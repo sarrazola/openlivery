@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Bot, CheckCircle2, CircleAlert, LoaderCircle, Phone, PhoneForwarded, Plug, Power, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowLeft, Bot, CheckCircle2, CircleAlert, LoaderCircle, Phone, Plug, Power, ShieldCheck, Trash2 } from "lucide-react";
 import { Alert, Modal } from "@/components/ui";
 import { AccountList } from "@/components/account-list";
 import { api, messageFrom } from "@/lib/api";
@@ -35,7 +35,6 @@ export function PhoneSetup({ client, onBack }: ChannelSetupProps) {
   const [provider, setProvider] = useState<"twilio" | "telnyx">("twilio");
   const [numbers, setNumbers] = useState<CarrierNumber[] | null>(null);
   const [numberId, setNumberId] = useState("");
-  const [transfer, setTransfer] = useState("");
   const voiceAgents = client.agents.filter((agent) => agent.kind === "voice");
   const line = adding ? null : lines.find((item) => item.id === selectedId) ?? null;
   const carriers = accounts.filter((a) => a.provider !== "elevenlabs" && a.configured).map((a) => a.provider as "twilio" | "telnyx");
@@ -52,7 +51,6 @@ export function PhoneSetup({ client, onBack }: ChannelSetupProps) {
     setLabel(item?.label || "");
     setProvider(item?.provider || "twilio");
     setNumberId(item?.provider_number_id || "");
-    setTransfer(item?.transfer_number || "");
     setError("");
     rememberLine(item?.id ?? null);
   }, [client.agents]);
@@ -81,7 +79,7 @@ export function PhoneSetup({ client, onBack }: ChannelSetupProps) {
   async function save() {
     setBusy(true); setError("");
     try {
-      const common = { agent_id: agentId, label: label.trim() || null, transfer_number: transfer.trim() || null };
+      const common = { agent_id: agentId, label: label.trim() || null };
       let saved: PhoneLine;
       if (line) {
         saved = await api<PhoneLine>(`/phone/lines/${line.id}`, { method: "PUT", body: JSON.stringify(common) });
@@ -156,10 +154,6 @@ export function PhoneSetup({ client, onBack }: ChannelSetupProps) {
             : <select value={numberId} onChange={(event) => setNumberId(event.target.value)} disabled={busy || !numbers.length}><option value="">{t("phone.channel.selectNumber")}</option>{numbers.map((n) => <option key={n.id} value={n.id}>{n.phone_number}{n.name && n.name !== n.phone_number ? ` · ${n.name}` : ""}</option>)}</select>}</label>
         </div>}
         {!line && numbers?.length === 0 && <p className="social-meta">{t("phone.channel.noNumbers")}</p>}
-      </section>
-
-      <section className="wa-panel"><div className="wa-panel-head"><span><PhoneForwarded size={19} /></span><div><h2>{t("phone.channel.transferLabel")}</h2><p>{t("phone.channel.transferHint")}</p></div></div>
-        <label>{t("phone.channel.transferLabel")}<input value={transfer} maxLength={32} placeholder={t("phone.channel.transferPlaceholder")} onChange={(event) => setTransfer(event.target.value)} disabled={busy} /></label>
       </section>
 
       {line?.status === "connected" && line.is_enabled && <div className="wa-connected"><div className="wa-ready"><CheckCircle2 size={18} /> {t("phone.channel.connectedCopy", { number: line.phone_number, agent: agentNameOf(line) })}</div></div>}

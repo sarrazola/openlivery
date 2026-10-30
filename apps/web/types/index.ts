@@ -88,7 +88,7 @@ export type Agent = {
   kind: AgentKind;
   voice_id: string;
   voice_name: string;
-  greeting: string;
+  greeting: string; transfer_number: string | null; transfer_when: string;
   client: Client;
   created_at: string;
   updated_at: string;
@@ -120,7 +120,7 @@ export type PhoneVoice = { voice_id: string; name: string; accent: string; gende
 export type CarrierNumber = { id: string; phone_number: string; name: string };
 export type PhoneLine = {
   id: string; client_id: string; agent_id: string; label: string | null; phone_number: string;
-  provider: "twilio" | "telnyx"; provider_number_id: string | null; transfer_number: string | null;
+  provider: "twilio" | "telnyx"; provider_number_id: string | null;
   status: "connected" | "disconnected" | "error"; is_enabled: boolean; last_error: string | null;
   last_connected_at: string | null; created_at: string; updated_at: string;
 };

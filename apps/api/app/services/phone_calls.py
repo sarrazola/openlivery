@@ -81,6 +81,11 @@ CALLBACK_RULE = {
 }
 
 
+# When the caller is put through, unless the agent says otherwise.
+TRANSFER_WHEN = {
+    "es": "Cuando el cliente pide hablar con una persona o necesita algo que no puedes resolver.",
+    "en": "When the caller asks for a person or needs something you cannot resolve.",
+}
 # Who is calling, filled in by ElevenLabs on every call.
 CALLER = {
     "es": "## Quien llama\n- **Teléfono desde el que llama:** {{system__caller_id}}",
@@ -95,6 +100,17 @@ class PhoneSetupError(RuntimeError):
 def check_voice_model(model: str) -> None:
     if model not in VOICE_MODELS:
         raise ValueError(f"A voice agent thinks with one of: {', '.join(VOICE_MODELS.values())}.")
+
+
+def transfer_number(value: str | None) -> str | None:
+    """The number a call is put through to, in E.164; None leaves the caller
+    to be called back."""
+    if not value or not value.strip():
+        return None
+    digits = contacts.normalize_phone(value)
+    if not digits:
+        raise ValueError("Write the transfer number with its country code, for example +573001234567.")
+    return f"+{digits}"
 
 
 # --- accounts ----------------------------------------------------------------
@@ -269,7 +285,7 @@ def call_prompt(line: PhoneChannel) -> str:
     client's timezone; written here they would be the moment of the sync."""
     agent = line.agent
     lang = _language(agent)
-    rules = PHONE_RULES[lang] + (TRANSFER_RULE[lang] if line.transfer_number else CALLBACK_RULE[lang])
+    rules = PHONE_RULES[lang] + (TRANSFER_RULE[lang] if agent.transfer_number else CALLBACK_RULE[lang])
     return "\n\n".join([build_system_prompt(agent, "", with_time=False), CALLER[lang], rules.rstrip()])
 
 
@@ -277,7 +293,7 @@ def _agent_body(line: PhoneChannel, webhook_id: str | None) -> dict:
     agent = line.agent
     lang = _language(agent)
     tools: dict = {"end_call": {"type": "system", "name": "end_call", "description": "", "params": {"system_tool_type": "end_call"}}}
-    if line.transfer_number:
+    if agent.transfer_number:
         tools["transfer_to_number"] = {
             "type": "system",
             "name": "transfer_to_number",
@@ -285,8 +301,8 @@ def _agent_body(line: PhoneChannel, webhook_id: str | None) -> dict:
             "params": {
                 "system_tool_type": "transfer_to_number",
                 "transfers": [{
-                    "transfer_destination": {"type": "phone", "phone_number": line.transfer_number},
-                    "condition": "When the caller needs a person.",
+                    "transfer_destination": {"type": "phone", "phone_number": agent.transfer_number},
+                    "condition": agent.transfer_when.strip() or TRANSFER_WHEN[lang],
                     "transfer_type": "conference",
                 }],
             },
@@ -360,7 +376,7 @@ async def connect_line(db: Session, line: PhoneChannel) -> None:
 # What a line's ElevenLabs agent carries from the agent and from its client:
 # a change to any of them is written again into every connected line.
 AGENT_LINE_FIELDS = {
-    "name", "voice_id", "greeting", "model", "prompt_language", "instructions", "personality",
+    "name", "voice_id", "greeting", "model", "prompt_language", "instructions", "personality", "transfer_number", "transfer_when",
     "brief_summary", "brief_products", "brief_audience", "brief_policies", "brief_dos", "brief_donts",
 }
 CLIENT_LINE_FIELDS = {"name", "industry", "business_type", "business_custom", "timezone"}
@@ -417,7 +433,6 @@ def line_out(line: PhoneChannel) -> dict:
         "phone_number": line.phone_number,
         "provider": line.provider,
         "provider_number_id": line.provider_number_id,
-        "transfer_number": line.transfer_number,
         "status": line.status,
         "is_enabled": line.is_enabled,
         "last_error": line.last_error,

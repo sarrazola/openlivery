@@ -178,7 +178,7 @@ export default function NewAgentPage() {
 
       {current === "voice" && <div className="wizard-fields">
         <div className="wizard-copy"><h2>{t("phone.agent.stepVoiceTitle")}</h2><p>{t("phone.agent.stepVoiceSubtitle")}</p></div>
-        <VoicePicker language={lang} value={voice.id} name={voice.name} onChange={setVoice} />
+        <VoicePicker value={voice.id} name={voice.name} onChange={setVoice} />
         <label>{t("phone.channel.greetingLabel")}<textarea rows={2} maxLength={600} value={greeting} placeholder={t("phone.channel.greetingPlaceholder")} onChange={(e) => setGreeting(e.target.value)} /></label>
         <span className="field-help">{t("phone.channel.greetingHint")}</span>
       </div>}

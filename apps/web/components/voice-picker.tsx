@@ -1,70 +1,67 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LoaderCircle, Pause, Play } from "lucide-react";
-import Link from "next/link";
+import { ExternalLink, LoaderCircle, Pause, Play } from "lucide-react";
+import { AiHint } from "@/components/ai-hint";
 import { Alert } from "@/components/ui";
 import { api, messageFrom } from "@/lib/api";
-import { useLanguage } from "@/lib/i18n";
+import { useT } from "@/lib/i18n";
 import type { PhoneVoice } from "@/types";
 
-/** Voices from the ElevenLabs library in the interface's language, with a
- * preview to listen to before choosing, or one pasted by its ID from that
- * library. Needs the agency's ElevenLabs key. */
-export function VoicePicker({ language, value, name, onChange }: { language: string; value: string; name: string; onChange: (voice: { id: string; name: string }) => void }) {
-  const { t } = useLanguage();
-  const [search, setSearch] = useState("");
-  const [voices, setVoices] = useState<PhoneVoice[] | null>(null);
-  const [playing, setPlaying] = useState<string | null>(null);
-  const [unavailable, setUnavailable] = useState(false);
+const LIBRARY = "https://elevenlabs.io/app/voice-library";
+
+/** The agent's voice, chosen by its ID in the ElevenLabs voice library: the
+ * operator finds and listens to voices there, pastes the one they like and
+ * can hear it again here before saving. */
+export function VoicePicker({ value, name, onChange }: { value: string; name: string; onChange: (voice: { id: string; name: string }) => void }) {
+  const t = useT();
   const [pasted, setPasted] = useState("");
+  const [voice, setVoice] = useState<PhoneVoice | null>(null);
   const [looking, setLooking] = useState(false);
-  const [pasteError, setPasteError] = useState("");
+  const [error, setError] = useState("");
+  const [playing, setPlaying] = useState(false);
   const audio = useRef<HTMLAudioElement | null>(null);
 
+  // The chosen voice, looked up for its accent and its sample.
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      api<PhoneVoice[]>(`/phone/voices?language=${encodeURIComponent(language)}&search=${encodeURIComponent(search.trim())}`)
-        .then((found) => { setVoices(found); setUnavailable(false); })
-        .catch(() => { setVoices([]); setUnavailable(true); });
-    }, search ? 350 : 0);
-    return () => window.clearTimeout(timer);
-  }, [language, search]);
+    if (!value) { setVoice(null); return; }
+    let alive = true;
+    api<PhoneVoice>(`/phone/voices/${encodeURIComponent(value)}`)
+      .then((found) => { if (alive) setVoice(found); })
+      .catch(() => { if (alive) setVoice(null); });
+    return () => { alive = false; };
+  }, [value]);
   useEffect(() => () => audio.current?.pause(), []);
 
-  function listen(voice: PhoneVoice) {
-    audio.current?.pause();
-    if (playing === voice.voice_id || !voice.preview_url) { setPlaying(null); return; }
-    audio.current = new Audio(voice.preview_url);
-    audio.current.onended = () => setPlaying(null);
-    audio.current.play().catch(() => setPlaying(null));
-    setPlaying(voice.voice_id);
+  async function use() {
+    setLooking(true); setError("");
+    try {
+      const found = await api<PhoneVoice>(`/phone/voices/${encodeURIComponent(pasted.trim())}`);
+      setVoice(found);
+      onChange({ id: found.voice_id, name: found.name });
+      setPasted("");
+    } catch (err) { setError(messageFrom(err)); } finally { setLooking(false); }
   }
 
-  async function usePasted() {
-    setLooking(true); setPasteError("");
-    try {
-      const voice = await api<PhoneVoice>(`/phone/voices/${encodeURIComponent(pasted.trim())}`);
-      onChange({ id: voice.voice_id, name: voice.name });
-      setPasted("");
-    } catch (err) { setPasteError(messageFrom(err)); } finally { setLooking(false); }
+  function listen() {
+    audio.current?.pause();
+    if (playing || !voice?.preview_url) { setPlaying(false); return; }
+    audio.current = new Audio(voice.preview_url);
+    audio.current.onended = () => setPlaying(false);
+    audio.current.play().catch(() => setPlaying(false));
+    setPlaying(true);
   }
 
   return <div className="voice-picker">
-    {value && <p className="social-meta">{t("phone.channel.chosen")}: <strong>{name || value}</strong></p>}
-    {!unavailable && <input type="search" className="voice-search" value={search} aria-label={t("phone.channel.searchVoices")} placeholder={t("phone.channel.searchVoices")} onChange={(event) => setSearch(event.target.value)} />}
-    {unavailable ? <p className="social-meta">{t("phone.agent.needsElevenLabs")} <Link href="/settings/providers">{t("phone.channel.goToSettings")}</Link></p>
-      : voices === null ? <p className="field-help"><LoaderCircle className="spin" size={14} /></p>
-      : !voices.length ? <p className="social-meta">{t("phone.channel.noVoices")}</p>
-      : <ul className="voice-list">{voices.map((voice) => <li key={voice.voice_id} className={voice.voice_id === value ? "chosen" : ""}>
-        <button type="button" className="button ghost small" onClick={() => listen(voice)} disabled={!voice.preview_url} aria-label={t("phone.channel.listen")}>{playing === voice.voice_id ? <Pause size={14} /> : <Play size={14} />}</button>
-        <span><strong>{voice.name}</strong><small>{[voice.accent, voice.gender].filter(Boolean).join(" · ")}</small></span>
-        <button type="button" className={`button small ${voice.voice_id === value ? "primary" : "secondary"}`} onClick={() => onChange({ id: voice.voice_id, name: voice.name })}>{voice.voice_id === value ? t("phone.channel.chosen") : t("phone.channel.choose")}</button>
-      </li>)}</ul>}
-    {!unavailable && <div className="voice-paste">
-      <input value={pasted} placeholder={t("phone.channel.pasteVoiceId")} aria-label={t("phone.channel.pasteVoiceId")} onChange={(event) => { setPasted(event.target.value); setPasteError(""); }} />
-      <button type="button" className="button secondary" disabled={looking || !pasted.trim()} onClick={usePasted}>{looking ? <LoaderCircle className="spin" size={14} /> : t("phone.channel.useVoiceId")}</button>
+    {value && <div className="voice-chosen">
+      <button type="button" className="button ghost small" onClick={listen} disabled={!voice?.preview_url} aria-label={t("phone.channel.listen")}>{playing ? <Pause size={14} /> : <Play size={14} />}</button>
+      <span><strong>{voice?.name || name || value}</strong><small>{[voice?.accent, voice?.gender].filter(Boolean).join(" · ") || value}</small></span>
     </div>}
-    {pasteError && <Alert>{pasteError}</Alert>}
+    <div className="field-label-row"><span className="voice-id-label">{t("phone.channel.voiceIdLabel")} <AiHint text={t("phone.channel.voiceIdHelp")} /></span><a className="guide-link" href={LIBRARY} target="_blank" rel="noreferrer"><ExternalLink size={13} /> {t("phone.channel.voiceLibrary")}</a></div>
+    <div className="voice-paste">
+      <input value={pasted} placeholder={t("phone.channel.voiceIdPlaceholder")} aria-label={t("phone.channel.voiceIdLabel")} onChange={(event) => { setPasted(event.target.value); setError(""); }} />
+      <button type="button" className="button secondary" disabled={looking || !pasted.trim()} onClick={use}>{looking ? <LoaderCircle className="spin" size={14} /> : t("phone.channel.useVoiceId")}</button>
+    </div>
+    {error && <Alert>{error}</Alert>}
   </div>;
 }

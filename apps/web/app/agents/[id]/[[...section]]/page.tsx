@@ -22,6 +22,7 @@ import { ContactCaptureEditor } from "@/components/contact-capture";
 import { FollowUpEditor } from "@/components/follow-ups";
 import { AgentVoiceTab } from "@/components/agent-voice-tab";
 import { VoiceModelPicker } from "@/components/voice-model-picker";
+import { VoiceTransfer } from "@/components/voice-transfer";
 import { AgentScheduleEditor, onDutyNow } from "@/components/agent-schedule";
 import { Combobox } from "@/components/combobox";
 import { DEFAULT_PROVIDER, DEFAULT_AUDIO_MODEL, DEFAULT_EMBEDDING_MODEL, DEFAULT_IMAGE_MODEL, modelsFor, modelOptionsFor, estimateTokens, modelContextWindow, AUDIO_MODELS, EMBEDDING_MODELS, IMAGE_MODELS } from "@/lib/providers";
@@ -250,7 +251,7 @@ export default function AgentDetailPage() {
   if (!agent) return <div className="page"><FormSkeleton sections={2} /></div>;
   return <div className="page agent-detail-page">
     <Link href="/agents" className="back-link"><ArrowLeft size={16} /> {t("agents.detail.back")}</Link>
-    <header className="agent-detail-head"><div className="agent-title-wrap"><span className="agent-avatar xl"><Bot size={29} /></span><div><div className="title-line"><h1>{agent.name}</h1><span className={agent.is_active ? "pill purple" : "pill"}>{agent.is_active ? t("agents.detail.published") : t("agents.detail.unpublished")}</span>{agent.is_active && !onDutyNow(agent) && <span className="pill">{t("agents.detail.offDuty")}</span>}</div><p><Link href={`/clients/${agent.client_id}`} className="table-link">{agent.client.name}</Link>{businessLabel(catalog, agent.client, lang) ? ` · ${businessLabel(catalog, agent.client, lang)}` : ""}</p></div></div><div className="header-actions"><button className={agent.is_active ? "button ghost" : "button primary"} onClick={() => (agent.is_active ? setConfirmingDeactivate(true) : togglePublish())} disabled={busy}>{agent.is_active ? <><PowerOff size={16} /> {t("agents.detail.unpublish")}</> : <><Power size={16} /> {t("agents.detail.publish")}</>}</button><button type="button" className="button secondary" onClick={() => changeTab("playground")}><MessageSquareText size={17} /> {t("agents.detail.openPlayground")}</button></div></header>
+    <header className="agent-detail-head"><div className="agent-title-wrap"><span className="agent-avatar xl"><Bot size={29} /></span><div><div className="title-line"><h1>{agent.name}</h1><span className={agent.is_active ? "pill purple" : "pill"}>{agent.is_active ? t("agents.detail.published") : t("agents.detail.unpublished")}</span>{agent.is_active && agent.kind !== "voice" && !onDutyNow(agent) && <span className="pill">{t("agents.detail.offDuty")}</span>}</div><p><Link href={`/clients/${agent.client_id}`} className="table-link">{agent.client.name}</Link>{businessLabel(catalog, agent.client, lang) ? ` · ${businessLabel(catalog, agent.client, lang)}` : ""}</p></div></div><div className="header-actions"><button className={agent.is_active ? "button ghost" : "button primary"} onClick={() => (agent.is_active ? setConfirmingDeactivate(true) : togglePublish())} disabled={busy}>{agent.is_active ? <><PowerOff size={16} /> {t("agents.detail.unpublish")}</> : <><Power size={16} /> {t("agents.detail.publish")}</>}</button>{agent.kind !== "voice" && <button type="button" className="button secondary" onClick={() => changeTab("playground")}><MessageSquareText size={17} /> {t("agents.detail.openPlayground")}</button>}</div></header>
     {docToDelete && <ConfirmModal title={t("agents.detail.confirmDelete", { filename: docToDelete.filename })} confirmLabel={t("agents.detail.delete")} cancelLabel={t("common.cancel")} confirmIcon={<Trash2 size={15} />} onConfirm={() => removeDocument(docToDelete)} onClose={() => setDocToDelete(null)} />}
     {mediaToDelete && <ConfirmModal title={t("agents.detail.confirmDelete", { filename: mediaToDelete.name })} confirmLabel={t("agents.detail.delete")} cancelLabel={t("common.cancel")} confirmIcon={<Trash2 size={15} />} onConfirm={() => removeMedia(mediaToDelete)} onClose={() => setMediaToDelete(null)} />}
     <Modal open={deleteOpen} title={t("agents.detail.deleteTitle", { name: agent.name })} onClose={() => setDeleteOpen(false)}>
@@ -274,7 +275,8 @@ export default function AgentDetailPage() {
       ...(agent.kind === "voice" ? [{ id: "voice" as const, label: t("phone.agent.tab"), icon: Mic }] : []),
       { id: "knowledge", label: t("agents.detail.tabKnowledge"), icon: FileText, badge: documents.length },
       { id: "tools", label: t("tools.tab"), icon: Plug, badge: tools.length },
-      { id: "playground", label: t("agents.detail.tabPlayground"), icon: MessageSquareText },
+      // A call cannot be tried by typing: a voice agent has no playground.
+      ...(agent.kind === "voice" ? [] : [{ id: "playground" as const, label: t("agents.detail.tabPlayground"), icon: MessageSquareText }]),
     ]} />
 
     {tab === "basics" && <form className="settings-form" onSubmit={saveConfig}>
@@ -297,7 +299,7 @@ export default function AgentDetailPage() {
         <label>{t("agents.detail.personalityLabel")}<textarea name="personality" rows={3} defaultValue={agent.personality} placeholder={t("agents.detail.personalityPlaceholder")} /></label>
       </div></section>
       <ContactCaptureEditor agentId={agent.id} clientId={agent.client_id} />
-      <EscalationRulesEditor agentId={agent.id} clientId={agent.client_id} note={agent.kind === "voice" ? t("phone.agent.escalationCall") : undefined} />
+      {agent.kind === "voice" ? <VoiceTransfer agent={agent} onSaved={setAgent} /> : <EscalationRulesEditor agentId={agent.id} clientId={agent.client_id} />}
       {agent.kind !== "voice" && <FollowUpEditor agentId={agent.id} />}
       {agent.kind !== "voice" && <AgentScheduleEditor enabled={schedule.enabled} slots={schedule.slots} timezone={agent.client.timezone} locale={lang} onChange={setSchedule} />}
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.aiModelHeading")}</h3><p>{t("agents.detail.aiModelCopy")}</p></div><div className="settings-fields">
@@ -369,6 +371,6 @@ export default function AgentDetailPage() {
     {tab === "tools" && ManagedSection && <ManagedSection agentId={id} onToolsChange={() => api<AgentTool[]>(`/agents/${id}/tools`).then(setTools).catch(() => {})} />}
 
     {tab === "voice" && agent.kind === "voice" && <AgentVoiceTab agent={agent} onSaved={setAgent} />}
-    {tab === "playground" && <ChatPlayground lockedAgentId={agent.id} />}
+    {tab === "playground" && agent.kind !== "voice" && <ChatPlayground lockedAgentId={agent.id} />}
   </div>;
 }

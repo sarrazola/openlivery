@@ -41,14 +41,14 @@ def provisioning(monkeypatch):
     return calls
 
 
-def _line(client: TestClient, *, model: str = "eleven_realtime_v1_mini", **overrides) -> tuple[dict, dict, dict]:
+def _line(client: TestClient, *, model: str = "eleven_realtime_v1_mini", transfer_number: str | None = None, **overrides) -> tuple[dict, dict, dict]:
     assert client.put("/api/phone/accounts/elevenlabs", json={"api_key": "xi-key"}).status_code == 200
     assert client.put("/api/phone/accounts/twilio", json={"account_sid": "AC123", "auth_token": "tok"}).status_code == 200
     customer = client.post("/api/clients", json={"name": "Dentix", "is_active": True, "timezone": "America/Bogota"}).json()
     agent = client.post("/api/agents", json={
         "client_id": customer["id"], "model": model, "name": "Sofía",
         "instructions": "Agenda citas.", "brief_products": "Limpieza: $80.000.", "personality": "", "is_active": True,
-        "kind": "voice", "voice_id": "voice_1", "greeting": "¡Hola! Hablas con Dentix.",
+        "kind": "voice", "voice_id": "voice_1", "greeting": "¡Hola! Hablas con Dentix.", "transfer_number": transfer_number,
     })
     assert agent.status_code == 201, agent.text
     body = {
@@ -116,7 +116,8 @@ def test_a_key_is_checked_with_the_provider_before_it_is_stored(authenticated_cl
 def test_a_line_carries_the_agent_into_elevenlabs(authenticated_client: TestClient, provisioning):
     _, _, line = _line(authenticated_client, transfer_number="+57 300 555 0000")
     assert line["status"] == "connected" and line["last_error"] is None
-    assert line["transfer_number"] == "+573005550000"
+    with SessionLocal() as db:
+        assert db.get(PhoneChannel, line["id"]).agent.transfer_number == "+573005550000"
 
     config = provisioning["agent_body"]["conversation_config"]
     prompt = config["agent"]["prompt"]
@@ -130,8 +131,9 @@ def test_a_line_carries_the_agent_into_elevenlabs(authenticated_client: TestClie
     # The clock comes from ElevenLabs on each call, in the client's timezone.
     assert prompt["timezone"] == "America/Bogota" and "2026-" not in prompt["prompt"]
     assert set(prompt["built_in_tools"]) == {"end_call", "transfer_to_number"}
-    destination = prompt["built_in_tools"]["transfer_to_number"]["params"]["transfers"][0]["transfer_destination"]
-    assert destination == {"type": "phone", "phone_number": "+573005550000"}
+    transfer = prompt["built_in_tools"]["transfer_to_number"]["params"]["transfers"][0]
+    assert transfer["transfer_destination"] == {"type": "phone", "phone_number": "+573005550000"}
+    assert transfer["condition"] == phone_calls.TRANSFER_WHEN["es"]
     assert config["agent"]["first_message"] == "¡Hola! Hablas con Dentix." and config["agent"]["language"] == "es"
     turn = config["turn"]
     assert turn["speculative_turn"] is True and turn["soft_timeout_config"]["message"] == phone_calls.FILLERS["es"]
@@ -292,3 +294,18 @@ def test_a_deployment_can_lend_its_elevenlabs_account(authenticated_client: Test
             assert db.scalar(select(phone_calls.CallAccount).where(phone_calls.CallAccount.provider == "elevenlabs")).webhook_id is None
     finally:
         phone_calls.register_call_account_fallback(None)
+
+
+def test_a_voice_agent_says_when_and_where_a_call_goes_to_a_person(authenticated_client: TestClient, provisioning):
+    client = authenticated_client
+    _, agent, _ = _line(client)
+    prompt = provisioning["agent_body"]["conversation_config"]["agent"]["prompt"]
+    # Without a number nobody takes the call: the agent says someone will call back.
+    assert "transfer_to_number" not in prompt["built_in_tools"] and "una persona lo va a contactar" in prompt["prompt"]
+
+    refused = client.patch(f"/api/agents/{agent['id']}", json={"transfer_number": "300 555"})
+    assert refused.status_code == 422 and "country code" in refused.json()["detail"]
+    saved = client.patch(f"/api/agents/{agent['id']}", json={"transfer_number": "+57 300 555 0000", "transfer_when": "Si pide un descuento."})
+    assert saved.json()["transfer_number"] == "+573005550000"
+    transfer = provisioning["agent_body"]["conversation_config"]["agent"]["prompt"]["built_in_tools"]["transfer_to_number"]
+    assert transfer["params"]["transfers"][0]["condition"] == "Si pide un descuento."

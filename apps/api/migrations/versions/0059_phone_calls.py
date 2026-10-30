@@ -23,6 +23,8 @@ def upgrade():
     op.add_column("agents", sa.Column("voice_id", sa.String(80), nullable=False, server_default=""))
     op.add_column("agents", sa.Column("voice_name", sa.String(180), nullable=False, server_default=""))
     op.add_column("agents", sa.Column("greeting", sa.Text(), nullable=False, server_default=""))
+    op.add_column("agents", sa.Column("transfer_number", sa.String(32), nullable=True))
+    op.add_column("agents", sa.Column("transfer_when", sa.Text(), nullable=False, server_default=""))
 
     op.create_table(
         "call_accounts",
@@ -56,7 +58,6 @@ def upgrade():
         sa.Column("provider_number_id", sa.String(80), nullable=True),
         sa.Column("elevenlabs_agent_id", sa.String(80), nullable=True),
         sa.Column("elevenlabs_phone_number_id", sa.String(80), nullable=True),
-        sa.Column("transfer_number", sa.String(32), nullable=True),
         sa.Column("is_enabled", sa.Boolean(), nullable=False, server_default="true"),
         sa.Column("status", sa.String(30), nullable=False, server_default="disconnected"),
         sa.Column("last_error", sa.Text(), nullable=True),
@@ -95,7 +96,7 @@ def downgrade():
     op.drop_constraint("fk_conversations_phone_channel", "conversations", type_="foreignkey")
     op.drop_index("ix_conversations_phone_channel_id", table_name="conversations")
     op.drop_column("conversations", "phone_channel_id")
-    for column in ("greeting", "voice_name", "voice_id", "kind"):
+    for column in ("transfer_when", "transfer_number", "greeting", "voice_name", "voice_id", "kind"):
         op.drop_column("agents", column)
     op.drop_index("ix_phone_calls_phone_channel_id", table_name="phone_calls")
     op.drop_table("phone_calls")

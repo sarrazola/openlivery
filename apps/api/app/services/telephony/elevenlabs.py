@@ -71,18 +71,6 @@ async def validate_key(api_key: str) -> str:
     return "ElevenLabs connected."
 
 
-async def list_voices(api_key: str, *, language: str = "es", search: str = "") -> list[dict]:
-    """Conversational voices from the shared library in the agents' language,
-    the most used first: a phone agent needs a native accent, and the library
-    has local ones (Colombian, Mexican...) that the default voices lack."""
-    params = {"language": language, "use_cases": "conversational", "page_size": 30, "sort": "usage_character_count_1y"}
-    if search:
-        params["search"] = search
-    found = await _request(api_key, "GET", "/shared-voices", params=params)
-    voices = [_voice(voice) for voice in found.get("voices", [])]
-    return [voice for voice in voices if voice["voice_id"]]
-
-
 def _voice(voice: dict) -> dict:
     return {
         "voice_id": voice.get("voice_id"),

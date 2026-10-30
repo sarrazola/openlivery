@@ -274,6 +274,8 @@ class AgentBase(BaseModel):
     voice_id: str = Field(default="", max_length=80)
     voice_name: str = Field(default="", max_length=180)
     greeting: str = Field(default="", max_length=600)
+    transfer_number: str | None = Field(default=None, max_length=32)
+    transfer_when: str = Field(default="", max_length=600)
 
     @model_validator(mode="after")
     def _reply_delay_bounds(self) -> "AgentBase":
@@ -316,6 +318,8 @@ class AgentUpdate(BaseModel):
     voice_id: str | None = Field(default=None, max_length=80)
     voice_name: str | None = Field(default=None, max_length=180)
     greeting: str | None = Field(default=None, max_length=600)
+    transfer_number: str | None = Field(default=None, max_length=32)
+    transfer_when: str | None = Field(default=None, max_length=600)
 
 
 class AgentOut(ORMModel):
@@ -351,6 +355,8 @@ class AgentOut(ORMModel):
     voice_id: str
     voice_name: str
     greeting: str
+    transfer_number: str | None = None
+    transfer_when: str = ""
     created_at: datetime
     updated_at: datetime
     client: ClientOut

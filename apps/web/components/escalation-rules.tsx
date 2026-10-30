@@ -26,9 +26,7 @@ type TagRow = { id: string; name: string; color: string; contact_count: number; 
 /** The bot's escalation rules: WHEN in the business's words (the model reads
  * it contextually), WHERE picked from real teams and people - never guessed.
  * The list is edited as a whole and saved with one button. */
-/** ``note`` says how escalating works where this agent answers, when that
- * differs from a chat (a voice agent transfers the call or has it called back). */
-export function EscalationRulesEditor({ agentId, clientId, note }: { agentId: string; clientId: string; note?: string }) {
+export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; clientId: string }) {
   const t = useT();
   const [rules, setRules] = useState<Rule[]>([]);
   const [builtinOn, setBuiltinOn] = useState(true);
@@ -159,7 +157,6 @@ export function EscalationRulesEditor({ agentId, clientId, note }: { agentId: st
       <div className="settings-copy">
         <h3>{t("agents.escalation.heading")}</h3>
         <p>{t("agents.escalation.copy")}</p>
-        {note && <p className="settings-note">{note}</p>}
       </div>
       <div className="settings-fields esc-steps">
         {loading ? <div className="no-conversations"><LoaderCircle className="spin" size={16} /></div> : <>

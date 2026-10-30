@@ -91,15 +91,6 @@ def remove_account(provider: str, db: Session = Depends(get_db), user: User = De
     return Response(status_code=204)
 
 
-@router.get("/voices", response_model=list[PhoneVoiceOut])
-async def list_voices(search: str = "", language: str = "es", db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    try:
-        _, api_key = phone_calls.elevenlabs_key(db, user.agency_id)
-        return await elevenlabs.list_voices(api_key, language=language[:5], search=search[:80])
-    except (phone_calls.PhoneSetupError, TelephonyError) as exc:
-        raise _setup_error(exc) from exc
-
-
 @router.get("/voices/{voice_id}", response_model=PhoneVoiceOut)
 async def find_voice(voice_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     try:
@@ -159,15 +150,6 @@ def _line(db: Session, user: User, line_id: uuid.UUID) -> PhoneChannel:
     return line
 
 
-def _transfer_number(value: str | None) -> str | None:
-    if not value or not value.strip():
-        return None
-    digits = normalize_phone(value)
-    if not digits:
-        raise HTTPException(status_code=422, detail="Write the transfer number with its country code, for example +573001234567.")
-    return f"+{digits}"
-
-
 async def _connect(db: Session, line: PhoneChannel) -> None:
     try:
         await phone_calls.connect_line(db, line)
@@ -196,8 +178,7 @@ async def create_line(client_id: uuid.UUID, payload: PhoneLineCreate, db: Sessio
     if taken:
         raise HTTPException(status_code=409, detail="That number already rings an agent.")
     line = PhoneChannel(
-        agency_id=user.agency_id, client_id=client.id, **payload.model_dump(exclude={"transfer_number"}),
-        transfer_number=_transfer_number(payload.transfer_number),
+        agency_id=user.agency_id, client_id=client.id, **payload.model_dump(),
     )
     db.add(line)
     db.commit()
@@ -211,11 +192,9 @@ async def update_line(line_id: uuid.UUID, payload: PhoneLineUpdate, db: Session 
     values = payload.model_dump(exclude_unset=True)
     if "agent_id" in values and values["agent_id"]:
         _client_agent(db, user, line.client_id, values["agent_id"])
-    if "transfer_number" in values:
-        values["transfer_number"] = _transfer_number(values["transfer_number"])
     enabled = values.pop("is_enabled", None)
     for key, value in values.items():
-        if value is not None or key in ("transfer_number", "label"):
+        if value is not None or key == "label":
             setattr(line, key, value)
     if enabled is not None:
         line.is_enabled = enabled

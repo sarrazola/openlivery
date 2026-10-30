@@ -79,12 +79,19 @@ def _check_voice_model(model: str) -> None:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+def _transfer_number(value: str | None) -> str | None:
+    try:
+        return phone_calls.transfer_number(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.post("", response_model=AgentOut, status_code=status.HTTP_201_CREATED)
 def create_agent(payload: AgentCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _validate_client(db, user, payload.client_id)
     if payload.kind == "voice":
         _check_voice_model(payload.model)
-    agent = Agent(agency_id=user.agency_id, **payload.model_dump())
+    agent = Agent(agency_id=user.agency_id, **payload.model_dump(exclude={"transfer_number"}), transfer_number=_transfer_number(payload.transfer_number))
     db.add(agent)
     db.commit()
     return _agent(db, user, agent.id)
@@ -115,6 +122,8 @@ async def update_agent(agent_id: uuid.UUID, payload: AgentUpdate, db: Session = 
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if agent.kind == "voice" and "model" in values:
         _check_voice_model(values["model"])
+    if "transfer_number" in values:
+        values["transfer_number"] = _transfer_number(values["transfer_number"])
     for key, value in values.items():
         setattr(agent, key, value)
     db.commit()
