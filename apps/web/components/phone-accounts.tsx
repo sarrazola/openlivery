@@ -68,7 +68,7 @@ function CarrierSection({ stateOf, onChange }: { stateOf: (p: CallProvider) => C
 
   return <section className="form-section"><div className="section-copy"><h2>{t("phone.settings.carrierTitle")}</h2><p>{t("phone.settings.carrierCopy")}</p>{showForm && <GuideLink provider={carrier} />}</div>
     <div className="form-fields key-form">
-      {connected.map((c) => <div key={c.id} className="carrier-connected"><strong>{c.name}</strong><AccountForm provider={c.id} state={stateOf(c.id)} onChange={onChange} /></div>)}
+      {connected.map((c) => <div key={c.id} className="carrier-connected"><AccountForm provider={c.id} state={stateOf(c.id)} onChange={onChange} /></div>)}
       {showForm && <>
         <label>{t("phone.settings.carrierLabel")}
           <select value={carrier} onChange={(event) => setCarrier(event.target.value as Carrier)}>
@@ -115,7 +115,7 @@ function AccountForm({ provider, state, onChange, onCancel }: { provider: CallPr
 
   if (stored) return <div className="key-configured">
     <div className="key-configured-head">
-      <span className="key-configured-status"><CheckCircle2 size={18} /> {t("phone.settings.connected", { name: nameOf(provider), hint: state?.secret_hint || "" })}</span>
+      <span className="key-configured-status"><CheckCircle2 size={18} /> {t(fields.length === 1 ? "phone.settings.keyConfigured" : "phone.settings.accountConnected", { name: nameOf(provider) })}</span>
       <KeyActions busy={busy} replaceLabel={t("phone.settings.replace")} removeLabel={t("phone.settings.remove")} confirmTitle={t("phone.settings.removeTitle", { name: nameOf(provider) })} confirmMessage={t("phone.settings.removeCopy", { name: nameOf(provider) })} onReplace={() => { setValues({}); setReplacing(true); }} onRemove={remove} />
     </div>
     {state?.last_error && <Alert>{state.last_error}</Alert>}
