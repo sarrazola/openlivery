@@ -297,21 +297,28 @@ def test_voice_and_chat_agents_keep_to_their_channels(authenticated_client: Test
 
 def test_changing_the_agent_or_its_client_rewrites_the_lines(authenticated_client: TestClient, provisioning):
     client = authenticated_client
-    customer, agent, _ = _line(client)
+    customer, agent, line = _line(client)
+    # The save answers at once; the line is written a moment later.
+    pushed = len(provisioning["bodies"])
     assert client.patch(f"/api/agents/{agent['id']}", json={"voice_id": "voice_2", "greeting": "Hola, Dentix."}).status_code == 200
+    assert len(provisioning["bodies"]) == pushed and provisioning["refreshed"] == [agent["id"]]
+    _resync(line["id"])
     config = provisioning["agent_body"]["conversation_config"]
     assert config["tts"]["voice_id"] == "voice_2" and config["agent"]["first_message"] == "Hola, Dentix."
 
     assert client.patch(f"/api/agents/{agent['id']}", json={"brief_policies": "Abrimos de 8 a 6."}).status_code == 200
+    _resync(line["id"])
     assert "Abrimos de 8 a 6." in provisioning["agent_body"]["conversation_config"]["agent"]["prompt"]["prompt"]
 
     assert client.patch(f"/api/clients/{customer['id']}", json={"name": "Dentix Norte"}).status_code == 200
+    assert provisioning["refreshed"][-1] == agent["id"]
+    _resync(line["id"])
     assert "Dentix Norte" in provisioning["agent_body"]["conversation_config"]["agent"]["prompt"]["prompt"]
 
     # A setting the call does not carry leaves ElevenLabs alone.
-    pushed = len(provisioning["bodies"])
+    noted = len(provisioning["refreshed"])
     assert client.patch(f"/api/agents/{agent['id']}", json={"temperature": 0.3}).status_code == 200
-    assert len(provisioning["bodies"]) == pushed
+    assert len(provisioning["refreshed"]) == noted
 
 
 def test_a_deployment_can_lend_its_elevenlabs_account(authenticated_client: TestClient, provisioning, monkeypatch):
@@ -345,7 +352,7 @@ def test_a_deployment_can_lend_its_elevenlabs_account(authenticated_client: Test
 
 def test_a_voice_agent_says_when_and_where_a_call_goes_to_a_person(authenticated_client: TestClient, provisioning):
     client = authenticated_client
-    _, agent, _ = _line(client)
+    _, agent, line = _line(client)
     prompt = provisioning["agent_body"]["conversation_config"]["agent"]["prompt"]
     # Without a number nobody takes the call: the case goes to a person, who
     # calls back, even with no team to route it to.
@@ -356,6 +363,7 @@ def test_a_voice_agent_says_when_and_where_a_call_goes_to_a_person(authenticated
     assert refused.status_code == 422 and "country code" in refused.json()["detail"]
     saved = client.patch(f"/api/agents/{agent['id']}", json={"transfer_number": "+57 300 555 0000", "transfer_when": "Si pide un descuento."})
     assert saved.json()["transfer_number"] == "+573005550000"
+    _resync(line["id"])
     transfer = provisioning["agent_body"]["conversation_config"]["agent"]["prompt"]["built_in_tools"]["transfer_to_number"]
     assert transfer["params"]["transfers"][0]["condition"] == "Si pide un descuento."
 
@@ -364,6 +372,7 @@ def test_an_agent_without_a_voice_speaks_with_the_default_one(authenticated_clie
     client = authenticated_client
     _, agent, line = _line(client)
     assert client.patch(f"/api/agents/{agent['id']}", json={"voice_id": "", "voice_name": ""}).status_code == 200
+    _resync(line["id"])
     assert provisioning["agent_body"]["conversation_config"]["tts"]["voice_id"] == phone_calls.DEFAULT_VOICES["es"]
     with SessionLocal() as db:
         assert db.get(PhoneChannel, line["id"]).status == "connected"

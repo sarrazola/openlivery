@@ -128,7 +128,8 @@ async def update_agent(agent_id: uuid.UUID, payload: AgentUpdate, db: Session = 
         setattr(agent, key, value)
     db.commit()
     if agent.kind == "voice" and phone_calls.AGENT_LINE_FIELDS & values.keys():
-        await phone_calls.resync_lines(db, agent_id=agent.id)
+        # Written into ElevenLabs a moment later: the save does not wait on it.
+        phone_calls.refresh_lines_soon(db, agent_id=agent.id)
     return _agent(db, user, agent_id)
 
 

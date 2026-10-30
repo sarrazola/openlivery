@@ -133,7 +133,7 @@ async def update_client(client_id: uuid.UUID, payload: ClientUpdate, db: Session
     db.commit()
     # Its phone lines carry the client's name, business and timezone.
     if phone_calls.CLIENT_LINE_FIELDS & values.keys():
-        await phone_calls.resync_lines(db, client_id=client.id)
+        phone_calls.refresh_lines_soon(db, client_id=client.id)
     return _client(db, user, client_id)
 
 
