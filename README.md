@@ -71,10 +71,11 @@ Full documentation lives in **[docs/](docs/)**. Every guide is written twice:
 - ✅ **MCP servers** (Streamable HTTP or SSE) with test-before-save connection checks and cached tool discovery
 - ✅ Tool usage recorded per reply and surfaced in the playground, including failure details
 
-**Channels** — [WhatsApp Cloud API](docs/en/whatsapp-cloud-api.md) · [WhatsApp QR](docs/en/whatsapp.md) · [Web widget](docs/en/web-widget.md)
+**Channels** — [WhatsApp Cloud API](docs/en/whatsapp-cloud-api.md) · [WhatsApp QR](docs/en/whatsapp.md) · [Web widget](docs/en/web-widget.md) · [Phone calls](docs/en/phone-calls.md)
 - ✅ **WhatsApp Cloud API** (official Meta API) — bring your own Meta app credentials, signed webhooks, per-client number
 - ✅ **WhatsApp QR** through whatsmeow — QR link, per-client number, persistent session that reconnects on its own
 - ✅ Embeddable **web chat widget** for any website
+- ✅ **Phone calls**: voice agents answer a client's number through ElevenLabs Agents, on your Twilio or Telnyx numbers, with the agent's knowledge, contact capture and tools
 - 🚧 Instagram DM, Facebook Messenger *(planned)*
 
 **Operations** — [Inbox](docs/en/inbox.md) · [Client portal](docs/en/client-portal.md) · [Dashboard](docs/en/dashboard.md)
