@@ -19,6 +19,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import secrets
 import time
 from collections.abc import Callable
@@ -916,6 +917,11 @@ async def run_tool(db: Session, line: PhoneChannel, name: str, payload: dict) ->
 # --- the end of a call ---------------------------------------------------------
 
 
+# The voice's delivery cues ("[friendly]", "[laughs]"): spoken as tone, never
+# as words, so they are not kept in the transcript.
+_DELIVERY_CUE = re.compile(r"\[[^\W\d_]+(?: [^\W\d_]+){0,3}\]\s*")
+
+
 @dataclass
 class CallTurn:
     role: str
@@ -957,6 +963,8 @@ def _report(data: dict) -> CallReport:
                 entry["result_preview"] = value[:500] + ("…" if len(value) > 500 else "")
                 entry["is_error"] = bool(result.get("is_error"))
         text = (item.get("message") or "").strip()
+        if item.get("role") == "agent":
+            text = _DELIVERY_CUE.sub("", text).strip()
         # "..." is a turn the speech recognition heard nothing in.
         if not text or text.strip(". ") == "":
             continue

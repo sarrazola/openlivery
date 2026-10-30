@@ -219,7 +219,7 @@ def test_the_end_of_call_report_keeps_the_call(authenticated_client: TestClient,
         {"role": "agent", "message": "¡Hola! Hablas con Dentix.", "time_in_call_secs": 0},
         {"role": "user", "message": "Quiero una limpieza", "time_in_call_secs": 4},
         {"role": "user", "message": "...", "time_in_call_secs": 5},
-        {"role": "agent", "message": "Claro, ¿para qué día?", "time_in_call_secs": 6},
+        {"role": "agent", "message": "[friendly] Claro, ¿para qué día? [warm]", "time_in_call_secs": 6},
     ], call_duration_secs=66, cost=880, termination_reason="Client disconnected", charging={
         "platform_price": 0.105, "llm_price": 0.004,
         "llm_usage": {"irreversible_generation": {"model_usage": {"eleven_realtime_v1_mini": {
