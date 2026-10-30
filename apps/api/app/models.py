@@ -400,6 +400,9 @@ class CallAccount(Base):
     # the secret its requests are signed with.
     webhook_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     encrypted_webhook_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Where that webhook points. ElevenLabs cannot move a webhook, so a new
+    # address (another domain, a new tunnel) gets a new one.
+    webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # ElevenLabs only: the workspace secret its agents send when they call
     # back during a call (who is calling, a tool), and the hash it is checked
     # against. The value itself is only ever stored at ElevenLabs.

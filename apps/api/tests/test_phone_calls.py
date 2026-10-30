@@ -610,5 +610,14 @@ def test_a_deployment_can_say_where_an_agency_is_called_back(authenticated_clien
         start = provisioning["agent_body"]["platform_settings"]["workspace_overrides"]["conversation_initiation_client_data_webhook"]
         assert start["url"] == f"https://dentix.example.com/api/public/phone/lines/{_public_id(line['id'])}/start"
         assert elevenlabs.create_webhook.await_args.args[2].startswith("https://dentix.example.com/api/public/phone/accounts/")
+        # A webhook cannot move: a new address gets a new one, which the line reports to.
+        phone_calls.register_public_base(lambda db, agency_id: "https://dentix.example.org")
+        elevenlabs.create_webhook.return_value = ("wh_2", WEBHOOK_SECRET)
+        _resync(line["id"])
+        assert elevenlabs.create_webhook.await_args.args[2].startswith("https://dentix.example.org/api/public/phone/accounts/")
+        assert provisioning["agent_body"]["platform_settings"]["workspace_overrides"]["webhooks"]["post_call_webhook_id"] == "wh_2"
+        writes = elevenlabs.create_webhook.await_count
+        _resync(line["id"])
+        assert elevenlabs.create_webhook.await_count == writes
     finally:
         phone_calls.register_public_base(None)

@@ -239,6 +239,7 @@ def store_account(db: Session, agency_id, provider: str, secret: dict) -> CallAc
         # live in the lender's workspace: the agency's own one gets its own.
         account.webhook_id = None
         account.encrypted_webhook_secret = None
+        account.webhook_url = None
         account.tool_secret_id = None
         account.tool_token_hash = None
     account.encrypted_secret = encrypt_secret(json.dumps(secret))
@@ -640,11 +641,24 @@ async def connect_line(db: Session, line: PhoneChannel) -> None:
     name = await elevenlabs.ensure_voice(api_key, voice_of(agent))
     if agent.voice_id:
         agent.voice_name = name or agent.voice_name
-    if not account.webhook_id:
-        webhook_id, signing = await elevenlabs.create_webhook(api_key, "OpenLivery calls", webhook_url(db, account))
+    url = webhook_url(db, account)
+    if not account.webhook_id or account.webhook_url != url:
+        moved = account.webhook_id is not None
+        webhook_id, signing = await elevenlabs.create_webhook(api_key, "OpenLivery calls", url)
         account.webhook_id = webhook_id
+        account.webhook_url = url
         account.encrypted_webhook_secret = encrypt_secret(signing) if signing else None
         db.commit()
+        if moved:
+            # The agency's other lines still report to the old webhook, whose
+            # signature no longer checks: they take the new one in a moment.
+            # The old webhook is left in place, unused.
+            others = select(PhoneChannel.agent_id).where(
+                PhoneChannel.agency_id == line.agency_id, PhoneChannel.agent_id != line.agent_id,
+                PhoneChannel.is_enabled.is_(True), PhoneChannel.status == "connected",
+            )
+            for agent_id in set(db.scalars(others).all()):
+                _schedule_resync(agent_id)
     secret_id = await _callback_secret(db, account, api_key)
     tool_ids, unused = await _sync_tools(db, line, api_key, secret_id)
     try:

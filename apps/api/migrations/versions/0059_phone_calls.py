@@ -36,6 +36,7 @@ def upgrade():
         sa.Column("secret_hint", sa.String(40), nullable=False, server_default=""),
         sa.Column("webhook_id", sa.String(80), nullable=True),
         sa.Column("encrypted_webhook_secret", sa.Text(), nullable=True),
+        sa.Column("webhook_url", sa.String(500), nullable=True),
         sa.Column("tool_secret_id", sa.String(80), nullable=True),
         sa.Column("tool_token_hash", sa.String(64), nullable=True),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default="true"),
