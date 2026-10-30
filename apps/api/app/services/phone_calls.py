@@ -43,7 +43,8 @@ VOICE_MODELS = {
 DEFAULT_VOICE_MODEL = "eleven_realtime_v1_mini"
 REALTIME_MODELS = {"eleven_realtime_v1_mini", "eleven_realtime_v1_max"}
 # A Realtime agent ignores its LLM but ElevenLabs refuses one set to its own
-# custom LLM (as lines connected before Realtime are), so it is named.
+# custom LLM (as lines connected before Realtime are), so it is named, and
+# the custom LLM's settings are cleared: an update merges into what is there.
 REALTIME_IDLE_LLM = "gemini-3.8-flash"
 
 PHONE_RULES = {
@@ -239,7 +240,7 @@ def _agent_body(line: PhoneChannel, webhook_id: str | None) -> dict:
     model = agent.model.strip()
     prompt: dict = {
         "prompt": call_prompt(line), "built_in_tools": tools, "timezone": agent.client.timezone or "UTC",
-        "llm": REALTIME_IDLE_LLM if model in REALTIME_MODELS else model,
+        "llm": REALTIME_IDLE_LLM if model in REALTIME_MODELS else model, "custom_llm": None,
     }
     body: dict = {
         "name": f"{line.client.name} · {line.label or line.phone_number}"[:120],
