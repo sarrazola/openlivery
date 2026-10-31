@@ -137,7 +137,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="sidebar-bottom">
           <CommunityLinks onNavigate={() => setMobileOpen(false)} />
-          <UserMenu user={user} onLogout={logout} />
+          <UserMenu name={user.name} detail={user.email} onLogout={logout} />
         </div>
       </aside>
       <main className="main-content">{children}</main>

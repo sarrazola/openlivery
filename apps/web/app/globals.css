@@ -801,10 +801,6 @@ textarea { line-height: 1.55; }
 .nav-collapsed .portal-nav nav a { position: relative; padding: 0; justify-content: center; gap: 0; }
 .nav-collapsed .portal-nav nav a > span { display: none; }
 .nav-collapsed .portal-nav nav a .nav-count { position: absolute; top: 4px; right: 4px; margin: 0; }
-.nav-collapsed .portal-nav-foot > button { justify-content: center; padding-left: 0; padding-right: 0; }
-.nav-collapsed .portal-nav-foot > button > span:not(.availability-switch) { display: none; }
-.nav-collapsed .portal-nav .availability-toggle { gap: 0; }
-.nav-collapsed .portal-nav .availability-switch { display: none; }
 .portal-nav > button { margin-top: auto; height: 40px; display: flex; align-items: center; gap: 9px; color: var(--muted); border: 0; background: transparent; }
 .portal-main { min-width: 0; padding: 32px; }
 .portal-main > header { margin-bottom: 22px; display: flex; align-items: flex-end; justify-content: space-between; }
@@ -1217,11 +1213,6 @@ textarea { line-height: 1.55; }
 /* The foot of the portal sidebar: a rule, then the person with their
    availability switch, plain on the sidebar, then Log out. */
 .portal-nav-foot { margin-top: auto; padding-top: 12px; display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--line-soft); }
-.portal-nav-foot > button { height: 40px; display: flex; align-items: center; gap: 9px; color: var(--muted); border: 0; background: transparent; }
-.portal-nav-foot > button.availability-toggle { width: 100%; height: auto; min-height: 44px; margin: 0; padding: 6px 10px; gap: 10px; color: var(--ink); border: 0; border-radius: 8px; background: transparent; font-size: 13px; text-align: left; transition: .15s ease; }
-.portal-nav-foot > button.availability-toggle:hover { background: var(--surface-3); }
-.portal-nav-foot > button.availability-toggle.away { color: var(--muted); }
-.portal-nav-foot > button.availability-toggle .availability-switch { margin-left: auto; }
 /* The same views inside the agency's client page: sized by their content, not the viewport. */
 .embedded-portal-view .portal-teams { height: auto; }
 .embedded-portal-view .portal-templates { padding-top: 12px; }
@@ -1250,11 +1241,6 @@ textarea { line-height: 1.55; }
 .inbox-mini-select svg { flex-shrink: 0; }
 .inbox-mini-select select { flex: 1; min-width: 0; border: 0; background: transparent; padding: 0; font-size: 12.5px; color: var(--ink); outline: none; }
 .inbox-mini-select select:focus, .inbox-mini-select select:focus-visible { border: 0; outline: none; box-shadow: none; }
-.availability-toggle { display: flex; align-items: center; gap: 9px; padding: 8px 12px; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 13px; cursor: pointer; }
-/* The chip anchors the bottom group: its auto margin absorbs the free
- * space, so the language switcher's must not, or the space splits and the
- * chip floats mid-sidebar. */
-.portal-nav .availability-toggle { margin: auto 0 0; }
 .member-picker { position: relative; display: flex; flex-direction: column; gap: 8px; }
 .member-picker-search { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; color: var(--subtle); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 .member-picker-search:focus-within { color: var(--brand, var(--blue-text)); border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -1271,12 +1257,6 @@ textarea { line-height: 1.55; }
 .member-chips .team-member { padding: 5px 7px 5px 11px; }
 .member-chips .team-member button { display: inline-flex; align-items: center; margin-left: 3px; padding: 2px; border: 0; border-radius: 999px; color: var(--subtle); background: transparent; cursor: pointer; }
 .member-chips .team-member button:hover { color: var(--red, var(--red-text)); background: var(--canvas); }
-.availability-toggle i { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 999px; background: var(--green); }
-.availability-toggle.away i { background: var(--surface-5); }
-.availability-toggle.away { color: var(--subtle); }
-.availability-name { min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
-.availability-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.availability-name small { color: var(--subtle); font-size: 11.5px; }
 .assignee-picker.team-picker select { min-width: 170px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 
 .portal-composer { position: relative; padding: 14px 16px; display: flex; align-items: flex-end; gap: 8px; border-top: 1px solid var(--line); }
@@ -1376,9 +1356,6 @@ textarea { line-height: 1.55; }
   .portal-login > section { min-height: 360px; }
   .portal-app { grid-template-columns: 76px minmax(0,1fr); }
   .portal-nav strong, .portal-nav nav a span, .portal-nav > button { font-size: 0; }
-  .portal-nav-foot > button { font-size: 0; }
-  .portal-nav .availability-toggle { justify-content: center; padding: 8px 0; }
-  .portal-nav .availability-name { display: none; }
   .portal-inbox { grid-template-columns: 260px minmax(0,1fr); }
 }
 
@@ -2262,7 +2239,6 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .pref-row > div button.active { color: var(--accent-text); background: var(--surface); box-shadow: 0 1px 2px rgba(var(--shadow-rgb), calc(.1 * var(--shadow-k))); }
 :root[data-theme="dark"] .pref-row > div button.active { background: var(--surface-4); }
 .portal-nav .sidebar-prefs { margin-top: auto; }
-.portal-nav .availability-toggle + .sidebar-prefs { margin-top: 12px; }
 .portal-nav .sidebar-prefs + button { margin-top: 8px; }
 .portal-nav .pref-row > div button { width: auto; }
 .portal-nav .pref-row > div button.active { color: var(--portal-color, var(--accent-text)); }
@@ -2307,6 +2283,44 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
   .sidebar-collapsed .user-menu-trigger > svg { display: none; }
   .sidebar-collapsed .user-menu { left: calc(100% + 14px); right: auto; bottom: 0; width: 240px; }
   .sidebar-collapsed .user-menu-head { display: flex; }
+}
+
+/* The same menu in the client portal: the person's availability as a dot on
+   the avatar, and two switch rows (availability, browser notifications). On a
+   phone it is laid out at the top of Settings instead (.user-menu.inline). */
+.user-avatar { position: relative; }
+.user-status { position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 50%; background: var(--surface-5); box-shadow: 0 0 0 2px var(--surface); }
+.user-status.online { background: var(--green); }
+.portal-nav-foot .sidebar-foot { padding: 0; border-top: 0; }
+/* The portal nav is narrower than the agency's: the menu floats wider than it. */
+.portal-nav-foot .user-menu { right: auto; width: 280px; }
+.user-menu-toggle { width: 100%; color: inherit; border: 0; border-radius: 8px; background: transparent; font: inherit; text-align: left; cursor: pointer; transition: background .15s ease; }
+.user-menu-toggle:hover:not(:disabled) { background: var(--surface-3); }
+.user-menu-toggle:disabled { cursor: default; opacity: .55; }
+.user-menu-toggle > span:first-child { white-space: normal; line-height: 1.25; }
+.user-menu-row > span svg.availability-icon.online { color: var(--green); }
+.user-menu-hint { padding: 0 8px 8px 35px; color: var(--subtle); font-size: 12px; line-height: 1.35; }
+.menu-switch { flex: 0 0 auto; position: relative; width: 34px; height: 20px; border-radius: 999px; background: var(--surface-5); transition: background .18s ease; }
+.menu-switch b { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: white; box-shadow: 0 1px 2px rgba(var(--shadow-rgb), calc(.25 * var(--shadow-k))); transition: transform .18s ease; }
+.menu-switch.on { background: var(--green); }
+.menu-switch.on b { transform: translateX(14px); }
+.user-menu.inline { position: static; box-shadow: none; }
+.user-menu.inline .user-menu-head { display: flex; }
+/* Settings with nothing to manage is only where a phone keeps the menu. */
+.portal-foot-mobile.always { display: block; max-width: 440px; margin: 0 0 16px; }
+@media (min-width: 851px) {
+  .portal-nav nav a.phone-only { display: none; }
+  .nav-collapsed .portal-nav-foot .user-menu-trigger { flex: 0 0 auto; margin: 0 auto; padding: 4px; }
+  .nav-collapsed .portal-nav-foot .user-meta, .nav-collapsed .portal-nav-foot .user-menu-trigger > svg { display: none; }
+  .nav-collapsed .portal-nav-foot .user-menu { left: calc(100% + 14px); right: auto; bottom: 0; width: 260px; }
+  .nav-collapsed .portal-nav-foot .user-menu-head { display: flex; }
+}
+/* Between the phone layout and a full desktop the portal nav is icons only. */
+@media (min-width: 851px) and (max-width: 900px) {
+  .portal-nav-foot .user-menu-trigger { flex: 0 0 auto; margin: 0 auto; padding: 4px; }
+  .portal-nav-foot .user-meta, .portal-nav-foot .user-menu-trigger > svg { display: none; }
+  .portal-nav-foot .user-menu { left: calc(100% + 14px); right: auto; bottom: 0; width: 260px; }
+  .portal-nav-foot .user-menu-head { display: flex; }
 }
 
 /* Contacts import and export in the portal: toolbar actions and the import dialog. */
@@ -2469,19 +2483,6 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .history-custom { display: flex; align-items: center; gap: 6px; padding: 4px 6px 2px; color: var(--faint); font-size: 12px; }
 .history-custom input[type="date"] { flex: 1; min-width: 0; min-height: 32px; padding: 0 8px; font-size: 12.5px; }
 .history-custom-actions { display: flex; justify-content: flex-end; padding: 6px 6px 2px; }
-
-/* Availability: a real control in the portal sidebar, not a line of text. The
-   generic sidebar button rule strips borders, so this one is more specific. */
-.portal-nav > button.availability-toggle { height: auto; min-height: 48px; margin: auto 0 0; padding: 8px 10px 8px 12px; display: flex; align-items: center; gap: 10px; color: var(--ink); border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); font-size: 13px; text-align: left; transition: .15s ease; }
-.portal-nav > button.availability-toggle:hover { border-color: var(--line-strong); background: var(--surface-3); }
-.portal-nav > button.availability-toggle.away { color: var(--muted); }
-.portal-nav > button.availability-toggle .availability-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.portal-nav > button.availability-toggle .availability-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.portal-nav > button.availability-toggle .availability-name small { color: var(--subtle); font-size: 11.5px; }
-.availability-switch { flex: 0 0 auto; position: relative; width: 34px; height: 20px; border-radius: 999px; background: var(--surface-5); transition: background .18s ease; }
-.availability-switch b { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: white; box-shadow: 0 1px 2px rgba(var(--shadow-rgb), calc(.25 * var(--shadow-k))); transition: transform .18s ease; }
-.availability-toggle.online .availability-switch { background: var(--green); }
-.availability-toggle.online .availability-switch b { transform: translateX(14px); }
 
 /* Theme change: cross-fade every color for one beat, then hand transitions
    back to the components. Set by lib/theme.tsx around the attribute swap. */
@@ -2693,8 +2694,8 @@ html[data-theme-transition], html[data-theme-transition] *, html[data-theme-tran
 
 /* Client portal on a phone. The side nav was a fixed 230px column that took
    most of the screen; it becomes a bottom tab bar with the four links, and
-   the availability switch plus sign-out move to the top of Settings (the
-   .portal-foot-mobile copy, hidden on a desktop). Inbox and Contacts split
+   the account menu moves to the top of Settings (the .portal-foot-mobile
+   copy, hidden on a desktop). Inbox and Contacts split
    the height between list and detail before; now the list is the screen until
    something is picked, then the detail is, with a way back in its header. */
 .portal-foot-mobile { display: none; }
@@ -2716,9 +2717,6 @@ html[data-theme-transition], html[data-theme-transition] *, html[data-theme-tran
   .portal-main { padding: 18px 14px calc(72px + env(safe-area-inset-bottom)); }
   .portal-main > header { margin-bottom: 14px; flex-direction: column; align-items: flex-start; gap: 6px; }
   .portal-foot-mobile { display: block; margin: 0 0 16px; }
-  .portal-foot-mobile .portal-nav-foot { margin: 0; padding: 0; border: 0; flex-direction: row; align-items: center; gap: 8px; }
-  .portal-foot-mobile .availability-toggle { flex: 1 1 auto; min-width: 0; }
-  .portal-foot-mobile .portal-nav-foot > button:not(.availability-toggle) { height: 44px; padding: 0 12px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 8px; }
 }
 @media (max-width: 640px) {
   /* 150px is what sits above and below the card: the page's top padding and

@@ -66,6 +66,8 @@ def test_the_session_says_what_the_person_may_do(authenticated_client: TestClien
     assert session["role"] == "admin" and session["permissions"] == sorted(PERMISSIONS)
     me = client.get(f"/api/portal/{slug}/me").json()
     assert me["role"] == "admin" and me["permissions"] == sorted(PERMISSIONS)
+    # The account menu shows who is signed in.
+    assert session["user_email"] == me["user_email"] == "owner@roles.co"
 
     session = _sign_in(client, customer, "helper@roles.co")
     assert session["role"] == "agent" and session["permissions"] == []
