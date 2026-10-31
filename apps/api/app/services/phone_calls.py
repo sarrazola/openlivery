@@ -117,6 +117,18 @@ def voice_of(agent: Agent) -> str:
     return agent.voice_id.strip() or DEFAULT_VOICES[_language(agent)]
 
 
+# When the line hangs up. Left without a description the model said goodbye
+# and stayed on the line until the caller hung up or spoke again.
+END_CALL_WHEN = {
+    "es": (
+        "Cuelga la llamada. Úsala en el mismo turno en que te despides: cuando el cliente se despide, "
+        "agradece al final o dice que no necesita nada más. Despídete en una frase y cuelga; no esperes otra respuesta."
+    ),
+    "en": (
+        "Hang up the call. Use it in the same turn you say goodbye: when the caller says goodbye, thanks you at "
+        "the end or needs nothing else. Say goodbye in one sentence and hang up; do not wait for another reply."
+    ),
+}
 # When the caller is put through, unless the agent says otherwise.
 TRANSFER_WHEN = {
     "es": "Cuando el cliente pide hablar con una persona o necesita algo que no puedes resolver.",
@@ -577,7 +589,11 @@ def call_prompt(db: Session, line: PhoneChannel, tools: CallTools | None = None)
 def _agent_body(db: Session, line: PhoneChannel, webhook_id: str | None, secret_id: str, tool_ids: list[str]) -> dict:
     agent = line.agent
     lang = _language(agent)
-    tools: dict = {"end_call": {"type": "system", "name": "end_call", "description": "", "params": {"system_tool_type": "end_call"}}}
+    tools: dict = {"end_call": {
+        "type": "system", "name": "end_call", "description": END_CALL_WHEN[lang], "params": {"system_tool_type": "end_call"},
+        # A "bye" or "ok" over the farewell no longer cancels the hang-up.
+        "interruption_mode": "disable_during_tool_and_turn",
+    }}
     if agent.transfer_number:
         tools["transfer_to_number"] = {
             "type": "system",
