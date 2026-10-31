@@ -165,6 +165,9 @@ def test_a_line_carries_the_agent_into_elevenlabs(authenticated_client: TestClie
     # The clock comes from ElevenLabs on each call, in the client's timezone.
     assert prompt["timezone"] == "America/Bogota" and "2026-" not in prompt["prompt"]
     assert set(prompt["built_in_tools"]) == {"end_call", "transfer_to_number"}
+    # The line hangs up as it says goodbye, and the caller talking over it does not stop that.
+    end_call = prompt["built_in_tools"]["end_call"]
+    assert end_call["description"] == phone_calls.END_CALL_WHEN["es"] and end_call["interruption_mode"] == "disable_during_tool_and_turn"
     transfer = prompt["built_in_tools"]["transfer_to_number"]["params"]["transfers"][0]
     assert transfer["transfer_destination"] == {"type": "phone", "phone_number": "+573005550000"}
     assert transfer["condition"] == phone_calls.TRANSFER_WHEN["es"]
