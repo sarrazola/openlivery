@@ -96,6 +96,23 @@ def test_agency_list_filters_and_sums_the_range(authenticated_client: TestClient
     assert first["total"] == rest["total"] == 3 and len(first["items"]) == 2 and len(rest["items"]) == 1
 
 
+def test_the_list_orders_by_any_column_it_shows(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    _customer, (from_ad, from_post, plain) = _setup(client, monkeypatch)
+
+    def ids(sort: str, order: str = "") -> list[str]:
+        page = client.get(f"/api/reports/conversations?{_range()}&sort={sort}&order={order}").json()
+        return [item["id"] for item in page["items"]]
+
+    assert ids("contact", "asc") == [from_post, plain, from_ad]  # Luis, Mar, Rita
+    # Time to the first reply: plain opened a day before its reply, from_ad 30 s.
+    assert ids("first_reply", "desc") == [plain, from_ad, from_post]
+    assert ids("status", "asc")[0] == from_post  # open before resolved
+    # Unknown keys fall back to newest first rather than reaching the SQL.
+    assert ids("c.id; DROP TABLE conversations") == ids("")
+    assert ids("")[-1] == plain
+
+
 def test_facets_report_the_referral_keys_present(authenticated_client: TestClient, monkeypatch):
     client = authenticated_client
     _setup(client, monkeypatch)

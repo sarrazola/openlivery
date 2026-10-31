@@ -173,6 +173,7 @@ def cost_report(
     replies = sum(entry["replies"] for entry in by_model)
     cost = sum((Decimal(str(entry["cost_usd"])) for entry in by_model), Decimal(0))
     conversations = db.scalar(filters.apply(_joined(select(func.count(func.distinct(UsageRecord.conversation_id)))))) or 0
+    estimated = db.scalar(filters.apply(_joined(select(func.count(UsageRecord.id)).where(UsageRecord.cost_usd.is_(None))))) or 0
 
     days: dict = {}
     for row in _grouped(db, filters, cast(func.timezone(zone, UsageRecord.created_at), Date)):
@@ -189,6 +190,7 @@ def cost_report(
             "input_tokens": sum(entry["input_tokens"] for entry in by_model),
             "output_tokens": sum(entry["output_tokens"] for entry in by_model),
             "avg_cost_per_reply_usd": _money(cost / replies) if replies else 0.0,
+            "estimated_replies": int(estimated),
         },
         "by_client": _fold(_grouped(db, filters, Conversation.client_id, Client.name), 2,
                            lambda key: (str(key[0]) if key[0] else None, key[1] or "")),
@@ -201,12 +203,32 @@ def cost_report(
     }
 
 
-def _replies_query(filters: Filters):
+# What the reply list can be ordered by. A reply that reported no cost has
+# its cost estimated afterwards, so it sorts with the ones that cost nothing.
+REPLY_SORTS = {
+    "created_at": UsageRecord.created_at,
+    "contact": Conversation.contact_name,
+    "client": Client.name,
+    "agent": Agent.name,
+    "channel": Conversation.channel,
+    "model": UsageRecord.model,
+    "served_by": UsageRecord.served_by,
+    "duration_ms": UsageRecord.duration_ms,
+    "input_tokens": UsageRecord.input_tokens,
+    "output_tokens": UsageRecord.output_tokens,
+    "cost_usd": UsageRecord.cost_usd,
+}
+
+
+def _replies_query(filters: Filters, sort: str | None = None, order: str | None = None):
     query = _joined(select(
         UsageRecord, Conversation.contact_name, Conversation.channel, Conversation.client_id,
         Client.name, Agent.name, Message.tool_calls,
     )).outerjoin(Message, Message.id == UsageRecord.message_id)
-    return filters.apply(query).order_by(UsageRecord.created_at.desc())
+    column = REPLY_SORTS.get(sort or "", UsageRecord.created_at)
+    if order == "asc":
+        return filters.apply(query).order_by(column.asc().nulls_last(), UsageRecord.id.asc())
+    return filters.apply(query).order_by(column.desc().nulls_last(), UsageRecord.id.desc())
 
 
 def _reply(row) -> dict:
@@ -250,16 +272,20 @@ def replies(
     model: str | None = None,
     q: str | None = None,
     format: str | None = None,
+    sort: str | None = None,
+    order: str | None = None,
     limit: int = Query(default=25, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     tz: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """One line per reply, newest first; ``format=csv`` downloads the whole
-    range (up to MAX_EXPORT_ROWS)."""
+    """One line per reply, newest first unless ``sort`` (a key of
+    ``REPLY_SORTS``) and ``order`` (``asc`` or ``desc``) say otherwise;
+    ``format=csv`` downloads the whole range (up to MAX_EXPORT_ROWS) in the
+    same order."""
     filters = Filters(user.agency_id, date_from, date_to, client_id, agent_id, model, q, tz)
-    query = _replies_query(filters)
+    query = _replies_query(filters, sort, order)
     if format == "csv":
         rows = [_reply(row) for row in db.execute(query.limit(MAX_EXPORT_ROWS)).all()]
         buffer = io.StringIO()

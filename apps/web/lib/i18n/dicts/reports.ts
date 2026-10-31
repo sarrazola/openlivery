@@ -126,8 +126,6 @@ const en = {
   unknown: "Unknown",
   estimatedMark: "estimated",
   pageOf: "{from}–{to} of {total}",
-  prev: "Previous",
-  next: "Next",
 };
 
 const es: typeof en = {
@@ -257,8 +255,6 @@ const es: typeof en = {
   unknown: "Desconocido",
   estimatedMark: "estimado",
   pageOf: "{from}–{to} de {total}",
-  prev: "Anterior",
-  next: "Siguiente",
 };
 
 export const reports = { en, es };

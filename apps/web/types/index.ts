@@ -551,7 +551,7 @@ export type Operations = { tz: string; bucket: string; totals: OpsMetrics; by_cl
 export type ReportFilters = { clients: { id: string; name: string }[]; agents: { id: string; name: string; client_id: string }[]; channels: string[]; models: string[] };
 
 export type CostReport = {
-  totals: { cost_usd: number; replies: number; conversations: number; input_tokens: number; output_tokens: number; avg_cost_per_reply_usd: number };
+  totals: { cost_usd: number; replies: number; conversations: number; input_tokens: number; output_tokens: number; avg_cost_per_reply_usd: number; estimated_replies: number };
   by_client: ReportGroup[];
   by_agent: ReportGroup[];
   by_model: ReportGroup[];
