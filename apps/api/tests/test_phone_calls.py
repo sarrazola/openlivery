@@ -180,6 +180,7 @@ def test_a_line_carries_the_agent_into_elevenlabs(authenticated_client: TestClie
     assert start["url"].endswith(f"/api/public/phone/lines/{_public_id(line['id'])}/start")
     assert start["request_headers"] == {phone_calls.TOKEN_HEADER: {"secret_id": "sec_1"}}
     assert platform["overrides"]["enable_conversation_initiation_client_data_from_webhook"] is True
+    assert platform["summary_language"] == "es"
     assert config["agent"]["dynamic_variables"]["dynamic_variable_placeholders"] == {"caller_context": "", "pending_details": ""}
     assert "{{caller_context}}" in prompt["prompt"] and "{{pending_details}}" in prompt["prompt"]
     # With a transfer number the person takes the call there: no hand-over tool.
