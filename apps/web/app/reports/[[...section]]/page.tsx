@@ -6,6 +6,8 @@ import { EmptyState, PageHead } from "@/components/ui";
 import { ConversationExplorer } from "@/components/reports/conversation-explorer";
 import { ControlsRow, FilterSelect, PeriodControl, ReportControls, Segmented } from "@/components/reports/filter-bar";
 import { TimeChart } from "@/components/reports/time-chart";
+import { DEFAULT_PAGE_SIZE, PAGE_SIZES, TablePager } from "@/components/table-pager";
+import { SortHeader, useTableView, type Sort } from "@/components/table-sort";
 import { useToast } from "@/components/toast";
 import { currentSections, showSections } from "@/lib/section-path";
 import { api, apiUrl, messageFrom } from "@/lib/api";
@@ -14,8 +16,12 @@ import type { CostReport, Operations, OpsGroup, ReportFilters, ReportGroup, Repo
 
 const RANGES = [7, 30, 90] as const;
 const BUCKETS = ["day", "week", "month", "year"] as const;
-const PAGE = 25;
 const REFRESH_MS = 30_000;
+
+type GroupKey = "name" | "replies" | "input_tokens" | "output_tokens" | "cost_usd";
+type OpsKey = "name" | "conversations" | "contacts" | "ai_resolved_pct" | "handoffs" | "inbound" | "first_reply_s";
+// The reply list is paged by the API, so it is ordered there too (REPLY_SORTS).
+type ReplyKey = "created_at" | "contact" | "client" | "agent" | "channel" | "model" | "served_by" | "duration_ms" | "input_tokens" | "output_tokens" | "cost_usd";
 
 function localISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -34,6 +40,51 @@ function money(value: number): string {
 
 type ReportTab = "summary" | "costs" | "conversations";
 const REPORT_TABS: ReportTab[] = ["summary", "costs", "conversations"];
+
+/** The pager under a table, once the table holds more than one page of the
+ * smallest size. */
+function Pager({ total, page, pageSize, onPage, onPageSize }: { total: number; page: number; pageSize: number; onPage: (page: number) => void; onPageSize: (size: number) => void }) {
+  const { t, lang } = useLanguage();
+  if (total <= PAGE_SIZES[0]) return null;
+  const fmtInt = (n: number) => n.toLocaleString(lang === "es" ? "es" : "en");
+  const label = t("reports.pageOf", { from: fmtInt(page * pageSize + 1), to: fmtInt(Math.min(total, (page + 1) * pageSize)), total: fmtInt(total) });
+  return <TablePager label={label} total={total} page={page} pageSize={pageSize} onPage={onPage} onPageSize={onPageSize} />;
+}
+
+function CostGroupTable({ items, head, emptyName, totalCost, fmtInt }: { items: ReportGroup[]; head: string; emptyName: string; totalCost: number; fmtInt: (n: number) => string }) {
+  const { t } = useLanguage();
+  const name = (item: ReportGroup) => item.id ? item.name || "—" : emptyName;
+  const view = useTableView<ReportGroup, GroupKey>(items, (item, key) => key === "name" ? name(item) : item[key], { key: "cost_usd", order: "desc" });
+  const header = (column: GroupKey, label: string) => <SortHeader column={column} label={label} sort={view.sort} onSort={view.onSort} descending={column !== "name"} />;
+  return <div className="table-shell"><table className="data-table">
+    <thead><tr>{header("name", head)}{header("replies", t("reports.cols.replies"))}{header("input_tokens", t("reports.cols.tokensIn"))}{header("output_tokens", t("reports.cols.tokensOut"))}{header("cost_usd", t("reports.cols.cost"))}<th>{t("reports.cols.share")}</th></tr></thead>
+    <tbody>{view.rows.map((item) => (
+      <tr key={item.id ?? "none"}>
+        <td><strong>{name(item)}</strong></td>
+        <td>{fmtInt(item.replies)}</td><td>{fmtInt(item.input_tokens)}</td><td>{fmtInt(item.output_tokens)}</td>
+        <td><strong>{money(item.cost_usd)}</strong></td>
+        <td><small className="muted">{totalCost ? Math.round((item.cost_usd / totalCost) * 100) : 0}%</small></td>
+      </tr>
+    ))}</tbody>
+  </table><Pager {...view} /></div>;
+}
+
+function OpsGroupTable({ items, head, label, fmtInt, duration }: { items: OpsGroup[]; head: string; label: (g: OpsGroup) => string; fmtInt: (n: number) => string; duration: (s: number | null) => string }) {
+  const { t } = useLanguage();
+  const view = useTableView<OpsGroup, OpsKey>(items, (item, key) => key === "name" ? label(item) : item[key], { key: "conversations", order: "desc" });
+  const header = (column: OpsKey, text: string) => <SortHeader column={column} label={text} sort={view.sort} onSort={view.onSort} descending={column !== "name"} />;
+  return <div className="table-shell"><table className="data-table">
+    <thead><tr>{header("name", head)}{header("conversations", t("reports.ops.cols.conversations"))}{header("contacts", t("reports.ops.cols.contacts"))}{header("ai_resolved_pct", t("reports.ops.cols.aiPct"))}{header("handoffs", t("reports.ops.cols.handoffs"))}{header("inbound", t("reports.ops.cols.inbound"))}{header("first_reply_s", t("reports.ops.cols.firstReply"))}</tr></thead>
+    <tbody>{view.rows.map((item) => (
+      <tr key={item.id ?? "none"}>
+        <td><strong>{label(item)}</strong></td>
+        <td>{fmtInt(item.conversations)}</td><td>{fmtInt(item.contacts)}</td>
+        <td>{item.ai_resolved_pct}%</td><td>{fmtInt(item.handoffs)}</td><td>{fmtInt(item.inbound)}</td>
+        <td>{duration(item.first_reply_s)}</td>
+      </tr>
+    ))}</tbody>
+  </table><Pager {...view} /></div>;
+}
 
 export default function ReportsPage() {
   const { t, lang } = useLanguage();
@@ -55,6 +106,8 @@ export default function ReportsPage() {
   const [rows, setRows] = useState<ReportReply[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+  const [replySort, setReplySort] = useState<Sort<ReplyKey>>({ key: "created_at", order: "desc" });
   const [loading, setLoading] = useState(true);
   // The open tab rides in the address (`/reports/costs`).
   useEffect(() => {
@@ -81,8 +134,11 @@ export default function ReportsPage() {
     const p = new URLSearchParams(scope);
     if (model) p.set("model", model);
     if (query.trim()) p.set("q", query.trim());
+    // The export keeps the order on screen.
+    p.set("sort", replySort.key);
+    p.set("order", replySort.order);
     return p;
-  }, [scope, model, query]);
+  }, [scope, model, query, replySort]);
 
   useEffect(() => { setPage(0); }, [replyParams]);
 
@@ -99,13 +155,13 @@ export default function ReportsPage() {
       if (model) p.set("model", model);
       const [summary, replies] = await Promise.all([
         api<CostReport>(`/reports/costs?${p}`),
-        api<{ items: ReportReply[]; total: number }>(`/reports/replies?${replyParams}&limit=${PAGE}&offset=${page * PAGE}`),
+        api<{ items: ReportReply[]; total: number }>(`/reports/replies?${replyParams}&limit=${pageSize}&offset=${page * pageSize}`),
       ]);
       setReport(summary);
       setRows(replies.items);
       setTotal(replies.total);
     }
-  }, [tab, from, to, scope, channel, bucket, model, replyParams, page]);
+  }, [tab, from, to, scope, channel, bucket, model, replyParams, page, pageSize]);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,36 +203,12 @@ export default function ReportsPage() {
   };
   const agentsForClient = clientId ? (filters?.agents ?? []).filter((a) => a.client_id === clientId) : (filters?.agents ?? []);
   const totalCost = report?.totals.cost_usd ?? 0;
-  const estimatedReplies = rows.filter((r) => r.estimated).length;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE));
-
-  const costGroupTable = (items: ReportGroup[], head: string, emptyName: string) => (
-    <div className="table-shell"><table className="data-table">
-      <thead><tr><th>{head}</th><th>{t("reports.cols.replies")}</th><th>{t("reports.cols.tokensIn")}</th><th>{t("reports.cols.tokensOut")}</th><th>{t("reports.cols.cost")}</th><th>{t("reports.cols.share")}</th></tr></thead>
-      <tbody>{items.map((item) => (
-        <tr key={item.id ?? "none"}>
-          <td><strong>{item.id ? item.name || "—" : emptyName}</strong></td>
-          <td>{fmtInt(item.replies)}</td><td>{fmtInt(item.input_tokens)}</td><td>{fmtInt(item.output_tokens)}</td>
-          <td><strong>{money(item.cost_usd)}</strong></td>
-          <td><small className="muted">{totalCost ? Math.round((item.cost_usd / totalCost) * 100) : 0}%</small></td>
-        </tr>
-      ))}</tbody>
-    </table></div>
-  );
-
-  const opsGroupTable = (items: OpsGroup[], head: string, label: (g: OpsGroup) => string) => (
-    <div className="table-shell"><table className="data-table">
-      <thead><tr><th>{head}</th><th>{t("reports.ops.cols.conversations")}</th><th>{t("reports.ops.cols.contacts")}</th><th>{t("reports.ops.cols.aiPct")}</th><th>{t("reports.ops.cols.handoffs")}</th><th>{t("reports.ops.cols.inbound")}</th><th>{t("reports.ops.cols.firstReply")}</th></tr></thead>
-      <tbody>{items.map((item) => (
-        <tr key={item.id ?? "none"}>
-          <td><strong>{label(item)}</strong></td>
-          <td>{fmtInt(item.conversations)}</td><td>{fmtInt(item.contacts)}</td>
-          <td>{item.ai_resolved_pct}%</td><td>{fmtInt(item.handoffs)}</td><td>{fmtInt(item.inbound)}</td>
-          <td>{duration(item.first_reply_s)}</td>
-        </tr>
-      ))}</tbody>
-    </table></div>
-  );
+  const costGroupTable = (items: ReportGroup[], head: string, emptyName: string) =>
+    <CostGroupTable items={items} head={head} emptyName={emptyName} totalCost={totalCost} fmtInt={fmtInt} />;
+  const opsGroupTable = (items: OpsGroup[], head: string, label: (g: OpsGroup) => string) =>
+    <OpsGroupTable items={items} head={head} label={label} fmtInt={fmtInt} duration={duration} />;
+  const replyHeader = (column: ReplyKey, label: string, descending = false) =>
+    <SortHeader column={column} label={label} sort={replySort} onSort={setReplySort} descending={descending} />;
 
   return <div className="page">
     <PageHead eyebrow={t("reports.head.eyebrow")} title={t("reports.head.title")} description={t("reports.head.description")} />
@@ -262,7 +294,7 @@ export default function ReportsPage() {
           <article className="metric-card"><span className="metric-icon green"><Coins size={20} /></span><div><small>{t("reports.tiles.cost")}</small><strong>{money(report.totals.cost_usd)}</strong><p>{t("reports.tiles.costHint", { replies: fmtInt(report.totals.replies) })}</p></div></article>
           <article className="metric-card"><span className="metric-icon blue"><Bot size={20} /></span><div><small>{t("reports.tiles.avg")}</small><strong>{money(report.totals.avg_cost_per_reply_usd)}</strong><p>{t("reports.tiles.avgHint", { tokens: fmtInt(report.totals.input_tokens + report.totals.output_tokens) })}</p></div></article>
           <article className="metric-card"><span className="metric-icon violet"><MessageSquareText size={20} /></span><div><small>{t("reports.tiles.conversations")}</small><strong>{fmtInt(report.totals.conversations)}</strong><p>{t("reports.tiles.conversationsHint")}</p></div></article>
-          <article className="metric-card"><span className="metric-icon amber"><Sparkles size={20} /></span><div><small>{t("reports.tiles.estimated")}</small><strong>{fmtInt(estimatedReplies)}</strong><p>{t("reports.tiles.estimatedHint")}</p></div></article>
+          <article className="metric-card"><span className="metric-icon amber"><Sparkles size={20} /></span><div><small>{t("reports.tiles.estimated")}</small><strong>{fmtInt(report.totals.estimated_replies ?? 0)}</strong><p>{t("reports.tiles.estimatedHint")}</p></div></article>
         </section>
 
         {report.totals.replies === 0 ? <EmptyState icon={<Coins />} title={t("reports.emptyTitle")} description={t("reports.emptyBody")} /> : <>
@@ -287,10 +319,10 @@ export default function ReportsPage() {
                 {exporting ? <LoaderCircle size={15} className="spin" /> : <Download size={15} />} {t("reports.export")}
               </button>
             </div>
-            <div className="table-shell" style={{ overflowX: "auto" }}><table className="data-table" style={{ whiteSpace: "nowrap" }}>
+            <div className="table-shell"><div style={{ overflowX: "auto" }}><table className="data-table" style={{ whiteSpace: "nowrap" }}>
               <thead><tr>
-                <th>{t("reports.cols.date")}</th><th>{t("reports.cols.conversation")}</th><th>{t("reports.cols.contact")}</th><th>{t("reports.cols.client")}</th><th>{t("reports.cols.agent")}</th><th>{t("reports.cols.channel")}</th>
-                <th>{t("reports.cols.model")}</th><th>{t("reports.cols.servedBy")}</th><th>{t("reports.cols.duration")}</th><th>{t("reports.cols.tokensIn")}</th><th>{t("reports.cols.tokensOut")}</th><th>{t("reports.cols.cost")}</th>
+                {replyHeader("created_at", t("reports.cols.date"), true)}<th>{t("reports.cols.conversation")}</th>{replyHeader("contact", t("reports.cols.contact"))}{replyHeader("client", t("reports.cols.client"))}{replyHeader("agent", t("reports.cols.agent"))}{replyHeader("channel", t("reports.cols.channel"))}
+                {replyHeader("model", t("reports.cols.model"))}{replyHeader("served_by", t("reports.cols.servedBy"))}{replyHeader("duration_ms", t("reports.cols.duration"), true)}{replyHeader("input_tokens", t("reports.cols.tokensIn"), true)}{replyHeader("output_tokens", t("reports.cols.tokensOut"), true)}{replyHeader("cost_usd", t("reports.cols.cost"), true)}
               </tr></thead>
               <tbody>{rows.map((row) => (
                 <tr key={row.id}>
@@ -305,12 +337,7 @@ export default function ReportsPage() {
                   <td><strong>{money(row.cost_usd)}</strong>{row.estimated && <small className="muted"> · {t("reports.estimatedMark")}</small>}</td>
                 </tr>
               ))}</tbody>
-            </table></div>
-            <div className="report-pager">
-              <small className="muted">{t("reports.pageOf", { from: fmtInt(total ? page * PAGE + 1 : 0), to: fmtInt(Math.min(total, (page + 1) * PAGE)), total: fmtInt(total) })}</small>
-              <button type="button" className="button secondary" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>{t("reports.prev")}</button>
-              <button type="button" className="button secondary" onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} disabled={page >= pageCount - 1}>{t("reports.next")}</button>
-            </div>
+            </table></div><Pager total={total} page={page} pageSize={pageSize} onPage={setPage} onPageSize={(size) => { setPageSize(size); setPage(0); }} /></div>
           </section>
         </>}
       </>

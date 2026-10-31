@@ -1204,6 +1204,8 @@ class ReportTotals(BaseModel):
     input_tokens: int
     output_tokens: int
     avg_cost_per_reply_usd: float
+    # Replies whose cost the provider did not report, priced at list price.
+    estimated_replies: int = 0
 
 
 class ReportGroup(BaseModel):

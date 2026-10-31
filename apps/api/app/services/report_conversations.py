@@ -27,7 +27,28 @@ from .report_operations import _CONV_FROM, _CONV_METRICS, ConversationFilters, _
 # Referral keys a person can filter and group by. ``ctwa_clid`` identifies
 # one click, so it is kept out: every value would have a count of one.
 AD_FIELDS = ("source_type", "source_id", "source_url", "headline", "body", "media_type")
-SORTS = {"created_at", "resolved_at", "first_reply_at", "last_message_at"}
+# What the list can be ordered by, and the expression each one orders on.
+# Every column the explorer shows except the ad referral ones.
+SORTS = {
+    "created_at": "c.created_at",
+    "resolved_at": "c.resolved_at",
+    "first_reply_at": "c.first_reply_at",
+    "last_message_at": "mc.last_message_at",
+    "contact": "COALESCE(NULLIF(ct.name, ''), c.contact_name)",
+    "phone": "ct.phone",
+    "client": "cl.name",
+    "agent": "ag.name",
+    "channel": "c.channel",
+    "status": "c.status",
+    "mode": "c.mode",
+    "assignee": "pu.name",
+    "team": "tm.name",
+    "first_reply": "c.first_reply_at - c.created_at",
+    "resolution": "c.resolved_at - c.created_at",
+    "inbound": "mc.inbound",
+    "ai_replies": "mc.ai_replies",
+    "human_replies": "mc.human_replies",
+}
 MAX_FACET_VALUES = 50
 MAX_EXPORT_ROWS = 5000
 
@@ -175,9 +196,8 @@ def _row(row) -> dict:
 
 
 def _order(sort: str | None, order: str | None) -> str:
-    column = sort if sort in SORTS else "created_at"
+    expression = SORTS.get(sort or "", SORTS["created_at"])
     direction = "ASC" if order == "asc" else "DESC"
-    expression = "mc.last_message_at" if column == "last_message_at" else f"c.{column}"
     return f"{expression} {direction} NULLS LAST, c.id {direction}"
 
 

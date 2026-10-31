@@ -6,6 +6,8 @@ import { SectionTabs } from "@/components/section-tabs";
 import { PeriodControl } from "@/components/reports/filter-bar";
 import { Alert } from "@/components/ui";
 import { ConversationExplorer } from "@/components/reports/conversation-explorer";
+import { PAGE_SIZES, TablePager } from "@/components/table-pager";
+import { SortHeader, useTableView } from "@/components/table-sort";
 import { TimeChart } from "@/components/reports/time-chart";
 import { api, messageFrom } from "@/lib/api";
 import { useLanguage, useT } from "@/lib/i18n";
@@ -208,18 +210,30 @@ export function ReportsView({ slug, section: initialSection, onSection, openConv
 
       <section className="report-card">
         <header><h3>{t("portal.reports.team")}</h3></header>
-        {report.by_agent.length ? <div className="table-shell report-table">
-          <table className="data-table">
-            <thead><tr><th>{t("portal.reports.colAgent")}</th><th>{t("portal.reports.colReplies")}</th><th>{t("portal.reports.colAssigned")}</th><th>{t("portal.reports.colOpen")}</th></tr></thead>
-            <tbody>{report.by_agent.map((row) => <tr key={row.name}>
-              <td><span className={`report-agent ${row.availability}`}><i />{row.name}</span></td>
-              <td>{row.replies}</td>
-              <td>{row.assigned}</td>
-              <td>{row.open_now}</td>
-            </tr>)}</tbody>
-          </table>
-        </div> : <p className="muted">{t("portal.reports.noActivity")}</p>}
+        {report.by_agent.length ? <TeamTable rows={report.by_agent} /> : <p className="muted">{t("portal.reports.noActivity")}</p>}
       </section>
     </div>
+  </div>;
+}
+
+type TeamRow = PortalReport["by_agent"][number];
+type TeamKey = "name" | "replies" | "assigned" | "open_now";
+
+function TeamTable({ rows }: { rows: TeamRow[] }) {
+  const { t } = useLanguage();
+  const view = useTableView<TeamRow, TeamKey>(rows, (row, key) => row[key], { key: "replies", order: "desc" });
+  const header = (column: TeamKey, label: string) => <SortHeader column={column} label={label} sort={view.sort} onSort={view.onSort} descending={column !== "name"} />;
+  return <div className="table-shell report-table">
+    <table className="data-table">
+      <thead><tr>{header("name", t("portal.reports.colAgent"))}{header("replies", t("portal.reports.colReplies"))}{header("assigned", t("portal.reports.colAssigned"))}{header("open_now", t("portal.reports.colOpen"))}</tr></thead>
+      <tbody>{view.rows.map((row) => <tr key={row.name}>
+        <td><span className={`report-agent ${row.availability}`}><i />{row.name}</span></td>
+        <td>{row.replies}</td>
+        <td>{row.assigned}</td>
+        <td>{row.open_now}</td>
+      </tr>)}</tbody>
+    </table>
+    {view.total > PAGE_SIZES[0] && <TablePager label={t("reports.pageOf", { from: view.page * view.pageSize + 1, to: Math.min(view.total, (view.page + 1) * view.pageSize), total: view.total })}
+      total={view.total} page={view.page} pageSize={view.pageSize} onPage={view.onPage} onPageSize={view.onPageSize} />}
   </div>;
 }

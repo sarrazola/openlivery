@@ -62,6 +62,8 @@ def test_replies_are_linked_priced_and_rolled_up(authenticated_client: TestClien
     assert totals["cost_usd"] == 0.7 and totals["replies"] == 2 and totals["conversations"] == 1
     assert totals["input_tokens"] == 1_001_000 and totals["output_tokens"] == 100
     assert totals["avg_cost_per_reply_usd"] == 0.35
+    # Counted over the period, not over the page of replies on screen.
+    assert totals["estimated_replies"] == 1
     assert report["by_client"] == [{"id": customer["id"], "name": "Bistro", "replies": 2, "input_tokens": 1_001_000, "output_tokens": 100, "cost_usd": 0.7}]
     assert report["by_agent"][0]["id"] == agent["id"] and report["by_agent"][0]["name"] == "Host"
     assert report["by_model"] == [{"id": "openai/gpt-5.6-luna", "name": "openai/gpt-5.6-luna", "replies": 2, "input_tokens": 1_001_000, "output_tokens": 100, "cost_usd": 0.7}]
@@ -90,6 +92,27 @@ def test_replies_are_linked_priced_and_rolled_up(authenticated_client: TestClien
     lines = csv_resp.text.strip().splitlines()
     assert lines[0].startswith("date,reply_id,conversation,contact,client,agent,channel,model,served_by")
     assert len(lines) == 3 and lines[1].endswith(",0.20000000,yes,") and lines[2].endswith(",0.50000000,,1200")
+
+
+def test_replies_can_be_ordered_by_a_column(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    _customer, _agent, conversation = _setup(client)
+    for tokens in (300, 100, 200):
+        _reply(client, monkeypatch, conversation,
+               ai_service.Completion(text="Hi", input_tokens=tokens, output_tokens=1, cost_usd=tokens / 1000), f"m{tokens}")
+
+    def tokens(sort: str, order: str = "") -> list[int]:
+        items = client.get(f"/api/reports/replies?{_period()}&sort={sort}&order={order}").json()["items"]
+        return [item["input_tokens"] for item in items]
+
+    assert tokens("input_tokens", "asc") == [100, 200, 300]
+    assert tokens("cost_usd", "desc") == [300, 200, 100]
+    # Newest first is the default, and an unknown key falls back to it.
+    assert tokens("") == [200, 100, 300]
+    assert tokens("tool_calls; drop table usage_records") == [200, 100, 300]
+    # The export follows the order on screen.
+    rows = client.get(f"/api/reports/replies?{_period()}&sort=input_tokens&order=asc&format=csv").text.strip().splitlines()[1:]
+    assert [row.split(",")[9] for row in rows] == ["100", "200", "300"]
 
 
 def test_media_calls_are_recorded_against_the_conversation(authenticated_client: TestClient, monkeypatch):

@@ -11,12 +11,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Columns3, Download, LoaderCircle, Megaphone, MessageSquareText, Search } from "lucide-react";
 import { Alert, EmptyState } from "@/components/ui";
 import { ControlsRow, FilterSelect, PeriodControl, ReportControls } from "@/components/reports/filter-bar";
+import { DEFAULT_PAGE_SIZE, PAGE_SIZES, TablePager } from "@/components/table-pager";
+import { SortHeader, type Sort } from "@/components/table-sort";
 import { api, apiUrl, messageFrom } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import type { I18nKey } from "@/lib/i18n";
 import type { ConversationReportPage, ConversationReportRow } from "@/types";
 
-const PAGE = 50;
 const SEARCH_DELAY_MS = 350;
 const COLUMNS = [
   "started", "contact", "phone", "client", "agent", "channel", "status", "mode", "assignee", "team",
@@ -24,6 +25,14 @@ const COLUMNS = [
   "adSourceType", "adHeadline", "adSourceId", "adSourceUrl", "adBody", "adMediaType",
 ] as const;
 type ColumnKey = (typeof COLUMNS)[number];
+// The column each one is ordered by on the server (SORTS in the API); the ad
+// referral columns are not orderable. Times and counts start high to low.
+const SORT_KEYS: Partial<Record<ColumnKey, string>> = {
+  started: "created_at", contact: "contact", phone: "phone", client: "client", agent: "agent", channel: "channel",
+  status: "status", mode: "mode", assignee: "assignee", team: "team", firstReply: "first_reply", resolution: "resolution",
+  inbound: "inbound", aiReplies: "ai_replies", humanReplies: "human_replies", lastMessage: "last_message_at",
+};
+const DESCENDING: ColumnKey[] = ["started", "firstReply", "resolution", "inbound", "aiReplies", "humanReplies", "lastMessage"];
 type Range = "today" | "7" | "30" | "custom";
 
 const AD_COLUMNS: ColumnKey[] = ["adSourceType", "adHeadline", "adSourceId", "adSourceUrl", "adBody", "adMediaType"];
@@ -90,6 +99,8 @@ export function ConversationExplorer({ basePath, scope, options, onOpen }: {
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+  const [sort, setSort] = useState<Sort<string>>({ key: "created_at", order: "desc" });
   const [columns, setColumns] = useState<ColumnKey[]>(DEFAULT_COLUMNS[scope]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [data, setData] = useState<ConversationReportPage | null>(null);
@@ -129,15 +140,17 @@ export function ConversationExplorer({ basePath, scope, options, onOpen }: {
     if (assigneeId) p.set("assignee_id", assigneeId);
     if (teamId) p.set("team_id", teamId);
     if (query) p.set("q", query);
+    p.set("sort", sort.key);
+    p.set("order", sort.order);
     return p;
-  }, [from, to, tz, status, mode, channel, clientId, agentId, assigneeId, teamId, query]);
+  }, [from, to, tz, status, mode, channel, clientId, agentId, assigneeId, teamId, query, sort]);
 
   useEffect(() => { setPage(0); }, [params]);
 
   const load = useCallback(async () => {
     if (!from || !to || from > to) return;
-    setData(await api<ConversationReportPage>(`${basePath}?${params}&limit=${PAGE}&offset=${page * PAGE}`));
-  }, [basePath, params, page, from, to]);
+    setData(await api<ConversationReportPage>(`${basePath}?${params}&limit=${pageSize}&offset=${page * pageSize}`));
+  }, [basePath, params, page, pageSize, from, to]);
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError("");
@@ -211,7 +224,6 @@ export function ConversationExplorer({ basePath, scope, options, onOpen }: {
 
   const agentsForClient = clientId ? (options.agents ?? []).filter((a) => !a.client_id || a.client_id === clientId) : (options.agents ?? []);
   const total = data?.total ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE));
   const visible = columns.filter((c) => allowed.includes(c));
   const pickerGroup = (keys: ColumnKey[]) => keys.map((key) => <label key={key}>
     <input type="checkbox" checked={visible.includes(key)} onChange={(e) => saveColumns(e.target.checked ? allowed.filter((c) => c === key || visible.includes(c)) : visible.filter((c) => c !== key))} />
@@ -263,7 +275,7 @@ export function ConversationExplorer({ basePath, scope, options, onOpen }: {
 
     <div className="report-actions">
       <label className="search-box"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("reports.explorer.search")} /></label>
-      <small className="muted">{loading ? t("reports.loading") : t("reports.pageOf", { from: fmtInt(total ? page * PAGE + 1 : 0), to: fmtInt(Math.min(total, (page + 1) * PAGE)), total: fmtInt(total) })}</small>
+      {loading && <small className="muted">{t("reports.loading")}</small>}
       <div className="column-picker" ref={pickerRef}>
         <button type="button" className={`button secondary${pickerOpen ? " active" : ""}`} onClick={() => setPickerOpen((open) => !open)} aria-expanded={pickerOpen}>
           <Columns3 size={15} /> {t("reports.explorer.columns")} ({visible.length})
@@ -282,9 +294,13 @@ export function ConversationExplorer({ basePath, scope, options, onOpen }: {
 
     {error && <Alert>{error}</Alert>}
     {!loading && data && data.items.length === 0 ? <EmptyState icon={<MessageSquareText />} title={t("reports.explorer.empty")} description={t("reports.explorer.emptyHint")} /> : (
-      <div className="table-shell" style={{ overflowX: "auto" }}><table className="data-table explorer-table" style={{ whiteSpace: "nowrap" }}>
+      <div className="table-shell"><div style={{ overflowX: "auto" }}><table className="data-table explorer-table" style={{ whiteSpace: "nowrap" }}>
         <thead><tr>
-          {visible.map((key) => <th key={key} className={isAd(key) ? "th-ad" : ""}>{isAd(key) && <small>{t("reports.explorer.metaAds")}</small>}{colLabel(key)}</th>)}
+          {visible.map((key) => {
+            const sortKey = SORT_KEYS[key];
+            if (sortKey) return <SortHeader key={key} column={sortKey} label={colLabel(key)} sort={sort} onSort={setSort} descending={DESCENDING.includes(key)} />;
+            return <th key={key} className={isAd(key) ? "th-ad" : ""}>{isAd(key) && <small>{t("reports.explorer.metaAds")}</small>}{colLabel(key)}</th>;
+          })}
           {onOpen && <th aria-label={t("reports.explorer.openRow")} />}
         </tr></thead>
         <tbody>{(data?.items ?? []).map((row) => (
@@ -294,11 +310,10 @@ export function ConversationExplorer({ basePath, scope, options, onOpen }: {
           </tr>
         ))}</tbody>
       </table></div>
+      {total > PAGE_SIZES[0] && <TablePager
+        label={t("reports.pageOf", { from: fmtInt(page * pageSize + 1), to: fmtInt(Math.min(total, (page + 1) * pageSize)), total: fmtInt(total) })}
+        total={total} page={page} pageSize={pageSize} onPage={setPage} onPageSize={(size) => { setPageSize(size); setPage(0); }} />}
+      </div>
     )}
-
-    {total > PAGE && <div className="report-pager">
-      <button type="button" className="button secondary" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>{t("reports.prev")}</button>
-      <button type="button" className="button secondary" onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} disabled={page >= pageCount - 1}>{t("reports.next")}</button>
-    </div>}
   </div>;
 }

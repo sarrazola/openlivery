@@ -429,6 +429,10 @@ textarea { line-height: 1.55; }
 .table-pager-controls button { width: 32px; height: 32px; display: grid; place-items: center; color: var(--muted); border: 1px solid var(--line); border-radius: 7px; background: var(--surface); cursor: pointer; transition: .15s ease; }
 .table-pager-controls button:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); background: var(--surface-3); }
 .table-pager-controls button:disabled { color: var(--line-strong); cursor: default; }
+.sort-header { padding: 0; display: inline-flex; align-items: center; gap: 5px; color: inherit; border: 0; background: none; font: inherit; letter-spacing: inherit; white-space: nowrap; text-align: inherit; }
+.sort-header svg { flex: none; opacity: .4; transition: opacity .15s ease; }
+.sort-header:hover, .sort-header.active { color: var(--ink); }
+.sort-header:hover svg, .sort-header.active svg { opacity: 1; }
 @media (max-width: 620px) { .table-pager { padding: 8px 12px; flex-wrap: wrap; } .table-pager-label { flex-basis: 100%; } }
 .data-table th { height: 46px; padding: 0 18px; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--surface-2); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
 .data-table td { height: 72px; padding: 11px 18px; color: var(--muted); border-bottom: 1px solid var(--line-soft); font-size: 14px; }
@@ -2788,8 +2792,6 @@ textarea[data-overflow="true"]::-webkit-scrollbar-thumb { border-radius: 8px; ba
 .report-actions .button { min-height: 38px; height: 38px; padding: 0 14px; }
 .report-actions .search-box { margin: 0 6px 0 0; width: min(320px, 100%); height: 38px; min-height: 0; border-color: var(--line); border-radius: 9px; box-shadow: none; }
 .report-actions .button.active { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
-.report-pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 14px; }
-.report-pager .button { min-height: 38px; height: 38px; }
 .column-picker { position: relative; }
 .column-picker-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 230px; max-height: 420px; overflow: auto; padding: 8px; display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 12px 32px rgba(var(--shadow-rgb), calc(.16 * var(--shadow-k))); }
 .column-picker-menu label { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 7px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
