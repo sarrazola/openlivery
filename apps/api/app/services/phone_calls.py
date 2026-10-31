@@ -623,6 +623,9 @@ def _agent_body(db: Session, line: PhoneChannel, webhook_id: str | None, secret_
         "platform_settings": {
             "overrides": {"enable_conversation_initiation_client_data_from_webhook": True},
             "workspace_overrides": workspace_overrides,
+            # The call's summary in the agent's language: left to ElevenLabs it
+            # came in English on calls held in Spanish.
+            "summary_language": lang,
         },
     }
 
