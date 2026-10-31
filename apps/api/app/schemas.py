@@ -1164,6 +1164,7 @@ class PortalSessionOut(BaseModel):
     # The person behind the session; absent on sessions that predate portal users.
     user_id: uuid.UUID | None = None
     user_name: str | None = None
+    user_email: str | None = None
     # What this person may do. Empty for a session with no person behind it.
     role: str | None = None
     permissions: list[str] = []

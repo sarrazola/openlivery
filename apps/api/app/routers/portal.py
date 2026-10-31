@@ -330,6 +330,7 @@ def portal_login(slug: str, payload: PortalLoginRequest, response: Response, db:
         "agency_name": agency.name,
         "user_id": portal_user.id,
         "user_name": portal_user.name.strip() or portal_user.email,
+        "user_email": portal_user.email,
         "role": portal_user.role,
         "permissions": sorted(permissions_for(portal_user.role)),
     }
@@ -355,6 +356,7 @@ def portal_me(
         "agency_name": agency.name,
         "user_id": user.id if user else None,
         "user_name": (user.name.strip() or user.email) if user else None,
+        "user_email": user.email if user else None,
         "role": user.role if user else None,
         "permissions": sorted(permissions_for(user.role)) if user else [],
     }

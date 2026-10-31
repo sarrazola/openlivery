@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, MessageSquareText, SlidersHorizontal, Tag, Users } from "lucide-react";
-import { PreferencesSection } from "@/components/preferences-section";
+import { FileText, MessageSquareText, Tag, Users } from "lucide-react";
 import { SectionTabs, type SectionTab } from "@/components/section-tabs";
 import { useT } from "@/lib/i18n";
 import { CannedRepliesView } from "./canned";
@@ -10,21 +9,26 @@ import { TagsView } from "./tags";
 import { TeamsView } from "./teams";
 import { TemplatesView } from "./templates";
 
-type Tab = "preferences" | "teams" | "tags" | "canned" | "templates";
-const TABS: Tab[] = ["preferences", "teams", "tags", "canned", "templates"];
+type Tab = "teams" | "tags" | "canned" | "templates";
+const MANAGES: Record<Tab, string> = { teams: "teams.manage", tags: "tags.manage", canned: "canned.manage", templates: "templates.manage" };
 
-/** The portal's settings, in tabs: the person's own preferences first, then
- * what the business configures. A management tab shows only to someone whose
- * role can manage it; an agent sees Preferences and nothing else. */
+/** Whether the person can manage anything here. Someone who cannot has no
+ * Settings on a desktop: their own preferences live in the account menu. */
+export function hasSettingsTabs(can: (key: string) => boolean): boolean {
+  return Object.values(MANAGES).some(can);
+}
+
+/** What the business configures, in tabs. A tab shows only to someone whose
+ * role can manage it; the person's own preferences are in the account menu. */
 export function SettingsView({ slug, templatesSupported, can, tab: initialTab, onTab }: { slug: string; templatesSupported: boolean; can: (key: string) => boolean; tab?: string; onTab?: (tab: Tab) => void }) {
   const t = useT();
-  const [tab, setTabState] = useState<Tab>(initialTab && (TABS as string[]).includes(initialTab) ? initialTab as Tab : "preferences");
+  const allowed = (Object.keys(MANAGES) as Tab[]).filter((key) => can(MANAGES[key]));
+  const [tab, setTabState] = useState<Tab | undefined>(allowed.includes(initialTab as Tab) ? initialTab as Tab : allowed[0]);
   const setTab = (next: Tab) => { setTabState(next); onTab?.(next); };
   const base = `/portal/${slug}`;
-  // The same tabs as before; SectionTabs keeps the strip on a desktop and
-  // pages through them on a phone. A tab the role cannot manage is left out.
+  // SectionTabs keeps the strip on a desktop and pages through it on a phone.
+  if (!tab) return null;
   const tabs: SectionTab<Tab>[] = [
-    { id: "preferences", label: t("settings.preferences.heading"), icon: SlidersHorizontal },
     ...(can("teams.manage") ? [{ id: "teams" as const, label: t("portal.inbox.nav.teams"), icon: Users }] : []),
     ...(can("tags.manage") ? [{ id: "tags" as const, label: t("portal.contacts.tags.manageTitle"), icon: Tag }] : []),
     ...(can("canned.manage") ? [{ id: "canned" as const, label: t("portal.canned.manageTitle"), icon: MessageSquareText }] : []),
@@ -32,7 +36,6 @@ export function SettingsView({ slug, templatesSupported, can, tab: initialTab, o
   ];
   return <div className="portal-settings">
     <SectionTabs<Tab> tabs={tabs} value={tab} onChange={setTab} />
-    {tab === "preferences" && <PreferencesSection pushSlug={slug} />}
     {tab === "teams" && can("teams.manage") && <TeamsView base={base} canManage />}
     {tab === "tags" && can("tags.manage") && <TagsView base={`${base}/tags`} canManage />}
     {tab === "canned" && can("canned.manage") && <CannedRepliesView slug={slug} canManage />}
