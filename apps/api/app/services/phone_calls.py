@@ -24,7 +24,7 @@ import secrets
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any, Literal
 
@@ -1091,10 +1091,52 @@ def _call_failed(db: Session, data: dict) -> None:
     record = db.scalar(select(PhoneCall).where(PhoneCall.external_call_id == str(data.get("conversation_id") or "")))
     if record is None or record.ended_at is not None:
         return
+    _close_without_report(db, record, str(data.get("failure_reason") or "call_initiation_failure"))
+
+
+def _close_without_report(db: Session, record: PhoneCall, reason: str) -> None:
     record.ended_at = now_utc()
-    record.end_reason = str(data.get("failure_reason") or "call_initiation_failure")[:180]
+    record.end_reason = reason[:180]
     conversation = db.get(Conversation, record.conversation_id)
     if conversation is not None and conversation.mode != "human" and conversation.status != "resolved":
         line = db.get(PhoneChannel, record.phone_channel_id) if record.phone_channel_id else None
         set_status(db, conversation, "resolved", actor=line.agent.name if line else None)
     db.commit()
+
+
+# A call still open this long after it started has most likely ended without
+# its report reaching OpenLivery (the address was down, a deploy, a tunnel).
+UNREPORTED_AFTER = timedelta(minutes=15)
+
+
+async def reconcile_calls(db: Session, *, limit: int = 20) -> int:
+    """Finish the calls whose end-of-call report never arrived, from
+    ElevenLabs' own record of each: the transcript, duration and cost land as
+    the report would have left them. One still running is left for the next
+    pass; one ElevenLabs does not know, or whose line is gone, is closed
+    without a transcript. Returns how many were finished from ElevenLabs."""
+    stale = db.scalars(
+        select(PhoneCall)
+        .where(PhoneCall.ended_at.is_(None), PhoneCall.started_at < now_utc() - UNREPORTED_AFTER)
+        .order_by(PhoneCall.started_at)
+        .limit(limit)
+    ).all()
+    finished = 0
+    for record in stale:
+        line = db.get(PhoneChannel, record.phone_channel_id) if record.phone_channel_id else None
+        if line is None:
+            _close_without_report(db, record, "The line was removed before the call was reported.")
+            continue
+        try:
+            account, api_key = elevenlabs_key(db, line.agency_id)
+            data = await elevenlabs.get_conversation(api_key, record.external_call_id)
+        except elevenlabs.NotFound:
+            _close_without_report(db, record, "ElevenLabs has no record of this call.")
+            continue
+        except (PhoneSetupError, TelephonyError):
+            continue
+        if data.get("status") not in ("done", "failed"):
+            continue
+        finish_call(db, account, {"type": "post_call_transcription", "data": data})
+        finished += 1
+    return finished

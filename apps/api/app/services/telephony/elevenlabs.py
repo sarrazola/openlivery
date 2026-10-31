@@ -177,6 +177,13 @@ async def delete_tool(api_key: str, tool_id: str) -> None:
     await _request(api_key, "DELETE", f"/convai/tools/{tool_id}")
 
 
+async def get_conversation(api_key: str, conversation_id: str) -> dict:
+    """A call as ElevenLabs keeps it: the same fields its end-of-call report
+    carries, plus its ``status`` (``in-progress``, ``processing``, ``done``,
+    ``failed``)."""
+    return await _request(api_key, "GET", f"/convai/conversations/{conversation_id}")
+
+
 async def import_twilio_number(api_key: str, *, phone_number: str, label: str, sid: str, token: str, agent_id: str) -> str:
     """ElevenLabs points the Twilio number's calls at itself."""
     body = {"provider": "twilio", "phone_number": phone_number, "label": label, "sid": sid, "token": token, "agent_id": agent_id}

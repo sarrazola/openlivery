@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import timedelta
 from unittest.mock import AsyncMock
 
 import httpx
@@ -631,3 +632,40 @@ def test_a_deployment_can_say_where_an_agency_is_called_back(authenticated_clien
         assert elevenlabs.create_webhook.await_count == writes
     finally:
         phone_calls.register_public_base(None)
+
+
+def test_a_call_whose_report_never_came_is_finished_from_elevenlabs(authenticated_client: TestClient, provisioning, monkeypatch):
+    client = authenticated_client
+    _, _, line = _line(client)
+    for call_id in ("conv_lost", "conv_live", "conv_gone"):
+        _call(client, line["id"], "start", {"conversation_id": call_id, "caller_id": CALLER}, provisioning["token"])
+    _call(client, line["id"], "start", {"conversation_id": "conv_new", "caller_id": CALLER}, provisioning["token"])
+    with SessionLocal() as db:
+        for record in db.scalars(select(PhoneCall).where(PhoneCall.external_call_id != "conv_new")).all():
+            record.started_at = record.started_at - timedelta(minutes=20)
+        db.commit()
+    kept = {
+        "conv_lost": {**_report("conv_lost", [{"role": "user", "message": "Hola", "time_in_call_secs": 2}],
+                                call_duration_secs=40, charging={"platform_price": 0.05})["data"], "status": "done"},
+        "conv_live": {"conversation_id": "conv_live", "status": "in-progress"},
+    }
+
+    async def get_conversation(api_key, call_id):
+        if call_id not in kept:
+            raise elevenlabs.NotFound("ElevenLabs has no such resource")
+        return kept[call_id]
+
+    monkeypatch.setattr(elevenlabs, "get_conversation", get_conversation)
+    with SessionLocal() as db:
+        assert asyncio.run(phone_calls.reconcile_calls(db)) == 1
+    with SessionLocal() as db:
+        calls = {call.external_call_id: call for call in db.scalars(select(PhoneCall)).all()}
+        # The report is rebuilt from what ElevenLabs kept: transcript, duration, cost.
+        lost = calls["conv_lost"]
+        assert lost.ended_at is not None and lost.duration_seconds == 40 and float(lost.cost_usd) == 0.05
+        assert db.get(Conversation, lost.conversation_id).status == "resolved"
+        assert db.scalar(select(Message.content).where(Message.conversation_id == lost.conversation_id, Message.role == "user")) == "Hola"
+        # A call still running, and one too recent to give up on, wait.
+        assert calls["conv_live"].ended_at is None and calls["conv_new"].ended_at is None
+        # One ElevenLabs does not know is closed without a transcript.
+        assert calls["conv_gone"].ended_at is not None and "no record" in calls["conv_gone"].end_reason
