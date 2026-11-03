@@ -1708,13 +1708,28 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .compact-channel-grid article > span.whatsapp { color: var(--green-text); background: var(--green-soft); }
 .compact-channel-grid article > span.webchat { color: var(--accent-text); background: var(--accent-soft); }
 .compact-channel-grid article > span.phone { color: var(--amber-text); background: var(--amber-soft); }
-/* Phone lines: the voice list with a preview button per voice. */
+/* The voice picker: a deployment's voices, one language at a time, in a list
+   that scrolls on its own so the greeting below stays in reach. */
 .voice-picker { display: grid; gap: 10px; }
-.voice-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 320px; overflow-y: auto; }
-.voice-list li { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; }
-.voice-list li.chosen { border-color: var(--accent); background: var(--accent-soft); }
-.voice-list li span { display: grid; min-width: 0; }
-.voice-list li small { color: var(--muted); }
+.voice-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--subtle); font-size: 13px; }
+.voice-toolbar select { width: auto; min-width: 150px; }
+.voice-options { position: relative; max-height: 340px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; }
+.voice-option { display: flex; align-items: center; gap: 12px; padding: 9px 14px; border-top: 1px solid var(--line); }
+.voice-option:first-child { border-top: 0; }
+.voice-option.selected { background: var(--accent-soft); }
+.voice-play { width: 32px; height: 32px; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: var(--ink-2); border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+.voice-play:hover { color: var(--accent-text); border-color: var(--accent-line); }
+.voice-pick { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 0; color: inherit; text-align: left; border: 0; background: transparent; cursor: pointer; }
+.voice-name { flex: 1 1 140px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.voice-name strong { font-size: 14px; font-weight: 600; }
+.voice-name small { color: var(--subtle); font-size: 12px; }
+.voice-tag { flex: none; padding: 3px 10px; color: var(--accent-text); border-radius: 999px; background: var(--accent-soft); font-size: 12px; white-space: nowrap; }
+.voice-option.selected .voice-tag { background: var(--surface); }
+.voice-check { flex: none; color: var(--subtle); }
+.voice-option.selected .voice-check { color: var(--accent); }
+.voice-other { margin: 0; color: var(--subtle); font-size: 13px; }
+.voice-other .text-button { font-size: 13px; }
+.voice-id-steps { margin: 0; }
 .phone-line-number { margin: 0; }
 .carrier-connected { display: grid; gap: 8px; }
 .kind-badge { margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 600; color: var(--amber-text); background: var(--amber-soft); }
