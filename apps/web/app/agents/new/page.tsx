@@ -14,6 +14,7 @@ import { Combobox } from "@/components/combobox";
 import { agentTemplates, localize } from "@/lib/agent-templates";
 import { VoiceModelPicker } from "@/components/voice-model-picker";
 import { VoicePicker } from "@/components/voice-picker";
+import { voicePickerExtensions } from "@/lib/extensions/voice-picker";
 import type { Agent, AgentKind, Client } from "@/types";
 import { AiHint } from "@/components/ai-hint";
 
@@ -178,7 +179,7 @@ export default function NewAgentPage() {
       </div>}
 
       {current === "voice" && <div className="wizard-fields">
-        <div className="wizard-copy"><h2>{t("phone.agent.stepVoiceTitle")}</h2><p>{t("phone.agent.stepVoiceSubtitle")}</p></div>
+        <div className="wizard-copy"><h2>{t("phone.agent.stepVoiceTitle")}</h2><p>{t(voicePickerExtensions.voices.length ? "phone.agent.stepVoiceCatalogSubtitle" : "phone.agent.stepVoiceSubtitle")}</p></div>
         <VoicePicker language={lang} value={voice.id} name={voice.name} onChange={setVoice} />
         <label>{t("phone.channel.greetingLabel")}<textarea rows={2} maxLength={600} value={greeting} placeholder={t("phone.channel.greetingPlaceholder")} onChange={(e) => setGreeting(e.target.value)} /></label>
         <span className="field-help">{t("phone.channel.greetingHint")}</span>
