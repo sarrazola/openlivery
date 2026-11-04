@@ -30,8 +30,11 @@ export async function apiWithHeaders<T>(path: string, options: RequestInit = {})
   });
   // A deployment can gate a request by returning this header (e.g. a lapsed
   // subscription); follow it instead of surfacing the error to the caller.
+  // Not from the widget: it runs inside someone else's page, for a visitor
+  // with no account, so it fails like any other error there.
   const redirectTo = response.headers.get("X-Redirect-To");
-  if (redirectTo && typeof window !== "undefined" && window.location.pathname !== redirectTo) {
+  const inWidget = typeof window !== "undefined" && window.location.pathname.startsWith("/widget/");
+  if (redirectTo && !inWidget && typeof window !== "undefined" && window.location.pathname !== redirectTo) {
     window.location.assign(redirectTo);
     return new Promise<{ data: T; headers: Headers }>(() => {}); // never resolves; the page is navigating away
   }

@@ -282,6 +282,20 @@ export type WhatsAppChannel = {
   updated_at: string;
 };
 
+export type WidgetAppearance = {
+  display: "bubble" | "inline";
+  header_title: string;
+  header_subtitle: string;
+  headline: string;
+  suggestions: string[];
+  placeholder: string;
+  footer_note: string;
+  header_style: "solid" | "plain";
+  headline_font: "sans" | "serif";
+  corners: "square" | "soft" | "round";
+  background: string;
+};
+
 export type WidgetChannel = {
   id: string;
   client_id: string;
@@ -291,6 +305,7 @@ export type WidgetChannel = {
   greeting: string;
   color: string;
   position: "right" | "left";
+  appearance: WidgetAppearance;
   created_at: string;
   updated_at: string;
 };

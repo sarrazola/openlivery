@@ -663,6 +663,9 @@ class WidgetChannel(Base):
     greeting: Mapped[str] = mapped_column(Text, default="", server_default="")
     color: Mapped[str] = mapped_column(String(20), default="", server_default="")
     position: Mapped[str] = mapped_column(String(10), default="right", server_default="right")
+    # What the chat shows before the visitor writes and how it looks; the
+    # shape is ``schemas.WidgetAppearance``.
+    appearance: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 

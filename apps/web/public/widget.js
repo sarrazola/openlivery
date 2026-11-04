@@ -4,6 +4,50 @@
   var agent = script.getAttribute("data-agent");
   if (!agent) return;
   var origin = new URL(script.src).origin;
+
+  // Inline: the chat takes a place in the page's own flow, with no launcher.
+  // The frame measures itself, so it reports how tall it needs to be: the card
+  // it starts as, then a full chat once the visitor writes.
+  if (script.getAttribute("data-mode") === "inline") {
+    var targetSelector = script.getAttribute("data-target");
+    var chatHeight = parseInt(script.getAttribute("data-height"), 10) || 560;
+    var inlineFrame = document.createElement("iframe");
+    inlineFrame.src = origin + "/widget/" + encodeURIComponent(agent) + "?mode=inline";
+    inlineFrame.title = "Chat";
+    inlineFrame.setAttribute("allow", "clipboard-write; microphone");
+    inlineFrame.style.cssText = "display:block;width:100%;height:280px;border:0;background:transparent;";
+
+    var mount = function () {
+      var host = null;
+      // A selector the page mistyped must not stop the chat from loading.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- falls back to the script's own place
+      try { host = targetSelector ? document.querySelector(targetSelector) : null; } catch (err) {}
+      if (host) host.appendChild(inlineFrame);
+      else script.parentNode.insertBefore(inlineFrame, script);
+    };
+
+    window.addEventListener("message", function (event) {
+      // One page can hold several embeds: each loader listens to its own frame.
+      if (event.origin !== origin || event.source !== inlineFrame.contentWindow) return;
+      var d = event.data;
+      if (!d || d.type !== "ol-widget") return;
+      if (d.action === "height" && d.height > 0) inlineFrame.style.height = d.height + "px";
+      if (d.action === "corners") inlineFrame.style.borderRadius = d.radius + "px";
+      if (d.action === "chat") {
+        inlineFrame.style.height = Math.min(chatHeight, window.innerHeight - 24) + "px";
+        // Only when the visitor did something: a chat that loads already open
+        // must not move the page they are reading.
+        if (d.reveal) inlineFrame.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+      // Switched off or not reachable: leave no hole in the page.
+      if (d.action === "unavailable") inlineFrame.style.display = "none";
+    });
+
+    if (targetSelector && document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount);
+    else mount();
+    return;
+  }
+
   var color = script.getAttribute("data-color") || "#635bff";
   var side = script.getAttribute("data-position") === "left" ? "left" : "right";
   var open = false;
@@ -74,9 +118,12 @@
   teaserClose.addEventListener("click", function (e) { e.stopPropagation(); hideTeaser(); teaserShown = true; });
 
   window.addEventListener("message", function (event) {
-    if (event.origin !== origin || !event.data || event.data.type !== "ol-widget") return;
+    // A page can also hold an inline chat: each loader listens to its own frame.
+    if (event.origin !== origin || event.source !== frame.contentWindow) return;
+    if (!event.data || event.data.type !== "ol-widget") return;
     var d = event.data;
     if (d.action === "close") setOpen(false);
+    if (d.action === "corners") frame.style.borderRadius = d.radius + "px";
     if (d.action === "greeting" && !open && !teaserShown && d.text) {
       teaserText.textContent = String(d.text).slice(0, 220);
       teaser.style.display = "block";

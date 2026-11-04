@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
@@ -1310,12 +1310,44 @@ class WhatsAppInternalStatus(BaseModel):
     error: str | None = None
 
 
+class WidgetAppearance(BaseModel):
+    """What a web chat shows before the visitor writes and how it looks. Every
+    text is optional: an empty one falls back to the agent's name, the agency's
+    name or the interface's own copy.
+
+    ``display`` only says which embed code the channel's screen offers: the
+    page that embeds the chat decides how it is mounted, through ``widget.js``.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    display: Literal["bubble", "inline"] = "bubble"
+    header_title: str = Field(default="", max_length=80)
+    header_subtitle: str = Field(default="", max_length=120)
+    headline: str = Field(default="", max_length=160)
+    suggestions: list[Annotated[str, Field(max_length=60)]] = Field(default_factory=list, max_length=6)
+    placeholder: str = Field(default="", max_length=120)
+    footer_note: str = Field(default="", max_length=160)
+    header_style: Literal["solid", "plain"] = "solid"
+    headline_font: Literal["sans", "serif"] = "sans"
+    corners: Literal["square", "soft", "round"] = "round"
+    background: str = Field(default="", pattern=r"^(#[0-9a-fA-F]{6})?$")
+
+    @field_validator("suggestions")
+    @classmethod
+    def drop_blank_and_repeated(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(item for item in value if item))
+
+
 class WidgetChannelUpdate(BaseModel):
     agent_id: uuid.UUID
     is_enabled: bool = True
     greeting: str = Field(default="", max_length=2000)
     color: str = Field(default="", max_length=20)
     position: str = Field(default="right", pattern=r"^(right|left)$")
+    # Left out, the stored one stays: a caller that only changes the agent
+    # must not reset how the chat looks.
+    appearance: WidgetAppearance | None = None
 
 
 class WidgetChannelOut(ORMModel):
@@ -1327,6 +1359,7 @@ class WidgetChannelOut(ORMModel):
     greeting: str
     color: str
     position: str
+    appearance: WidgetAppearance
     created_at: datetime
     updated_at: datetime
 
@@ -1336,6 +1369,7 @@ class WidgetConfigOut(BaseModel):
     greeting: str
     color: str
     position: str
+    appearance: WidgetAppearance
     agency_name: str
     # Public logo shown in the widget header: the client's own logo when set,
     # otherwise the agency logo.

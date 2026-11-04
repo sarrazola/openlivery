@@ -57,6 +57,8 @@ def configure_channel(
     channel.greeting = payload.greeting.strip()
     channel.color = payload.color.strip()
     channel.position = payload.position
+    if payload.appearance is not None:
+        channel.appearance = payload.appearance.model_dump()
     db.commit()
     db.refresh(channel)
     return channel
