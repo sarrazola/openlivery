@@ -168,6 +168,7 @@ def widget_config(public_id: str, db: Session = Depends(get_db)):
         "greeting": channel.greeting,
         "color": channel.color or (agency.brand_color if agency else ""),
         "position": channel.position,
+        "appearance": channel.appearance or {},
         "agency_name": agency.name if agency else "",
         "logo_url": f"/api/widget/{public_id}/logo" if has_logo else None,
     }

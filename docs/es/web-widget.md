@@ -2,11 +2,11 @@
 
 > Read in English: [web-widget.md](../en/web-widget.md)
 
-El widget web es un chat embebible, un canal de un cliente atendido por uno de sus agentes, que puedes colocar en cualquier sitio web con una sola etiqueta `<script>`. Los visitantes ven un botón de chat flotante; al abrirlo hablan con el agente a través de la API pública de OpenLivery, con el mismo conocimiento e instrucciones que configuraste.
+El widget web es un chat embebible, un canal de un cliente atendido por uno de sus agentes, que puedes colocar en cualquier sitio web con una sola etiqueta `<script>`. Los visitantes ven un botón de chat flotante, o una tarjeta dentro de la página; en ambos casos hablan con el agente a través de la API pública de OpenLivery, con el mismo conocimiento e instrucciones que configuraste.
 
 ## Cómo funciona
 
-El chat web es un canal del cliente, como sus líneas de WhatsApp: cada cliente tiene como máximo uno, y tú eliges cuál de sus agentes lo atiende. El canal lleva un id público que se usa en la ruta del widget `/widget/<publicId>`. El script de carga monta un `iframe` que apunta a esa ruta y añade un botón lanzador flotante.
+El chat web es un canal del cliente, como sus líneas de WhatsApp: cada cliente tiene como máximo uno, y tú eliges cuál de sus agentes lo atiende. El canal lleva un id público que se usa en la ruta del widget `/widget/<publicId>`. El script de carga monta un `iframe` que apunta a esa ruta y, salvo que el chat vaya dentro de la página, añade un botón lanzador flotante.
 
 El widget solo funciona mientras el canal está activado y el cliente está activo: el backend sirve los endpoints de configuración, historial y mensajes únicamente entonces. El id público es del canal, no del agente, así que puedes cambiar o reemplazar el agente sin tocar los sitios donde está insertado el fragmento.
 
@@ -29,6 +29,37 @@ El fragmento apunta `data-agent` al id público del canal y pasa las opciones de
 ```
 
 Pégalo antes de la etiqueta de cierre `</body>` de cualquier página. El origen del `src` debe ser tu despliegue de OpenLivery; `widget.js` deriva la URL del iframe de su propio origen.
+
+## Poner el chat dentro de una página
+
+Elige **Incrustado en la página** en **Cómo se muestra** y el código de inserción pasa a ser un contenedor y el script:
+
+```html
+<div id="openlivery-chat"></div>
+<script
+  src="https://your-openlivery-domain/widget.js"
+  data-agent="CHANNEL_PUBLIC_ID"
+  data-mode="inline"
+  data-target="#openlivery-chat"
+  async
+></script>
+```
+
+No hay lanzador y nada flota: el chat toma el ancho de su contenedor, empieza como una tarjeta compacta y crece hasta ser el chat completo con el primer mensaje. El resto de la página se corre para darle espacio.
+
+| Atributo | Qué hace |
+| --- | --- |
+| `data-mode` | `inline` coloca el chat en la página. Si no está, es la burbuja flotante. |
+| `data-target` | Selector CSS del elemento que se llena. Si no está o no encuentra nada, el chat aparece donde esté la etiqueta del script. |
+| `data-height` | Altura del chat abierto en píxeles, 560 por defecto. Nunca supera la pantalla del visitante. |
+
+El modo vive en el fragmento, no en el canal, así que un cliente puede tener la burbuja en todo el sitio y la tarjeta en una sola página. Mientras el canal esté apagado o no disponible, el marco se oculta y no deja un hueco. Para poner dos chats en una página, da a cada contenedor su propio `id` y apunta a él el `data-target` de cada script.
+
+## Inicio del chat y apariencia
+
+**Inicio del chat** define lo que ve el visitante antes de escribir: una pregunta principal, el saludo, hasta seis sugerencias, el título y el subtítulo del encabezado, el texto dentro de la caja y una nota al pie. Todo es opcional, y una sugerencia se envía como mensaje del visitante al tocarla. **Apariencia** define el color, el fondo, el encabezado (con color o claro), la letra del título y las esquinas. Esto aplica por igual a la burbuja y a la tarjeta.
+
+El chat corre dentro de un `iframe`, así que no hereda las fuentes ni los estilos del sitio que lo rodea. Estas opciones son la forma de acercarlo a la página.
 
 ## Mensajes y límite de peticiones
 

@@ -611,9 +611,17 @@ textarea { line-height: 1.55; }
 .qa-item > div { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .qa-item strong { font-size: 13px; }
 .qa-item small { color: var(--muted); font-size: 12px; }
-.widget-shell { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--surface); font-size: 14px; overflow: hidden; }
+.widget-shell { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--widget-bg, var(--surface)); font-size: 14px; overflow: hidden; }
+.widget-shell.is-inline { box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--widget-radius, 16px); }
+.widget-shell.is-inline.is-start { position: static; }
+.widget-shell.is-inline.is-start .widget-messages { flex: 0 0 auto; overflow: visible; padding-bottom: 4px; background: transparent; }
+.widget-shell.is-inline.is-start .widget-composer { padding-top: 8px; border-top: 0; background: transparent; }
 .widget-empty { flex: 1; display: grid; place-items: center; color: var(--muted); }
-.widget-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; color: white; background: var(--widget-color, var(--accent)); }
+.widget-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; color: var(--widget-on-color, white); background: var(--widget-color, var(--accent)); }
+.head-plain .widget-head { color: var(--widget-ink, var(--ink)); background: transparent; }
+.head-plain .widget-avatar { color: var(--widget-on-color, white); background: var(--widget-color, var(--accent)); }
+.head-plain .widget-head-btn { color: var(--widget-muted, var(--muted)); background: transparent; }
+.head-plain .widget-head-btn:hover { background: rgba(var(--shadow-rgb), .08); }
 .widget-head-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .widget-head-id img { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: var(--surface); }
 .widget-avatar { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.22); font-weight: 700; }
@@ -623,22 +631,28 @@ textarea { line-height: 1.55; }
 .widget-head-actions { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; }
 .widget-head-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; background: rgba(255,255,255,.18); color: white; border-radius: 8px; cursor: pointer; }
 .widget-head-btn:hover { background: rgba(255,255,255,.3); }
-.widget-messages { flex: 1 1 auto; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 8px; background: var(--canvas); }
+.widget-messages { flex: 1 1 auto; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 8px; background: var(--widget-bg, var(--canvas)); }
+.widget-headline { margin: 0 0 4px; color: var(--widget-ink, var(--ink)); font-family: var(--font-display); font-size: 20px; font-weight: 600; line-height: 1.3; }
+.widget-headline.serif { font-family: Georgia, "Times New Roman", serif; font-weight: 500; }
+.widget-suggestions { display: flex; flex-wrap: wrap; gap: 7px; }
+.widget-suggestions button { padding: 7px 13px; color: var(--ink); border: 1px solid var(--line); border-radius: calc(var(--widget-radius, 16px) * 2); background: var(--surface); font-size: 13px; cursor: pointer; }
+.widget-suggestions button:hover:not(:disabled) { border-color: var(--widget-color, var(--accent)); }
+.widget-footnote { flex: 0 0 auto; padding: 0 14px 10px; color: var(--widget-muted, var(--muted)); font-size: 12px; }
 .widget-msg { display: flex; }
 .widget-msg.user { justify-content: flex-end; }
 .widget-bubble { max-width: 82%; padding: 9px 12px; border-radius: 14px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
 .widget-msg.assistant .widget-bubble { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
-.widget-msg.user .widget-bubble { background: var(--widget-color, var(--accent)); color: white; border-bottom-right-radius: 4px; }
+.widget-msg.user .widget-bubble { background: var(--widget-color, var(--accent)); color: var(--widget-on-color, white); border-bottom-right-radius: 4px; }
 .widget-typing { display: inline-flex; gap: 4px; }
 .widget-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--surface-5); animation: widget-blink 1.2s infinite; }
 .widget-typing i:nth-child(2) { animation-delay: .2s; }
 .widget-typing i:nth-child(3) { animation-delay: .4s; }
 @keyframes widget-blink { 0%, 60%, 100% { opacity: .3; } 30% { opacity: 1; } }
 .widget-error { padding: 6px 14px; color: var(--red); font-size: 12px; background: var(--red-soft); }
-.widget-composer { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--surface); }
-.widget-composer input { flex: 1 1 auto; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 20px; font-size: 14px; }
+.widget-composer { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--widget-bg, var(--surface)); }
+.widget-composer input { flex: 1 1 auto; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: calc(var(--widget-radius, 16px) * 1.25); font-size: 14px; }
 .widget-composer input:focus { outline: none; border-color: var(--widget-color, var(--accent)); }
-.widget-composer button { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 50%; color: white; background: var(--widget-color, var(--accent)); cursor: pointer; }
+.widget-composer button { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: calc(var(--widget-radius, 16px) * 1.25); color: var(--widget-on-color, white); background: var(--widget-color, var(--accent)); cursor: pointer; }
 .widget-composer button:disabled { opacity: .55; }
 .embed-snippet { margin: 0; padding: 13px 15px; border: 1px solid var(--line); border-radius: 9px; background: var(--inverse); color: var(--on-dark); font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
 .embed-actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -1619,7 +1633,11 @@ button.back-link { padding: 0; border: 0; background: transparent; cursor: point
 .webchat-form { display: flex; flex-direction: column; gap: 16px; }
 .webchat-form label { display: flex; flex-direction: column; gap: 7px; color: var(--ink-2); font-size: 13px; font-weight: 600; }
 .webchat-form .switch-row { margin: 0; }
-.webchat-form .form-grid { max-width: 520px; }
+.webchat-suggestions { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
+.webchat-suggestions > span { display: flex; flex-direction: column; gap: 2px; color: var(--ink-2); font-size: 13px; font-weight: 600; }
+.webchat-suggestions > span small { color: var(--muted); font-size: 12px; font-weight: 400; }
+.webchat-suggestions > div { width: 100%; display: flex; align-items: center; gap: 8px; }
+.webchat-suggestions > div input { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600; }
 .wa-panel .embed-snippet { margin-top: 6px; }
 .wa-panel .embed-actions { margin-top: 12px; }
 .wa-copy-field { margin-top: 12px; display: flex; align-items: flex-end; gap: 10px; }
@@ -2148,7 +2166,7 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 
 
 /* Timestamp inside widget chat bubbles */
-.widget-bubble:has(> .msg-time) { position: relative; padding-right: 48px; }
+.widget-bubble:has(> .msg-time) { position: relative; padding-right: 66px; }
 .widget-bubble .msg-time { position: absolute; right: 9px; bottom: 6px; font-size: var(--text-xs); line-height: 1; color: inherit; opacity: .5; font-variant-numeric: tabular-nums; }
 
 .widget-sender { display: block; margin: 0 0 3px 6px; color: var(--muted); font-size: 11px; font-weight: 600; }

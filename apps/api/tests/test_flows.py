@@ -219,6 +219,46 @@ def test_main_crud_knowledge_and_persistent_chat(authenticated_client: TestClien
     assert client.delete(f"/api/agents/{agent_id}").status_code == 204
 
 
+def test_widget_appearance_is_validated_public_and_kept(authenticated_client: TestClient):
+    client = authenticated_client
+    customer = client.post("/api/clients", json={"name": "Look Co", "is_active": True}).json()
+    client.put("/api/providers/openrouter", json={"api_key": "secret"})
+    agent = client.post(
+        "/api/agents",
+        json={"client_id": customer["id"], "provider": "openrouter", "model": "gpt-4.1-mini", "name": "Sofia", "instructions": "", "personality": "", "is_active": True},
+    ).json()
+    url = f"/api/webchat/channels/{customer['id']}"
+
+    # A channel created before any of this reads as the plain defaults.
+    channel = client.put(url, json={"agent_id": agent["id"]}).json()
+    assert channel["appearance"]["display"] == "bubble" and channel["appearance"]["suggestions"] == []
+
+    look = {
+        "display": "inline",
+        "headline": "  Which business interests you?  ",
+        "suggestions": ["Food", " ", "Food", "  Health  "],
+        "placeholder": "A coffee franchise",
+        "header_style": "plain",
+        "headline_font": "serif",
+        "corners": "soft",
+        "background": "#F4F7FA",
+    }
+    saved = client.put(url, json={"agent_id": agent["id"], "greeting": "Hi!", "appearance": look}).json()["appearance"]
+    assert saved["headline"] == "Which business interests you?"
+    assert saved["suggestions"] == ["Food", "Health"]
+
+    # The anonymous page reads what the channel's screen wrote.
+    public = client.get(f"/api/widget/{channel['public_id']}").json()
+    assert public["appearance"] == saved
+
+    # A caller that sends none, like one swapping the agent, leaves it alone.
+    assert client.put(url, json={"agent_id": agent["id"], "greeting": "Hello"}).json()["appearance"] == saved
+
+    for bad in ({"suggestions": ["x"] * 7}, {"suggestions": ["x" * 61]}, {"background": "url(x)"}, {"display": "popup"}):
+        assert client.put(url, json={"agent_id": agent["id"], "appearance": bad}).status_code == 422
+    assert client.get(url).json()["appearance"] == saved
+
+
 def test_widget_public_chat_and_gating(authenticated_client: TestClient, monkeypatch):
     client = authenticated_client
     customer = client.post(
