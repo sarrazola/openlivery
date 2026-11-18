@@ -744,7 +744,16 @@ textarea { line-height: 1.55; }
 
 .portal-loader { min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); background: var(--canvas); }
 .portal-brand { display: flex; align-items: center; gap: 10px; }
-.portal-brand span, .portal-brand img { width: 34px; height: 34px; display: grid; place-items: center; object-fit: contain; color: white; border-radius: 8px; background: var(--portal-color, var(--accent)); font-weight: 700; }
+.portal-brand span, .portal-brand img { width: 34px; height: 34px; display: grid; place-items: center; object-fit: contain; color: var(--ink); border-radius: 8px; background: var(--surface-3); font-weight: 700; }
+/* The agency's color never fills behind its logo or initial: a transparent
+   mark takes that color and gets lost in it. A logo shows as uploaded, an
+   initial sits on a neutral tile. The color only reaches the sign-in button
+   and a few small labels; the chat keeps the portal's own blue. */
+.portal-brand img { background: none; }
+/* The brand color as text, darkened or lightened by lib/brand-palette until it
+   reads on the page in each theme. */
+.portal-app, .portal-access { --portal-text: var(--portal-text-light, var(--accent-text)); }
+:root[data-theme="dark"] .portal-app, :root[data-theme="dark"] .portal-access { --portal-text: var(--portal-text-dark, var(--accent-text)); }
 .portal-login { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; background: var(--surface); }
 .portal-login > section { padding: 48px 7vw; display: flex; flex-direction: column; color: white; background: var(--inverse); }
 .portal-login-copy { max-width: 540px; margin: auto 0; }
@@ -753,7 +762,9 @@ textarea { line-height: 1.55; }
 .portal-login-copy p { color: var(--faint); font-size: 16px; }
 .portal-login-form { display: grid; place-items: center; padding: 40px; background: var(--surface-2); }
 .portal-login-form form { width: min(430px, 100%); padding: 34px; display: flex; flex-direction: column; gap: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 12px 35px rgba(var(--shadow-rgb), calc(.08 * var(--shadow-k))); }
-.portal-client-avatar { width: 48px; height: 48px; display: grid; place-items: center; color: var(--portal-color); border-radius: 9px; background: var(--accent-soft); font-weight: 700; }
+.portal-client-avatar { width: 48px; height: 48px; display: grid; place-items: center; color: var(--ink); border-radius: 9px; background: var(--surface-3); font-weight: 700; }
+.portal-client-avatar.has-logo { background: transparent; }
+.portal-client-avatar img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; }
 .portal-login-form h2 { margin: 2px 0 -12px; font-size: 24px; }
 .portal-login-form p { color: var(--muted); }
 .portal-app { min-height: 100vh; display: grid; grid-template-columns: 248px minmax(0,1fr); background: var(--canvas); }
@@ -820,6 +831,7 @@ textarea { line-height: 1.55; }
 .portal-main > header { margin-bottom: 22px; display: flex; align-items: flex-end; justify-content: space-between; }
 .portal-main > header h1 { margin: 3px 0 0; font-size: 28px; }
 .portal-main > header small, .portal-main > header span { color: var(--muted); }
+.portal-main > header > div > small { color: var(--portal-text, var(--muted)); }
 .portal-inbox { height: calc(100vh - 125px); display: grid; grid-template-columns: 360px minmax(0,1fr); overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .portal-inbox > aside { overflow: auto; border-right: 1px solid var(--line); background: var(--surface-2); }
 /* The search row and the thread header share their bottom line: same height. */
@@ -1066,11 +1078,12 @@ textarea { line-height: 1.55; }
 .portal-messages article.mine { align-self: flex-end; }
 .portal-messages small { color: var(--subtle); font-size: 12px; }
 .portal-messages p { margin: 4px 0 0; padding: 11px 13px; border-radius: 4px 11px 11px; background: var(--surface-3); }
-.portal-messages article.mine p { color: white; border-radius: 11px 4px 11px 11px; background: var(--portal-color); }
+.portal-messages article.mine p { color: white; border-radius: 11px 4px 11px 11px; background: var(--accent); }
 /* The business sits on the right, like "me" in any chat. A person's reply
-   takes the brand colour; the AI's takes a light tint of it, so who spoke
-   reads at a glance without the name label. */
-.portal-messages article.mine.ai p { color: var(--ink); background: color-mix(in srgb, var(--portal-color) 12%, var(--surface)); }
+   takes the portal's blue; the AI's takes a light tint of it, so who spoke
+   reads at a glance without the name label. The thread keeps that blue
+   whatever color the agency picks: it is read all day. */
+.portal-messages article.mine.ai p { color: var(--ink); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
 .portal-messages article.mine.ai .quoted-snippet { background: rgba(var(--shadow-rgb), calc(.06 * var(--shadow-k))); }
 .portal-messages article.mine.ai .rich-text code { background: rgba(var(--shadow-rgb), calc(.08 * var(--shadow-k))); }
 .portal-messages article.mine.ai .msg-time { color: var(--subtle); }
@@ -1084,7 +1097,7 @@ textarea { line-height: 1.55; }
 .quoted-snippet strong { display: block; font-size: 11.5px; opacity: .8; }
 .portal-messages article.mine .quoted-snippet, .inbox-message.mine .quoted-snippet { background: rgba(255, 255, 255, .18); }
 /* The customer's reaction on the business's own bubble. */
-.reaction-badge.incoming { background: color-mix(in srgb, var(--portal-color, var(--blue)) 10%, var(--surface)); }
+.reaction-badge.incoming { background: color-mix(in srgb, var(--blue) 10%, var(--surface)); }
 /* Hover actions on a bubble: react to the visitor's message, reply quoting any. */
 .portal-messages article { position: relative; }
 .bubble-actions { position: absolute; top: -6px; right: -4px; display: inline-flex; gap: 2px; padding: 2px; background: var(--surface, var(--surface)); border: 1px solid rgba(var(--shadow-rgb), calc(.12 * var(--shadow-k))); border-radius: 999px; box-shadow: 0 1px 4px rgba(var(--shadow-rgb), calc(.15 * var(--shadow-k))); opacity: 0; transition: opacity .12s ease; z-index: 2; }
@@ -1097,7 +1110,7 @@ textarea { line-height: 1.55; }
 .reaction-picker button:hover, .reaction-picker button.active { background: rgba(var(--shadow-rgb), calc(.08 * var(--shadow-k))); }
 .reaction-picker button.remove { font-size: 12px; color: var(--red-text); padding: 2px 8px; }
 /* Quoted-reply chip above the composer. */
-.composer-quote { display: flex; align-items: center; gap: 9px; margin: 0 16px; padding: 7px 11px; font-size: 12.5px; color: var(--ink, var(--ink)); border-left: 3px solid var(--portal-color, var(--blue)); border-radius: 6px; background: rgba(var(--shadow-rgb), calc(.05 * var(--shadow-k))); }
+.composer-quote { display: flex; align-items: center; gap: 9px; margin: 0 16px; padding: 7px 11px; font-size: 12.5px; color: var(--ink, var(--ink)); border-left: 3px solid var(--blue); border-radius: 6px; background: rgba(var(--shadow-rgb), calc(.05 * var(--shadow-k))); }
 .composer-quote > span { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .composer-quote strong { font-size: 11.5px; opacity: .75; }
 .composer-quote small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1321,7 +1334,7 @@ textarea { line-height: 1.55; }
 .report-selects select { width: auto; height: 36px; min-height: 0; min-width: 140px; padding: 0 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 13px; cursor: pointer; }
 .report-ranges { display: flex; gap: 6px; flex: 0 0 auto; }
 .report-ranges button { padding: 7px 14px; white-space: nowrap; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 13px; font-weight: 600; cursor: pointer; }
-.report-ranges button.active { color: white; border-color: var(--portal-color, var(--accent)); background: var(--portal-color, var(--accent)); }
+.report-ranges button.active { color: white; border-color: var(--accent); background: var(--accent); }
 .report-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
 .report-tile { display: flex; flex-direction: column; gap: 4px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .report-tile small { color: var(--subtle); font-size: 12px; }
@@ -1357,7 +1370,7 @@ textarea { line-height: 1.55; }
 .report-toggle button { padding: 5px 12px; font-size: 12.5px; }
 @media (max-width: 900px) { .report-columns { grid-template-columns: 1fr; } }
 .portal-composer textarea { flex: 1; min-width: 0; min-height: 42px; padding: 10px 12px; }
-.portal-composer button { width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center; color: white; border: 0; border-radius: 7px; background: var(--portal-color); }
+.portal-composer button { width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center; color: white; border: 0; border-radius: 7px; background: var(--accent); }
 
 @media (max-width: 900px) {
   .sidebar { transform: translateX(-100%); box-shadow: 20px 0 50px rgba(var(--shadow-rgb), calc(.15 * var(--shadow-k))); }
@@ -1473,7 +1486,8 @@ textarea { line-height: 1.55; }
 .access-brand { display: flex; align-items: center; gap: 10px; }
 .access-brand > span, .access-brand > img { width: 32px; height: 32px; display: grid; place-items: center; object-fit: contain; color: white; border-radius: 7px; background: var(--accent); }
 .access-brand strong { color: var(--ink); font-size: 16px; font-weight: 600; letter-spacing: -.2px; }
-.portal-access-brand > span { background: var(--portal-color, var(--accent)); }
+.portal-access-brand > span { color: var(--ink); background: var(--surface-3); }
+.portal-access-brand > img { background: none; }
 .access-layout {
   width: min(1220px, calc(100% - 56px));
   min-height: calc(100vh - 72px);
@@ -1489,8 +1503,12 @@ textarea { line-height: 1.55; }
 .app-links a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-text); font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; }
 .app-links a:hover { text-decoration: underline; }
 .access-eyebrow { color: var(--accent-text); font-size: 12px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
-.portal-access .access-eyebrow { color: var(--portal-color, var(--accent-text)); }
+.portal-access .access-eyebrow { color: var(--portal-text, var(--accent-text)); }
 .access-intro > h1 { max-width: 660px; margin: 12px 0 16px; font-size: clamp(40px, 4.5vw, 58px); font-weight: 600; line-height: 1.04; letter-spacing: -2.5px; }
+/* A portal title is whatever the agency typed: the longer it is, the smaller it
+   sets (down to a floor), and a word too long for the column breaks instead of
+   running under the login card. */
+.portal-access .access-intro > h1 { font-size: clamp(30px, min(4.5vw, calc(1400px / var(--title-chars, 16))), 58px); letter-spacing: -.04em; overflow-wrap: anywhere; text-wrap: balance; }
 .access-intro > p { max-width: 620px; margin-bottom: 30px; color: var(--muted); font-size: 16px; line-height: 1.65; }
 .access-preview { overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 16px 45px rgba(var(--shadow-rgb), calc(.08 * var(--shadow-k))); }
 .access-preview > header { min-height: 54px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
@@ -1512,11 +1530,11 @@ textarea { line-height: 1.55; }
 .portal-preview-thread > div.active { background: var(--accent-soft); }
 .portal-preview > footer { min-height: 50px; padding: 0 15px; display: flex; align-items: center; justify-content: space-between; color: var(--muted); border-top: 1px solid var(--line); font-size: 12px; }
 .portal-preview > footer span { display: flex; align-items: center; gap: 6px; }
-.portal-preview > footer strong { padding: 6px 9px; color: var(--portal-color, var(--accent-text)); border: 1px solid color-mix(in srgb, var(--portal-color, var(--accent)) 35%, var(--surface)); border-radius: 6px; }
+.portal-preview > footer strong { padding: 6px 9px; color: var(--portal-text, var(--accent-text)); border: 1px solid var(--line); border-radius: 6px; }
 .access-form-wrap { padding: 56px 0; display: flex; justify-content: flex-end; }
 .access-card { width: min(440px, 100%); padding: 34px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 12px 35px rgba(var(--shadow-rgb), calc(.07 * var(--shadow-k))); }
 .access-card-label { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-text); font-size: 12px; font-weight: 600; }
-.portal-access .access-card-label { color: var(--portal-color, var(--accent-text)); }
+.portal-access .access-card-label { color: var(--portal-text, var(--accent-text)); }
 .access-card > h2 { margin: 14px 0 8px; font-size: 26px; font-weight: 600; letter-spacing: -.5px; line-height: 1.2; overflow-wrap: anywhere; }
 .access-card > p { margin-bottom: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
 .access-card .auth-tabs { margin-top: 24px; }
@@ -1525,7 +1543,7 @@ textarea { line-height: 1.55; }
 .access-form label { display: flex; flex-direction: column; gap: 7px; font-size: 13px; }
 .access-form input { font-size: 14px; }
 .access-card.access-form > .portal-client-avatar { margin-bottom: -4px; }
-.portal-access .button.primary { border-color: var(--portal-color, var(--accent)); background: var(--portal-color, var(--accent)); }
+.portal-access .button.primary { color: var(--portal-on, white); border-color: var(--portal-color, var(--accent)); background: var(--portal-color, var(--accent)); }
 .access-security { margin: 18px 0 0 !important; display: flex; align-items: flex-start; justify-content: center; gap: 6px; color: var(--subtle) !important; font-size: 12px !important; line-height: 1.45; }
 .access-security svg { flex: 0 0 auto; margin-top: 1px; }
 
@@ -1533,6 +1551,7 @@ textarea { line-height: 1.55; }
   .access-layout { width: min(760px, calc(100% - 44px)); grid-template-columns: 1fr; gap: 0; }
   .access-intro { padding-bottom: 22px; }
   .access-intro > h1 { font-size: 32px; }
+  .portal-access .access-intro > h1 { font-size: clamp(24px, calc(800px / var(--title-chars, 16)), 32px); }
   .access-form-wrap { padding-top: 22px; justify-content: flex-start; }
   .access-card { max-width: 520px; }
 }
@@ -1790,10 +1809,9 @@ input:focus, textarea:focus, select:focus, .phone-input:focus-within { border-co
 .access-brand strong { color: var(--accent-text); font-size: 16px; }
 .preview-logo, .preview-icon { color: var(--accent-text); background: var(--accent-soft); }
 .access-card-label { color: var(--green-text); }
-.portal-access .access-card-label { color: var(--portal-color, var(--accent-text)); }
-.portal-access .button.primary { border-color: var(--portal-color, var(--accent)); background: var(--portal-color, var(--accent)); }
-.portal-brand span, .portal-brand img { background: var(--portal-color, var(--accent)); }
-.portal-preview > footer strong { color: var(--portal-color, var(--accent-text)); }
+.portal-access .access-card-label { color: var(--portal-text, var(--accent-text)); }
+.portal-access .button.primary { color: var(--portal-on, white); border-color: var(--portal-color, var(--accent)); background: var(--portal-color, var(--accent)); }
+.portal-preview > footer strong { color: var(--portal-text, var(--accent-text)); }
 
 
 /* Agent creation wizard (Fase 1). Built on the existing design tokens. */
@@ -2274,7 +2292,6 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .portal-nav .sidebar-prefs { margin-top: auto; }
 .portal-nav .sidebar-prefs + button { margin-top: 8px; }
 .portal-nav .pref-row > div button { width: auto; }
-.portal-nav .pref-row > div button.active { color: var(--portal-color, var(--accent-text)); }
 
 /* Settings: the same rows, at page scale, one under the other. */
 .pref-list { display: flex; flex-direction: column; }
@@ -2525,15 +2542,17 @@ html[data-theme-transition], html[data-theme-transition] *, html[data-theme-tran
 /* Dark theme: the chat thread as its own surface. Automatic inversion flattens
    a conversation, so the message area sinks to the canvas and bubbles read as
    raised objects on it: incoming on the third surface, outgoing on the accent
-   (agency) or the portal's brand color, AI replies in the portal on a brand
-   tint strong enough to separate from the page. Activity lines, quotes and
-   the audio player follow the same layering. */
+   (agency and portal alike), AI replies in the portal on a tint of it strong
+   enough to separate from the page. Activity lines, quotes and the audio
+   player follow the same layering. */
 :root[data-theme="dark"] .messages, :root[data-theme="dark"] .inbox-messages, :root[data-theme="dark"] .portal-messages { background: var(--canvas); }
 :root[data-theme="dark"] .messages > .empty-state { background: transparent; }
 :root[data-theme="dark"] .bubble, :root[data-theme="dark"] .thinking, :root[data-theme="dark"] .inbox-message p, :root[data-theme="dark"] .portal-messages p { background: var(--surface-3); }
 :root[data-theme="dark"] .message-row.user .bubble, :root[data-theme="dark"] .inbox-message.mine p { background: var(--accent); }
-:root[data-theme="dark"] .portal-messages article.mine p { background: var(--portal-color); }
-:root[data-theme="dark"] .portal-messages article.mine.ai p { color: var(--ink); background: color-mix(in srgb, var(--portal-color) 28%, var(--surface-3)); }
+:root[data-theme="dark"] .portal-messages article.mine p { background: var(--accent); }
+:root[data-theme="dark"] .portal-messages article.mine.ai p { color: var(--ink); background: color-mix(in srgb, var(--accent) 28%, var(--surface-3)); }
+/* A dark mark would vanish on the dark page, so logos sit on a light tile. */
+:root[data-theme="dark"] .portal-brand img, :root[data-theme="dark"] .portal-access-brand > img, :root[data-theme="dark"] .portal-client-avatar img { padding: 3px; background: #ffffff; }
 :root[data-theme="dark"] .activity-line { color: var(--muted); background: var(--surface-2); border: 1px solid var(--line-soft); }
 :root[data-theme="dark"] .audio-bubble, :root[data-theme="dark"] .attachment-file { border-color: var(--accent-line); background: var(--accent-soft); }
 :root[data-theme="dark"] .audio-wave i { background: var(--accent-line); }
