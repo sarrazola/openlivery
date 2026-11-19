@@ -442,8 +442,9 @@ const en = {
     online: "Available",
     away: "Away",
     hint: "While away, new conversations are not routed to you.",
-    setAway: "Set yourself as away: new conversations will not be routed to you",
-    setOnline: "Set yourself as available: new conversations can be routed to you",
+    confirmAwayTitle: "Set yourself as away?",
+    confirmAwayCopy: "While you are away, your teams do not assign you new conversations: they go to whoever is available, and you keep your turn for when you are back.",
+    confirmAwayKeep: "The conversations you already have stay with you, and you can keep answering them.",
   },
   inbox: {
     nav: {
@@ -1030,9 +1031,10 @@ const es: typeof en = {
   availability: {
     online: "Disponible",
     away: "Ausente",
-    setAway: "Ponerte como ausente: no te llegarán conversaciones nuevas",
-    setOnline: "Ponerte como disponible: podrán llegarte conversaciones nuevas",
     hint: "Mientras estés ausente no se te asignan conversaciones nuevas.",
+    confirmAwayTitle: "¿Ponerte como ausente?",
+    confirmAwayCopy: "Mientras estés ausente, tus equipos no te asignan conversaciones nuevas: van a quien esté disponible, y conservas tu turno para cuando vuelvas.",
+    confirmAwayKeep: "Las conversaciones que ya tienes siguen contigo y puedes seguir respondiéndolas.",
   },
   inbox: {
     nav: {

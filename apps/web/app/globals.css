@@ -2344,13 +2344,17 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .portal-nav-foot .sidebar-foot { padding: 0; border-top: 0; }
 /* The portal nav is narrower than the agency's: the menu floats wider than it. */
 .portal-nav-foot .user-menu { right: auto; width: 280px; }
-.user-menu-toggle { width: 100%; color: inherit; border: 0; border-radius: 8px; background: transparent; font: inherit; text-align: left; cursor: pointer; transition: background .15s ease; }
-.user-menu-toggle:hover:not(:disabled) { background: var(--surface-3); }
-.user-menu-toggle:disabled { cursor: default; opacity: .55; }
+/* A toggle row is turned by its switch alone; the label is only a label. */
+.user-menu-toggle { width: 100%; border-radius: 8px; }
 .user-menu-toggle > span:first-child { white-space: normal; line-height: 1.25; }
 .user-menu-row > span svg.availability-icon.online { color: var(--green); }
-.user-menu-hint { padding: 0 8px 8px 35px; color: var(--subtle); font-size: 12px; line-height: 1.35; }
-.menu-switch { flex: 0 0 auto; position: relative; width: 34px; height: 20px; border-radius: 999px; background: var(--surface-5); transition: background .18s ease; }
+.user-menu-info { display: inline-grid; place-items: center; margin-left: -6px; padding: 2px; color: var(--faint); border: 0; border-radius: 50%; background: none; cursor: pointer; }
+.user-menu-info:hover { color: var(--muted); }
+.user-menu-row > span .user-menu-info svg { color: inherit; }
+.menu-switch { flex: 0 0 auto; position: relative; width: 34px; height: 20px; padding: 0; border: 0; border-radius: 999px; background: var(--surface-5); cursor: pointer; transition: background .18s ease; }
+.menu-switch:disabled, .menu-switch.blocked { opacity: .55; }
+.menu-switch:disabled { cursor: default; }
+.menu-switch:focus-visible { outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .25); }
 .menu-switch b { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: white; box-shadow: 0 1px 2px rgba(var(--shadow-rgb), calc(.25 * var(--shadow-k))); transition: transform .18s ease; }
 .menu-switch.on { background: var(--green); }
 .menu-switch.on b { transform: translateX(14px); }
