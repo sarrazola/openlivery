@@ -19,14 +19,15 @@ type AccountProps = {
 };
 
 /** The portal person's own menu, at the foot of the side nav: the agency's
- * menu (language, appearance, sign out) plus whether conversations are routed
- * to them, and browser notifications when the server can send them. */
+ * menu (language, appearance, sign out) plus browser notifications when the
+ * server can send them and whether conversations are routed to them. The two
+ * switches sit together, below the two pickers. */
 export function PortalAccountMenu({ slug, name, email, availability, onAvailability, onLogout }: AccountProps) {
   const away = useAwayConfirm(availability, onAvailability);
   return <>
-    <UserMenu name={name} detail={email} status={availability} onLogout={onLogout}
-      top={availability && <AvailabilityRow availability={availability} onToggle={away.toggle} />}>
+    <UserMenu name={name} detail={email} status={availability} onLogout={onLogout}>
       <NotificationsRow slug={slug} />
+      {availability && <AvailabilityRow availability={availability} onToggle={away.toggle} />}
     </UserMenu>
     {away.modal}
   </>;
@@ -38,8 +39,9 @@ export function PortalAccountPanel({ slug, name, email, availability, onAvailabi
   const away = useAwayConfirm(availability, onAvailability);
   return <div className="user-menu inline">
     <div className="user-menu-head"><strong>{name}</strong>{email && <span>{email}</span>}</div>
-    <UserMenuItems onLogout={onLogout} top={availability && <AvailabilityRow availability={availability} onToggle={away.toggle} />}>
+    <UserMenuItems onLogout={onLogout}>
       <NotificationsRow slug={slug} />
+      {availability && <AvailabilityRow availability={availability} onToggle={away.toggle} />}
     </UserMenuItems>
     {away.modal}
   </div>;
