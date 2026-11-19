@@ -24,12 +24,12 @@ const en = {
     privateCredentialsCopy: "We store them encrypted and never show them again. Only your agents use them.",
   },
   preferences: {
-    notifications: "Browser notifications",
-    notificationsHint: "New messages and assignments reach this browser even with the portal closed.",
+    notifications: "Notifications",
     notificationsUnsupported: "This browser cannot show notifications.",
     notificationsDenied: "Blocked by the browser. Allow notifications for this site to turn them on.",
+    notificationsDeniedHow: "Open the lock next to the site's address, allow notifications, and turn the switch on again.",
+    notificationsBlockedTitle: "Notifications can't be turned on",
     notificationsFailed: "Notifications could not be turned on.",
-    notificationsOn: "Notifications are on for this browser.",
   },
   providers: {
     heading: "AI provider key",
@@ -83,12 +83,12 @@ const es: typeof en = {
     privateCredentialsCopy: "Las guardamos cifradas y no volvemos a mostrarlas. Solo las usan tus agentes.",
   },
   preferences: {
-    notifications: "Notificaciones del navegador",
-    notificationsHint: "Los mensajes nuevos y las asignaciones llegan a este navegador aunque el portal esté cerrado.",
+    notifications: "Notificaciones",
     notificationsUnsupported: "Este navegador no puede mostrar notificaciones.",
     notificationsDenied: "Bloqueadas por el navegador. Permite las notificaciones de este sitio para activarlas.",
+    notificationsDeniedHow: "Abre el candado junto a la dirección del sitio, permite las notificaciones y vuelve a encender el switch.",
+    notificationsBlockedTitle: "No se pueden activar las notificaciones",
     notificationsFailed: "No se pudieron activar las notificaciones.",
-    notificationsOn: "Las notificaciones están activas en este navegador.",
   },
   providers: {
     heading: "Clave del proveedor de IA",
