@@ -579,6 +579,50 @@ def test_two_attachments_are_preserved_on_one_incoming_message_and_not_duplicate
     whatsapp_inbound.run_completion.assert_not_awaited()
 
 
+def test_shared_posts_reels_and_story_mentions_keep_their_media(authenticated_client, monkeypatch):
+    resource = resources(authenticated_client)
+    download = AsyncMock(side_effect=[(b"mention", "video/mp4"), (b"post", "image/jpeg"), (b"unnamed", "video/mp4"),
+                                      (b"story", "image/jpeg"), HTTPException(status_code=502, detail="expired")])
+    monkeypatch.setattr(social_inbound, "fetch_inbound_media", download)
+    cdn = "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1"
+    page = "https://www.instagram.com/reel/abc/"
+
+    def shared(mid, kind, payload, **options):
+        item = event(resource, mid, text=options.pop("text", ""), **options)
+        item["message"]["attachments"] = [{"type": kind, "payload": payload}]
+        return item
+
+    mention = shared("story-mention", "story_mention", {"url": cdn})
+    sent = shared("shared-post", "ig_post", {"ig_post_media_id": "2", "title": "Opening  night\nrecap", "url": cdn}, echo=True)
+    unnamed = shared("unnamed-kind", "unsupported_type", {"url": cdn})
+    # A reply to a story may carry nothing but the story.
+    reply = event(resource, "story-reply", text="")
+    reply["message"]["reply_to"] = {"story": {"url": cdn, "id": "3"}}
+    expired = shared("expired-mention", "story_mention", {"url": cdn})
+    # A reel arrives as a link to its page, which is not a file to download.
+    reel = shared("shared-reel", "ig_reel", {"reel_video_id": "1", "title": "Recap", "url": page}, text="Look at this")
+    card = shared("empty-card", "template", {"generic": {"elements": []}})
+    with TestingSession() as db:
+        channel = db.get(SocialChannel, resource.channel_id)
+        channel.agent.image_enabled = False
+        db.commit()
+        for item in (mention, sent, unnamed, reply, expired, reel, card):
+            asyncio.run(social_inbound.process_event(db, channel, item))
+        stored = {item.external_message_id: item for item in db.scalars(select(Message).where(Message.external_message_id.is_not(None)))}
+        kept = {mid: [(part.kind, part.data) for part in db.scalars(
+            select(MessageAttachment).where(MessageAttachment.message_id == message.id))] for mid, message in stored.items()}
+        assert (stored["story-mention"].content, kept["story-mention"]) == ("[Story mention]", [("video", b"mention")])
+        assert (stored["shared-post"].content, kept["shared-post"]) == ("[Shared post] Opening night recap", [("image", b"post")])
+        assert stored["shared-post"].role == "assistant"
+        assert (stored["unnamed-kind"].content, kept["unnamed-kind"]) == ("", [("video", b"unnamed")])
+        assert (stored["story-reply"].content, kept["story-reply"]) == ("[Reply to a story]", [("image", b"story")])
+        # Media that expired leaves the label, not a second warning.
+        assert (stored["expired-mention"].content, kept["expired-mention"]) == ("[Story mention]", [])
+        assert (stored["shared-reel"].content, kept["shared-reel"]) == (f"[Shared reel] Recap {page}\nLook at this", [])
+        assert (stored["empty-card"].content, kept["empty-card"]) == ("[Shared content is not available through this channel]", [])
+    assert download.await_count == 5
+
+
 def test_inbound_after_token_revocation_remains_visible_and_needs_a_person(authenticated_client):
     resource = resources(authenticated_client)
     with TestingSession() as db:
