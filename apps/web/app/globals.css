@@ -2555,8 +2555,6 @@ html[data-theme-transition], html[data-theme-transition] *, html[data-theme-tran
 :root[data-theme="dark"] .message-row.user .bubble, :root[data-theme="dark"] .inbox-message.mine p { background: var(--accent); }
 :root[data-theme="dark"] .portal-messages article.mine p { background: var(--accent); }
 :root[data-theme="dark"] .portal-messages article.mine.ai p { color: var(--ink); background: color-mix(in srgb, var(--accent) 28%, var(--surface-3)); }
-/* A dark mark would vanish on the dark page, so logos sit on a light tile. */
-:root[data-theme="dark"] .portal-brand img, :root[data-theme="dark"] .portal-access-brand > img, :root[data-theme="dark"] .portal-client-avatar img { padding: 3px; background: #ffffff; }
 :root[data-theme="dark"] .activity-line { color: var(--muted); background: var(--surface-2); border: 1px solid var(--line-soft); }
 :root[data-theme="dark"] .audio-bubble, :root[data-theme="dark"] .attachment-file { border-color: var(--accent-line); background: var(--accent-soft); }
 :root[data-theme="dark"] .audio-wave i { background: var(--accent-line); }

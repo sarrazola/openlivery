@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 from fastapi import HTTPException
 from sqlalchemy import exists, or_, select
@@ -13,12 +14,34 @@ from sqlalchemy.orm import Session, aliased
 from ..models import ContactIdentity, Conversation, Message, SocialChannel, SocialOutbox, SocialWebhookEvent, new_uuid, now_utc
 from ..security import decrypt_secret
 from . import social_graph
-from .attachments import store_attachment
+from .attachments import attachment_kind, store_attachment
 from .conversation_state import set_mode
 from .social_media import fetch_inbound_media
 from .whatsapp_inbound import InboundMessage, process_inbound, reply_delay_seconds
 
 logger = logging.getLogger(__name__)
+
+# Content shared from inside the app arrives as its own attachment type, with
+# the media behind the same kind of URL a plain picture carries.
+REPLIED_STORY = "replied_story"
+SHARED_CONTENT = {
+    "share": "Shared post", "ig_post": "Shared post",
+    "reel": "Shared reel", "ig_reel": "Shared reel",
+    "story": "Shared story", "ig_story": "Shared story",
+    "story_mention": "Story mention",
+    REPLIED_STORY: "Reply to a story",
+}
+UNAVAILABLE = "[Shared content is not available through this channel]"
+PAGE_HOSTS = {"instagram.com", "www.instagram.com", "facebook.com", "www.facebook.com", "m.facebook.com"}
+
+
+def _page_link(url: str) -> str | None:
+    """A permalink to open in the app, as opposed to a media file on the CDN."""
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+    return url if parsed.scheme == "https" and (parsed.hostname or "").lower() in PAGE_HOSTS and len(url) <= 500 else None
 
 
 def event_time(value) -> datetime | None:
@@ -233,32 +256,50 @@ async def process_event(db: Session, channel: SocialChannel, event: dict) -> Non
             raise WaitForDelivery()
     text = str(message.get("text") or (event.get("postback") or {}).get("title") or "")
     attachments = message.get("attachments") or []
+    reply_to = message.get("reply_to") if isinstance(message.get("reply_to"), dict) else {}
+    if isinstance(reply_to.get("story"), dict):
+        # A reply to a story carries the story itself, sometimes with no text.
+        attachments = [{"type": REPLIED_STORY, "payload": reply_to["story"]}, *attachments]
     fetched = []
-    warnings = []
+    labels, warnings = [], []
     total_bytes = 0
     for media in attachments[:10]:
         if not isinstance(media, dict):
             continue
         media_kind = media.get("type")
-        url = str((media.get("payload") or {}).get("url") or "")
-        if media_kind not in ("image", "audio", "video", "file") or not url:
-            warnings.append("[Shared content is not available through this channel]")
+        payload = media.get("payload") if isinstance(media.get("payload"), dict) else {}
+        url = str(payload.get("url") or "")
+        label = SHARED_CONTENT.get(media_kind)
+        direct = media_kind in ("image", "audio", "video", "file")
+        link = _page_link(url)
+        if label or link:
+            # The label stays even when the media is kept, so a shared post
+            # is not read as a picture the sender took.
+            title = " ".join(str(payload.get("title") or "").split())[:280]
+            labels.append(" ".join(part for part in (f"[{label or 'Shared content'}]", title, link) if part))
+        if link:
+            continue
+        if not url:
+            if not label:
+                warnings.append(UNAVAILABLE)
             continue
         try:
+            # Types the provider does not name still point at a media file.
             blob, blob_mime = await fetch_inbound_media(url)
             if total_bytes + len(blob) > 20 * 1024 * 1024:
                 warnings.append("[Attachment unavailable: the message exceeds the 20 MB total limit]")
                 continue
             total_bytes += len(blob)
-            fetched.append((blob, blob_mime, media_kind))
+            fetched.append((blob, blob_mime, media_kind if direct else attachment_kind(blob_mime)))
         except Exception:
-            warnings.append("[Attachment unavailable]")
+            # Shared content whose media expired or is too large keeps its label.
+            if not label:
+                warnings.append("[Attachment unavailable]" if direct else UNAVAILABLE)
     if len(attachments) > 10:
         warnings.append(f"[{len(attachments) - 10} additional attachments exceed the 10-file limit]")
     if message.get("is_unsupported") and not attachments:
-        warnings.append("[Shared content is not available through this channel]")
-    if warnings:
-        text = "\n".join([text, *warnings]).strip()
+        warnings.append(UNAVAILABLE)
+    text = "\n".join(part for part in (*labels, text, *warnings) if part)
     data, mime, kind = fetched[0] if fetched else (None, None, None)
     if echo:
         if not conversation:
