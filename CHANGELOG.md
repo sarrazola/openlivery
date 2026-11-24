@@ -54,6 +54,7 @@ Docker stack; run `alembic upgrade head` on local setups).
 - Document the host tools required for the Docker quickstart.
 
 ### Changed
+- The agent's settings save with one button. Contact details, escalation rules (or the call transfer of a voice agent) and follow-up and closing no longer carry a save button of their own: the bar at the foot of the page stores every section that changed and says when there are unsaved changes. The main button used to leave those three sections unsaved. A section that cannot be saved shows its own error and the rest is stored; leaving the page with unsaved changes asks first.
 - The closing message an agent writes on inactivity picks up what the conversation was about and how to continue, instead of announcing that the conversation is being closed in the same words every time.
 - Language and appearance moved from Settings to an account menu at the foot of the sidebar, with compact language codes and theme icons. A stored key's card replaces and removes it with icon buttons, each asking to confirm, and pausing or resuming a provider key asks too.
 - New client goes straight on to its first agent, chat or voice, from one create button.

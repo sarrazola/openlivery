@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, AudioLines, Bot, CheckCircle2, FileText, ImageIcon, Mic, LoaderCircle, MessageSquareText, Pencil, Plug, Plus, Power, PowerOff, RefreshCw, Save, Settings2, Sparkles, Trash2, UploadCloud, X, XCircle } from "lucide-react";
+import { ArrowLeft, AudioLines, Bot, CheckCircle2, CircleAlert, FileText, ImageIcon, Mic, LoaderCircle, MessageSquareText, Pencil, Plug, Plus, Power, PowerOff, RefreshCw, Save, Settings2, Sparkles, Trash2, UploadCloud, X, XCircle } from "lucide-react";
 import { SectionTabs } from "@/components/section-tabs";
 import { api, apiUrl, messageFrom } from "@/lib/api";
 import { currentSections, showSections } from "@/lib/section-path";
@@ -23,6 +23,7 @@ import { FollowUpEditor } from "@/components/follow-ups";
 import { AgentVoiceTab } from "@/components/agent-voice-tab";
 import { VoiceModelPicker } from "@/components/voice-model-picker";
 import { VoiceTransfer } from "@/components/voice-transfer";
+import type { SectionHandle } from "@/lib/unsaved";
 import { AgentScheduleEditor, onDutyNow } from "@/components/agent-schedule";
 import { Combobox } from "@/components/combobox";
 import { DEFAULT_PROVIDER, DEFAULT_AUDIO_MODEL, DEFAULT_EMBEDDING_MODEL, DEFAULT_IMAGE_MODEL, modelsFor, modelOptionsFor, estimateTokens, modelContextWindow, AUDIO_MODELS, EMBEDDING_MODELS, IMAGE_MODELS } from "@/lib/providers";
@@ -79,9 +80,15 @@ export default function AgentDetailPage() {
 
   const load = async () => {
     const [a, d, q, tl, m] = await Promise.all([api<Agent>(`/agents/${id}`), api<KnowledgeDocument[]>(`/agents/${id}/documents`), api<QAPair[]>(`/agents/${id}/qa`), api<AgentTool[]>(`/agents/${id}/tools`), api<MediaAsset[]>(`/agents/${id}/media`)]);
-    setAgent(a); setName(a.name); setDocuments(d); setQaPairs(q); setTools(tl); setMedia(m);
+    adopt(a); setDocuments(d); setQaPairs(q); setTools(tl); setMedia(m);
     // What the model receives on every message, measured on the real prompt.
     api<{ prompt: string }>(`/agents/${id}/prompt`).then((r) => setPromptTokens(estimateTokens(r.prompt))).catch(() => setPromptTokens(null));
+  };
+  /** Take the agent as the server holds it, on load and after each save: a
+   * value the server trimmed or clamped then matches the field showing it,
+   * and the page does not go on reporting it as an unsaved change. */
+  const adopt = (a: Agent) => {
+    setAgent(a); setName(a.name);
     setProvider(a.provider); setModel(a.model);
     setTemperature(a.temperature); setMaxTokens(a.max_tokens); setMemoryLimit(a.memory_limit); setPhoneHandoverMinutes(a.phone_handover_minutes); setReplyDelayMin(a.reply_delay_min_seconds); setReplyDelayMax(a.reply_delay_max_seconds);
     setImageEnabled(a.image_enabled); setImageModel(a.image_model || DEFAULT_IMAGE_MODEL);
@@ -143,7 +150,29 @@ export default function AgentDetailPage() {
     // The bare agent address names its first tab, like every other one.
     if (!section) showSections(`/agents/${id}`, [wanted]);
   }, [id]);
-  const changeTab = (next: Tab) => { setTab(next); showSections(`/agents/${id}`, [next]); };
+  const changeTab = (next: Tab) => { setTab(next); setTouched(false); showSections(`/agents/${id}`, [next]); };
+
+  // One button saves the whole tab. The agent's own fields go in one request;
+  // contact details, escalation (or the call transfer) and follow-ups each
+  // keep their endpoint and are sent only when they changed.
+  const captureRef = useRef<SectionHandle>(null);
+  const routingRef = useRef<SectionHandle>(null);
+  const followUpRef = useRef<SectionHandle>(null);
+  const [sectionDirty, setSectionDirty] = useState({ capture: false, routing: false, followUps: false });
+  const markSection = (key: keyof typeof sectionDirty, dirty: boolean) => setSectionDirty((current) => (current[key] === dirty ? current : { ...current, [key]: dirty }));
+  // The text fields are not held in state, so typing in one is noted here;
+  // the rest is compared with the agent as it was last saved.
+  const [touched, setTouched] = useState(false);
+  const fieldsOf = (values: unknown[]) => JSON.stringify(values);
+  const unsaved = Boolean(agent) && (touched || sectionDirty.capture || sectionDirty.routing || sectionDirty.followUps
+    || fieldsOf([name, provider, model, temperature, maxTokens, memoryLimit, phoneHandoverMinutes, replyDelayMin, replyDelayMax, imageEnabled, imageModel, audioEnabled, audioModel, schedule.enabled, schedule.slots])
+      !== fieldsOf([agent!.name, agent!.provider, agent!.model, agent!.temperature, agent!.max_tokens, agent!.memory_limit, agent!.phone_handover_minutes, agent!.reply_delay_min_seconds, agent!.reply_delay_max_seconds, agent!.image_enabled, agent!.image_model || DEFAULT_IMAGE_MODEL, agent!.audio_enabled, agent!.audio_model || DEFAULT_AUDIO_MODEL, agent!.schedule_enabled, agent!.schedule_slots]));
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
   // The prompt preview is what the model receives; it changes with every save,
   // so it is fetched fresh each time the tab is opened.
 
@@ -151,12 +180,19 @@ export default function AgentDetailPage() {
     event.preventDefault(); setBusy(true);
     const form = new FormData(event.currentTarget);
     const payload = { name, instructions: form.get("instructions"), personality: form.get("personality"), brief_summary: form.get("brief_summary"), brief_products: form.get("brief_products"), brief_audience: form.get("brief_audience"), brief_policies: form.get("brief_policies"), brief_dos: form.get("brief_dos"), brief_donts: form.get("brief_donts"), provider, model, prompt_language: lang, temperature, max_tokens: maxTokens, memory_limit: memoryLimit, phone_handover_minutes: phoneHandoverMinutes, reply_delay_min_seconds: replyDelayMin, reply_delay_max_seconds: replyDelayMax, image_enabled: imageEnabled, image_model: imageModel, audio_enabled: audioEnabled, audio_model: audioModel, schedule_enabled: schedule.enabled, schedule_slots: schedule.slots };
+    let saved = true;
     try {
-      setAgent(await api<Agent>(`/agents/${id}`, { method: "PATCH", body: JSON.stringify(payload) }));
-      api<{ prompt: string }>(`/agents/${id}/prompt`).then((r) => setPromptTokens(estimateTokens(r.prompt))).catch(() => {});
-      toast.success(t("agents.detail.configSaved"));
-    }
-    catch (err) { toast.error(messageFrom(err)); } finally { setBusy(false); }
+      adopt(await api<Agent>(`/agents/${id}`, { method: "PATCH", body: JSON.stringify(payload) }));
+      setTouched(false);
+    } catch (err) { saved = false; toast.error(messageFrom(err)); }
+    // After the agent itself, so a section that also writes the agent builds
+    // on what was just stored. A section that fails shows its own error.
+    const pending = ([["capture", captureRef], ["routing", routingRef], ["followUps", followUpRef]] as const).filter(([key]) => sectionDirty[key]);
+    const results = await Promise.all(pending.map(([, section]) => section.current?.save() ?? true));
+    if (results.includes(false)) { if (saved) toast.error(t("agents.detail.saveIncomplete")); }
+    else if (saved) toast.success(t("agents.detail.configSaved"));
+    api<{ prompt: string }>(`/agents/${id}/prompt`).then((r) => setPromptTokens(estimateTokens(r.prompt))).catch(() => {});
+    setBusy(false);
   }
 
   const router = useRouter();
@@ -279,7 +315,7 @@ export default function AgentDetailPage() {
       ...(agent.kind === "voice" ? [] : [{ id: "playground" as const, label: t("agents.detail.tabPlayground"), icon: MessageSquareText }]),
     ]} />
 
-    {tab === "basics" && <form className="settings-form" onSubmit={saveConfig}>
+    {tab === "basics" && <form className="settings-form" onSubmit={saveConfig} onInput={() => setTouched(true)}>
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.generalHeading")} <AiHint text={t("aiContext.agentName")} /></h3><p>{t("agents.detail.generalCopy")}</p></div><div className="settings-fields"><div className="form-grid"><label>{t("agents.detail.nameLabel")}<input value={name} required onChange={(e) => setName(e.target.value)} /></label><label>{t("agents.detail.clientLabel")}<input value={agent.client.name} readOnly /></label></div><p className="greeting-preview">{agent.kind === "voice" ? agent.greeting || t("phone.agent.greetingPreviewEmpty") : t("agents.detail.greetingPreview", { name: name.trim() || agent.name, client: agent.client.name })}</p></div></section>
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.briefBusinessHeading")} <AiHint text={t("aiContext.agentBusiness")} /></h3><p>{t("agents.detail.briefBusinessCopy")}</p></div><div className="settings-fields">
         <label>{t("agents.detail.briefSummaryLabel")}<textarea name="brief_summary" rows={2} defaultValue={agent.brief_summary} placeholder={t("agents.detail.briefSummaryPlaceholder")} /></label>
@@ -298,9 +334,9 @@ export default function AgentDetailPage() {
         <span className="field-help">{t("agents.detail.briefRulesHelp")}</span>
         <label>{t("agents.detail.personalityLabel")}<textarea name="personality" rows={3} defaultValue={agent.personality} placeholder={t("agents.detail.personalityPlaceholder")} /></label>
       </div></section>
-      <ContactCaptureEditor agentId={agent.id} clientId={agent.client_id} />
-      {agent.kind === "voice" ? <VoiceTransfer agent={agent} onSaved={setAgent} /> : <EscalationRulesEditor agentId={agent.id} clientId={agent.client_id} />}
-      {agent.kind !== "voice" && <FollowUpEditor agentId={agent.id} />}
+      <ContactCaptureEditor agentId={agent.id} clientId={agent.client_id} ref={captureRef} onDirty={(dirty) => markSection("capture", dirty)} />
+      {agent.kind === "voice" ? <VoiceTransfer agent={agent} onSaved={setAgent} ref={routingRef} onDirty={(dirty) => markSection("routing", dirty)} /> : <EscalationRulesEditor agentId={agent.id} clientId={agent.client_id} ref={routingRef} onDirty={(dirty) => markSection("routing", dirty)} />}
+      {agent.kind !== "voice" && <FollowUpEditor agentId={agent.id} ref={followUpRef} onDirty={(dirty) => markSection("followUps", dirty)} />}
       {agent.kind !== "voice" && <AgentScheduleEditor enabled={schedule.enabled} slots={schedule.slots} timezone={agent.client.timezone} locale={lang} onChange={setSchedule} />}
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.aiModelHeading")}</h3><p>{t("agents.detail.aiModelCopy")}</p></div><div className="settings-fields">
         {agent.kind === "voice" ? <label>{t("agents.detail.modelLabel")}<VoiceModelPicker value={model} onChange={setModel} /></label> : <label>{t("agents.detail.modelLabel")}{(() => { const allowed = narrowModels(modelsFor(provider), available?.chat?.[provider]); const known = modelOptionsFor(provider).filter((item) => allowed.includes(item.id)); const ordered = [...known.filter((item) => item.recommended), ...known.filter((item) => !item.recommended)].map((item) => item.id); const options = [...ordered, ...allowed.filter((id) => !ordered.includes(id))]; const labels = Object.fromEntries(known.map((item) => [item.id, item.label])); const tierOf = (g: string) => g === "fast" ? t("agents.wizard.modelGroupFast") : g === "balanced" ? t("agents.wizard.modelGroupBalanced") : t("agents.wizard.modelGroupCapable"); const tags = Object.fromEntries(known.map((item) => [item.id, item.recommended ? t("agents.wizard.modelBadgeRecommended") : tierOf(item.group)])); return <Combobox value={model} onChange={setModel} options={options} labels={labels} tags={tags} placeholder={t("agents.detail.modelPlaceholder")} allowCustom />; })()}</label>}
@@ -326,7 +362,7 @@ export default function AgentDetailPage() {
         </div>
         </details></>}
       </div></section>
-      <div className="sticky-save"><div className="sticky-left"><button type="button" className="button danger" onClick={() => { setDeleteError(null); setDeleteName(""); setDeleteOpen(true); }}><Trash2 size={16} /> {t("agents.detail.deleteAgent")}</button><span>{t("agents.detail.stickyNote")}</span></div><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} {t("agents.detail.saveConfig")}</button></div>
+      <div className="sticky-save"><div className="sticky-left"><button type="button" className="button danger" onClick={() => { setDeleteError(null); setDeleteName(""); setDeleteOpen(true); }}><Trash2 size={16} /> {t("agents.detail.deleteAgent")}</button>{unsaved ? <span className="sticky-unsaved"><CircleAlert size={15} /> {t("agents.detail.unsavedChanges")}</span> : <span>{t("agents.detail.stickyNote")}</span>}</div><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} {t("agents.detail.saveConfig")}</button></div>
     </form>}
 
 
