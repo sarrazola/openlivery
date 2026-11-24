@@ -192,6 +192,29 @@ def test_media_redirect_cannot_escape_provider_cdn(monkeypatch):
     assert Client.calls == ["https://cdn.fbcdn.net/file"]
 
 
+def test_the_dns_check_says_which_way_it_failed(monkeypatch):
+    class Loop:
+        def __init__(self, answer):
+            self.answer = answer
+        async def getaddrinfo(self, *args, **kwargs):
+            if isinstance(self.answer, Exception):
+                raise self.answer
+            return [(None, None, None, "", (address, 443)) for address in self.answer]
+
+    def check(answer):
+        monkeypatch.setattr(social_media.asyncio, "get_running_loop", lambda: Loop(answer))
+        with pytest.raises(HTTPException) as error:
+            asyncio.run(social_media._public_cdn_address("https://lookaside.fbsbx.com/file"))
+        return error.value.status_code, error.value.detail
+
+    assert check(OSError("no answer")) == (502, "The media host could not be resolved safely (OSError).")
+    assert check(["not-an-address"]) == (502, "The media host could not be resolved safely (ValueError).")
+    assert check(["57.144.252.128", "10.0.0.7"]) == (422, "The media host must resolve to public addresses (got 10.0.0.7).")
+    assert check([]) == (422, "The media host must resolve to public addresses (got none).")
+    monkeypatch.setattr(social_media.asyncio, "get_running_loop", lambda: Loop(["57.144.252.128", "2a03:2880:f37e:80:face:b00c:0:3"]))
+    asyncio.run(social_media._public_cdn_address("https://lookaside.fbsbx.com/file"))
+
+
 def test_media_stream_limit_is_enforced_before_accumulating_extra_chunk(monkeypatch):
     class Response:
         is_redirect = False

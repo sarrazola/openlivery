@@ -38,11 +38,14 @@ async def _public_cdn_address(url: str) -> None:
     try:
         addresses = await asyncio.wait_for(asyncio.get_running_loop().getaddrinfo(
             hostname, 443, type=socket.SOCK_STREAM), timeout=5)
-        safe = addresses and all(ipaddress.ip_address(address[4][0]).is_global for address in addresses)
-    except (OSError, ValueError, asyncio.TimeoutError):
-        raise HTTPException(status_code=502, detail="The media host could not be resolved safely.") from None
-    if not safe:
-        raise HTTPException(status_code=422, detail="The media host must resolve to public addresses.")
+        found = [ipaddress.ip_address(address[4][0]) for address in addresses]
+    except (OSError, ValueError, asyncio.TimeoutError) as exc:
+        # Which of the three it was is the first thing anyone reading the log asks.
+        raise HTTPException(status_code=502, detail=f"The media host could not be resolved safely ({type(exc).__name__}).") from None
+    private = [str(address) for address in found if not address.is_global]
+    if not found or private:
+        raise HTTPException(status_code=422, detail="The media host must resolve to public addresses"
+                            + (f" (got {', '.join(private[:3])})." if private else " (got none)."))
 
 
 async def fetch_inbound_media(url: str) -> tuple[bytes, str]:
