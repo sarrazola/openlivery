@@ -53,6 +53,9 @@ Docker stack; run `alembic upgrade head` on local setups).
 - Preserve manual Inbox takeovers, contact routing and blocked contacts during phone handovers.
 - Document the host tools required for the Docker quickstart.
 
+### Fixed
+- Files sent on Instagram and Messenger were never downloaded where the social worker shares its event loop with long blocking work, so voice notes were not transcribed and pictures were not described. The check that the media host resolves to public addresses ran its DNS lookup under a 5 second timer of the event loop; with the loop busy past it, the timer fired on an answer that had arrived in milliseconds. The lookup is no longer timed by the loop: the resolver bounds itself.
+
 ### Changed
 - A file a contact sends on Instagram or Messenger is downloaded again when the first try fails: the event goes back to the queue up to three times, a few seconds apart, before the message is kept as "[Attachment unavailable]". One failed download used to cost the message its file for good, so a voice note that hit it was never transcribed. A file over the size limit or on a host that is not the provider's is not tried again. Each failure leaves a warning in the log with the file's kind, the host and the reason (the HTTP status the host answered with, or the error); the URL is never logged, since it is signed.
 - The agent's settings save with one button. Contact details, escalation rules (or the call transfer of a voice agent) and follow-up and closing no longer carry a save button of their own: the bar at the foot of the page stores every section that changed and says when there are unsaved changes. The main button used to leave those three sections unsaved. A section that cannot be saved shows its own error and the rest is stored; leaving the page with unsaved changes asks first.

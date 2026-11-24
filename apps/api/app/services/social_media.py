@@ -36,11 +36,15 @@ async def _public_cdn_address(url: str) -> None:
     """CDN-owned hostnames must still resolve only to public network addresses."""
     hostname = urlparse(url).hostname
     try:
-        addresses = await asyncio.wait_for(asyncio.get_running_loop().getaddrinfo(
-            hostname, 443, type=socket.SOCK_STREAM), timeout=5)
+        # No deadline of the event loop's around the lookup: the resolver bounds
+        # itself. A timer here measures the loop, not the lookup. Where the loop
+        # is kept busy past it by other work (a worker that walks many accounts
+        # with blocking database calls), the answer that arrived in milliseconds
+        # is discarded and every file is reported as unreachable.
+        addresses = await asyncio.get_running_loop().getaddrinfo(hostname, 443, type=socket.SOCK_STREAM)
         found = [ipaddress.ip_address(address[4][0]) for address in addresses]
-    except (OSError, ValueError, asyncio.TimeoutError) as exc:
-        # Which of the three it was is the first thing anyone reading the log asks.
+    except (OSError, ValueError) as exc:
+        # Which of the two it was is the first thing anyone reading the log asks.
         raise HTTPException(status_code=502, detail=f"The media host could not be resolved safely ({type(exc).__name__}).") from None
     private = [str(address) for address in found if not address.is_global]
     if not found or private:
