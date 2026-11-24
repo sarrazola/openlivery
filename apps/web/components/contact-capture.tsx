@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import Link from "next/link";
 import { AtSign, CaseSensitive, ChevronDown, Hash, LoaderCircle, Phone, type LucideIcon } from "lucide-react";
 import { Alert } from "@/components/ui";
 import { AiHint } from "@/components/ai-hint";
 import { api, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
+import { useUnsaved, type SectionHandle } from "@/lib/unsaved";
 import type { CaptureConfig, ContactField } from "@/types";
 
 /** The channel groups a field can be limited to. Both WhatsApp lines are one
@@ -21,8 +22,8 @@ const KIND_ICONS: Record<string, LucideIcon> = { text: CaseSensitive, number: Ha
 /** Which of the client's contact fields this agent asks the customer for,
  * and on which channels. What a field is and when to ask for it lives on the
  * field itself (the client's Fields tab), so every agent asks the same way.
- * The list is saved as a whole with one button, like the escalation rules. */
-export function ContactCaptureEditor({ agentId, clientId }: { agentId: string; clientId: string }) {
+ * The list is saved as a whole by the page's save button, through `ref`. */
+export function ContactCaptureEditor({ agentId, clientId, ref, onDirty }: { agentId: string; clientId: string; ref?: Ref<SectionHandle>; onDirty?: (dirty: boolean) => void }) {
   const t = useT();
   const [enabled, setEnabled] = useState(false);
   const [available, setAvailable] = useState<ContactField[]>([]);
@@ -32,9 +33,8 @@ export function ContactCaptureEditor({ agentId, clientId }: { agentId: string; c
   const [open, setOpen] = useState<string | null>(null);
   const [channels, setChannels] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
+  const section = useRef<HTMLElement>(null);
 
   const apply = (config: CaptureConfig) => {
     setEnabled(config.enabled);
@@ -73,18 +73,26 @@ export function ContactCaptureEditor({ agentId, clientId }: { agentId: string; c
     return { ...current, [key]: list.includes(channel) ? list.filter((item) => item !== channel) : [...list, channel] };
   });
 
+  const fields = available.filter((field) => field.key in picked).map((field) => ({ field_key: field.key, channels: picked[field.key] }));
+  // Channels compare as a set: switching one off and on again is no change.
+  const { markSaved } = useUnsaved(JSON.stringify({ enabled, fields: fields.map((row) => ({ ...row, channels: [...row.channels].sort() })) }), !loading, onDirty);
+
   async function save() {
-    setBusy(true); setError(""); setSaved(false);
+    setError("");
     try {
-      const fields = available.filter((field) => field.key in picked).map((field) => ({ field_key: field.key, channels: picked[field.key] }));
       apply(await api<CaptureConfig>(`/agents/${agentId}/capture`, { method: "PUT", body: JSON.stringify({ enabled, fields }) }));
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+      markSaved();
+      return true;
+    } catch (err) {
+      setError(messageFrom(err));
+      section.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return false;
+    }
   }
+  useImperativeHandle(ref, () => ({ save }));
 
   return (
-    <section className="settings-section">
+    <section className="settings-section" ref={section}>
       <div className="settings-copy">
         <h3>{t("agents.capture.heading")} <AiHint text={t("agents.capture.aiHint")} /></h3>
         <p>{t("agents.capture.copy")}</p>
@@ -125,9 +133,6 @@ export function ContactCaptureEditor({ agentId, clientId }: { agentId: string; c
             <p className="field-help"><Link href={`/clients/${clientId}?tab=fields`} className="text-button">{t("agents.capture.manageFields")}</Link></p>
           </>}
           {error && <Alert>{error}</Alert>}
-          <div className="form-footer escalation-footer">
-            <span className="escalation-save">{saved && <span className="escalation-saved">{t("agents.escalation.savedNote")}</span>}<button type="button" className="button primary" onClick={save} disabled={busy}>{busy ? <LoaderCircle className="spin" size={16} /> : t("agents.capture.save")}</button></span>
-          </div>
         </>}
       </div>
     </section>

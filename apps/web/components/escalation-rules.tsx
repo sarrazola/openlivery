@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { tagStyle } from "@/lib/tags";
 import { ArrowDown, ArrowUp, ChevronDown, LoaderCircle, Plus, Trash2, X } from "lucide-react";
 import { Alert } from "@/components/ui";
 import { api, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
+import { useUnsaved, type SectionHandle } from "@/lib/unsaved";
 
 type Rule = {
   condition: string;
@@ -25,8 +26,9 @@ type TagRow = { id: string; name: string; color: string; contact_count: number; 
 
 /** The bot's escalation rules: WHEN in the business's words (the model reads
  * it contextually), WHERE picked from real teams and people - never guessed.
- * The list is edited as a whole and saved with one button. */
-export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; clientId: string }) {
+ * The list is edited as a whole and saved by the page's save button, through
+ * `ref`. */
+export function EscalationRulesEditor({ agentId, clientId, ref, onDirty }: { agentId: string; clientId: string; ref?: Ref<SectionHandle>; onDirty?: (dirty: boolean) => void }) {
   const t = useT();
   const [rules, setRules] = useState<Rule[]>([]);
   const [builtinOn, setBuiltinOn] = useState(true);
@@ -37,9 +39,8 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
   const [newTagId, setNewTagId] = useState("");
   const [newDest, setNewDest] = useState("");
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
+  const section = useRef<HTMLElement>(null);
   // Each step folds to one line with a summary; one is open at a time.
   const [openStep, setOpenStep] = useState<1 | 2 | 3 | null>(null);
   const toggleStep = (step: 1 | 2 | 3) => setOpenStep((current) => (current === step ? null : step));
@@ -76,16 +77,21 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
       return next;
     });
 
+  // A rule with no condition yet is not sent, so it is not a change either.
+  const ruleRows = rules
+    .filter((rule) => rule.condition.trim())
+    .map((rule) => ({ condition: rule.condition.trim(), team_id: rule.team_id, assignee_id: rule.assignee_id, is_active: rule.is_active }));
+  const { markSaved } = useUnsaved(JSON.stringify({ ruleRows, builtinOn, defaultDest }), !loading, onDirty);
+  const reveal = () => section.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+
   async function save() {
-    setBusy(true); setError(""); setSaved(false);
+    setError("");
     try {
-      const ruleRows = rules
-        .filter((rule) => rule.condition.trim())
-        .map((rule) => ({ condition: rule.condition.trim(), team_id: rule.team_id, assignee_id: rule.assignee_id, is_active: rule.is_active }));
       if (ruleRows.some((rule) => !rule.team_id && !rule.assignee_id)) {
         setOpenStep(3);
         setError(t("agents.escalation.missingDestination"));
-        return;
+        reveal();
+        return false;
       }
       const [defaultKind, defaultId] = defaultDest.split(":");
       const payload = {
@@ -97,10 +103,11 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
       const saved = await api<Config>(`/agents/${agentId}/escalation-rules`, { method: "PUT", body: JSON.stringify(payload) });
       setRules(saved.rules);
       setBuiltinOn(saved.builtin_enabled ?? true);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+      markSaved();
+      return true;
+    } catch (err) { setError(messageFrom(err)); reveal(); return false; }
   }
+  useImperativeHandle(ref, () => ({ save }));
 
   // Routing by tag is a client-level setting saved on the spot: it applies to
   // every agent of the client, before any AI reply.
@@ -153,7 +160,7 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
   // every agent has; then tag routing, which runs before the AI; then the
   // agent's own rules.
   return (
-    <section className="settings-section">
+    <section className="settings-section" ref={section}>
       <div className="settings-copy">
         <h3>{t("agents.escalation.heading")}</h3>
         <p>{t("agents.escalation.copy")}</p>
@@ -237,9 +244,6 @@ export function EscalationRulesEditor({ agentId, clientId }: { agentId: string; 
           </div>
 
           {error && <Alert>{error}</Alert>}
-          <div className="form-footer escalation-footer">
-            <span className="escalation-save">{saved && <span className="escalation-saved">{t("agents.escalation.savedNote")}</span>}<button type="button" className="button primary" onClick={save} disabled={busy}>{busy ? <LoaderCircle className="spin" size={16} /> : t("agents.escalation.save")}</button></span>
-          </div>
         </>}
       </div>
     </section>

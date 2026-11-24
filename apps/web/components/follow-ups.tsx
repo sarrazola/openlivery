@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { ChevronDown, LoaderCircle, Plus, Trash2, Wrench } from "lucide-react";
 import { Alert } from "@/components/ui";
 import { AiHint } from "@/components/ai-hint";
 import { api, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
+import { useUnsaved, type SectionHandle } from "@/lib/unsaved";
 import type { FollowUpConfig, FollowUpTool } from "@/types";
 
 /** Both WhatsApp lines are one choice here, like in the contact details. */
@@ -44,9 +45,9 @@ const toolLabel = (tool: FollowUpTool): string =>
  * added one by one: reminders, and a farewell that closes the conversation.
  * Each message is written by the agent from the conversation or sent as a
  * fixed text. The farewell can carry a task: what the agent does with the
- * tools picked for it once the conversation has closed. Saved as a whole
- * with one button, like the escalation rules. */
-export function FollowUpEditor({ agentId }: { agentId: string }) {
+ * tools picked for it once the conversation has closed. Saved as a whole by
+ * the page's save button, through `ref`. */
+export function FollowUpEditor({ agentId, ref, onDirty }: { agentId: string; ref?: Ref<SectionHandle>; onDirty?: (dirty: boolean) => void }) {
   const t = useT();
   const [resolveEnabled, setResolveEnabled] = useState(false);
   const [enabled, setEnabled] = useState(false);
@@ -58,9 +59,8 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
   const [taskTools, setTaskTools] = useState<string[]>([]);
   const [limits, setLimits] = useState({ min: 5, max: 23 * 60 });
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
+  const section = useRef<HTMLElement>(null);
 
   const apply = (config: FollowUpConfig) => {
     setResolveEnabled(config.resolve_enabled);
@@ -134,11 +134,15 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
     return "";
   }
 
+  const { markSaved } = useUnsaved(
+    JSON.stringify({ resolveEnabled, enabled, rules, channels: [...channels].sort(), taskOn, task, taskTools: [...taskTools].sort() }), !loading, onDirty,
+  );
+  const reveal = () => section.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+
   async function save() {
     const invalid = enabled ? problem() : "";
-    setSaved(false);
-    if (invalid) { setOpen(true); setError(invalid); return; }
-    setBusy(true); setError("");
+    if (invalid) { setOpen(true); setError(invalid); reveal(); return false; }
+    setError("");
     const [first, second] = reminders;
     const textOf = (rule: Rule | undefined) => (rule?.custom ? rule.text.trim() : null);
     const sent = (rule: Rule | undefined) => { const value = minutesOf(rule); return value != null && !Number.isNaN(value) ? value : null; };
@@ -150,13 +154,14 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
         close_minutes: sent(farewell), close_text: textOf(farewell),
         close_task: enabled && runsTask ? task.trim() : null, close_tool_ids: enabled && runsTask ? taskTools : [],
       }) }));
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+      markSaved();
+      return true;
+    } catch (err) { setError(messageFrom(err)); reveal(); return false; }
   }
+  useImperativeHandle(ref, () => ({ save }));
 
   return (
-    <section className="settings-section">
+    <section className="settings-section" ref={section}>
       <div className="settings-copy">
         <h3>{t("agents.followUps.heading")} <AiHint text={t("agents.followUps.aiHint")} /></h3>
         <p>{t("agents.followUps.copy")}</p>
@@ -228,9 +233,6 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
             </div>}
           </div>
           {error && <Alert>{error}</Alert>}
-          <div className="form-footer escalation-footer">
-            <span className="escalation-save">{saved && <span className="escalation-saved">{t("agents.escalation.savedNote")}</span>}<button type="button" className="button primary" onClick={save} disabled={busy}>{busy ? <LoaderCircle className="spin" size={16} /> : t("agents.followUps.save")}</button></span>
-          </div>
         </>}
       </div>
     </section>
