@@ -602,6 +602,71 @@ def test_a_file_that_cannot_be_fetched_leaves_its_reason_in_the_log(authenticate
     assert "secret" not in caplog.text and "asset_id" not in caplog.text and "https://" not in caplog.text
 
 
+def test_a_file_that_fails_to_download_is_tried_again_before_the_message_is_kept_without_it(authenticated_client, monkeypatch):
+    resource = resources(authenticated_client)
+    cdn = "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1&signature=secret"
+    refused = HTTPException(status_code=502, detail="The shared media is unavailable or expired (HTTP 503).")
+    download = AsyncMock(side_effect=[TimeoutError(), refused, (b"voice-note", "video/mp4")])
+    monkeypatch.setattr(social_inbound, "fetch_inbound_media", download)
+    voice = event(resource, "voice-note", text="")
+    voice["message"]["attachments"] = [{"type": "audio", "payload": {"url": cdn}}]
+    assert signed_post(authenticated_client, resource, envelope(resource, voice)).status_code == 200
+
+    def run_queue():
+        with TestingSession() as db:
+            queued = db.scalar(select(SocialWebhookEvent))
+            queued.available_at = now_utc() - timedelta(seconds=1)      # as if the pause had passed
+            db.commit()
+            asyncio.run(social_inbound.process_pending(db))
+            queued = db.scalar(select(SocialWebhookEvent))
+            return queued.status, queued.attempts, db.scalar(select(func.count(Message.id)))
+
+    # Two failed downloads leave the event waiting and store nothing.
+    assert run_queue() == ("pending", 1, 0)
+    with TestingSession() as db:
+        waiting = db.scalar(select(SocialWebhookEvent))
+        assert timedelta(seconds=2) < waiting.available_at - now_utc() < timedelta(seconds=4)
+    assert run_queue() == ("pending", 2, 0)
+    # The third one brings the file: the message is stored once, with it.
+    assert run_queue() == ("processed", 3, 1)
+    with TestingSession() as db:
+        message = db.scalar(select(Message).where(Message.sender_type == "visitor"))
+        kept = db.scalars(select(MessageAttachment).where(MessageAttachment.message_id == message.id)).all()
+        assert [(item.kind, item.mime, item.data) for item in kept] == [("audio", "video/mp4", b"voice-note")]
+        assert "unavailable" not in message.content
+    assert download.await_count == 3
+
+
+def test_a_file_that_never_downloads_still_leaves_the_message(authenticated_client, monkeypatch):
+    resource = resources(authenticated_client)
+    download = AsyncMock(side_effect=TimeoutError())
+    monkeypatch.setattr(social_inbound, "fetch_inbound_media", download)
+    voice = event(resource, "lost-voice-note", text="")
+    voice["message"]["attachments"] = [{"type": "audio", "payload": {"url": "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=2"}}]
+    assert signed_post(authenticated_client, resource, envelope(resource, voice)).status_code == 200
+    with TestingSession() as db:
+        for _ in range(social_inbound.MEDIA_ATTEMPTS):
+            queued = db.scalar(select(SocialWebhookEvent))
+            queued.available_at = now_utc() - timedelta(seconds=1)
+            db.commit()
+            asyncio.run(social_inbound.process_pending(db))
+        queued = db.scalar(select(SocialWebhookEvent))
+        assert (queued.status, queued.attempts) == ("processed", social_inbound.MEDIA_ATTEMPTS)
+        assert db.scalar(select(Message).where(Message.sender_type == "visitor")).content == "[Attachment unavailable]"
+    assert download.await_count == social_inbound.MEDIA_ATTEMPTS
+
+    # A file over the limit fails the same way every time, so it is not tried again.
+    too_large = AsyncMock(side_effect=HTTPException(status_code=413, detail="The attachment exceeds the 20 MB limit."))
+    monkeypatch.setattr(social_inbound, "fetch_inbound_media", too_large)
+    big = event(resource, "big-video", text="")
+    big["message"]["attachments"] = [{"type": "video", "payload": {"url": "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=3"}}]
+    assert signed_post(authenticated_client, resource, envelope(resource, big)).status_code == 200
+    with TestingSession() as db:
+        asyncio.run(social_inbound.process_pending(db))
+        assert db.scalar(select(func.count(Message.id)).where(Message.sender_type == "visitor")) == 2
+    too_large.assert_awaited_once()
+
+
 def test_shared_posts_reels_and_story_mentions_keep_their_media(authenticated_client, monkeypatch):
     resource = resources(authenticated_client)
     download = AsyncMock(side_effect=[(b"mention", "video/mp4"), (b"post", "image/jpeg"), (b"unnamed", "video/mp4"),
