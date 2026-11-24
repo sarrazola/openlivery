@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import logging
 import uuid
 from datetime import timedelta
 from types import SimpleNamespace
@@ -577,6 +578,28 @@ def test_two_attachments_are_preserved_on_one_incoming_message_and_not_duplicate
         assert messages[0].content.startswith("Please compare these pictures.")
     assert download.await_count == 2
     whatsapp_inbound.run_completion.assert_not_awaited()
+
+
+def test_a_file_that_cannot_be_fetched_leaves_its_reason_in_the_log(authenticated_client, monkeypatch, caplog):
+    resource = resources(authenticated_client)
+    refused = HTTPException(status_code=502, detail="The shared media is unavailable or expired (HTTP 403).")
+    monkeypatch.setattr(social_inbound, "fetch_inbound_media", AsyncMock(side_effect=[refused, TimeoutError()]))
+    voice = event(resource, "voice-note", text="")
+    voice["message"]["attachments"] = [{"type": "audio", "payload": {"url": "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1&signature=secret"}}]
+    picture = event(resource, "slow-picture", text="")
+    picture["message"]["attachments"] = [{"type": "image", "payload": {"url": "https://scontent.cdninstagram.com/slow.jpg?sig=secret"}}]
+    with TestingSession() as db, caplog.at_level(logging.WARNING, logger="app.services.social_inbound"):
+        channel = db.get(SocialChannel, resource.channel_id)
+        for item in (voice, picture):
+            asyncio.run(social_inbound.process_event(db, channel, item))
+        stored = db.scalars(select(Message).where(Message.sender_type == "visitor").order_by(Message.created_at)).all()
+        assert [message.content for message in stored] == ["[Attachment unavailable]", "[Attachment unavailable]"]
+    lines = [record.getMessage() for record in caplog.records if "was not fetched" in record.getMessage()]
+    assert len(lines) == 2
+    assert "audio" in lines[0] and "lookaside.fbsbx.com" in lines[0] and "HTTP 403" in lines[0]
+    assert "image" in lines[1] and "scontent.cdninstagram.com" in lines[1] and "TimeoutError" in lines[1]
+    # The URL is signed: neither its path nor its query reaches the log.
+    assert "secret" not in caplog.text and "asset_id" not in caplog.text and "https://" not in caplog.text
 
 
 def test_shared_posts_reels_and_story_mentions_keep_their_media(authenticated_client, monkeypatch):

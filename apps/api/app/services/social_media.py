@@ -55,7 +55,9 @@ async def fetch_inbound_media(url: str) -> tuple[bytes, str]:
                     url = str(response.url.join(response.headers.get("location", "")))
                     continue
                 if response.status_code != 200:
-                    raise HTTPException(status_code=502, detail="The shared media is unavailable or expired.")
+                    # The status the host answered with is what tells an expired
+                    # link from a refused one.
+                    raise HTTPException(status_code=502, detail=f"The shared media is unavailable or expired (HTTP {response.status_code}).")
                 mime = response.headers.get("content-type", "application/octet-stream").split(";")[0].lower()
                 ensure_uploadable(mime)
                 data = bytearray()

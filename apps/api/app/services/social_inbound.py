@@ -291,7 +291,12 @@ async def process_event(db: Session, channel: SocialChannel, event: dict) -> Non
                 continue
             total_bytes += len(blob)
             fetched.append((blob, blob_mime, media_kind if direct else attachment_kind(blob_mime)))
-        except Exception:
+        except Exception as exc:
+            # The message is kept without the file, so this line is the only
+            # trace of why. The host and the reason, never the URL: it is signed.
+            reason = f"{exc.status_code} {exc.detail}" if isinstance(exc, HTTPException) else type(exc).__name__
+            logger.warning("Inbound %s attachment on %s was not fetched from %s: %s",
+                           media_kind, channel.provider, urlparse(url).hostname, reason)
             # Shared content whose media expired or is too large keeps its label.
             if not label:
                 warnings.append("[Attachment unavailable]" if direct else UNAVAILABLE)
