@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, LoaderCircle, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, LoaderCircle, Plus, Trash2, Wrench } from "lucide-react";
 import { Alert } from "@/components/ui";
 import { AiHint } from "@/components/ai-hint";
 import { api, messageFrom } from "@/lib/api";
 import { useT } from "@/lib/i18n";
-import type { FollowUpConfig } from "@/types";
+import type { FollowUpConfig, FollowUpTool } from "@/types";
 
 /** Both WhatsApp lines are one choice here, like in the contact details. */
 const CHANNEL_GROUPS = [
@@ -34,17 +34,28 @@ const minutesOf = (rule: Rule | undefined): number | null =>
 const ruleOf = (minutes: number, text: string | null, closes: boolean): Rule => ({ ...timeOf(minutes), custom: Boolean(text), text: text ?? "", closes });
 const blank = (minutes: number, closes: boolean): Rule => ({ ...timeOf(minutes), custom: false, text: "", closes });
 
+/** A server that exposes one or two tools says which; a larger one keeps
+ * them for the tooltip. */
+const toolLabel = (tool: FollowUpTool): string =>
+  tool.tool_names.length && tool.tool_names.length <= 2 ? `${tool.name} · ${tool.tool_names.join(", ")}` : tool.name;
+
 /** How this agent's conversations end: whether it may resolve a settled case
  * itself, and what it sends when the customer stops answering. Rules are
  * added one by one: reminders, and a farewell that closes the conversation.
  * Each message is written by the agent from the conversation or sent as a
- * fixed text. Saved as a whole with one button, like the escalation rules. */
+ * fixed text. The farewell can carry a task: what the agent does with the
+ * tools picked for it once the conversation has closed. Saved as a whole
+ * with one button, like the escalation rules. */
 export function FollowUpEditor({ agentId }: { agentId: string }) {
   const t = useT();
   const [resolveEnabled, setResolveEnabled] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [rules, setRules] = useState<Rule[]>([]);
   const [channels, setChannels] = useState<string[]>([]);
+  const [tools, setTools] = useState<FollowUpTool[]>([]);
+  const [taskOn, setTaskOn] = useState(false);
+  const [task, setTask] = useState("");
+  const [taskTools, setTaskTools] = useState<string[]>([]);
   const [limits, setLimits] = useState({ min: 5, max: 23 * 60 });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -60,6 +71,10 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
       ...(config.close_minutes != null ? [ruleOf(config.close_minutes, config.close_text, true)] : []),
     ]);
     setChannels(config.channels);
+    setTools(config.available_tools);
+    setTaskOn(Boolean(config.close_task));
+    setTask(config.close_task ?? "");
+    setTaskTools(config.close_tool_ids);
     setLimits({ min: config.min_minutes, max: config.max_minutes });
   };
   const load = useCallback(async () => apply(await api<FollowUpConfig>(`/agents/${agentId}/follow-ups`)), [agentId]);
@@ -72,8 +87,10 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
   const farewell = rules.find((rule) => rule.closes);
   const canAdd = !(reminders.length >= MAX_REMINDERS && farewell);
   const maxHours = limits.max / 60;
+  const runsTask = taskOn && Boolean(farewell);
   const summary = [
     ...rules.map((rule) => `${t(rule.closes ? "agents.followUps.farewell" : "agents.followUps.reminder")} ${rule.amount || "?"} ${t(rule.unit === "hours" ? "agents.followUps.unitShortHours" : "agents.followUps.unitShortMinutes")}`),
+    ...(runsTask ? [t("agents.followUps.taskShort")] : []),
     channels.length
       ? CHANNEL_GROUPS.filter((group) => group.keys.some((key) => channels.includes(key))).map((group) => t(group.label)).join(", ")
       : t("agents.followUps.allChannels"),
@@ -100,6 +117,7 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
     return [...current.slice(0, -1), blank(between, false), last];
   });
   const edit = (index: number, patch: Partial<Rule>) => setRules((current) => current.map((rule, at) => (at === index ? { ...rule, ...patch } : rule)));
+  const toggleTool = (id: string) => setTaskTools((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
   const toggleGroup = (keys: readonly string[]) => setChannels((current) =>
     keys.some((key) => current.includes(key)) ? current.filter((key) => !keys.includes(key)) : [...current, ...keys]);
 
@@ -111,6 +129,8 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
     if (set.some((value) => Number.isNaN(value) || value < limits.min || value > limits.max)) return t("agents.followUps.errorRange", { min: String(limits.min), max: String(maxHours) });
     if (set.some((value, index) => index > 0 && value <= set[index - 1])) return t("agents.followUps.errorOrder");
     if (rules.some((rule) => rule.custom && !rule.text.trim())) return t("agents.followUps.errorText");
+    if (runsTask && !task.trim()) return t("agents.followUps.errorTask");
+    if (runsTask && !taskTools.length) return t("agents.followUps.errorTaskTools");
     return "";
   }
 
@@ -128,6 +148,7 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
         first_minutes: sent(first), first_text: textOf(first),
         second_minutes: sent(second), second_text: textOf(second),
         close_minutes: sent(farewell), close_text: textOf(farewell),
+        close_task: enabled && runsTask ? task.trim() : null, close_tool_ids: enabled && runsTask ? taskTools : [],
       }) }));
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -175,6 +196,23 @@ export function FollowUpEditor({ agentId }: { agentId: string }) {
                     <span className="escalation-actions"><button type="button" className="icon-button danger" title={t("agents.followUps.remove")} aria-label={t("agents.followUps.remove")} onClick={() => setRules((current) => current.filter((_, at) => at !== index))}><Trash2 size={14} /></button></span>
                   </div>
                   {rule.custom && <textarea className="followup-text" rows={2} maxLength={1000} value={rule.text} aria-label={`${kind}: ${t("agents.followUps.modeText")}`} placeholder={t(rule.closes ? "agents.followUps.closePlaceholder" : "agents.followUps.textPlaceholder")} onChange={(e) => edit(index, { text: e.target.value })} />}
+                  {rule.closes && <div className="followup-task">
+                    <label className="switch-row followup-task-head">
+                      <span><strong><Wrench size={14} /> {t("agents.followUps.taskToggle")}</strong><small>{t("agents.followUps.taskHint")}</small></span>
+                      <input type="checkbox" checked={taskOn} onChange={(e) => setTaskOn(e.target.checked)} />
+                    </label>
+                    {taskOn && (tools.length ? <div className="followup-task-body">
+                      <small>{t("agents.followUps.taskTools")}</small>
+                      <div className="followup-task-tools">
+                        {tools.map((tool) => {
+                          const on = taskTools.includes(tool.id);
+                          return <button type="button" key={tool.id} className={`chip-toggle${on ? " active" : ""}`} aria-pressed={on} title={tool.tool_names.join(", ") || undefined} onClick={() => toggleTool(tool.id)}>{toolLabel(tool)}</button>;
+                        })}
+                      </div>
+                      <small>{t("agents.followUps.taskWhat")} <AiHint text={t("agents.followUps.taskAiHint")} /></small>
+                      <textarea rows={3} maxLength={2000} value={task} aria-label={t("agents.followUps.taskWhat")} placeholder={t("agents.followUps.taskPlaceholder")} onChange={(e) => setTask(e.target.value)} />
+                    </div> : <p className="esc-empty">{t("agents.followUps.taskNoTools")}</p>)}
+                  </div>}
                 </div>;
               })}
               {!rules.length && <p className="esc-empty">{t("agents.followUps.empty")}</p>}

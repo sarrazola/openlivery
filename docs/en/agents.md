@@ -112,6 +112,18 @@ The sequence stops the moment the customer writes, a person takes the
 conversation, it is assigned or escalated, the business answers from the phone,
 or it is resolved. The agent's next reply starts it again from the first rule.
 
+**Use tools when closing.** The closing message can carry a task: an
+instruction in your own words for something the agent does with its tools once
+the conversation has closed unanswered, such as saving the contact in a CRM or
+telling the team. Pick the tools it may use (an MCP server counts as one
+choice) and write what it should do and when. The agent then reviews the
+conversation in a turn of its own, with only those tools, and decides whether
+the instruction applies. Nothing it writes reaches the customer, and the
+conversation is closed whatever the task does. The thread records the outcome
+(the tools it used, nothing to do, or a failure), and the cost report labels
+the model call as a closing task. The task runs only on the closing message's
+rule, not on the idle close.
+
 **Let the agent resolve the conversation.** With this on, the agent gets a
 `resolve_conversation` tool and closes a case itself once the request has been
 handled and nothing is pending. It says goodbye first, and the conversation is
@@ -127,7 +139,9 @@ automatically.
 `GET`/`PUT /api/agents/{id}/follow-ups` takes the delays in minutes
 (`first_minutes`, `second_minutes`, `close_minutes`), a custom message per rule
 or nothing to let the AI write it (`first_text`, `second_text`, `close_text`),
-`channels`, `enabled` and `resolve_enabled`. A timer sends what is due every
+`channels`, `enabled` and `resolve_enabled`, and the closing task as
+`close_task` with `close_tool_ids` (ids from `available_tools` in the
+response). A timer sends what is due every
 `FOLLOW_UP_SWEEP_SECONDS` (60); `0` switches it off.
 
 ## Business hours and future requests

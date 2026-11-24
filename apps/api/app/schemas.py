@@ -1030,9 +1030,25 @@ class FollowUpConfigIn(BaseModel):
     close_text: str | None = Field(default=None, max_length=1000)
     # Empty means every channel.
     channels: list[str] = Field(default_factory=list, max_length=10)
+    # What the agent does with its tools when the closing step ends the case,
+    # and which of its tools it may use for that. Empty leaves the closing as
+    # a message only.
+    close_task: str | None = Field(default=None, max_length=2000)
+    close_tool_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+
+
+class FollowUpToolOut(BaseModel):
+    """One of the agent's tools as the closing task can pick it. An MCP server
+    is one choice; ``tool_names`` lists what it exposes."""
+
+    id: uuid.UUID
+    name: str
+    type: str
+    tool_names: list[str] = Field(default_factory=list)
 
 
 class FollowUpConfigOut(FollowUpConfigIn):
+    available_tools: list[FollowUpToolOut] = Field(default_factory=list)
     available_channels: list[str] = Field(default_factory=list)
     min_minutes: int
     max_minutes: int

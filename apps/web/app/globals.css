@@ -1196,6 +1196,14 @@ textarea { line-height: 1.55; }
 .followup-rule input.followup-amount { flex: 0 0 56px; width: 56px; padding-left: 6px; padding-right: 6px; text-align: center; }
 .followup-rule select.followup-unit { flex: 0 0 124px; }
 .followup-text { margin-left: 30px; width: calc(100% - 30px); }
+.followup-task { margin-left: 30px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.followup-task .followup-task-head.switch-row { min-height: 0; padding: 10px 12px; border: 0; border-radius: 0; background: transparent; }
+.followup-task .followup-task-head strong { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.followup-task-body { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px 12px; border-top: 1px solid var(--line-soft); }
+.followup-task-body > small { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
+.followup-task-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.followup-task-tools .chip-toggle { height: 28px; padding: 0 10px; font-size: 12px; }
+.followup-task > .esc-empty { padding: 0 12px 12px; }
 .followup-channels { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 8px; border-top: 1px dashed var(--line); margin-top: 4px; }
 .followup-channels > small { color: var(--muted); font-size: 12px; margin-right: 4px; }
 .followup-channels .chip-toggle { height: 28px; padding: 0 10px; font-size: 12px; }
