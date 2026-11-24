@@ -80,9 +80,15 @@ export default function AgentDetailPage() {
 
   const load = async () => {
     const [a, d, q, tl, m] = await Promise.all([api<Agent>(`/agents/${id}`), api<KnowledgeDocument[]>(`/agents/${id}/documents`), api<QAPair[]>(`/agents/${id}/qa`), api<AgentTool[]>(`/agents/${id}/tools`), api<MediaAsset[]>(`/agents/${id}/media`)]);
-    setAgent(a); setName(a.name); setDocuments(d); setQaPairs(q); setTools(tl); setMedia(m);
+    adopt(a); setDocuments(d); setQaPairs(q); setTools(tl); setMedia(m);
     // What the model receives on every message, measured on the real prompt.
     api<{ prompt: string }>(`/agents/${id}/prompt`).then((r) => setPromptTokens(estimateTokens(r.prompt))).catch(() => setPromptTokens(null));
+  };
+  /** Take the agent as the server holds it, on load and after each save: a
+   * value the server trimmed or clamped then matches the field showing it,
+   * and the page does not go on reporting it as an unsaved change. */
+  const adopt = (a: Agent) => {
+    setAgent(a); setName(a.name);
     setProvider(a.provider); setModel(a.model);
     setTemperature(a.temperature); setMaxTokens(a.max_tokens); setMemoryLimit(a.memory_limit); setPhoneHandoverMinutes(a.phone_handover_minutes); setReplyDelayMin(a.reply_delay_min_seconds); setReplyDelayMax(a.reply_delay_max_seconds);
     setImageEnabled(a.image_enabled); setImageModel(a.image_model || DEFAULT_IMAGE_MODEL);
@@ -176,7 +182,7 @@ export default function AgentDetailPage() {
     const payload = { name, instructions: form.get("instructions"), personality: form.get("personality"), brief_summary: form.get("brief_summary"), brief_products: form.get("brief_products"), brief_audience: form.get("brief_audience"), brief_policies: form.get("brief_policies"), brief_dos: form.get("brief_dos"), brief_donts: form.get("brief_donts"), provider, model, prompt_language: lang, temperature, max_tokens: maxTokens, memory_limit: memoryLimit, phone_handover_minutes: phoneHandoverMinutes, reply_delay_min_seconds: replyDelayMin, reply_delay_max_seconds: replyDelayMax, image_enabled: imageEnabled, image_model: imageModel, audio_enabled: audioEnabled, audio_model: audioModel, schedule_enabled: schedule.enabled, schedule_slots: schedule.slots };
     let saved = true;
     try {
-      setAgent(await api<Agent>(`/agents/${id}`, { method: "PATCH", body: JSON.stringify(payload) }));
+      adopt(await api<Agent>(`/agents/${id}`, { method: "PATCH", body: JSON.stringify(payload) }));
       setTouched(false);
     } catch (err) { saved = false; toast.error(messageFrom(err)); }
     // After the agent itself, so a section that also writes the agent builds
