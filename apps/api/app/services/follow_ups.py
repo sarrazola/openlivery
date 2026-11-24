@@ -17,6 +17,12 @@ The same clock carries a pending resolution. A case the agent settled, or one
 whose closing message is still on its way out, ends a short while later rather
 than at once: the last message is delivered while the conversation is still
 open, and a contact who writes back in that time simply keeps talking.
+
+The closing step can also carry a task: an instruction, in the operator's
+words, for something the agent does with its tools once the case has closed
+unanswered (record the contact somewhere, tell the team). It is a turn nobody
+reads but the thread's activity line: the contact gets the closing message and
+nothing else, and whatever the task does or fails to do, the case is closed.
 """
 
 from __future__ import annotations
@@ -26,17 +32,20 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import httpx
 from fastapi import HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from ..models import Agent, Conversation, Message, now_utc
+from ..models import Agent, AgentTool, Conversation, Message, now_utc
 from .ai import Completion, chat_completion
 from .availability import agent_available
 from .capture import capture_context, field_definitions
-from .conversation_state import cancel_follow_up, exchanged_only, hours_shown, resolve_without_a_person
+from .conversation_state import cancel_follow_up, exchanged_only, hours_shown, record_activity, resolve_without_a_person
 from .knowledge import build_system_prompt, contact_context, llm_turns
 from .providers import resolve_agent_credentials
+from .tools.loop import tool_loop
+from .tools.specs import build_tool_specs
 from .usage import record_usage
 
 logger = logging.getLogger(__name__)
@@ -53,6 +62,9 @@ MAX_MINUTES = 23 * 60
 RESOLVE_GRACE = timedelta(minutes=2)
 _LEASE = timedelta(minutes=5)
 _HISTORY_LIMIT = 20
+# The closing task reads further back than a reply does: what it records is
+# often something the contact said early on.
+_TASK_HISTORY_LIMIT = 60
 
 # LLM-facing text, in the language of the agent's prompt like the rest of it.
 _TEXT = {
@@ -76,15 +88,28 @@ _TEXT = {
             "- Responde únicamente con el texto del mensaje."
         ),
         "close": (
-            "CIERRE POR INACTIVIDAD: el cliente no ha respondido y esta conversación se va a cerrar.\n"
-            "- Escribe un solo mensaje breve de cierre, en el idioma del cliente y en contexto con lo que estaban "
-            "tratando: dile con amabilidad que, como no has tenido respuesta, cierras la conversación por ahora, y "
-            "que puede volver a escribir cuando quiera para retomarla.\n"
-            "- Sin reproches y sin inventar ofertas, precios ni datos.\n"
+            "CIERRE POR INACTIVIDAD: el cliente no ha respondido y este es tu último mensaje antes de que la "
+            "conversación se cierre.\n"
+            "- Escribe un solo mensaje breve de despedida, en el idioma del cliente, a partir de lo que estaban "
+            "tratando: retoma en una frase lo que quedó pendiente o lo que le interesaba y déjale claro cómo "
+            "continuar cuando quiera.\n"
+            "- No uses una fórmula fija ni anuncies que cierras la conversación. Sin reproches y sin inventar "
+            "ofertas, precios ni datos.\n"
             "- Responde únicamente con el texto del mensaje."
+        ),
+        "task": (
+            "TAREA DE CIERRE: el cliente no respondió y la conversación se cerró. Este turno es interno: el cliente "
+            "no verá nada de lo que escribas.\n"
+            "- Revisa la conversación y sigue esta instrucción del negocio con las herramientas disponibles. Para "
+            "este turno tiene prioridad sobre el flujo normal de la conversación:\n{task}\n"
+            "- Usa una herramienta solo si la instrucción aplica a esta conversación; si no aplica, no llames "
+            "ninguna.\n"
+            "- No inventes datos: usa únicamente lo que el cliente dijo o lo que ya consta del contacto.\n"
+            "- Al terminar, responde con una sola línea que diga qué hiciste."
         ),
         "cue": "[Aviso automático, no es un mensaje del cliente: han pasado {elapsed} sin respuesta. Escribe ahora el mensaje de seguimiento.]",
         "cue_close": "[Aviso automático, no es un mensaje del cliente: han pasado {elapsed} sin respuesta. Escribe ahora el mensaje de cierre.]",
+        "cue_task": "[Aviso automático, no es un mensaje del cliente: la conversación se cerró sin respuesta. Ejecuta ahora la tarea de cierre.]",
         "hour": "hora", "hours": "horas", "minute": "minuto", "minutes": "minutos", "and": "y",
     },
     "en": {
@@ -107,15 +132,27 @@ _TEXT = {
             "- Reply with the text of the message only."
         ),
         "close": (
-            "CLOSING FOR INACTIVITY: the customer has not answered and this conversation is about to be closed.\n"
-            "- Write a single short closing message, in the customer's language and in context with what you were "
-            "dealing with: tell them kindly that, having had no answer, you are closing the conversation for now, "
-            "and that they can write again whenever they like to pick it up.\n"
-            "- No reproach, and no invented offers, prices or facts.\n"
+            "CLOSING FOR INACTIVITY: the customer has not answered and this is your last message before the "
+            "conversation is closed.\n"
+            "- Write a single short farewell, in the customer's language, built on what you were dealing with: pick "
+            "up in one sentence what was left pending or what they were interested in, and make it clear how to "
+            "continue whenever they like.\n"
+            "- Do not use a stock phrase or announce that you are closing the conversation. No reproach, and no "
+            "invented offers, prices or facts.\n"
             "- Reply with the text of the message only."
+        ),
+        "task": (
+            "CLOSING TASK: the customer did not answer and the conversation has been closed. This turn is internal: "
+            "the customer will not see anything you write.\n"
+            "- Review the conversation and follow this instruction from the business with the tools available. For "
+            "this turn it takes priority over the normal flow of the conversation:\n{task}\n"
+            "- Use a tool only if the instruction applies to this conversation; if it does not, call none.\n"
+            "- Do not invent data: use only what the customer said or what is already on record for the contact.\n"
+            "- When you are done, reply with a single line saying what you did."
         ),
         "cue": "[Automatic notice, not a message from the customer: {elapsed} have passed without an answer. Write the follow-up message now.]",
         "cue_close": "[Automatic notice, not a message from the customer: {elapsed} have passed without an answer. Write the closing message now.]",
+        "cue_task": "[Automatic notice, not a message from the customer: the conversation was closed without an answer. Carry out the closing task now.]",
         "hour": "hour", "hours": "hours", "minute": "minute", "minutes": "minutes", "and": "and",
     },
 }
@@ -168,6 +205,28 @@ def applies_to(agent: Agent, conversation: Conversation) -> bool:
         return False
     chosen = agent.follow_up_channels or []
     return not chosen or conversation.channel in chosen
+
+
+def usable_tools(db: Session, agent: Agent) -> list[AgentTool]:
+    """The agent's tools a closing task can be given: the ones switched on."""
+    return list(db.scalars(
+        select(AgentTool).where(AgentTool.agent_id == agent.id, AgentTool.enabled.is_(True)).order_by(AgentTool.created_at)
+    ).all())
+
+
+def exposed_tool_names(tool: AgentTool) -> list[str]:
+    """What an MCP server row lets the model call; an HTTP tool is one call of its own."""
+    if tool.type == "http":
+        return []
+    allowed = set(tool.enabled_tools) if tool.enabled_tools is not None else None
+    names = [entry.get("name") or "" for entry in tool.cached_tools or []]
+    return [name for name in names if name and (allowed is None or name in allowed)]
+
+
+def closing_tools(db: Session, agent: Agent) -> list[AgentTool]:
+    """The tools the closing task runs with: the chosen ones that still exist and are on."""
+    chosen = set(agent.follow_up_close_tools or [])
+    return [tool for tool in usable_tools(db, agent) if str(tool.id) in chosen]
 
 
 def arm(conversation: Conversation, agent: Agent) -> bool:
@@ -262,29 +321,39 @@ def _reachable(db: Session, conversation: Conversation) -> bool:
     return True
 
 
-async def _compose(db: Session, conversation: Conversation, agent: Agent, step: Step) -> Completion | None:
-    """Ask the model for the message, with the thread it continues. No tools:
-    a follow-up only speaks."""
-    credentials = resolve_agent_credentials(db, agent)
-    if not credentials or not agent.model.strip():
-        return None
-    lang = agent.prompt_language if agent.prompt_language in _TEXT else "es"
-    text = _TEXT[lang]
+def _lang(agent: Agent) -> str:
+    return agent.prompt_language if agent.prompt_language in _TEXT else "es"
+
+
+def _thread_context(db: Session, conversation: Conversation, agent: Agent, limit: int) -> tuple[str, list[dict]]:
+    """The agent's prompt with what is known of the contact, and the last
+    ``limit`` messages of the thread as model turns."""
     history = db.scalars(
         exchanged_only(select(Message).where(Message.conversation_id == conversation.id))
         .order_by(Message.created_at.desc())
-        .limit(agent.memory_limit or _HISTORY_LIMIT)
+        .limit(limit)
     ).all()
     definitions = field_definitions(db, agent.client_id, agent.prompt_language)
     system = build_system_prompt(agent, "", capture_context(agent, conversation, definitions, agent.prompt_language))
     contact = contact_context(conversation, agent.prompt_language, definitions)
     if contact:
         system += "\n\n" + contact
-    system += "\n\n" + text[step.kind]
+    return system, llm_turns(list(reversed(history)), agent.prompt_language)
+
+
+async def _compose(db: Session, conversation: Conversation, agent: Agent, step: Step) -> Completion | None:
+    """Ask the model for the message, with the thread it continues. No tools:
+    a follow-up only speaks."""
+    credentials = resolve_agent_credentials(db, agent)
+    if not credentials or not agent.model.strip():
+        return None
+    lang = _lang(agent)
+    text = _TEXT[lang]
+    system, turns = _thread_context(db, conversation, agent, agent.memory_limit or _HISTORY_LIMIT)
     cue = text["cue_close" if step.kind == "close" else "cue"].format(elapsed=_elapsed(step.minutes, lang))
     messages = [
-        {"role": "system", "content": system},
-        *llm_turns(list(reversed(history)), agent.prompt_language),
+        {"role": "system", "content": system + "\n\n" + text[step.kind]},
+        *turns,
         {"role": "user", "content": cue},
     ]
     base_url, api_key = credentials
@@ -323,6 +392,58 @@ async def _deliver(db: Session, conversation: Conversation, agent: Agent, text: 
     return message
 
 
+async def _run_closing_task(db: Session, conversation: Conversation, agent: Agent) -> None:
+    """Carry out the agent's closing task on a case that just closed unanswered.
+
+    One turn with the thread, the operator's instruction and the chosen tools,
+    and no reply to anyone: what the model writes is dropped. The outcome is an
+    activity line on the thread, with the calls it made. The case is closed
+    already, so nothing here can keep it open or undo it.
+    """
+    task = (agent.follow_up_close_task or "").strip()
+    if not task:
+        return
+    specs = build_tool_specs(closing_tools(db, agent))
+    credentials = resolve_agent_credentials(db, agent)
+    if not specs or not credentials or not agent.model.strip():
+        return
+    text = _TEXT[_lang(agent)]
+    system, turns = _thread_context(db, conversation, agent, max(agent.memory_limit or 0, _TASK_HISTORY_LIMIT))
+    messages = [
+        {"role": "system", "content": system + "\n\n" + text["task"].format(task=task)},
+        *turns,
+        {"role": "user", "content": text["cue_task"]},
+    ]
+    base_url, api_key = credentials
+    # Everything the turn needs is read: the connection goes back to the pool
+    # while the model and the tools take their time.
+    db.commit()
+    started = time.perf_counter()
+    completion = None
+    try:
+        completion = await tool_loop(
+            base_url, api_key, agent.model.strip(), messages, specs, agent.temperature, agent.max_tokens
+        )
+    except (HTTPException, httpx.HTTPError, KeyError, ValueError, IndexError) as exc:
+        logger.warning("Closing task for %s did not run (%s)", conversation.id, type(exc).__name__)
+    calls = (completion.tool_calls or []) if completion else []
+    worked = list(dict.fromkeys(call["name"].replace("__", ": ") for call in calls if not call["is_error"]))
+    if worked:
+        note = record_activity(db, conversation, "closing_task_done", actor=agent.name, details={"tools": ", ".join(worked)})
+    elif completion is None or calls:
+        note = record_activity(db, conversation, "closing_task_failed", actor=agent.name)
+    else:
+        note = record_activity(db, conversation, "closing_task_skipped", actor=agent.name)
+    note.tool_calls = calls or None
+    if completion:
+        completion.duration_ms = int((time.perf_counter() - started) * 1000)
+        record_usage(
+            db, agent.agency_id, agent.id, agent.provider, agent.model.strip(), completion,
+            conversation=conversation, message=note, purpose="closing_task",
+        )
+    db.commit()
+
+
 def _requested_at(pending: dict) -> datetime | None:
     try:
         return datetime.fromisoformat(pending.get("requested_at") or "")
@@ -330,23 +451,28 @@ def _requested_at(pending: dict) -> datetime | None:
         return None
 
 
-def _resolve_pending(db: Session, conversation: Conversation, last: Message | None) -> None:
+def _resolve_pending(db: Session, conversation: Conversation, last: Message | None) -> str | None:
+    """Apply the resolution that was waiting, unless the contact wrote back
+    or a person stepped in. Returns the event the case was closed with."""
     pending = conversation.pending_resolution or {}
     requested = _requested_at(pending)
     answered = bool(last and last.role == "user" and (requested is None or last.created_at > requested))
     if not _agent_holds_it(conversation) or answered or not pending.get("event"):
         cancel_follow_up(conversation)
-        return
-    resolve_without_a_person(
+        return None
+    resolved = resolve_without_a_person(
         db, conversation, pending["event"], actor=pending.get("actor"), details=pending.get("details") or None
     )
+    return pending["event"] if resolved else None
 
 
 async def _run_step(db: Session, conversation: Conversation, now: datetime) -> None:
     last = _last_message(db, conversation)
     if conversation.pending_resolution:
-        _resolve_pending(db, conversation, last)
+        closed_as = _resolve_pending(db, conversation, last)
         db.commit()
+        if closed_as == "closed_unanswered":
+            await _run_closing_task(db, conversation, conversation.agent)
         return
     agent = conversation.agent
     steps = steps_for(agent)
@@ -404,14 +530,18 @@ async def _run_step(db: Session, conversation: Conversation, now: datetime) -> N
             db, agent.agency_id, agent.id, agent.provider, agent.model.strip(), completion,
             conversation=conversation, message=message,
         )
+    closed = False
     if step.kind == "close":
         details = {"hours": hours_shown(step.minutes)}
         if message is not None and conversation.channel in ("instagram", "messenger"):
             # Queued, not sent yet: the outbox refuses a resolved conversation.
+            # The closing task waits with the resolution.
             request_resolution(conversation, "closed_unanswered", details=details)
         else:
-            resolve_without_a_person(db, conversation, "closed_unanswered", details=details)
+            closed = resolve_without_a_person(db, conversation, "closed_unanswered", details=details)
     db.commit()
+    if closed:
+        await _run_closing_task(db, conversation, agent)
 
 
 async def run_due(db: Session, *, limit: int = 20) -> int:

@@ -118,6 +118,19 @@ conversación, se asigna o se escala, el negocio responde desde el teléfono o l
 conversación se resuelve. La siguiente respuesta del agente la reinicia desde
 la primera regla.
 
+**Usar herramientas al cerrar.** El mensaje de cierre puede llevar una tarea:
+una instrucción en tus palabras para algo que el agente hace con sus
+herramientas cuando la conversación se cierra sin respuesta, como guardar el
+contacto en un CRM o avisar al equipo. Elige las herramientas que puede usar
+(un servidor MCP cuenta como una opción) y escribe qué debe hacer y cuándo. El
+agente revisa entonces la conversación en un turno aparte, solo con esas
+herramientas, y decide si la instrucción aplica. Nada de lo que escriba llega
+al cliente, y la conversación queda cerrada haga lo que haga la tarea. El hilo
+registra el resultado (las herramientas que usó, que no había nada que hacer o
+un fallo), y el reporte de costos marca esa llamada al modelo como tarea de
+cierre. La tarea solo corre en la regla del mensaje de cierre, no en el cierre
+por inactividad.
+
 **Permitir que el agente resuelva la conversación.** Con esta opción, el agente
 recibe la herramienta `resolve_conversation` y cierra el caso por sí mismo
 cuando la solicitud quedó atendida y no hay nada pendiente. Primero se despide,
@@ -134,7 +147,9 @@ una persona nunca se cierra automáticamente.
 `GET`/`PUT /api/agents/{id}/follow-ups` recibe los tiempos en minutos
 (`first_minutes`, `second_minutes`, `close_minutes`), un mensaje personalizado
 por regla o nada para que lo redacte la IA (`first_text`, `second_text`,
-`close_text`), `channels`, `enabled` y `resolve_enabled`. Un temporizador envía
+`close_text`), `channels`, `enabled` y `resolve_enabled`, y la tarea de cierre
+como `close_task` con `close_tool_ids` (ids de `available_tools` en la
+respuesta). Un temporizador envía
 lo pendiente cada `FOLLOW_UP_SWEEP_SECONDS` (60); con `0` se desactiva.
 
 ## El conocimiento en el prompt del sistema

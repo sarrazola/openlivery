@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.config import get_settings
-from app.models import Agent, Conversation, Message, SocialChannel, WhatsAppChannel, now_utc
+from app.models import Agent, Conversation, Message, SocialChannel, UsageRecord, WhatsAppChannel, now_utc
 from app.routers import widget as widget_router
 from app.security import encrypt_secret
 from app.services import follow_ups, social_delivery, social_graph, social_inbound, social_worker
@@ -469,3 +469,136 @@ def test_a_social_closing_message_is_delivered_before_the_case_ends(setup, monke
     sweep()
     with TestingSession() as db:
         assert db.get(Conversation, cid).status == "resolved"
+
+
+# --- The closing task ---------------------------------------------------------
+
+LOOKUP = {"type": "http", "name": "save_lead", "description": "Save a lead", "url": "https://crm.example.test/leads",
+          "http_method": "POST", "body_params": [{"name": "email", "type": "string", "required": True}]}
+TASK = "If the contact left an email and did not book, save them as a lead."
+
+
+def add_tool(s, **overrides):
+    response = s.client.post(f"/api/agents/{s.agent['id']}/tools", json={**LOOKUP, **overrides})
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def closing_only(s, **overrides):
+    return configure(s, first_minutes=None, second_minutes=None, close_minutes=120, **overrides)
+
+
+def task_ran(calls=None, text="Saved the lead."):
+    return Completion(text=text, tool_calls=calls, input_tokens=30, output_tokens=6)
+
+
+def test_the_closing_task_needs_a_closing_step_and_tools_of_this_agent(setup):
+    s = setup
+    lead, other = add_tool(s), add_tool(s, name="notify_team")
+    url = f"/api/agents/{s.agent['id']}/follow-ups"
+    initial = s.client.get(url).json()
+    assert initial["close_task"] is None and initial["close_tool_ids"] == []
+    assert [tool["name"] for tool in initial["available_tools"]] == ["save_lead", "notify_team"]
+
+    def rejected(**overrides):
+        return s.client.put(url, json={**SCHEDULE, "close_task": TASK, **overrides}).status_code == 422
+
+    assert rejected()                                             # a task with no tool to carry it out
+    assert rejected(close_tool_ids=[str(uuid.uuid4())])           # a tool that is not this agent's
+    saved = configure(s, close_task=f"  {TASK}  ", close_tool_ids=[lead["id"], lead["id"]])
+    assert saved["close_task"] == TASK and saved["close_tool_ids"] == [lead["id"]]
+
+    # A tool switched off is no longer a choice, and one that was chosen drops out.
+    assert s.client.patch(f"/api/agents/{s.agent['id']}/tools/{lead['id']}", json={"enabled": False}).status_code == 200
+    shown = s.client.get(url).json()
+    assert shown["close_tool_ids"] == [] and [tool["id"] for tool in shown["available_tools"]] == [other["id"]]
+    assert rejected(close_tool_ids=[lead["id"]])
+
+    # Without a closing step there is nothing to hang the task on.
+    kept = configure(s, close_minutes=None, close_task=TASK, close_tool_ids=[other["id"]])
+    assert kept["close_task"] is None and kept["close_tool_ids"] == []
+
+
+def test_the_closing_task_runs_its_tools_once_the_case_has_closed(setup, monkeypatch):
+    s = setup
+    lead = add_tool(s)
+    add_tool(s, name="notify_team")
+    closing_only(s, close_task=TASK, close_tool_ids=[lead["id"]])
+    calls = [{"name": "save_lead", "arguments": {"email": "ana@example.test"}, "result_preview": "ok", "is_error": False}]
+    loop = AsyncMock(return_value=task_ran(calls))
+    monkeypatch.setattr(follow_ups, "tool_loop", loop)
+    incoming(s, text="I am ana@example.test, what do you charge?")
+    rewind(s, 121)
+    s.nudge.return_value = Completion(text="Whenever you want to see prices, write to me here.")
+    sweep()
+
+    assert state(s)[0] == "resolved"
+    thread = messages(s)
+    assert [m.activity["event"] for m in thread if m.kind == "activity"][-2:] == ["closed_unanswered", "closing_task_done"]
+    note = thread[-1]
+    assert note.activity == {"event": "closing_task_done", "tools": "save_lead"} and note.tool_calls == calls
+    assert note.content == "Appointments ran the closing task: save_lead"
+    # The contact got the closing message and nothing of the task.
+    s.send.assert_awaited_once()
+    assert s.send.await_args.args[2] == "Whenever you want to see prices, write to me here."
+
+    turns, specs = loop.await_args.args[3], loop.await_args.args[4]
+    assert [spec.name for spec in specs] == ["save_lead"]              # only the tool that was chosen
+    assert "CLOSING TASK" in turns[0]["content"] and TASK in turns[0]["content"]
+    assert turns[-1]["role"] == "user" and "Carry out the closing task now" in turns[-1]["content"]
+    assert {"role": "user", "content": "I am ana@example.test, what do you charge?"} in turns
+    with TestingSession() as db:
+        usage = db.scalars(select(UsageRecord).order_by(UsageRecord.created_at)).all()
+        assert [record.purpose for record in usage][-1] == "closing_task" and usage[-1].message_id == note.id
+    assert sweep() == 0
+    loop.assert_awaited_once()
+
+
+def test_a_closing_task_never_keeps_the_case_open(setup, monkeypatch):
+    s = setup
+    lead = add_tool(s)
+    closing_only(s, close_task=TASK, close_tool_ids=[lead["id"]], close_text="We are closing this chat for now.")
+    loop = AsyncMock(return_value=task_ran(text="Nothing to record."))
+    monkeypatch.setattr(follow_ups, "tool_loop", loop)
+
+    def close_one(mid):
+        incoming(s, mid=mid)
+        rewind(s, 121)
+        sweep()
+        assert state(s)[0] == "resolved"
+        return messages(s)[-1]
+
+    # The agent read the thread and the instruction did not apply.
+    idle = close_one("customer-1")
+    assert idle.activity == {"event": "closing_task_skipped"} and idle.tool_calls is None
+
+    # Every call it made failed.
+    failed = [{"name": "save_lead", "arguments": {}, "result_preview": "Tool call failed: 500", "is_error": True}]
+    loop.return_value = task_ran(failed)
+    broken = close_one("customer-2")
+    assert broken.activity == {"event": "closing_task_failed"} and broken.tool_calls == failed
+
+    # The provider did not answer at all.
+    loop.side_effect = HTTPException(status_code=502)
+    assert close_one("customer-3").activity == {"event": "closing_task_failed"}
+
+
+def test_no_closing_task_means_no_extra_turn(setup, monkeypatch):
+    s = setup
+    lead = add_tool(s)
+    loop = AsyncMock(return_value=task_ran())
+    monkeypatch.setattr(follow_ups, "tool_loop", loop)
+    closing_only(s)
+    incoming(s)
+    rewind(s, 121)
+    sweep()
+    assert messages(s)[-1].activity == {"event": "closed_unanswered", "hours": 2}
+
+    # A task whose only tool was switched off afterwards has nothing to run with.
+    closing_only(s, close_task=TASK, close_tool_ids=[lead["id"]])
+    assert s.client.patch(f"/api/agents/{s.agent['id']}/tools/{lead['id']}", json={"enabled": False}).status_code == 200
+    incoming(s, mid="customer-2")
+    rewind(s, 121)
+    sweep()
+    assert messages(s)[-1].activity == {"event": "closed_unanswered", "hours": 2}
+    loop.assert_not_awaited()

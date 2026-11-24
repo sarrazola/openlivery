@@ -184,7 +184,7 @@ export type ToolCallMeta = { name: string; arguments: Record<string, unknown>; r
 export type Source = { id: string; filename: string; excerpt: string };
 export type Attachment = { id: string; kind: "image" | "audio" | "video" | "file"; mime: string; filename: string | null; size_bytes: number };
 export type MessageButton = { type: string; text: string };
-export type Message = { id: string; role: "user" | "assistant" | "system"; kind?: "message" | "activity"; delivery_status?: "pending" | "sent" | "delivered" | "read" | "failed" | "unknown" | null; delivery_error?: string | null; activity?: { event: string; hours?: number | string; assignee?: string; from?: string; team?: string; target?: string; reason?: string; tag?: string } | null; content: string; sources: Source[]; tool_calls?: ToolCallMeta[] | null; sender_type: "visitor" | "ai" | "human"; sender_name: string | null; reaction?: string | null; incoming_reaction?: string | null; quoted_message_id?: string | null; buttons?: MessageButton[] | null; created_at: string; attachments?: Attachment[] };
+export type Message = { id: string; role: "user" | "assistant" | "system"; kind?: "message" | "activity"; delivery_status?: "pending" | "sent" | "delivered" | "read" | "failed" | "unknown" | null; delivery_error?: string | null; activity?: { event: string; hours?: number | string; assignee?: string; from?: string; team?: string; target?: string; reason?: string; tag?: string; tools?: string } | null; content: string; sources: Source[]; tool_calls?: ToolCallMeta[] | null; sender_type: "visitor" | "ai" | "human"; sender_name: string | null; reaction?: string | null; incoming_reaction?: string | null; quoted_message_id?: string | null; buttons?: MessageButton[] | null; created_at: string; attachments?: Attachment[] };
 
 export type ConversationInbox = {
   id: string;
@@ -596,7 +596,7 @@ export type ReportReply = {
   tools: number;
   tool_errors: number;
   // "reply", or "summary" for a conversation summary a person asked for.
-  purpose?: "reply" | "summary" | "call";
+  purpose?: "reply" | "summary" | "call" | "closing_task";
 };
 
 /** A detail a contact can hold: the built-in name, email and phone, or a
@@ -641,10 +641,17 @@ export type FollowUpConfig = {
   second_text: string | null;
   close_text: string | null;
   channels: string[];
+  /** What the agent does with its tools once the closing step ends the case; null leaves it a message only. */
+  close_task: string | null;
+  close_tool_ids: string[];
+  available_tools: FollowUpTool[];
   available_channels: string[];
   min_minutes: number;
   max_minutes: number;
 };
+
+/** One of the agent's tools as the closing task can pick it; an MCP server lists what it exposes. */
+export type FollowUpTool = { id: string; name: string; type: string; tool_names: string[] };
 
 export type ConversationReportRow = {
   id: string;

@@ -203,6 +203,12 @@ class Agent(Base):
     follow_up_second_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     follow_up_close_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     follow_up_channels: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    # A task for the closing step: what the agent should do with its tools
+    # when a conversation closes unanswered, in the operator's words. It runs
+    # once, after the closing message, with only the tools whose ``AgentTool``
+    # ids are listed, and nothing it writes reaches the contact.
+    follow_up_close_task: Mapped[str | None] = mapped_column(Text, nullable=True)
+    follow_up_close_tools: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     # When the agent is on duty. Off, it answers whenever it is active; on, it
     # answers only inside ``schedule_slots``, each ``{"day", "start", "end"}``
     # with the weekday as 0 (Monday) to 6 (Sunday) and the bounds as "HH:MM"

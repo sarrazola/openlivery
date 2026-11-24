@@ -14,13 +14,14 @@ from ..deps import get_current_user
 from ..models import Agent, AgentCaptureField, AgentMediaAsset, AgentQA, AgentTool, Client, EscalationRule, KnowledgeChunk, KnowledgeDocument, PortalUser, Team, User, WhatsAppChannel, WhatsAppCloudChannel, WidgetChannel, now_utc
 from ..schemas import (
     AgentCreate, AgentOut, AgentPromptOut, AgentUpdate, CaptureConfigIn, CaptureConfigOut, CaptureFieldOut, ContactFieldOut,
-    DocumentOut, EscalationConfigIn, EscalationConfigOut, FollowUpConfigIn, FollowUpConfigOut, MediaAssetOut, MediaAssetUpdate,
+    DocumentOut, EscalationConfigIn, EscalationConfigOut, FollowUpConfigIn, FollowUpConfigOut, FollowUpToolOut, MediaAssetOut,
+    MediaAssetUpdate,
     QAPairCreate, QAPairOut,
     check_reply_delay,
 )
 from ..services import phone_calls
 from ..services.capture import CAPTURE_CHANNELS, field_definitions
-from ..services.follow_ups import FOLLOW_UP_CHANNELS, MAX_MINUTES, MIN_MINUTES, check_schedule
+from ..services.follow_ups import FOLLOW_UP_CHANNELS, MAX_MINUTES, MIN_MINUTES, check_schedule, exposed_tool_names, usable_tools
 from ..services.knowledge import build_system_prompt, embed_document_chunks, reindex_agent, reindex_document
 from ..services.attachments import content_disposition, is_inline_safe
 from ..services.media_library import (
@@ -152,6 +153,8 @@ def delete_agent(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User 
     agent.capture_enabled = False
     agent.resolve_enabled = False
     agent.follow_up_enabled = False
+    agent.follow_up_close_task = None
+    agent.follow_up_close_tools = []
     for field in ("instructions", "personality", "brief_summary", "brief_products", "brief_audience", "brief_policies", "brief_dos", "brief_donts"):
         setattr(agent, field, "")
     agent.escalation_team_id = None
@@ -574,8 +577,16 @@ def replace_capture_config(
 # --- Follow-ups and closing ---------------------------------------------------
 
 
-def _follow_up_out(agent: Agent) -> FollowUpConfigOut:
+def _follow_up_out(db: Session, agent: Agent) -> FollowUpConfigOut:
+    tools = usable_tools(db, agent)
+    known = {str(tool.id) for tool in tools}
     return FollowUpConfigOut(
+        close_task=agent.follow_up_close_task,
+        # A tool removed or switched off since the task was saved is no longer a choice.
+        close_tool_ids=[tool_id for tool_id in (agent.follow_up_close_tools or []) if tool_id in known],
+        available_tools=[
+            FollowUpToolOut(id=tool.id, name=tool.name, type=tool.type, tool_names=exposed_tool_names(tool)) for tool in tools
+        ],
         resolve_enabled=agent.resolve_enabled,
         enabled=agent.follow_up_enabled,
         first_minutes=agent.follow_up_first_minutes,
@@ -593,7 +604,7 @@ def _follow_up_out(agent: Agent) -> FollowUpConfigOut:
 
 @router.get("/{agent_id}/follow-ups", response_model=FollowUpConfigOut)
 def get_follow_up_config(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return _follow_up_out(_agent(db, user, agent_id))
+    return _follow_up_out(db, _agent(db, user, agent_id))
 
 
 @router.put("/{agent_id}/follow-ups", response_model=FollowUpConfigOut)
@@ -608,6 +619,17 @@ def replace_follow_up_config(
         check_schedule(config.enabled, config.first_minutes, config.second_minutes, config.close_minutes, channels)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # The task belongs to the closing step: without one there is nothing to run it.
+    task = ((config.close_task or "").strip() or None) if config.close_minutes else None
+    tool_ids = list(dict.fromkeys(str(tool_id) for tool_id in config.close_tool_ids)) if task else []
+    if task:
+        usable = {str(tool.id) for tool in usable_tools(db, agent)}
+        if not tool_ids:
+            raise HTTPException(status_code=422, detail="Choose at least one tool for the closing task.")
+        if any(tool_id not in usable for tool_id in tool_ids):
+            raise HTTPException(status_code=422, detail="The closing task can only use this agent's enabled tools.")
+    agent.follow_up_close_task = task
+    agent.follow_up_close_tools = tool_ids
     agent.resolve_enabled = config.resolve_enabled
     agent.follow_up_enabled = config.enabled
     agent.follow_up_first_minutes = config.first_minutes
@@ -620,4 +642,4 @@ def replace_follow_up_config(
     agent.follow_up_channels = channels
     db.commit()
     db.refresh(agent)
-    return _follow_up_out(agent)
+    return _follow_up_out(db, agent)
