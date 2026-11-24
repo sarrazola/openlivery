@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import socket
+import time
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -190,6 +191,34 @@ def test_media_redirect_cannot_escape_provider_cdn(monkeypatch):
         asyncio.run(social_media.fetch_inbound_media("https://cdn.fbcdn.net/file"))
     assert error.value.status_code == 422
     assert Client.calls == ["https://cdn.fbcdn.net/file"]
+
+
+def test_the_dns_check_survives_a_loop_kept_busy_by_other_work(monkeypatch):
+    """The lookup used to sit under a 5 second timer of the event loop. With
+    the loop blocked past it by another task, the timer fired on an answer
+    that had long arrived, and no inbound file was ever downloaded."""
+    monkeypatch.setattr(social_media.asyncio, "wait_for", AsyncMock(side_effect=AssertionError("a loop timer around the lookup")))
+    answered = []
+
+    def lookup(host, port, *args, **kwargs):
+        answered.append(time.monotonic())
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("57.144.252.128", port))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", lookup)
+
+    async def neighbour():
+        time.sleep(0.4)      # blocking work on the same loop while the lookup is out
+
+    async def run():
+        other = asyncio.create_task(neighbour())
+        started = time.monotonic()
+        await social_media._public_cdn_address("https://lookaside.fbsbx.com/file")
+        await other
+        return started
+
+    started = asyncio.run(run())
+    # The answer came at once and was only read after the loop was free again.
+    assert answered and answered[0] - started < 0.3
 
 
 def test_the_dns_check_says_which_way_it_failed(monkeypatch):
