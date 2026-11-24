@@ -145,7 +145,24 @@ class WaitForDelivery(Exception):
     pass
 
 
-async def process_event(db: Session, channel: SocialChannel, event: dict) -> None:
+class MediaNotFetched(Exception):
+    """A file the contact sent could not be downloaded yet; the event is worth
+    another try before the message is kept without it."""
+
+
+# How many times an event is processed before a file that will not download is
+# given up on, and the pause before each new try (multiplied by the attempt).
+MEDIA_ATTEMPTS = 4
+MEDIA_RETRY_SECONDS = 3
+# A file over the size limit, or one on a host that is not the provider's CDN,
+# fails the same way every time.
+_FINAL_MEDIA_ERRORS = {400, 413, 422}
+
+
+async def process_event(db: Session, channel: SocialChannel, event: dict, *, last_attempt: bool = True) -> None:
+    """Apply one webhook event. ``last_attempt`` False lets a failed download of
+    a file the contact sent raise ``MediaNotFetched`` instead of settling for
+    the message without it; the queue passes it while tries remain."""
     sender = str((event.get("sender") or {}).get("id") or "")
     recipient = str((event.get("recipient") or {}).get("id") or "")
     message = event.get("message") or {}
@@ -291,7 +308,16 @@ async def process_event(db: Session, channel: SocialChannel, event: dict) -> Non
                 continue
             total_bytes += len(blob)
             fetched.append((blob, blob_mime, media_kind if direct else attachment_kind(blob_mime)))
-        except Exception:
+        except Exception as exc:
+            # The message is kept without the file, so this line is the only
+            # trace of why. The host and the reason, never the URL: it is signed.
+            reason = f"{exc.status_code} {exc.detail}" if isinstance(exc, HTTPException) else type(exc).__name__
+            logger.warning("Inbound %s attachment on %s was not fetched from %s: %s",
+                           media_kind, channel.provider, urlparse(url).hostname, reason)
+            final = isinstance(exc, HTTPException) and exc.status_code in _FINAL_MEDIA_ERRORS
+            if direct and not final and not last_attempt:
+                # Nothing of this event is stored yet, so it can simply run again.
+                raise MediaNotFetched() from exc
             # Shared content whose media expired or is too large keeps its label.
             if not label:
                 warnings.append("[Attachment unavailable]" if direct else UNAVAILABLE)
@@ -380,10 +406,15 @@ async def process_pending(db: Session, *, limit: int = 25) -> int:
         try:
             channel = db.get(SocialChannel, event.channel_id)
             if channel and channel.is_enabled and channel.status in {"connected", "reauthorization_required"}:
-                await process_event(db, channel, event.payload)
+                await process_event(db, channel, event.payload, last_attempt=event.attempts >= MEDIA_ATTEMPTS)
             event.status, event.processed_at, event.last_error = "processed", now_utc(), None
         except WaitForDelivery:
             event.status, event.available_at = "pending", now_utc() + timedelta(seconds=5)
+        except MediaNotFetched:
+            # One failed download used to cost the message its file for good: a
+            # voice note was never transcribed. The last try keeps the message.
+            event.status = "pending"
+            event.available_at = now_utc() + timedelta(seconds=MEDIA_RETRY_SECONDS * event.attempts)
         except Exception as exc:
             db.rollback()
             event = db.get(SocialWebhookEvent, event_id)
