@@ -649,6 +649,10 @@ textarea { line-height: 1.55; }
 .widget-typing i:nth-child(3) { animation-delay: .4s; }
 @keyframes widget-blink { 0%, 60%, 100% { opacity: .3; } 30% { opacity: 1; } }
 .widget-error { padding: 6px 14px; color: var(--red); font-size: 12px; background: var(--red-soft); }
+.widget-confirm { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; font-size: 13px; color: var(--widget-ink, var(--ink)); background: var(--surface-3); border-bottom: 1px solid var(--line); }
+.widget-confirm div { display: inline-flex; gap: 6px; margin-left: auto; }
+.widget-confirm button { padding: 6px 10px; font: inherit; font-weight: 600; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink); background: var(--surface); cursor: pointer; }
+.widget-confirm button.danger { color: #fff; border-color: var(--red); background: var(--red); }
 .widget-composer { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--widget-bg, var(--surface)); }
 .widget-composer input { flex: 1 1 auto; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: calc(var(--widget-radius, 16px) * 1.25); font-size: 14px; }
 .widget-composer input:focus { outline: none; border-color: var(--widget-color, var(--accent)); }

@@ -7,10 +7,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..database import get_db
-from ..services.conversation_state import cancel_follow_up, exchanged_only
+from ..services.conversation_state import cancel_follow_up, exchanged_only, resolve_without_a_person
 from ..models import Agency, Agent, Client, Conversation, Message, MessageAttachment, WidgetChannel, now_utc
 from ..ratelimit import public_asset_rate_limit, widget_poll_rate_limit, widget_rate_limit
-from ..schemas import WidgetConfigOut, WidgetMessageIn, WidgetReply
+from ..schemas import WidgetConfigOut, WidgetMessageIn, WidgetReply, WidgetSessionIn
 from ..services.attachments import (
     MAX_ATTACHMENT_BYTES,
     MAX_WIDGET_ATTACHMENTS,
@@ -204,6 +204,20 @@ def widget_history(public_id: str, session_id: str, db: Session = Depends(get_db
         "messages": [_message_out(item) for item in _session_messages(db, channel, session_id, conversation_id=conversation.id)],
         "previous": previous,
     }
+
+
+@router.post("/{public_id}/end", response_model=WidgetReply, dependencies=[Depends(widget_rate_limit)])
+def widget_end(public_id: str, payload: WidgetSessionIn, db: Session = Depends(get_db)):
+    """The visitor ends the open case, so their next message starts a new one.
+    The ended case joins their previous chats, and the inbox reads that the
+    contact closed it. Ending with nothing open changes nothing."""
+    channel = _channel(db, public_id)
+    conversation = _open_case(db, channel, payload.session_id)
+    if conversation is not None:
+        conversation.pending_resolution = None
+        resolve_without_a_person(db, conversation, "ended_by_contact", actor=conversation.contact_name or "The contact")
+        db.commit()
+    return widget_history(public_id, payload.session_id, db)
 
 
 @router.get("/{public_id}/conversations/{conversation_id}", response_model=WidgetReply, dependencies=[Depends(widget_rate_limit)])

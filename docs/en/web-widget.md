@@ -69,6 +69,8 @@ These public endpoints are rate-limited per client IP (30 message requests per m
 
 While open, the widget also polls `GET /api/widget/<publicId>/updates` every few seconds (its own, wider limit of 120 per minute), so replies written by a person who took over the conversation appear live, labelled with their name. Resolving a conversation closes the case: the visitor's next message opens a new one, and the widget shows the new case on its own; earlier chats stay one tap away behind the history button, read-only. They are tied to the anonymous session id in the browser's storage and live on the server, so a reload keeps them and only clearing site data loses them.
 
+The visitor can also close the case themselves: **End chat** in the chat header (`POST /api/widget/<publicId>/end` with the session id) resolves the open case, which joins their previous chats, and their next message starts a new one. The inbox shows that the contact ended it.
+
 ## Widget conversations in the inbox
 
 Every widget chat becomes a conversation on the `widget` channel, so it shows up in the [Inbox](inbox.md) alongside WhatsApp and playground threads. You can filter by the widget channel, read the full transcript, and switch a conversation to **human** mode — which pauses the AI so an operator can reply directly from the portal.

@@ -1017,3 +1017,36 @@ def test_available_models_lists_the_catalog(authenticated_client):
     assert "anthropic/claude-sonnet-5" in body["chat"]["openrouter"]
     assert "openai/gpt-4o-mini-transcribe" in body["audio"]
     assert "openai/gpt-5.6-luna" in body["image"]
+
+
+def test_widget_visitor_ends_the_chat_and_starts_a_new_one(authenticated_client: TestClient, monkeypatch):
+    client = authenticated_client
+    customer = client.post("/api/clients", json={"name": "End Co", "is_active": True}).json()
+    client.put("/api/providers/openrouter", json={"api_key": "secret"})
+    agent = client.post("/api/agents", json={"client_id": customer["id"], "provider": "openrouter", "model": "gpt-4.1-mini",
+        "name": "Sofia", "instructions": "", "personality": "", "is_active": True}).json()
+    public_id = client.put(f"/api/webchat/channels/{customer['id']}",
+        json={"agent_id": agent["id"], "is_enabled": True}).json()["public_id"]
+    monkeypatch.setattr(widget_router, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Hola")))
+
+    # Ending with nothing open changes nothing.
+    nothing = client.post(f"/api/widget/{public_id}/end", json={"session_id": "s1"})
+    assert nothing.status_code == 200 and nothing.json()["messages"] == [] and nothing.json()["previous"] == []
+
+    first = client.post(f"/api/widget/{public_id}/messages", json={"session_id": "s1", "content": "hola"}).json()
+    ended = client.post(f"/api/widget/{public_id}/end", json={"session_id": "s1"})
+    assert ended.status_code == 200
+    body = ended.json()
+    assert body["messages"] == [] and body.get("conversation_id") is None
+    assert [item["id"] for item in body["previous"]] == [first["conversation_id"]]
+
+    detail = client.get(f"/api/conversations/{first['conversation_id']}").json()
+    assert detail["status"] == "resolved"
+    activity = [m for m in detail["messages"] if m["kind"] == "activity"]
+    assert activity[-1]["activity"]["event"] == "ended_by_contact"
+    assert activity[-1]["content"].endswith("ended the chat")
+
+    # The next message is a new case; another visitor's session is untouched.
+    second = client.post(f"/api/widget/{public_id}/messages", json={"session_id": "s1", "content": "otra cosa"}).json()
+    assert second["conversation_id"] != first["conversation_id"]
+    assert client.post(f"/api/widget/{public_id}/end", json={"session_id": "other"}).json()["previous"] == []
