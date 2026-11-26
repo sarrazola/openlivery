@@ -17,6 +17,7 @@ from ..services.social_connections import get_app_config
 from ..services.social_graph import provider_name
 from ..services.social_inbound import enqueue_webhook
 from ..services.social_media import media_signature
+from ..services import telegram
 from ..services.attachments import content_disposition
 
 public_router = APIRouter(prefix="/public/social", tags=["Social messaging callbacks"])
@@ -63,9 +64,30 @@ def verify_channel(channel_id: uuid.UUID, db: Session = Depends(get_db),
     return _challenge(channel.webhook_verify_token, mode, token, challenge)
 
 
+async def _telegram_update(request: Request, channel: SocialChannel) -> dict:
+    """Telegram proves itself with the secret the webhook was set with."""
+    if not telegram.check_secret(channel, request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")):
+        raise HTTPException(403, "Invalid secret")
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > MAX_WEBHOOK_BYTES:
+            raise HTTPException(413, "The webhook payload is too large")
+    try:
+        update = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(400, "Invalid JSON payload") from None
+    if not isinstance(update, dict):
+        raise HTTPException(400, "Invalid update")
+    return update
+
+
 @public_router.post("/channels/{channel_id}/webhook", dependencies=[Depends(whatsapp_cloud_webhook_rate_limit)])
 async def receive_channel(channel_id: uuid.UUID, request: Request, db: Session = Depends(get_db)):
     channel = _channel(db, channel_id)
+    if channel.provider == telegram.PROVIDER:
+        telegram.enqueue_update(db, channel, await _telegram_update(request, channel))
+        return {"status": "ok"}
     secret = decrypt_secret(channel.encrypted_app_secret) if channel.encrypted_app_secret else ""
     payload = await _verified_payload(request, secret)
     enqueue_webhook(db, channel.provider, payload, channel)

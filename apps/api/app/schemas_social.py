@@ -55,3 +55,35 @@ class SocialOAuthStart(BaseModel):
 class SocialOAuthComplete(BaseModel):
     setup_id: str = Field(min_length=64, max_length=64, pattern=r"^[a-f0-9]+$")
     external_account_id: str = Field(min_length=1, max_length=64, pattern=r"^[0-9]+$")
+
+
+class TelegramChannelCreate(BaseModel):
+    agent_id: uuid.UUID
+    token: str = Field(min_length=1, max_length=200)
+    label: str | None = Field(default=None, max_length=80)
+
+
+class TelegramChannelUpdate(BaseModel):
+    """Change the agent or the name; a new ``token`` (of the same bot) replaces
+    the stored one and points the webhook here again."""
+    agent_id: uuid.UUID | None = None
+    label: str | None = Field(default=None, max_length=80)
+    token: str | None = Field(default=None, max_length=200)
+
+
+class TelegramChannelOut(BaseModel):
+    id: uuid.UUID
+    client_id: uuid.UUID
+    agent_id: uuid.UUID
+    provider: Literal["telegram"]
+    external_account_id: str | None = None
+    display_name: str | None = None
+    username: str | None = None
+    label: str | None = None
+    status: str
+    is_enabled: bool
+    last_error: str | None = None
+    has_token: bool
+    last_connected_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime

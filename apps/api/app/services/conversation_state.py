@@ -43,6 +43,7 @@ _ACTIVITY_TEXT = {
     "auto_resolved": "Resolved automatically after {hours} h without activity",
     "resolved_by_agent": "{actor} resolved the conversation: {reason}",
     "closed_unanswered": "Resolved after {hours} h without an answer to the follow-ups",
+    "ended_by_contact": "{actor} ended the chat",
     "closing_task_done": "{actor} ran the closing task: {tools}",
     "closing_task_skipped": "{actor} checked the closing task and had nothing to do",
     "closing_task_failed": "{actor} could not complete the closing task",

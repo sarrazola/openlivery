@@ -1397,6 +1397,10 @@ class WidgetMessageIn(BaseModel):
     content: str = Field(min_length=1, max_length=8000)
 
 
+class WidgetSessionIn(BaseModel):
+    session_id: str = Field(min_length=1, max_length=120)
+
+
 class WidgetMessageOut(BaseModel):
     id: uuid.UUID | None = None
     role: str

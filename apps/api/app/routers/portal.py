@@ -104,6 +104,7 @@ from ..services.notifications import notify_assigned
 from ..services.attachments import attachment_response, conversation_attachment, logo_response
 from ..services.operator_media import store_operator_media_reply
 from ..services.whatsapp import deliver_reaction, resolve_quote, send_channel_message, signal_channel_read
+from ..services.social_policy import SOCIAL_PROVIDERS
 
 
 # Playground conversations are rehearsals by the agency: stored, but never
@@ -231,7 +232,7 @@ def _last_inbound_at(conversation: Conversation):
 
 
 def _window_fields(conversation: Conversation, last_inbound_at) -> dict:
-    if conversation.channel in ("instagram", "messenger"):
+    if conversation.channel in SOCIAL_PROVIDERS:
         from ..services.social_policy import window_fields
         return window_fields(conversation)
     if conversation.channel != "whatsapp_cloud":
@@ -1323,7 +1324,7 @@ def _require_open_conversation(conversation: Conversation) -> None:
 
 def _require_open_window(db: Session, conversation: Conversation) -> None:
     # The send service checks the window again; here it fails before anything is stored.
-    if conversation.channel in ("instagram", "messenger"):
+    if conversation.channel in SOCIAL_PROVIDERS:
         from ..services.social_policy import require_reply
         require_reply(conversation, human=True)
     reply_window.require_open_window(db, conversation)
@@ -2262,7 +2263,7 @@ async def portal_reply(
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
     _require_open_window(db, conversation)
-    if conversation.channel in ("instagram", "messenger"):
+    if conversation.channel in SOCIAL_PROVIDERS:
         from ..services.social_delivery import queue_message
         if payload.quoted_message_id:
             raise HTTPException(status_code=422, detail="Quoted replies are not supported by this channel.")

@@ -22,6 +22,7 @@ _FAMILY = {
     "whatsapp_cloud": (WhatsAppCloudChannel, "whatsapp_cloud_channel_id"),
     "instagram": (SocialChannel, "social_channel_id"),
     "messenger": (SocialChannel, "social_channel_id"),
+    "telegram": (SocialChannel, "social_channel_id"),
     "phone": (PhoneChannel, "phone_channel_id"),
 }
 

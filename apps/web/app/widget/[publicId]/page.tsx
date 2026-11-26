@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Download, History, LoaderCircle, Send, X } from "lucide-react";
+import { ArrowLeft, Download, History, LoaderCircle, MessageSquareX, Send, X } from "lucide-react";
 import { api, apiUrl, messageFrom } from "@/lib/api";
 import { AttachButton, MessageAttachments, PendingAttachment, type GalleryImage } from "@/components/attachments";
 import { RichText } from "@/components/rich-text";
@@ -93,6 +93,8 @@ export default function WidgetPage() {
   const [past, setPast] = useState<{ item: PastCase; messages: Msg[] } | null>(null);
   // Set when a case closes while the widget is open, so the fresh chat says why.
   const [justClosed, setJustClosed] = useState(false);
+  // The visitor asked to end the open case and is confirming it.
+  const [confirmEnd, setConfirmEnd] = useState(false);
   // Inline, the chat sits in the page itself: nothing opens or closes it. Read
   // once: the first render shows the spinner either way, so it cannot mismatch.
   const [inline] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mode") === "inline");
@@ -240,6 +242,22 @@ export default function WidgetPage() {
 
   function close() { window.parent?.postMessage({ type: "ol-widget", action: "close" }, "*"); }
 
+  // The visitor closes the case themselves: it moves to previous chats and
+  // their next message starts a new one, without clearing anything.
+  async function endChat() {
+    if (!session || busy) return;
+    setBusy(true); setError("");
+    try {
+      const data = await api<Reply>(`/widget/${publicId}/end`, { method: "POST", body: JSON.stringify({ session_id: session }) });
+      lastAtRef.current = null;
+      setMessages(data.messages);
+      setCaseId(data.conversation_id ?? null);
+      setPrevious(data.previous ?? []);
+      setJustClosed(true);
+      setConfirmEnd(false);
+    } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
+  }
+
   // Exports the chat on screen: the live one with its greeting, or a past one.
   function exportChat(list: Msg[] = messages, withGreeting = true) {
     if (!config) return;
@@ -350,9 +368,11 @@ export default function WidgetPage() {
         <div className="widget-head-actions">
           {previous.length > 0 && <button type="button" className="widget-head-btn" onClick={() => setView("list")} title={t("chat.previousChats")} aria-label={t("chat.previousChats")}><History size={17} /></button>}
           {messages.length > 0 && <button type="button" className="widget-head-btn" onClick={() => exportChat()} title={t("chat.exportChat")} aria-label={t("chat.exportChat")}><Download size={17} /></button>}
+          {caseId && messages.length > 0 && <button type="button" className="widget-head-btn" onClick={() => setConfirmEnd(true)} title={t("chat.endChat")} aria-label={t("chat.endChat")}><MessageSquareX size={17} /></button>}
           {closeButton}
         </div>
       </header>
+      {confirmEnd && <div className="widget-confirm" role="alertdialog" aria-label={t("chat.endChat")}><span>{t("chat.endChatConfirm")}</span><div><button type="button" onClick={() => setConfirmEnd(false)} disabled={busy}>{t("chat.endChatCancel")}</button><button type="button" className="danger" onClick={endChat} disabled={busy}>{t("chat.endChat")}</button></div></div>}
       <div ref={messagesRef} className="widget-messages">
         {atStart && look.headline && <h1 className={`widget-headline ${look.headline_font}`}>{look.headline}</h1>}
         {showGreeting && <div className="widget-msg assistant"><div className="widget-bubble"><RichText text={config.greeting} /></div></div>}

@@ -13,7 +13,8 @@ from .social_media import attachment_url
 
 def split_text(text: str, provider: str) -> list[str]:
     """Respect byte limits without splitting a Unicode code point."""
-    limit = 1000 if provider == "instagram" else 2000
+    # Telegram counts the text after its markup is parsed, up to 4096.
+    limit = 1000 if provider == "instagram" else 4000 if provider == "telegram" else 2000
     chunks, current, size = [], [], 0
     for char in text:
         width = len(char.encode("utf-8")) if provider == "instagram" else 1
@@ -69,6 +70,19 @@ def _finish_message(db: Session, row: SocialOutbox, error: str | None = None) ->
     message.delivery_error = error or next((item.last_error for item in siblings if item.status in {"failed", "unknown", "cancelled"}), None)
 
 
+async def _send_telegram(channel: SocialChannel, row: SocialOutbox, attachment: MessageAttachment | None) -> str:
+    from . import telegram_api
+    from ..security import decrypt_secret
+    if not channel.encrypted_access_token:
+        raise HTTPException(status_code=401, detail="Connect the bot again with its token.")
+    token = decrypt_secret(channel.encrypted_access_token)
+    telegram_api.stop_typing(token, row.payload["recipient_id"])
+    if attachment is not None:
+        return await telegram_api.send_file(token, row.payload["recipient_id"], row.payload.get("kind") or attachment.kind,
+                                            attachment.data, attachment.mime, attachment.filename)
+    return await telegram_api.send_text(token, row.payload["recipient_id"], row.payload["text"])
+
+
 async def process_outbox(db: Session, *, limit: int = 25) -> int:
     from . import social_graph
     count = 0
@@ -108,12 +122,14 @@ async def process_outbox(db: Session, *, limit: int = 25) -> int:
             if previous_failure:
                 raise HTTPException(status_code=409, detail="An earlier part of this message was not delivered.")
             human_agent = require_reply(conversation, human=bool(row.payload.get("human")))
-            media_url = None
+            media_url = attachment = None
             if row.payload.get("attachment_id"):
                 attachment = db.get(MessageAttachment, row.payload["attachment_id"])
                 if not attachment or attachment.message_id != row.message_id:
                     raise HTTPException(status_code=409, detail="The attachment is unavailable.")
-                media_url = attachment_url(channel, attachment)
+                # A bot uploads the bytes itself; Meta fetches them from a link.
+                if channel.provider != "telegram":
+                    media_url = attachment_url(channel, attachment)
         except HTTPException as exc:
             row.status, row.last_error = "failed", str(exc.detail)[:400]
             db.flush()
@@ -130,7 +146,9 @@ async def process_outbox(db: Session, *, limit: int = 25) -> int:
             db.refresh(conversation)
             db.refresh(channel)
             human_agent = require_reply(conversation, human=bool(row.payload.get("human")))
-            if media_url:
+            if channel.provider == "telegram":
+                external_id = await _send_telegram(channel, row, attachment)
+            elif media_url:
                 external_id = await social_graph.send_media(channel, row.payload["recipient_id"],
                     row.payload["kind"], media_url, human_agent=human_agent)
             else:

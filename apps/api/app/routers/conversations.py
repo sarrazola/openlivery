@@ -36,6 +36,7 @@ from ..services.usage import record_usage
 from ..services.whatsapp import deliver_reaction, resolve_quote, send_channel_message, signal_channel_read
 from ..services import channel_accounts
 from ..services.whatsapp_inbound import InboundMessage, resolve_inbound_content
+from ..services.social_policy import SOCIAL_PROVIDERS
 
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
@@ -233,7 +234,7 @@ def get_conversation(conversation_id: uuid.UUID, db: Session = Depends(get_db), 
 
 def _ready_agent(db: Session, conversation: Conversation) -> tuple[Agent, tuple[str, str]]:
     """Validate the conversation can produce an AI reply and return the agent + credentials."""
-    if conversation.channel in {"instagram", "messenger"}:
+    if conversation.channel in SOCIAL_PROVIDERS:
         raise HTTPException(status_code=409, detail="Use the inbox reply action for this channel.")
     agent = conversation.agent
     if not agent.is_active:
@@ -450,7 +451,7 @@ async def reply_as_human(
     conversation = _conversation(db, user, conversation_id)
     if conversation.mode != "human":
         raise HTTPException(status_code=409, detail="Take control of the conversation before replying")
-    if conversation.channel in ("instagram", "messenger"):
+    if conversation.channel in SOCIAL_PROVIDERS:
         from ..services.social_delivery import queue_message
         if payload.quoted_message_id:
             raise HTTPException(status_code=422, detail="Quoted replies are not supported by this channel.")

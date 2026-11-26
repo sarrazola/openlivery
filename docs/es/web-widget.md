@@ -69,6 +69,8 @@ Estos endpoints públicos tienen límite de peticiones por IP de cliente (30 pet
 
 Mientras está abierto, el widget también consulta `GET /api/widget/<publicId>/updates` cada pocos segundos (con su propio límite, más amplio, de 120 por minuto), así que las respuestas que escribe una persona que tomó el control aparecen en vivo, con su nombre. Resolver una conversación cierra el caso: el siguiente mensaje del visitante abre uno nuevo, y el widget muestra el caso nuevo por separado; los chats anteriores quedan a un toque tras el botón de historial, solo lectura. Van ligados al id de sesión anónimo del navegador y viven en el servidor, así que recargar los conserva y solo borrar los datos del sitio los pierde.
 
+El visitante también puede cerrar el caso: **Finalizar chat**, en la cabecera del chat (`POST /api/widget/<publicId>/end` con el id de sesión), resuelve el caso abierto, que pasa a sus chats anteriores, y su siguiente mensaje empieza uno nuevo. La bandeja muestra que lo cerró el contacto.
+
 ## Conversaciones del widget en el inbox
 
 Cada chat del widget se convierte en una conversación del canal `widget`, así que aparece en el [Inbox](inbox.md) junto a los hilos de WhatsApp y del playground. Puedes filtrar por el canal del widget, leer la transcripción completa y cambiar una conversación a modo **humano**, lo que pausa la IA para que un operador responda directamente desde el portal.

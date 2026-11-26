@@ -186,6 +186,7 @@ export function ConversationExplorer({ basePath, scope, options, onOpen }: {
     if (value === "whatsapp_cloud") return t("inbox.channelWhatsappCloud");
     if (value === "instagram") return t("social.instagram.title");
     if (value === "messenger") return t("social.messenger.title");
+    if (value === "telegram") return t("telegram.title");
     if (value === "widget") return t("inbox.channelWidget");
     if (value === "phone") return t("phone.title");
     return value;
