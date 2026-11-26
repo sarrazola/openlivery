@@ -1,4 +1,4 @@
-import { BadgeCheck, Facebook, FlaskConical, Globe, Instagram, MessageCircle, Phone } from "lucide-react";
+import { BadgeCheck, Facebook, FlaskConical, Globe, Instagram, MessageCircle, Phone, Send } from "lucide-react";
 import type { I18nKey } from "@/lib/i18n";
 import type { Client } from "@/types";
 
@@ -7,12 +7,13 @@ import type { Client } from "@/types";
  * open; `onBack` returns to the tab's cards. */
 export type ChannelSetupProps = { client: Client; onBack: () => void };
 
-export const INBOX_CHANNELS = ["whatsapp", "whatsapp_cloud", "instagram", "messenger", "widget", "phone", "playground"] as const;
+export const INBOX_CHANNELS = ["whatsapp", "whatsapp_cloud", "instagram", "messenger", "telegram", "widget", "phone", "playground"] as const;
 const labels: Record<string, I18nKey> = {
   whatsapp: "inbox.channelWhatsapp",
   whatsapp_cloud: "inbox.channelWhatsappCloud",
   instagram: "social.instagram.title",
   messenger: "social.messenger.title",
+  telegram: "telegram.title",
   widget: "inbox.channelWidget",
   phone: "phone.title",
   playground: "inbox.channelPlayground",
@@ -23,14 +24,16 @@ export function channelLabel(value: string, t: (key: I18nKey) => string): string
 }
 
 export function ChannelIcon({ channel, size = 10 }: { channel: string; size?: number }) {
-  const Icon = channel === "instagram" ? Instagram : channel === "messenger" ? Facebook
+  const Icon = channel === "instagram" ? Instagram : channel === "messenger" ? Facebook : channel === "telegram" ? Send
     : channel === "whatsapp_cloud" ? BadgeCheck : channel === "widget" ? Globe : channel === "phone" ? Phone
     : channel === "playground" ? FlaskConical : MessageCircle;
   return <Icon size={size} />;
 }
 
+/** Channels whose replies wait in a queue and follow the channel's own rules
+ * (the Meta inboxes and Telegram bots), as opposed to the WhatsApp lines. */
 export function isSocialChannel(channel?: string): boolean {
-  return channel === "instagram" || channel === "messenger";
+  return channel === "instagram" || channel === "messenger" || channel === "telegram";
 }
 
 /** The last digits of a number, however the provider formatted it. */

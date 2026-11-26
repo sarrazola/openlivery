@@ -198,6 +198,7 @@ export default function ReportsPage() {
     if (value === "whatsapp_cloud") return t("inbox.channelWhatsappCloud");
     if (value === "instagram") return t("social.instagram.title");
     if (value === "messenger") return t("social.messenger.title");
+    if (value === "telegram") return t("telegram.title");
     if (value === "widget") return t("inbox.channelWidget");
     return value;
   };

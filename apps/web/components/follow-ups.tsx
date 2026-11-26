@@ -14,6 +14,7 @@ const CHANNEL_GROUPS = [
   { label: "agents.capture.channelWhatsapp", keys: ["whatsapp", "whatsapp_cloud"] },
   { label: "agents.capture.channelInstagram", keys: ["instagram"] },
   { label: "agents.capture.channelMessenger", keys: ["messenger"] },
+  { label: "agents.capture.channelTelegram", keys: ["telegram"] },
   { label: "agents.capture.channelWidget", keys: ["widget"] },
 ] as const;
 

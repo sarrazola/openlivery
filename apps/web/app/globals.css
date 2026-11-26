@@ -2245,6 +2245,11 @@ p .msg-time, .bubble .msg-time { float: none; position: absolute; right: 11px; b
 .channel-badge.messenger, .channel-dot.messenger { background: #1877f2; }
 .wa-mark.instagram { color: var(--pink-text); background: var(--pink-soft); }
 .wa-mark.messenger { color: #1877f2; background: var(--blue-soft); }
+/* Telegram's own blue, as Messenger keeps Facebook's. */
+.channel-badge.telegram, .channel-dot.telegram { background: #229ed9; }
+.wa-mark.telegram { color: #229ed9; background: var(--blue-soft); }
+.compact-channel-grid article > span.telegram { color: #229ed9; background: var(--blue-soft); }
+.telegram-token { grid-column: 1 / -1; }
 .social-account { display: flex; align-items: center; gap: 14px; margin: 22px 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; }
 .social-account div { display: grid; gap: 5px; overflow-wrap: anywhere; }
 .social-account small, .social-meta { color: var(--muted); }

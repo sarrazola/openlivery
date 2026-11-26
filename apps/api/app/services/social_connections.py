@@ -65,6 +65,13 @@ def register_oauth_state_hook(hook: Callable) -> None:
         _state_hooks.append(hook)
 
 
+def notify_connection(db: Session, channel: SocialChannel, event: str) -> None:
+    """Tell the registered hooks an account was ``linked`` or ``unlinked``,
+    inside the caller's transaction."""
+    for hook in _connection_hooks:
+        hook(db, channel, event)
+
+
 def _https_origin(value: str) -> bool:
     parsed = urlsplit(value)
     return parsed.scheme == "https" and bool(parsed.hostname) and not parsed.username and not parsed.password
@@ -192,8 +199,7 @@ async def connect_account(db: Session, user: User, client_id, agent_id, provider
         channel.last_error = None
         db.flush()
         if activate:
-            for hook in _connection_hooks:
-                hook(db, channel, "linked")
+            notify_connection(db, channel, "linked")
             newly_subscribed = await graph.subscribe(provider, token, account_id, app_id, config.app_secret)
         db.commit()
     except Exception as exc:
@@ -214,13 +220,18 @@ async def disconnect_account(db: Session, channel: SocialChannel) -> None:
     """Remove the channel. The provider is asked to stop delivering first,
     but a revoked authorization must not keep the row alive: the account is
     released either way and its conversations stay as history."""
-    if channel.encrypted_access_token and channel.encrypted_app_secret and channel.external_account_id:
+    if channel.provider == "telegram" and channel.encrypted_access_token:
+        from . import telegram_api
+        try:
+            await telegram_api.delete_webhook(decrypt_secret(channel.encrypted_access_token))
+        except HTTPException:
+            pass
+    elif channel.encrypted_access_token and channel.encrypted_app_secret and channel.external_account_id:
         try:
             await graph.unsubscribe(channel.provider, decrypt_secret(channel.encrypted_access_token), channel.external_account_id, decrypt_secret(channel.encrypted_app_secret))
         except HTTPException:
             pass
-    for hook in _connection_hooks:
-        hook(db, channel, "unlinked")
+    notify_connection(db, channel, "unlinked")
     db.delete(channel)
     db.commit()
 
@@ -340,8 +351,9 @@ async def refresh_due_channels(db: Session) -> None:
     current = now_utc()
     db.execute(delete(SocialOAuthState).where(SocialOAuthState.expires_at <= current))
     db.commit()
+    # A bot token does not expire, so only Meta accounts are refreshed here.
     channels = db.scalars(select(SocialChannel).where(SocialChannel.is_enabled.is_(True), SocialChannel.status == "connected",
-        or_(SocialChannel.token_expires_at.is_(None), SocialChannel.token_expires_at <= current + timedelta(days=7),
+        SocialChannel.provider.in_(graph.PROVIDERS), or_(SocialChannel.token_expires_at.is_(None), SocialChannel.token_expires_at <= current + timedelta(days=7),
             SocialChannel.provider == "messenger"))).all()
     for channel in channels:
         if channel.token_expires_at and channel.token_expires_at <= current:

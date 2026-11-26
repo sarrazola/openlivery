@@ -101,6 +101,11 @@ async def process_replies(db, *, limit: int = 10) -> int:
         channel = conversation.social_channel
         conversation.social_reply_claimed_until = now + timedelta(minutes=5)
         db.commit()
+        if channel.provider == "telegram" and last.external_message_id:
+            # Read off the module at call time, so a deployment that wraps the
+            # signal (to silence an account, say) is the one that runs.
+            from . import whatsapp_inbound
+            await whatsapp_inbound._signal_read_and_typing(db, conversation, [last.external_message_id])
         try:
             await _reply_with_ai(db, channel, conversation, last.llm_content or last.content,
                                  expected_last_message_id=trigger_id)

@@ -32,6 +32,7 @@ from .routers import (
     webchat,
     social,
     social_webhook,
+    telegram,
 )
 
 
@@ -137,5 +138,6 @@ app.include_router(widget.router, prefix="/api")
 app.include_router(domains.public_router, prefix="/api")
 app.include_router(social.router, prefix="/api")
 app.include_router(social_webhook.public_router, prefix="/api")
+app.include_router(telegram.router, prefix="/api")
 app.include_router(phone.router, prefix="/api")
 app.include_router(phone.public_router, prefix="/api")

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ..models import Client, Conversation, PortalUser, Team, TeamMember, now_utc
 from ..schemas import TeamUpsert
 
-TEAM_CHANNELS = {"whatsapp", "whatsapp_cloud", "widget", "instagram", "messenger"}
+TEAM_CHANNELS = {"whatsapp", "whatsapp_cloud", "widget", "instagram", "messenger", "telegram"}
 
 
 def get_team(db: Session, client: Client, team_id: uuid.UUID) -> Team:

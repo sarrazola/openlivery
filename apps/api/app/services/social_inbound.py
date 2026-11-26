@@ -406,7 +406,11 @@ async def process_pending(db: Session, *, limit: int = 25) -> int:
         try:
             channel = db.get(SocialChannel, event.channel_id)
             if channel and channel.is_enabled and channel.status in {"connected", "reauthorization_required"}:
-                await process_event(db, channel, event.payload, last_attempt=event.attempts >= MEDIA_ATTEMPTS)
+                if channel.provider == "telegram":
+                    from .telegram import process_update
+                    await process_update(db, channel, event.payload, last_attempt=event.attempts >= MEDIA_ATTEMPTS)
+                else:
+                    await process_event(db, channel, event.payload, last_attempt=event.attempts >= MEDIA_ATTEMPTS)
             event.status, event.processed_at, event.last_error = "processed", now_utc(), None
         except WaitForDelivery:
             event.status, event.available_at = "pending", now_utc() + timedelta(seconds=5)

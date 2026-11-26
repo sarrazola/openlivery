@@ -47,12 +47,13 @@ from .providers import resolve_agent_credentials
 from .tools.loop import tool_loop
 from .tools.specs import build_tool_specs
 from .usage import record_usage
+from .social_policy import SOCIAL_PROVIDERS
 
 logger = logging.getLogger(__name__)
 
 # Channels a follow-up can go out on. The playground is a test bench, not a
 # contact: nobody is waiting there.
-FOLLOW_UP_CHANNELS = ("whatsapp", "whatsapp_cloud", "instagram", "messenger", "widget")
+FOLLOW_UP_CHANNELS = ("whatsapp", "whatsapp_cloud", "instagram", "messenger", "telegram", "widget")
 MIN_MINUTES = 5
 # Messaging channels accept free-form messages for 24 hours after the
 # contact's last one. The whole sequence stays inside that, with room for the
@@ -304,7 +305,7 @@ def _reachable(db: Session, conversation: Conversation) -> bool:
     kind = conversation.channel
     if kind == "widget":
         return bool(conversation.widget_channel and conversation.widget_channel.is_enabled)
-    if kind in ("instagram", "messenger"):
+    if kind in SOCIAL_PROVIDERS:
         from .social_policy import window_fields
         return bool(conversation.social_channel_id and conversation.external_chat_id
                     and window_fields(conversation)["reply_window_open"])
@@ -373,7 +374,7 @@ async def _deliver(db: Session, conversation: Conversation, agent: Agent, text: 
         conversation_id=conversation.id, role="assistant", content=text, sender_type="ai", sender_name=agent.name,
     )
     try:
-        if conversation.channel in ("instagram", "messenger"):
+        if conversation.channel in SOCIAL_PROVIDERS:
             from .social_delivery import queue_message
             db.add(message)
             queue_message(db, conversation, message)
@@ -533,7 +534,7 @@ async def _run_step(db: Session, conversation: Conversation, now: datetime) -> N
     closed = False
     if step.kind == "close":
         details = {"hours": hours_shown(step.minutes)}
-        if message is not None and conversation.channel in ("instagram", "messenger"):
+        if message is not None and conversation.channel in SOCIAL_PROVIDERS:
             # Queued, not sent yet: the outbox refuses a resolved conversation.
             # The closing task waits with the resolution.
             request_resolution(conversation, "closed_unanswered", details=details)

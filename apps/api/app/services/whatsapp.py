@@ -193,6 +193,16 @@ async def signal_channel_read(
         except HTTPException:
             pass
         return
+    if conversation.channel == "telegram" and conversation.social_channel_id:
+        # A bot cannot mark messages read; it can only show it is writing.
+        channel = conversation.social_channel
+        if typing and channel and channel.encrypted_access_token and channel.status == "connected":
+            from . import telegram_api
+            try:
+                await telegram_api.send_typing(decrypt_secret(channel.encrypted_access_token), conversation.external_chat_id)
+            except HTTPException:
+                pass
+        return
     if conversation.channel == "whatsapp_cloud" and conversation.whatsapp_cloud_channel_id:
         channel = db.get(WhatsAppCloudChannel, conversation.whatsapp_cloud_channel_id)
         from .whatsapp_coexistence import require_reply

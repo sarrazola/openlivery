@@ -10,7 +10,7 @@ import { useT } from "@/lib/i18n";
 import type { PortalMember, Team } from "@/types";
 
 const STRATEGIES = ["round_robin", "least_busy"] as const;
-const CHANNEL_OPTIONS = ["whatsapp", "whatsapp_cloud", "instagram", "messenger", "widget"] as const;
+const CHANNEL_OPTIONS = ["whatsapp", "whatsapp_cloud", "instagram", "messenger", "telegram", "widget"] as const;
 
 /** The client's teams. `base` is the API prefix the rows live under: the portal's
  * own (`/portal/{slug}`) or the agency's client page (`/clients/{id}`). Without
@@ -93,6 +93,7 @@ export function TeamsView({ base, canManage = true }: { base: string; canManage?
     : value === "whatsapp_cloud" ? t("portal.teams.channel.whatsapp_cloud")
     : value === "instagram" ? t("social.instagram.title")
     : value === "messenger" ? t("social.messenger.title")
+    : value === "telegram" ? t("telegram.title")
     : t("portal.teams.channel.widget");
 
   const query = memberQuery.trim().toLowerCase();

@@ -83,7 +83,7 @@ async def prepare_media(provider: str, data: bytes, mime: str, kind: str) -> tup
     ensure_uploadable(mime)
     if not re.fullmatch(r"[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*", mime):
         raise HTTPException(status_code=422, detail="The attachment content type is invalid.")
-    if provider not in {"instagram", "messenger"} or kind not in {"image", "audio", "video", "file"}:
+    if provider not in {"instagram", "messenger", "telegram"} or kind not in {"image", "audio", "video", "file"}:
         raise HTTPException(status_code=422, detail="This attachment type is not supported by the channel.")
     if not data or len(data) > MAX_ATTACHMENT_BYTES:
         raise HTTPException(status_code=413, detail="The attachment is empty or exceeds the 20 MB limit.")
@@ -93,6 +93,11 @@ async def prepare_media(provider: str, data: bytes, mime: str, kind: str) -> tup
         raise HTTPException(status_code=422, detail="The attachment type does not match its content type.")
     if (mime == "image/png" and not data.startswith(b"\x89PNG\r\n\x1a\n")) or (mime == "image/jpeg" and not data.startswith(b"\xff\xd8\xff")):
         raise HTTPException(status_code=422, detail="The image does not match its declared format.")
+    if provider == "telegram" and kind == "audio" and mime not in {"audio/ogg", "audio/mpeg", "audio/mp4", "audio/x-m4a"}:
+        # Telegram plays OGG/Opus, MP3 and M4A as a voice note; a browser
+        # recording (WebM) becomes one the same way a WhatsApp note does.
+        from .audio import to_whatsapp_voice
+        data, mime = await to_whatsapp_voice(data, mime)
     if provider == "instagram":
         if kind == "image" and mime not in {"image/png", "image/jpeg"}:
             converted = await _run_ffmpeg(["-protocol_whitelist", "pipe", "-i", "pipe:0", "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-fs", str(8 * 1024 * 1024 + 1), "pipe:1"], data)
@@ -121,7 +126,7 @@ def converted_filename(filename: str | None, mime: str) -> str | None:
     if not filename:
         return None
     suffix = {"image/png": ".png", "image/jpeg": ".jpg", "audio/mp4": ".m4a", "audio/aac": ".aac",
-              "audio/wav": ".wav", "audio/x-wav": ".wav", "video/mp4": ".mp4", "application/pdf": ".pdf"}.get(mime)
+              "audio/wav": ".wav", "audio/x-wav": ".wav", "audio/ogg": ".ogg", "video/mp4": ".mp4", "application/pdf": ".pdf"}.get(mime)
     if not suffix:
         return filename
     stem = PurePath(filename).stem.strip(".") or "attachment"

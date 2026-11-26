@@ -915,8 +915,8 @@ class Conversation(Base):
         if self.channel == "whatsapp_cloud" and self.whatsapp_cloud_channel and self.whatsapp_cloud_channel.coexistence:
             from .services.whatsapp_coexistence import window_fields
             return window_fields(self)
-        if self.channel in ("instagram", "messenger"):
-            from .services.social_policy import window_fields
+        from .services.social_policy import SOCIAL_PROVIDERS, window_fields
+        if self.channel in SOCIAL_PROVIDERS:
             return window_fields(self)
         return {}
 

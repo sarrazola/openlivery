@@ -538,6 +538,24 @@ export type SocialChannel = {
   created_at: string;
   updated_at: string;
 };
+/** A Telegram bot connected to a client. The token never comes back. */
+export type TelegramChannel = {
+  id: string;
+  client_id: string;
+  agent_id: string;
+  provider: "telegram";
+  external_account_id: string | null;
+  display_name: string | null;
+  username: string | null;
+  label: string | null;
+  status: string;
+  is_enabled: boolean;
+  last_error: string | null;
+  has_token: boolean;
+  last_connected_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
 export type SocialPending = { setup_id: string; accounts: { id: string; name: string; username?: string | null }[] };
 
 export type SocialHistoryJob = {

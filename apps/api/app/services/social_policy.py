@@ -5,12 +5,32 @@ from fastapi import HTTPException
 
 from ..models import Conversation, now_utc
 
-SOCIAL_PROVIDERS = {"instagram", "messenger"}
+# Channels whose accounts are ``SocialChannel`` rows and whose replies leave
+# through the outbox: the two Meta inboxes and Telegram bots.
+SOCIAL_PROVIDERS = frozenset({"instagram", "messenger", "telegram"})
 CAPABILITIES = {"text": True, "image": True, "audio": True, "video": True, "file": True,
                 "reactions": False, "quotes": False, "templates": False}
 
 
+def _telegram_fields(conversation: Conversation) -> dict:
+    """A bot may write to anyone who started it, at any time: no reply window."""
+    channel = conversation.social_channel
+    reason = None
+    if not channel or not channel.is_enabled or channel.status != "connected":
+        reason = "authorization_expired" if channel and channel.status == "reauthorization_required" else "channel_disconnected"
+    elif conversation.status == "resolved":
+        reason = "conversation_resolved"
+    allowed = reason is None
+    return {
+        "reply_window_until": None, "reply_window_open": allowed,
+        "human_reply_window_until": None, "human_reply_window_open": allowed,
+        "reply_block_reason": reason, "channel_capabilities": CAPABILITIES.copy(),
+    }
+
+
 def window_fields(conversation: Conversation) -> dict:
+    if conversation.channel == "telegram":
+        return _telegram_fields(conversation)
     channel = conversation.social_channel
     last = conversation.social_last_inbound_at
     until = last + timedelta(hours=24) if last else None

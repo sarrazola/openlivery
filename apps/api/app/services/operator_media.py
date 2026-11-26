@@ -17,6 +17,7 @@ from .model_catalog import DEFAULT_AUDIO_MODEL
 from .providers import DEFAULT_PROVIDER, resolve_provider_credentials
 from .usage import record_usage, schedule_generation_reconcile
 from .whatsapp import send_channel_media
+from .social_policy import SOCIAL_PROVIDERS
 
 
 def _operator_media_marker(kind: str) -> str:
@@ -92,7 +93,7 @@ async def store_operator_media_reply(
     if not data:
         raise HTTPException(status_code=400, detail="The file is empty")
     caption = caption.strip()
-    social = conversation.channel in ("instagram", "messenger")
+    social = conversation.channel in SOCIAL_PROVIDERS
     if social:
         from .social_policy import require_reply
         from .social_media import converted_filename, prepare_media

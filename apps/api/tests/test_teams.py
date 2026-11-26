@@ -49,7 +49,7 @@ def test_team_crud_and_membership(authenticated_client: TestClient):
 
     # Duplicate names are refused; unknown channels too.
     assert client.post(base, json={"name": "Ventas", "member_ids": []}).status_code == 409
-    assert client.post(base, json={"name": "Otra", "channels": ["telegram"], "member_ids": []}).status_code == 422
+    assert client.post(base, json={"name": "Otra", "channels": ["fax"], "member_ids": []}).status_code == 422
 
     # Membership converges to what the payload says.
     updated = client.patch(f"{base}/{team['id']}", json={"name": "Ventas", "strategy": "least_busy", "member_ids": [members[2]["id"]]}).json()
