@@ -94,7 +94,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="OpenLivery API",
     description="API to manage agencies, clients and AI agents.",
-    version="0.3.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 app.add_middleware(

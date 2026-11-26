@@ -9,6 +9,8 @@ and are released together.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-26
+
 ### Extension points
 
 - `services.providers.register_credential_fallback()` lends a key to an agency that stored none; `GET /api/providers` gains `source` (`agency`, `deployment`, `none`) and `configured` is true for a lent key too.
@@ -606,7 +608,8 @@ First tagged release.
 - Custom per-client portal domains with on-demand TLS.
 - README and self-hosting guide.
 
-[Unreleased]: https://github.com/sarrazola/openlivery/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/sarrazola/openlivery/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/sarrazola/openlivery/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/sarrazola/openlivery/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/sarrazola/openlivery/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/sarrazola/openlivery/compare/v0.1.0...v0.2.0
