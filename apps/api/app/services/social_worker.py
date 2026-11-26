@@ -72,6 +72,14 @@ async def complete_escalations(db, *, limit: int = 25) -> int:
     return completed
 
 
+def _stop_typing(channel, conversation) -> None:
+    """The reply is written (or will not be): stop showing the bot typing."""
+    if channel.provider == "telegram" and channel.encrypted_access_token and conversation.external_chat_id:
+        from ..security import decrypt_secret
+        from .telegram_api import stop_typing
+        stop_typing(decrypt_secret(channel.encrypted_access_token), conversation.external_chat_id)
+
+
 async def process_replies(db, *, limit: int = 10) -> int:
     from .whatsapp_inbound import _reply_with_ai
     processed = 0
@@ -109,6 +117,7 @@ async def process_replies(db, *, limit: int = 10) -> int:
         try:
             await _reply_with_ai(db, channel, conversation, last.llm_content or last.content,
                                  expected_last_message_id=trigger_id)
+            _stop_typing(channel, conversation)
             db.refresh(conversation)
             latest_user = db.scalar(select(Message.id).where(Message.conversation_id == conversation.id,
                 Message.kind == "message", Message.role == "user").order_by(Message.created_at.desc()).limit(1))
@@ -118,6 +127,7 @@ async def process_replies(db, *, limit: int = 10) -> int:
             db.commit()
         except Exception as exc:
             db.rollback()
+            _stop_typing(channel, conversation)
             logger.error("Social reply processing failed for %s (%s)", conversation.id, type(exc).__name__)
             await hand_over_failed_reply(db, conversation,
                 "The agent could not complete its reply. A person must continue this conversation.")

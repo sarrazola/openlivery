@@ -199,7 +199,7 @@ async def signal_channel_read(
         if typing and channel and channel.encrypted_access_token and channel.status == "connected":
             from . import telegram_api
             try:
-                await telegram_api.send_typing(decrypt_secret(channel.encrypted_access_token), conversation.external_chat_id)
+                await telegram_api.keep_typing(decrypt_secret(channel.encrypted_access_token), conversation.external_chat_id)
             except HTTPException:
                 pass
         return

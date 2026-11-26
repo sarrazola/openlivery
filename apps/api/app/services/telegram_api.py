@@ -4,9 +4,11 @@ Every request carries the bot token in its path, so nothing here ever logs or
 raises a URL: failures are reported by their kind and Telegram's description.
 """
 
+import asyncio
 import html
 import logging
 import re
+import time
 
 import httpx
 from fastapi import HTTPException
@@ -133,6 +135,44 @@ async def send_text(token: str, chat_id: str, text: str) -> str:
 
 async def send_typing(token: str, chat_id: str) -> None:
     await call(token, "sendChatAction", data={"chat_id": chat_id, "action": "typing"}, timeout=5)
+
+
+# Telegram shows a chat action for about five seconds, and a reply takes longer
+# to write. While one is being written the action is sent again, until the
+# reply leaves (``stop_typing``) or a minute passes, whichever comes first.
+TYPING_REPEAT_SECONDS = 4.5
+TYPING_LIMIT_SECONDS = 60
+_typing: dict[str, asyncio.Task] = {}
+
+
+def _typing_key(token: str, chat_id: str) -> str:
+    return f"{token.split(':', 1)[0]}:{chat_id}"
+
+
+async def keep_typing(token: str, chat_id: str) -> None:
+    """Show the bot typing now and keep showing it until ``stop_typing``."""
+    stop_typing(token, chat_id)
+    await send_typing(token, chat_id)
+
+    async def repeat() -> None:
+        deadline = time.monotonic() + TYPING_LIMIT_SECONDS
+        while time.monotonic() + TYPING_REPEAT_SECONDS < deadline:
+            await asyncio.sleep(TYPING_REPEAT_SECONDS)
+            try:
+                await send_typing(token, chat_id)
+            except HTTPException:
+                return
+
+    key = _typing_key(token, chat_id)
+    task = asyncio.create_task(repeat())
+    _typing[key] = task
+    task.add_done_callback(lambda done: _typing.pop(key, None) if _typing.get(key) is done else None)
+
+
+def stop_typing(token: str, chat_id: str) -> None:
+    task = _typing.pop(_typing_key(token, chat_id), None)
+    if task:
+        task.cancel()
 
 
 async def send_file(token: str, chat_id: str, kind: str, data: bytes, mime: str, filename: str | None) -> str:

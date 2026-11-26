@@ -76,6 +76,7 @@ async def _send_telegram(channel: SocialChannel, row: SocialOutbox, attachment: 
     if not channel.encrypted_access_token:
         raise HTTPException(status_code=401, detail="Connect the bot again with its token.")
     token = decrypt_secret(channel.encrypted_access_token)
+    telegram_api.stop_typing(token, row.payload["recipient_id"])
     if attachment is not None:
         return await telegram_api.send_file(token, row.payload["recipient_id"], row.payload.get("kind") or attachment.kind,
                                             attachment.data, attachment.mime, attachment.filename)

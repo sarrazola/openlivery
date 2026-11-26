@@ -297,3 +297,25 @@ def test_bot_tokens_never_reach_the_logs():
     record = SimpleNamespace(msg="HTTP Request: %s %s", args=("POST", f"https://api.telegram.org/bot{TOKEN}/sendMessage"))
     telegram_api._RedactBotTokens().filter(record)
     assert TOKEN not in record.args[1] and record.args[1].endswith("/bot[redacted]/sendMessage")
+
+
+def test_typing_is_repeated_until_the_reply_leaves(monkeypatch):
+    sent = []
+
+    async def typing(token, chat):
+        sent.append(chat)
+
+    monkeypatch.setattr(telegram_api, "send_typing", typing)
+    monkeypatch.setattr(telegram_api, "TYPING_REPEAT_SECONDS", 0.01)
+
+    async def scenario():
+        await telegram_api.keep_typing(TOKEN, "42")
+        await asyncio.sleep(0.05)
+        telegram_api.stop_typing(TOKEN, "42")
+        repeated = len(sent)
+        await asyncio.sleep(0.05)
+        return repeated
+
+    repeated = asyncio.run(scenario())
+    assert repeated >= 2 and len(sent) == repeated
+    assert not telegram_api._typing
