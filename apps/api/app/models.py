@@ -706,6 +706,10 @@ class Contact(Base):
     # A blocked contact talks to a wall: their messages are stored but nobody
     # answers, nothing rings, and their conversations leave the inboxes.
     blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # A hard block: the WhatsApp API numbers on which the person is also on
+    # WhatsApp's own block list, as [{"channel_id", "user"}], so it can be
+    # lifted from the same numbers. Null while the block is only internal.
+    whatsapp_blocks: Mapped[list | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 

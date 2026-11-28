@@ -9,6 +9,13 @@ and are released together.
 
 ## [Unreleased]
 
+Upgrading: this release adds a database migration (applied automatically by the
+Docker stack; run `alembic upgrade head` on local setups).
+
+### Added
+
+- **Hard block.** Blocking a contact in the portal now offers two kinds, each explained in the dialog. A **soft block** is the block that existed: messages are kept, nobody answers, the person notices nothing. A **hard block** also puts the person on WhatsApp's own block list for the WhatsApp API number they wrote to, so they can no longer write to it and the business cannot write to them. WhatsApp accepts that only for someone who wrote in the last 24 hours, so the option is offered when it can go through and says why when it cannot; a soft-blocked contact can be hard-blocked later with **Block on WhatsApp too**. Unblocking lifts both, and a hard-blocked contact must be unblocked before it is deleted or merged. `POST /api/portal/{slug}/contacts/{id}/block` takes `hard`, `GET` on the same path says whether a hard block is available, and `ContactOut` gains `hard_blocked`. QR lines and the other channels keep the soft block. Migration `0062` adds `contacts.whatsapp_blocks`. See [client portal](docs/en/client-portal.md#blocking-a-contact).
+
 ## [0.5.0] - 2026-11-26
 
 ### Extension points

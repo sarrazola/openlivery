@@ -88,11 +88,16 @@ API: `GET /api/portal/{slug}/conversations?archived=1`, `PATCH .../conversations
 
 ## Blocking a contact
 
-A contact that spams the number can be **blocked** from Contacts or from the conversation header. Blocked, their messages are still stored but nobody answers them: the agent does not reply and spends no tokens, no notification fires, and their conversations leave every inbox (they stay readable from the contact's history). They can keep writing; they just get no response.
+A contact that spams the number can be **blocked** from Contacts or from the conversation header. The dialog offers two kinds of block:
 
-**Unblocking** does not answer the backlog. The open conversation is resolved with a note in the thread, and the contact's next message opens a fresh conversation that the agent handles as usual.
+- **Soft block.** Their messages are still stored but nobody answers them: the agent does not reply and spends no tokens, no notification fires, and their conversations leave every inbox (they stay readable from the contact's history). They can keep writing and notice nothing: WhatsApp is not told, so they see their messages as delivered.
+- **Hard block.** Everything a soft block does, and the person is also put on WhatsApp's own block list for the number they wrote to: they can no longer write to it, and the business cannot write to them. WhatsApp only accepts this on a WhatsApp API number (not a QR line) and only for someone who wrote in the last 24 hours, so the option is offered when both hold and says why when not. A contact with a hidden phone number is blocked by its user ID.
 
-API: `POST /api/portal/{slug}/contacts/{id}/block` with `{"blocked": true|false}`; `ContactOut.blocked_at` says whether a contact is blocked. This is an internal block: WhatsApp itself is not told, so the contact sees their messages as delivered.
+A soft-blocked contact can be hard-blocked later with **Block on WhatsApp too**, while WhatsApp's 24 hours are still open.
+
+**Unblocking** lifts both. It does not answer the backlog: the open conversation is resolved with a note in the thread, and the contact's next message opens a fresh conversation that the agent handles as usual. A hard-blocked contact has to be unblocked before it can be deleted or merged into another, so no block is left on WhatsApp with nothing to lift it from.
+
+API: `POST /api/portal/{slug}/contacts/{id}/block` with `{"blocked": true|false, "hard": true|false}` (`hard` defaults to false and is ignored when unblocking); `GET` on the same path returns `hard_available` and, when false, `hard_unavailable_reason` (`no_whatsapp_api` or `window_closed`). `ContactOut.blocked_at` says whether a contact is blocked and `hard_blocked` whether WhatsApp blocks them too. A hard block that WhatsApp refuses fails with its reason and changes nothing.
 
 
 ### Replying from a phone

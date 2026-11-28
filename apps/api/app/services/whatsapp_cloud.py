@@ -9,7 +9,7 @@ import httpx
 from fastapi import HTTPException
 
 from ..config import get_settings
-from .whatsapp_identity import recipient_fields
+from .whatsapp_identity import is_user_id, recipient_fields
 
 MAX_MEDIA_BYTES = 20 * 1024 * 1024
 # Hard limit of the Cloud API for a text message body.
@@ -90,6 +90,47 @@ async def send_reaction(access_token: str, phone_number_id: str, to: str, messag
     response = await graph_request("POST", graph_url(f"{phone_number_id}/messages"), access_token, json=payload)
     if response.status_code >= 400:
         raise HTTPException(status_code=502, detail=f"WhatsApp could not send the reaction: {graph_error(response)}")
+
+
+def _block_entry(user: str) -> dict:
+    # A hidden phone number is blocked by its user id, like a send addresses it.
+    return {"user_id": user} if is_user_id(user) else {"user": user}
+
+
+def _block_refusal(response: httpx.Response, done: str) -> str | None:
+    """None when Meta moved the user (``done`` names the list of the ones it
+    did), otherwise why it did not. The call answers per user: a refusal comes
+    back in ``failed_users`` next to a generic top-level error."""
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+    result = body.get("block_users") or {}
+    if result.get(done):
+        return None
+    for failed in result.get("failed_users") or []:
+        for error in failed.get("errors") or []:
+            reason = (error.get("error_data") or {}).get("details") or error.get("message")
+            if reason:
+                return str(reason)
+    return graph_error(response)
+
+
+async def block_user(access_token: str, phone_number_id: str, user: str) -> str | None:
+    """Put a person on the number's WhatsApp block list: they can no longer
+    write to it and it cannot write to them. Meta accepts only people who
+    wrote in the last 24 hours. Returns None when blocked, or Meta's reason."""
+    payload = {"messaging_product": "whatsapp", "block_users": [_block_entry(user)]}
+    response = await graph_request("POST", graph_url(f"{phone_number_id}/block_users"), access_token, json=payload)
+    return _block_refusal(response, "added_users")
+
+
+async def unblock_user(access_token: str, phone_number_id: str, user: str) -> str | None:
+    """Take a person off the number's WhatsApp block list. Returns None when
+    unblocked, or Meta's reason."""
+    payload = {"messaging_product": "whatsapp", "block_users": [_block_entry(user)]}
+    response = await graph_request("DELETE", graph_url(f"{phone_number_id}/block_users"), access_token, json=payload)
+    return _block_refusal(response, "removed_users")
 
 
 async def mark_read(access_token: str, phone_number_id: str, message_id: str) -> None:

@@ -470,6 +470,8 @@ export type Contact = {
   open_count: number;
   last_activity_at: string | null;
   blocked_at?: string | null;
+  // Blocked on WhatsApp itself too, not only inside the inbox.
+  hard_blocked?: boolean;
 };
 
 export type ContactImportError = {

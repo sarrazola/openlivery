@@ -23,6 +23,7 @@ import { QuotedSnippet, ReactionBadge, ReactionPicker } from "@/components/messa
 import { DeliveryTicks } from "@/components/delivery-ticks";
 import { useToast } from "@/components/toast";
 import { Alert, EmptyState, Modal } from "@/components/ui";
+import { BlockContactModal } from "../block-contact";
 import { ContactCardModal } from "@/components/contact-card-modal";
 import { ChannelIcon, channelLabel as labelForChannel, INBOX_CHANNELS, isSocialChannel } from "@/lib/channels";
 import { PhonePauseNotice, SocialReplyNotice, useReplyPolicy } from "@/components/reply-policy";
@@ -398,15 +399,6 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
       await refresh();
     } catch (err) { setError(messageFrom(err)); }
   }
-  async function blockContact() {
-    if (!selected?.contact_id) return;
-    setBulkBusy(true); setError("");
-    try {
-      await api(`/portal/${slug}/contacts/${selected.contact_id}/block`, { method: "POST", body: JSON.stringify({ blocked: true }) });
-      setBlockingContact(false); setSelected(null);
-      await refresh();
-    } catch (err) { setError(messageFrom(err)); } finally { setBulkBusy(false); }
-  }
   async function archiveAllResolved() {
     setBulkBusy(true); setError("");
     try {
@@ -570,8 +562,6 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
       </form>
     </Modal>
     {contactCardOpen && selected?.contact_id && <ContactCardModal slug={slug} contactId={selected.contact_id} onClose={() => setContactCardOpen(false)} onSaved={(contact) => { const name = contact.name.trim() || undefined; if (name) { setSelected((current) => (current ? { ...current, contact_name: name, title: name } : current)); setItems((prev) => prev.map((row) => (row.contact_id === contact.id ? { ...row, contact_name: name, title: name } : row))); } }} />}
-    <Modal open={blockingContact && Boolean(selected?.contact_id)} title={t("portal.contacts.blockTitle", { name: selected?.contact_name || selected?.title || "" })} onClose={() => setBlockingContact(false)}>
-      <div className="modal-form"><p className="muted">{t("portal.contacts.blockCopy")}</p><p className="muted">{t("portal.contacts.blockUnblockCopy")}</p>{error && <Alert>{error}</Alert>}<div className="modal-actions"><button type="button" className="button" onClick={() => setBlockingContact(false)}>{t("common.cancel")}</button><button type="button" className="button danger" disabled={bulkBusy} onClick={blockContact}>{bulkBusy ? <LoaderCircle className="spin" size={16} /> : <><Ban size={15} /> {t("portal.contacts.block")}</>}</button></div></div>
-    </Modal>
+    {blockingContact && selected?.contact_id && <BlockContactModal slug={slug} contactId={selected.contact_id} name={selected.contact_name || selected.title || ""} onClose={() => setBlockingContact(false)} onBlocked={() => { setBlockingContact(false); setSelected(null); void refresh(); }} />}
   </main>;
 }
