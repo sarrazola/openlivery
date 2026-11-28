@@ -23,6 +23,7 @@ from ..services.report_conversations import AD_FIELDS, ConversationListFilters, 
 from ..services import webpush
 from ..schemas import ConversationFacets, ConversationReportPage
 from ..schemas import (
+    ContactBlockOptions,
     ContactBlockUpdate,
     BulkResult,
     ConversationArchiveUpdate,
@@ -76,6 +77,7 @@ from ..schemas import (
 from ..security import create_portal_token, decode_portal_token, verify_password
 from ..services import channel_accounts
 from ..services.capture import field_definitions
+from ..services.contact_blocks import hard_block_unavailable, lift_hard_block, place_hard_block
 from ..services.contacts import display_name, merge_contacts, normalize_phone, rename_conversations
 from ..services.tags import create_tag, delete_tag, get_tag, list_tags, rename_tag, tag_count, tag_out
 from ..services.teams import TEAM_CHANNELS, create_team, delete_team, get_team, list_teams, members_out, team_out, update_team
@@ -807,6 +809,7 @@ def _contact_out(contact: Contact, stats) -> ContactOut:
         open_count=int((stats.open if stats is not None else None) or 0),
         last_activity_at=stats.last_activity_at if stats is not None else None,
         blocked_at=contact.blocked_at,
+        hard_blocked=bool(contact.whatsapp_blocks),
         tags=[ContactTagOut(id=tag.id, name=tag.name, color=tag.color) for tag in contact.tags],
     )
 
@@ -1207,6 +1210,8 @@ def portal_merge_contact(
     merged = _portal_contact(db, client, contact_id)
     if payload.primary_contact_id == merged.id:
         raise HTTPException(status_code=409, detail="Pick a different contact to merge into")
+    if merged.whatsapp_blocks:
+        raise HTTPException(status_code=409, detail="Unblock this contact before merging it: it is blocked on WhatsApp")
     primary = _portal_contact(db, client, payload.primary_contact_id)
     merge_contacts(db, primary, merged)
     db.commit()
@@ -1216,8 +1221,17 @@ def portal_merge_contact(
     return _contact_out(primary, row)
 
 
+@router.get("/{slug}/contacts/{contact_id}/block", dependencies=[Depends(require_permission(CONTACTS_MANAGE))], response_model=ContactBlockOptions)
+def portal_contact_block_options(
+    slug: str, contact_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
+):
+    """Whether the contact can be hard-blocked right now, and why not."""
+    reason = hard_block_unavailable(db, _portal_contact(db, client, contact_id))
+    return ContactBlockOptions(hard_available=reason is None, hard_unavailable_reason=reason)
+
+
 @router.post("/{slug}/contacts/{contact_id}/block", dependencies=[Depends(require_permission(CONTACTS_MANAGE))], response_model=ContactOut)
-def portal_block_contact(
+async def portal_block_contact(
     slug: str,
     contact_id: uuid.UUID,
     payload: ContactBlockUpdate,
@@ -1228,17 +1242,27 @@ def portal_block_contact(
     """Block or unblock a contact.
 
     Blocked, their messages are stored but never reach the agent or a phone,
-    and their conversations leave the inboxes. Unblocking does not answer the
-    backlog: the open conversation is resolved with a note, and the contact's
-    next message opens a fresh one that the agent handles as usual.
+    and their conversations leave the inboxes (a soft block: the person
+    notices nothing). With ``hard`` the person is also put on the block list
+    of the WhatsApp API numbers they wrote to in the last 24 hours, so they
+    can no longer write there; that fails, changing nothing, when WhatsApp
+    cannot block them. A soft-blocked contact can be hard-blocked later.
+
+    Unblocking lifts both. It does not answer the backlog: the open
+    conversation is resolved with a note, and the contact's next message opens
+    a fresh one that the agent handles as usual.
     """
     contact = _portal_contact(db, client, contact_id)
     open_ones = select(Conversation).where(Conversation.contact_id == contact.id, Conversation.status == "open")
-    if payload.blocked and contact.blocked_at is None:
-        contact.blocked_at = now_utc()
-        for conversation in db.scalars(open_ones).all():
-            record_activity(db, conversation, "blocked", actor=sender_name)
-    elif not payload.blocked and contact.blocked_at is not None:
+    if payload.blocked:
+        if payload.hard and not contact.whatsapp_blocks:
+            await place_hard_block(db, contact)
+        if contact.blocked_at is None:
+            contact.blocked_at = now_utc()
+            for conversation in db.scalars(open_ones).all():
+                record_activity(db, conversation, "blocked", actor=sender_name)
+    elif contact.blocked_at is not None:
+        await lift_hard_block(db, contact)
         contact.blocked_at = None
         for conversation in db.scalars(open_ones).all():
             set_status(db, conversation, "resolved", actor=sender_name)
@@ -1258,6 +1282,9 @@ def portal_delete_contact(
     # with those, the messages and attachments). The portal asks the person
     # to type the contact's name before it calls this.
     contact = _portal_contact(db, client, contact_id)
+    # WhatsApp's block would stay with nothing left here to lift it from.
+    if contact.whatsapp_blocks:
+        raise HTTPException(status_code=409, detail="Unblock this contact before deleting it: it is blocked on WhatsApp")
     for conversation in db.scalars(select(Conversation).where(Conversation.contact_id == contact.id, Conversation.channel != PLAYGROUND)).all():
         db.delete(conversation)
     db.delete(contact)

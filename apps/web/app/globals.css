@@ -860,6 +860,15 @@ textarea { line-height: 1.55; }
 .status-toggle { min-height: 35px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 7px; border: 1px solid var(--green-line); color: var(--green-text); background: var(--green-soft); font-weight: 600; cursor: pointer; }
 .status-toggle.resolved { border-color: var(--line); color: var(--ink); background: var(--surface); }
 .mini-badge.blocked { color: var(--red); background: var(--red-soft); }
+/* The two kinds of block a contact can be given, as a pair of radio cards. */
+.block-choices { display: grid; gap: 10px; }
+.block-choice { padding: 13px 15px; display: grid; gap: 4px; text-align: left; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font: inherit; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease; }
+.block-choice strong { color: var(--ink); font-size: 14px; }
+.block-choice span { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.block-choice em { color: var(--amber-text); font-size: 12.5px; font-style: normal; }
+.block-choice.selected { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .12); }
+.block-choice:disabled { background: var(--surface-2); cursor: not-allowed; }
+.block-choice:disabled strong, .block-choice:disabled span { color: var(--subtle); }
 .status-toggle.danger { border-color: var(--red-line); color: var(--red); background: var(--red-soft); }
 /* Resolve stays neutral until hovered, so it does not read as the default. */
 .resolve-action:hover { border-color: var(--green-line); color: var(--green-text); background: var(--green-soft); }

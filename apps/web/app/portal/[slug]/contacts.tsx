@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BadgeCheck, Ban, Bot, CalendarRange, Check, CheckCircle2, ChevronDown, Clock, Download, FileSpreadsheet, Inbox, LoaderCircle, Merge, MessageCircle, MessageSquarePlus, MessageSquareText, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload, UserRound, Users, X } from "lucide-react";
 import { TemplatePicker } from "./templates";
+import { BlockContactModal } from "./block-contact";
 import { Alert, EmptyState, Modal } from "@/components/ui";
 import { MessageAttachments, type GalleryImage } from "@/components/attachments";
 import { RichText } from "@/components/rich-text";
@@ -63,7 +64,9 @@ export function ContactsView({ slug, channels, openConversation, can, agentName,
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<"new" | "edit" | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [blocking, setBlocking] = useState(false);
+  // The block dialog: for a contact that is not blocked, or to add WhatsApp's
+  // own block to one that is only soft-blocked.
+  const [blocking, setBlocking] = useState<false | "block" | "upgrade">(false);
   const [typed, setTyped] = useState("");
   const [merging, setMerging] = useState(false);
   const [mergeQuery, setMergeQuery] = useState("");
@@ -339,12 +342,12 @@ export function ContactsView({ slug, channels, openConversation, can, agentName,
 
   const confirmWord = t("portal.contacts.deleteWord");
   const confirmed = typed.trim().toUpperCase() === confirmWord.toUpperCase();
-  async function setBlocked(blocked: boolean) {
+  async function unblock() {
     if (!selected) return;
     setBusy(true); setError("");
     try {
-      const updated = await api<Contact>(`/portal/${slug}/contacts/${selected.id}/block`, { method: "POST", body: JSON.stringify({ blocked }) });
-      setSelected(updated); setBlocking(false);
+      const updated = await api<Contact>(`/portal/${slug}/contacts/${selected.id}/block`, { method: "POST", body: JSON.stringify({ blocked: false }) });
+      setSelected(updated);
       await load();
     } catch (err) { setError(messageFrom(err)); } finally { setBusy(false); }
   }
@@ -393,7 +396,7 @@ export function ContactsView({ slug, channels, openConversation, can, agentName,
               <span className="portal-inbox-row-top"><strong>{nameOf(contact)}</strong><time title={t("portal.contacts.createdAt")}>{formatWhen(contact.created_at, lang)}</time></span>
               <small className="portal-inbox-preview">{phoneLabel(contact.phone)}{contact.email ? ` · ${contact.email}` : ""}</small>
               {contact.tags && contact.tags.length > 0 && <span className="tag-chips">{contact.tags.slice(0, 3).map((tag) => <span key={tag.id} className="tag-chip" style={tagStyle(tag.color)}>{tag.name}</span>)}{contact.tags.length > 3 && <span className="tag-chip">+{contact.tags.length - 3}</span>}</span>}
-              <small className="inbox-row-meta">{t("portal.contacts.conversationCount", { count: contact.conversation_count })}{contact.blocked_at && <span className="mini-badge blocked"><Ban size={10} /> {t("portal.contacts.blockedBadge")}</span>}{contact.open_count > 0 && <span className="mini-badge human">{t("portal.contacts.openCount", { count: contact.open_count })}</span>}</small>
+              <small className="inbox-row-meta">{t("portal.contacts.conversationCount", { count: contact.conversation_count })}{contact.blocked_at && <span className="mini-badge blocked"><Ban size={10} /> {t(contact.hard_blocked ? "portal.contacts.hardBlockedBadge" : "portal.contacts.blockedBadge")}</span>}{contact.open_count > 0 && <span className="mini-badge human">{t("portal.contacts.openCount", { count: contact.open_count })}</span>}</small>
             </span>
           </button>)}
         {!loading && !items.length && <div className="no-conversations">{query ? t("portal.contacts.noMatches") : t("portal.contacts.empty")}</div>}
@@ -408,7 +411,7 @@ export function ContactsView({ slug, channels, openConversation, can, agentName,
           <header>
             <button type="button" className="icon-button inbox-back" onClick={() => { setSelected(null); setHistory([]); }} aria-label={t("common.back")} title={t("common.back")}><ArrowLeft size={16} /></button>
             <div>
-              <strong>{nameOf(selected)}{selected.blocked_at && <span className="mini-badge blocked"><Ban size={11} /> {t("portal.contacts.blockedBadge")}</span>}</strong>
+              <strong>{nameOf(selected)}{selected.blocked_at && <span className="mini-badge blocked"><Ban size={11} /> {t(selected.hard_blocked ? "portal.contacts.hardBlockedBadge" : "portal.contacts.blockedBadge")}</span>}</strong>
               <small className="portal-channel-line">{phoneLabel(selected.phone)}{selected.email ? ` · ${selected.email}` : ""}</small>
             </div>
             <div className="thread-actions">
@@ -434,8 +437,9 @@ export function ContactsView({ slug, channels, openConversation, can, agentName,
                     <button type="button" role="menuitem" onClick={() => { setContactMenu(false); setEditing("edit"); }}><Pencil size={15} /><span><strong>{t("portal.contacts.edit")}</strong></span></button>
                     {canManageContacts && <button type="button" role="menuitem" onClick={() => { setContactMenu(false); setMergePrimary(null); setMergeQuery(""); setMerging(true); }}><Merge size={15} /><span><strong>{t("portal.contacts.merge")}</strong></span></button>}
                     {canManageContacts && <><hr />{selected.blocked_at
-                      ? <button type="button" role="menuitem" disabled={busy} onClick={() => { setContactMenu(false); setBlocked(false); }}><Ban size={15} /><span><strong>{t("portal.contacts.unblock")}</strong></span></button>
-                      : <button type="button" role="menuitem" className="danger" onClick={() => { setContactMenu(false); setBlocking(true); }}><Ban size={15} /><span><strong>{t("portal.contacts.block")}</strong></span></button>}</>}
+                      ? <><button type="button" role="menuitem" disabled={busy} onClick={() => { setContactMenu(false); unblock(); }}><Ban size={15} /><span><strong>{t("portal.contacts.unblock")}</strong></span></button>
+                        {!selected.hard_blocked && <button type="button" role="menuitem" className="danger" onClick={() => { setContactMenu(false); setBlocking("upgrade"); }}><Ban size={15} /><span><strong>{t("portal.contacts.blockOnWhatsapp")}</strong></span></button>}</>
+                      : <button type="button" role="menuitem" className="danger" onClick={() => { setContactMenu(false); setBlocking("block"); }}><Ban size={15} /><span><strong>{t("portal.contacts.block")}</strong></span></button>}</>}
                   </div>
                 </>}
               </div>
@@ -520,14 +524,7 @@ export function ContactsView({ slug, channels, openConversation, can, agentName,
         <div className="modal-actions"><button type="button" className="button" onClick={() => setStarting(null)}>{t("portal.contacts.form.cancel")}</button><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={16} /> : t("portal.contacts.startSend")}</button></div>
       </form>
     </Modal>
-    <Modal open={blocking && Boolean(selected)} title={t("portal.contacts.blockTitle", { name: selected ? nameOf(selected) : "" })} onClose={() => setBlocking(false)}>
-      <div className="modal-form">
-        <p className="modal-copy">{t("portal.contacts.blockCopy")}</p>
-        <p className="modal-copy">{t("portal.contacts.blockUnblockCopy")}</p>
-        {error && <Alert>{error}</Alert>}
-        <div className="modal-actions"><button type="button" className="button" onClick={() => setBlocking(false)}>{t("portal.contacts.form.cancel")}</button><button type="button" className="button danger" disabled={busy} onClick={() => setBlocked(true)}>{busy ? <LoaderCircle className="spin" size={16} /> : <><Ban size={15} /> {t("portal.contacts.block")}</>}</button></div>
-      </div>
-    </Modal>
+    {blocking && selected && <BlockContactModal slug={slug} contactId={selected.id} name={nameOf(selected)} upgrade={blocking === "upgrade"} onClose={() => setBlocking(false)} onBlocked={(updated) => { setSelected(updated); setBlocking(false); void load(); }} />}
     <Modal open={deleting && Boolean(selected)} title={t("portal.contacts.deleteTitle", { name: selected ? nameOf(selected) : "" })} onClose={() => setDeleting(false)}>
       <form className="modal-form" onSubmit={remove}>
         <Alert type="error">{t("portal.contacts.deleteWarning", { count: selected?.conversation_count ?? 0 })}</Alert>

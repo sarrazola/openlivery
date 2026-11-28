@@ -1097,10 +1097,23 @@ class ContactOut(BaseModel):
     open_count: int = 0
     last_activity_at: datetime | None = None
     blocked_at: datetime | None = None
+    # Blocked on WhatsApp itself as well, not only inside the inbox.
+    hard_blocked: bool = False
 
 
 class ContactBlockUpdate(BaseModel):
     blocked: bool
+    # With ``blocked``: also put the person on WhatsApp's own block list (a
+    # hard block). Ignored when unblocking, which lifts whatever was placed.
+    hard: bool = False
+
+
+class ContactBlockOptions(BaseModel):
+    """What kinds of block a contact can be given right now."""
+
+    hard_available: bool
+    # ``no_whatsapp_api`` or ``window_closed`` when a hard block is not on offer.
+    hard_unavailable_reason: str | None = None
 
 
 class ContactMergeRequest(BaseModel):

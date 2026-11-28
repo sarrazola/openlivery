@@ -88,8 +88,13 @@ API: `GET /api/portal/{slug}/conversations?archived=1`, `PATCH .../conversations
 
 ## Bloquear un contacto
 
-Un contacto que hace spam al número se puede **bloquear** desde Contactos o desde la cabecera de la conversación. Bloqueado, sus mensajes se siguen guardando pero nadie los responde: el agente no contesta ni gasta tokens, no suena ninguna notificación y sus conversaciones salen de todas las bandejas (siguen legibles desde el historial del contacto). Puede seguir escribiendo; solo que no recibe respuesta.
+Un contacto que hace spam al número se puede **bloquear** desde Contactos o desde la cabecera de la conversación. El diálogo ofrece dos tipos de bloqueo:
 
-**Desbloquear** no responde lo acumulado. La conversación abierta se resuelve con una nota en el hilo, y el siguiente mensaje del contacto abre una conversación nueva que el agente atiende normal.
+- **Bloqueo suave.** Sus mensajes se siguen guardando pero nadie los responde: el agente no contesta ni gasta tokens, no suena ninguna notificación y sus conversaciones salen de todas las bandejas (siguen legibles desde el historial del contacto). Puede seguir escribiendo y no nota nada: a WhatsApp no se le avisa, así que ve sus mensajes como entregados.
+- **Bloqueo total.** Todo lo del bloqueo suave, y además la persona entra en la lista de bloqueados del propio WhatsApp para el número al que escribió: ya no puede escribirle, y el negocio tampoco puede escribirle a ella. WhatsApp solo lo acepta en un número de la API de WhatsApp (no en una línea por QR) y solo para quien escribió en las últimas 24 horas, así que la opción se ofrece cuando se cumplen las dos cosas y dice por qué cuando no. Un contacto con el número oculto se bloquea por su ID de usuario.
 
-API: `POST /api/portal/{slug}/contacts/{id}/block` con `{"blocked": true|false}`; `ContactOut.blocked_at` indica si está bloqueado. Es un bloqueo interno: a WhatsApp no se le avisa, así que el contacto ve sus mensajes como entregados.
+Un contacto con bloqueo suave se puede pasar a bloqueo total después con **Bloquear también en WhatsApp**, mientras sigan abiertas las 24 horas de WhatsApp.
+
+**Desbloquear** quita los dos. No responde lo acumulado: la conversación abierta se resuelve con una nota en el hilo, y el siguiente mensaje del contacto abre una conversación nueva que el agente atiende normal. Un contacto con bloqueo total hay que desbloquearlo antes de eliminarlo o fusionarlo con otro, para que no quede un bloqueo en WhatsApp sin nada desde donde quitarlo.
+
+API: `POST /api/portal/{slug}/contacts/{id}/block` con `{"blocked": true|false, "hard": true|false}` (`hard` es false por defecto y se ignora al desbloquear); `GET` en la misma ruta devuelve `hard_available` y, cuando es false, `hard_unavailable_reason` (`no_whatsapp_api` o `window_closed`). `ContactOut.blocked_at` indica si está bloqueado y `hard_blocked` si WhatsApp también lo bloquea. Un bloqueo total que WhatsApp rechaza falla con su motivo y no cambia nada.
